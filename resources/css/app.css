@@ -1,0 +1,22 @@
+/* Importing Tailwind CSS */
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* ── Extracted layout & page CSS ─────────────────── */
+@import './layout.css';
+@import './auth.css';
+@import './pages/pds.css';
+@import './pages/leave-manager.css';
+@import './pages/department-head.css';
+@import './pages/employee.css';
+@import './pages/records-manager.css';
+@import './pages/payroll.css';

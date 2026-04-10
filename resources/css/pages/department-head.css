@@ -1,0 +1,312 @@
+/* =========================================================================
+   Department Head — shared styles for index (KPI), pending-requests,
+   approved-requests, statistics, travel-orders, office-orders, filed orders
+   ========================================================================= */
+
+/* ── KPI cards (index) ──────────────────────────── */
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #e6eef6;
+    background: #fbfdff;
+}
+
+.kpi-card {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e9f0f6;
+    border-radius: 10px;
+    padding: 18px;
+    cursor: pointer;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 6px 18px rgba(2, 6, 23, 0.03);
+}
+
+.kpi-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 24px 48px rgba(2, 6, 23, 0.08);
+}
+
+.kpi-title  { font-weight: 700; color: var(--muted); font-size: 0.95rem; margin: 0; }
+.kpi-head   { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.kpi-icon   { width: 42px; height: 42px; border-radius: 10px; display: inline-grid; place-items: center; color: #fff; flex: 0 0 42px; }
+.kpi-icon svg { width: 20px; height: 20px; opacity: 0.98; }
+.kpi-icon i   { font-size: 20px; width: auto; height: auto; opacity: 0.98; display: inline-block; line-height: 1; }
+.kpi-value  { font-size: 1.6rem; font-weight: 800; color: var(--ink); }
+.kpi-meta   { font-size: 0.85rem; color: #64748b; margin-top: 8px; border-top: 1px dashed #eef6fb; padding-top: 8px; }
+.kpi-badge  { display: inline-block; padding: 6px 8px; border-radius: 999px; font-weight: 700; font-size: 0.78rem; }
+
+/* KPI accent gradients */
+.kpi-card.accent-workforce  .kpi-icon { background: linear-gradient(180deg, #0ea5a4, #0891b2); }
+.kpi-card.accent-attendance .kpi-icon { background: linear-gradient(180deg, #6366f1, #4f46e5); }
+.kpi-card.accent-leave      .kpi-icon { background: linear-gradient(180deg, #f97316, #fb923c); }
+.kpi-card.accent-locator    .kpi-icon { background: linear-gradient(180deg, #06b6d4, #0891b2); }
+.kpi-card.accent-eta        .kpi-icon { background: linear-gradient(180deg, #ef4444, #f43f5e); }
+.kpi-card.accent-overtime   .kpi-icon { background: linear-gradient(180deg, #10b981, #059669); }
+
+/* KPI modal */
+#kpi-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.kpi-modal {
+    width: min(920px, calc(100% - 40px));
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 30px 80px rgba(2, 6, 23, 0.35);
+    max-height: 85vh;
+    overflow: auto;
+}
+
+.kpi-modal .modal-head  { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.kpi-modal .modal-title { font-weight: 800; font-size: 1.1rem; }
+.kpi-modal .modal-close { background: transparent; border: 0; font-size: 1.1rem; cursor: pointer; color: #64748b; }
+.kpi-modal .modal-body p { margin: 0 0 8px; }
+
+/* ── Tab cards (pending / approved requests) ────── */
+
+.tabs-cards {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.tab-card {
+    flex: 1 1 0;
+    cursor: pointer;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 64px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.tab-card strong     { font-size: 0.95rem; }
+.tab-card .muted     { color: #6b7280; font-size: 0.85rem; }
+.tab-card .tile-count { font-size: 1.1rem; font-weight: 600; margin-top: 0.25rem; }
+.tab-card.active     { border-color: #2563eb; box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08); }
+
+@media (max-width: 768px) {
+    .tabs-cards { flex-direction: column; }
+}
+
+.tab-pane table tr.active-row { background: linear-gradient(90deg, rgba(37, 99, 235, 0.04), rgba(37, 99, 235, 0.02)); }
+.tab-pane table tr.active-row td { outline: 2px solid rgba(37, 99, 235, 0.06); }
+
+/* ── Data table (shared between pending / approved) ── */
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.data-table th,
+.data-table td {
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.data-table thead th {
+    background: #f8fafc;
+    font-weight: 700;
+}
+
+.pagination-wrap { text-align: right; }
+.pagination { display: inline-flex; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.pagination li { border: 1px solid rgba(15, 23, 42, 0.06); padding: 6px 10px; border-radius: 6px; background: #fff; }
+.pagination li.active { background: #f1f5f9; font-weight: 700; }
+
+/* ── Employee modal (dialog) ────────────────────── */
+
+.employee-modal {    
+    border: 0;
+    border-radius: 14px;
+    width: min(620px, calc(100vw - 24px));
+    max-height: calc(100vh - 32px);
+    padding: 14px;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    z-index: 10000;
+
+}
+
+.employee-modal::backdrop { background: rgba(15, 23, 42, 0.5); }
+
+.modal-top-actions { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.modal-close { border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; width: 34px; height: 34px; font-weight: 700; cursor: pointer; }
+.employee-modal header { margin-bottom: 8px; }
+.employee-modal header h3 { margin: 0; font-size: 1.15rem; }
+.employee-modal .record-email,
+.employee-modal .modal-subtitle { color: #64748b; font-size: 0.9rem; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-actions .btn { padding: 8px 12px; border-radius: 8px; }
+#pending-modal-body table td { padding: 8px; border: 1px solid #f1f5f9; }
+#approved-modal-body table td { padding: 8px; border: 1px solid #f1f5f9; }
+
+/* ── Statistics ──────────────────────────────────── */
+
+.stats-table { width: 100%; border-collapse: collapse; }
+.stats-table th, .stats-table td { padding: 10px 12px; border-bottom: 1px solid #eef2f6; }
+.stats-table thead th { background: transparent; color: #0f172a; font-weight: 700; text-align: left; }
+.stats-actions { display: flex; gap: 8px; align-items: center; }
+
+.badge-usage {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.badge-usage.info    { background: #bfdbfe; color: #0b3d91; }
+.badge-usage.warning { background: #fff7ed; color: #92400e; }
+.badge-usage.danger  { background: #fecaca; color: #7f1d1d; }
+.badge-usage.success { background: #d1fae5; color: #065f46; }
+
+.text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.month-nav {
+    background: transparent;
+    border: 1px solid #e6e9ef;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.month-nav:hover {
+    background: #ffedd5;
+    color: #9a3412;
+    border-color: #fdba74;
+}
+
+.dialog-header {
+    padding: 18px 20px;
+    background: linear-gradient(90deg, rgba(250, 245, 240, 1) 0%, rgba(255, 250, 240, 1) 100%);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    text-align: center;
+    position: relative;
+}
+
+.dialog-title { margin: 0; font-size: 1.125rem; font-weight: 700; color: #0f172a; }
+
+.dialog-close {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    background: transparent;
+    border: 0;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #475569;
+}
+
+.dialog-body { padding: 14px 18px; }
+.dialog-table thead th { background: #f8fafc; color: #475569; font-weight: 700; }
+
+/* ── Travel / Office Order Form ─────────────────── */
+
+.pro-travel-card {
+    background: #fff;
+    border-radius: 1.25rem;
+    box-shadow: 0 4px 24px 0 rgba(16, 30, 54, 0.08);
+    border: 1px solid #f3f4f6;
+}
+
+#employeesList .form-check {
+    padding: 6px 0;
+    border-bottom: 1px solid #f3f4f6;
+    margin-bottom: 0;
+}
+
+#employeesList .form-check:last-child { border-bottom: none; }
+#employeesList label.form-check-label { font-size: 1.05em; color: #334155; }
+#employeesList input[type="checkbox"] { width: 1.1em; height: 1.1em; margin-right: 8px; }
+
+.pro-travel-card .card-header {
+    background: #fff7ed;
+    border-bottom: 1px solid #fdba74;
+    border-radius: 1.25rem 1.25rem 0 0;
+}
+
+.pro-travel-card .card-title   { color: #ea580c; font-size: 1.35rem; }
+.pro-travel-card .badge-warning { background: #fff7ed !important; color: #9a3412 !important; border: 1px solid #fdba74 !important; }
+.pro-travel-card .btn-primary  { background: #ea580c; border: none; transition: background 0.2s; }
+.pro-travel-card .btn-primary:hover { background: #c2410c; }
+
+/* ── Filed Orders Archive Table ─────────────────── */
+
+.table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.95rem;
+}
+
+.table-pro thead th {
+    background: #f3f4f6;
+    color: #0f172a;
+    font-weight: 700;
+    padding: 12px 10px;
+    text-align: left;
+    border-bottom: 1px solid #e6edf3;
+}
+
+.table-pro tbody td {
+    padding: 12px 10px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.table-pro tbody tr:hover { background: #fbfdff; }
+
+.td-ellipsis {
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.employees-cell { max-width: 280px; }
+
+.status-badge {
+    display: inline-block;
+    padding: 6px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.status-draft           { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+.status-pending-rec     { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.status-pending-approval { background: #eef2e9; color: #065f46; border: 1px solid #bbf7d0; }
+.status-approved        { background: #ecfdf5; color: #065f46; border: 1px solid #bbf7d0; }

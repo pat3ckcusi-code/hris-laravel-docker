@@ -1,0 +1,259 @@
+﻿
+  GET|HEAD        / ........................................ routes/web.php:20
+  GET|HEAD        about/{name}/{email} ..................... routes/web.php:47
+  GET|HEAD        admin-officer admin-officer.index ΓÇ║ AdministrativeOfficerCoΓÇª
+  GET|HEAD        admin-officer/approved-requests admin-officer.approved-requΓÇª
+  POST            admin-officer/eta/{id}/approve admin-officer.eta.approve ΓÇ║ ΓÇª
+  POST            admin-officer/eta/{id}/reject admin-officer.eta.reject ΓÇ║ AdΓÇª
+  GET|HEAD        admin-officer/filed-office-orders admin-officer.filed-officΓÇª
+  GET|HEAD        admin-officer/filed-travel-orders admin-officer.filed-traveΓÇª
+  POST            admin-officer/leave/{id}/approve admin-officer.leave.approvΓÇª
+  POST            admin-officer/leave/{id}/reject admin-officer.leave.reject ΓÇª
+  POST            admin-officer/locator/{id}/approve admin-officer.locator.apΓÇª
+  POST            admin-officer/locator/{id}/reject admin-officer.locator.rejΓÇª
+  GET|HEAD        admin-officer/office-orders admin-officer.office-orders ΓÇ║ AΓÇª
+  GET|HEAD        admin-officer/pending-requests admin-officer.pending-requesΓÇª
+  GET|HEAD        admin-officer/statistics admin-officer.statistics ΓÇ║ AdminisΓÇª
+  GET|HEAD        admin-officer/statistics/data admin-officer.statistics.dataΓÇª
+  GET|HEAD        admin-officer/statistics/details admin-officer.statistics.dΓÇª
+  GET|HEAD        admin-officer/travel-orders admin-officer.travel-orders ΓÇ║ AΓÇª
+  GET|HEAD        admin-officer/travel-orders/{id} admin-officer.travel-orderΓÇª
+  GET|HEAD        api/department-employees api.department-employees ΓÇ║ TravelOΓÇª
+  GET|HEAD        api/department/dashboard-metrics api.department.dashboard-mΓÇª
+  GET|HEAD        api/department/employees-on-duty api.department.employees-oΓÇª
+  GET|HEAD        api/department/eta-requests api.department.eta-requests ΓÇ║ DΓÇª
+  GET|HEAD        api/department/kpis api.department.kpis ΓÇ║ DepartmentHeadConΓÇª
+  GET|HEAD        api/department/leave-requests api.department.leave-requestsΓÇª
+  GET|HEAD        api/department/locator-requests api.department.locator-requΓÇª
+  GET|HEAD        api/department/office-orders api.department.office-orders  ΓÇª
+  GET|HEAD        api/department/travel-orders api.department.travel-orders  ΓÇª
+  GET|HEAD        api/employee-search api.employee.search ΓÇ║ LeaveManagerContrΓÇª
+  POST            api/holidays api.holidays.store ΓÇ║ LeaveManagerController@stΓÇª
+  GET|HEAD        api/holidays api.holidays.list ΓÇ║ LeaveManagerController@lisΓÇª
+  POST            api/leave/bulk-cancel-holiday api.leave.bulk-cancel-holidayΓÇª
+  POST            api/leave/cancel-date api.leave.cancel-date ΓÇ║ LeaveManagerCΓÇª
+  POST            api/office-orders api.office-orders ΓÇ║ OfficeOrderControllerΓÇª
+  GET|HEAD        api/office-orders/{id} api.office-orders.show ΓÇ║ OfficeOrderΓÇª
+  POST            api/travel-orders api.travel-orders ΓÇ║ TravelOrderControllerΓÇª
+  GET|HEAD        api/travel-orders/{id} api.travel-orders.show ΓÇ║ TravelOrderΓÇª
+  GET|HEAD        contact/{name}/{email} ..................................... 
+  GET|HEAD        dashboard ............ dashboard ΓÇ║ DashboardController@index
+  GET|HEAD        dashboard/employee/attendance dashboard.employee.attendanceΓÇª
+  GET|HEAD        dashboard/employee/eta-locator dashboard.employee.eta ΓÇ║ EmpΓÇª
+  POST            dashboard/employee/eta-locator employee.eta.store ΓÇ║ EmployeΓÇª
+  GET|HEAD        dashboard/employee/eta-locator/data employee.eta.data ΓÇ║ EmpΓÇª
+  GET|HEAD        dashboard/employee/eta-locator/print employee.eta.print ΓÇ║ EΓÇª
+  POST            dashboard/employee/eta-locator/{eta}/cancel employee.eta.caΓÇª
+  GET|HEAD        dashboard/employee/eta-locator/{eta}/print employee.eta.priΓÇª
+  GET|HEAD        dashboard/employee/front-desk front-desk.index ΓÇ║ FrontDeskCΓÇª
+  POST            dashboard/employee/front-desk/accept front-desk.accept ΓÇ║ FrΓÇª
+  POST            dashboard/employee/front-desk/complete front-desk.complete ΓÇª
+  POST            dashboard/employee/front-desk/print-report front-desk.printΓÇª
+  GET|HEAD        dashboard/employee/front-desk/print/{id} front-desk.print-rΓÇª
+  POST            dashboard/employee/front-desk/reject front-desk.reject ΓÇ║ FrΓÇª
+  GET|HEAD        dashboard/employee/front-desk/requests front-desk.requests ΓÇª
+  POST            dashboard/employee/front-desk/update-status front-desk.updaΓÇª
+  GET|HEAD        dashboard/employee/leave/{leave}/print employee.leave.printΓÇª
+  GET|HEAD        dashboard/employee/locator dashboard.employee.locator ΓÇ║ EmpΓÇª
+  POST            dashboard/employee/locator employee.locator.store ΓÇ║ EmployeΓÇª
+  GET|HEAD        dashboard/employee/locator/data employee.locator.data ΓÇ║ EmpΓÇª
+  PUT             dashboard/employee/locator/{locator} employee.locator.updatΓÇª
+  GET|HEAD        dashboard/employee/locator/{locator}/edit employee.locator.ΓÇª
+  GET|HEAD        dashboard/employee/locator/{locator}/print employee.locatorΓÇª
+  GET|HEAD        dashboard/employee/payslips dashboard.employee.payslips ΓÇ║ EΓÇª
+  GET|HEAD        dashboard/employee/pds dashboard.employee.pds ΓÇ║ DashboardCoΓÇª
+  GET|HEAD        dashboard/employee/pds/export dashboard.employee.pds.exportΓÇª
+  POST            dashboard/employee/pds/save-draft dashboard.employee.pds.saΓÇª
+  GET|HEAD        dashboard/employee/request-documents dashboard.employee.reqΓÇª
+  GET|HEAD        dashboard/hr-manager hr-manager.dashboard ΓÇ║ HRManagerControΓÇª
+  GET|HEAD        dashboard/hr-manager/audit hr-manager.audit ΓÇ║ HRManagerContΓÇª
+  GET|HEAD        dashboard/hr-manager/audit/data hr-manager.audit.data ΓÇ║ HRMΓÇª
+  GET|HEAD        dashboard/hr-manager/chart-data hr-manager.chart-data ΓÇ║ HRMΓÇª
+  GET|HEAD        dashboard/hr-manager/employees/filter hr-manager.employees.ΓÇª
+  GET|HEAD        dashboard/hr-manager/frontdesk hr-manager.frontdesk ΓÇ║ HRManΓÇª
+  GET|HEAD        dashboard/hr-manager/frontdesk/data hr-manager.frontdesk.daΓÇª
+  POST            dashboard/hr-manager/frontdesk/{documentRequest}/action hr-ΓÇª
+  POST            dashboard/hr-manager/frontdesk/{documentRequest}/complete hΓÇª
+  GET|HEAD        dashboard/hr-manager/leave hr-manager.leave ΓÇ║ HRManagerContΓÇª
+  GET|HEAD        dashboard/hr-manager/leave/data hr-manager.leave.data ΓÇ║ HRMΓÇª
+  POST            dashboard/hr-manager/leave/{leaveRequest}/action hr-managerΓÇª
+  GET|HEAD        dashboard/hr-manager/records hr-manager.records ΓÇ║ HRManagerΓÇª
+  GET|HEAD        dashboard/hr-manager/records/data hr-manager.records.data  ΓÇª
+  POST            dashboard/hr-manager/records/{user}/action hr-manager.recorΓÇª
+  GET|HEAD        dashboard/hr-manager/reports hr-manager.reports ΓÇ║ HRManagerΓÇª
+  GET|HEAD        dashboard/hr-manager/reports/export/{format} hr-manager.repΓÇª
+  GET|HEAD        dashboard/hr-manager/roles hr-manager.roles ΓÇ║ HRManagerContΓÇª
+  GET|HEAD        dashboard/hr-manager/settings hr-manager.settings ΓÇ║ HRManagΓÇª
+  POST            dashboard/hr-manager/settings hr-manager.settings.update ΓÇ║ ΓÇª
+  GET|HEAD        dashboard/records-manager dashboard.records-manager ΓÇ║ DashbΓÇª
+  GET|HEAD        dashboard/records-manager/access dashboard.records-manager.ΓÇª
+  GET|HEAD        dashboard/records-manager/departments dashboard.records-manΓÇª
+  POST            dashboard/records-manager/departments dashboard.records-manΓÇª
+  PUT             dashboard/records-manager/departments/{department} dashboarΓÇª
+  GET|HEAD        dashboard/records-manager/employees dashboard.records-managΓÇª
+  POST            dashboard/records-manager/users dashboard.records-manager.uΓÇª
+  PUT             dashboard/records-manager/users/{user} dashboard.records-maΓÇª
+  DELETE          dashboard/records-manager/users/{user} dashboard.records-maΓÇª
+  GET|HEAD        department-head department-head.index ΓÇ║ DepartmentHeadContrΓÇª
+  GET|HEAD        department-head/approved-requests department-head.approved-ΓÇª
+  POST            department-head/eta/{id}/approve department-head.eta.approvΓÇª
+  POST            department-head/eta/{id}/reject department-head.eta.reject ΓÇª
+  GET|HEAD        department-head/filed-office-orders department-head.filed-oΓÇª
+  GET|HEAD        department-head/filed-travel-orders department-head.filed-tΓÇª
+  POST            department-head/leave/{id}/approve department-head.leave.apΓÇª
+  POST            department-head/leave/{id}/reject department-head.leave.rejΓÇª
+  POST            department-head/locator/{id}/approve department-head.locatoΓÇª
+  POST            department-head/locator/{id}/reject department-head.locatorΓÇª
+  GET|HEAD        department-head/office-orders department-head.office-ordersΓÇª
+  GET|HEAD        department-head/pending-requests department-head.pending-reΓÇª
+  GET|HEAD        department-head/statistics department-head.statistics ΓÇ║ DepΓÇª
+  GET|HEAD        department-head/statistics/data department-head.statistics.ΓÇª
+  GET|HEAD        department-head/statistics/details department-head.statistiΓÇª
+  GET|HEAD        department-head/travel-orders department-head.travel-ordersΓÇª
+  GET|HEAD        department-head/travel-orders/{id} department-head.departmeΓÇª
+  GET|HEAD        details/students .............. students ΓÇ║ routes/web.php:60
+  GET|HEAD        details/teachers .............. teachers ΓÇ║ routes/web.php:63
+  GET|HEAD        dev/preview-leave-email dev.preview.leave.email ΓÇ║ routes/weΓÇª
+  GET|HEAD        document-requests document-requests.index ΓÇ║ DocumentRequestΓÇª
+  POST            document-requests document-requests.store ΓÇ║ DocumentRequestΓÇª
+  GET|HEAD        employee/leave-management employee.leave.management ΓÇ║ LeaveΓÇª
+  POST            employee/leave-management/apply employee.leave.apply ΓÇ║ LeavΓÇª
+  GET|HEAD        employee/leave-management/{id} employee.leave.show ΓÇ║ LeaveRΓÇª
+  POST            employee/leave-management/{id}/approve employee.leave.approΓÇª
+  PATCH           employee/leave-management/{id}/cancel employee.leave.cancelΓÇª
+  GET|HEAD        employee/leave-management/{id}/edit employee.leave.edit ΓÇ║ LΓÇª
+  GET|HEAD        favicon.ico .............................. routes/web.php:27
+  GET|HEAD        force-password-change password.force.edit ΓÇ║ Auth\LoginContrΓÇª
+  POST            force-password-change password.force.update ΓÇ║ Auth\LoginConΓÇª
+  GET|HEAD        forgot-password password.request ΓÇ║ Auth\ForgotPasswordContrΓÇª
+  POST            forgot-password password.email ΓÇ║ Auth\ForgotPasswordControlΓÇª
+  POST            leave-manager/apply-credits leave-manager.apply-credits ΓÇ║ LΓÇª
+  GET|HEAD        leave-manager/approved-leaves leave-manager.approved-leavesΓÇª
+  GET|HEAD        leave-manager/cancel-leaves leave-manager.cancel-leaves ΓÇ║ LΓÇª
+  GET|HEAD        leave-manager/manage-balance leave-manager.manage-balance  ΓÇª
+  PATCH           leave-manager/manage-balance/{balance} leave-manager.updateΓÇª
+  GET|HEAD        leave-manager/manage-credits leave-manager.manage-credits  ΓÇª
+  GET|HEAD        login .................... login ΓÇ║ Auth\LoginController@show
+  POST            login ............ login.submit ΓÇ║ Auth\LoginController@login
+  POST            logout ................ logout ΓÇ║ Auth\LoginController@logout
+  GET|HEAD        mayor/approvals mayor.approvals ΓÇ║ MayorController@approvals
+  GET|HEAD        mayor/chart-data mayor.chart-data ΓÇ║ MayorController@getCharΓÇª
+  GET|HEAD        mayor/dashboard mayor.dashboard ΓÇ║ MayorController@dashboard
+  GET|HEAD        mayor/employees mayor.employees ΓÇ║ MayorController@employees
+  GET|HEAD        mayor/employees/filter mayor.employees.filter ΓÇ║ MayorControΓÇª
+  GET|HEAD        mayor/events ......... mayor.events ΓÇ║ MayorController@events
+  GET|HEAD        mayor/leave-requests/data mayor.leave-requests.data ΓÇ║ MayorΓÇª
+  POST            mayor/leave/{id}/approve mayor.leave.approve ΓÇ║ MayorControlΓÇª
+  POST            mayor/leave/{id}/reject mayor.leave.reject ΓÇ║ MayorControlleΓÇª
+  GET|HEAD        mayor/policies ... mayor.policies ΓÇ║ MayorController@policies
+  GET|HEAD        mayor/reports ...... mayor.reports ΓÇ║ MayorController@reports
+  GET|HEAD        mayor/settings ... mayor.settings ΓÇ║ MayorController@settings
+  GET|HEAD        mayor/travel-order-approvals mayor.travel-order-approvals  ΓÇª
+  GET|HEAD        mayor/travel-orders/{id} mayor.travel-orders.view ΓÇ║ MayorCoΓÇª
+  POST            mayor/travel-orders/{id}/approve mayor.travel-orders.approvΓÇª
+  POST            mayor/travel-orders/{id}/reject mayor.travel-orders.reject ΓÇª
+  GET|HEAD        payroll-manager/approvals payroll.approvals.index ΓÇ║ PayrollΓÇª
+  POST            payroll-manager/approvals payroll.approvals.store ΓÇ║ PayrollΓÇª
+  GET|HEAD        payroll-manager/approvals/create payroll.approvals.create  ΓÇª
+  GET|HEAD        payroll-manager/approvals/{approval} payroll.approvals.showΓÇª
+  PUT|PATCH       payroll-manager/approvals/{approval} payroll.approvals.updaΓÇª
+  DELETE          payroll-manager/approvals/{approval} payroll.approvals.destΓÇª
+  GET|HEAD        payroll-manager/approvals/{approval}/edit payroll.approvalsΓÇª
+  GET|HEAD        payroll-manager/attendance payroll.attendance.index ΓÇ║ PayroΓÇª
+  POST            payroll-manager/attendance payroll.attendance.store ΓÇ║ PayroΓÇª
+  GET|HEAD        payroll-manager/attendance/create payroll.attendance.createΓÇª
+  GET|HEAD        payroll-manager/attendance/{attendance} payroll.attendance.ΓÇª
+  PUT|PATCH       payroll-manager/attendance/{attendance} payroll.attendance.ΓÇª
+  DELETE          payroll-manager/attendance/{attendance} payroll.attendance.ΓÇª
+  GET|HEAD        payroll-manager/attendance/{attendance}/edit payroll.attendΓÇª
+  GET|HEAD        payroll-manager/audit-logs payroll.audit-logs.index ΓÇ║ PayroΓÇª
+  POST            payroll-manager/audit-logs payroll.audit-logs.store ΓÇ║ PayroΓÇª
+  GET|HEAD        payroll-manager/audit-logs/create payroll.audit-logs.createΓÇª
+  GET|HEAD        payroll-manager/audit-logs/{audit_log} payroll.audit-logs.sΓÇª
+  PUT|PATCH       payroll-manager/audit-logs/{audit_log} payroll.audit-logs.uΓÇª
+  DELETE          payroll-manager/audit-logs/{audit_log} payroll.audit-logs.dΓÇª
+  GET|HEAD        payroll-manager/audit-logs/{audit_log}/edit payroll.audit-lΓÇª
+  GET|HEAD        payroll-manager/dashboard payroll.dashboard ΓÇ║ Payroll\PayroΓÇª
+  GET|HEAD        payroll-manager/deductions payroll.deductions.index ΓÇ║ PayroΓÇª
+  POST            payroll-manager/deductions payroll.deductions.store ΓÇ║ PayroΓÇª
+  GET|HEAD        payroll-manager/deductions/create payroll.deductions.createΓÇª
+  GET|HEAD        payroll-manager/deductions/{deduction} payroll.deductions.sΓÇª
+  PUT|PATCH       payroll-manager/deductions/{deduction} payroll.deductions.uΓÇª
+  DELETE          payroll-manager/deductions/{deduction} payroll.deductions.dΓÇª
+  GET|HEAD        payroll-manager/deductions/{deduction}/edit payroll.deductiΓÇª
+  GET|HEAD        payroll-manager/earnings payroll.earnings.index ΓÇ║ Payroll\EΓÇª
+  POST            payroll-manager/earnings payroll.earnings.store ΓÇ║ Payroll\EΓÇª
+  GET|HEAD        payroll-manager/earnings/create payroll.earnings.create ΓÇ║ PΓÇª
+  GET|HEAD        payroll-manager/earnings/{earning} payroll.earnings.show ΓÇ║ ΓÇª
+  PUT|PATCH       payroll-manager/earnings/{earning} payroll.earnings.update ΓÇª
+  DELETE          payroll-manager/earnings/{earning} payroll.earnings.destroyΓÇª
+  GET|HEAD        payroll-manager/earnings/{earning}/edit payroll.earnings.edΓÇª
+  GET|HEAD        payroll-manager/exceptions payroll.exceptions.index ΓÇ║ PayroΓÇª
+  POST            payroll-manager/exceptions payroll.exceptions.store ΓÇ║ PayroΓÇª
+  GET|HEAD        payroll-manager/exceptions/create payroll.exceptions.createΓÇª
+  GET|HEAD        payroll-manager/exceptions/{exception} payroll.exceptions.sΓÇª
+  PUT|PATCH       payroll-manager/exceptions/{exception} payroll.exceptions.uΓÇª
+  DELETE          payroll-manager/exceptions/{exception} payroll.exceptions.dΓÇª
+  GET|HEAD        payroll-manager/exceptions/{exception}/edit payroll.exceptiΓÇª
+  GET|HEAD        payroll-manager/leave-integration payroll.leave-integrationΓÇª
+  POST            payroll-manager/leave-integration payroll.leave-integrationΓÇª
+  GET|HEAD        payroll-manager/leave-integration/create payroll.leave-inteΓÇª
+  GET|HEAD        payroll-manager/leave-integration/{leave_integration} payroΓÇª
+  PUT|PATCH       payroll-manager/leave-integration/{leave_integration} payroΓÇª
+  DELETE          payroll-manager/leave-integration/{leave_integration} payroΓÇª
+  GET|HEAD        payroll-manager/leave-integration/{leave_integration}/edit ΓÇª
+  GET|HEAD        payroll-manager/payslips payroll.payslips.index ΓÇ║ Payroll\PΓÇª
+  POST            payroll-manager/payslips payroll.payslips.store ΓÇ║ Payroll\PΓÇª
+  GET|HEAD        payroll-manager/payslips/create payroll.payslips.create ΓÇ║ PΓÇª
+  GET|HEAD        payroll-manager/payslips/{payslip} payroll.payslips.show ΓÇ║ ΓÇª
+  PUT|PATCH       payroll-manager/payslips/{payslip} payroll.payslips.update ΓÇª
+  DELETE          payroll-manager/payslips/{payslip} payroll.payslips.destroyΓÇª
+  GET|HEAD        payroll-manager/payslips/{payslip}/edit payroll.payslips.edΓÇª
+  GET|HEAD        payroll-manager/plantilla payroll.plantilla.index ΓÇ║ PayrollΓÇª
+  POST            payroll-manager/plantilla payroll.plantilla.store ΓÇ║ PayrollΓÇª
+  GET|HEAD        payroll-manager/plantilla/create payroll.plantilla.create  ΓÇª
+  GET|HEAD        payroll-manager/plantilla/{plantilla} payroll.plantilla.shoΓÇª
+  PUT|PATCH       payroll-manager/plantilla/{plantilla} payroll.plantilla.updΓÇª
+  DELETE          payroll-manager/plantilla/{plantilla} payroll.plantilla.desΓÇª
+  POST            payroll-manager/plantilla/{plantilla}/assignments payroll.pΓÇª
+  PUT             payroll-manager/plantilla/{plantilla}/assignments/{assignment} payroll.plantilla.assignments.update ΓÇ║ Payroll\EmployeeAssignmentController@upΓÇª
+  DELETE          payroll-manager/plantilla/{plantilla}/assignments/{assignment} payroll.plantilla.assignments.destroy ΓÇ║ Payroll\EmployeeAssignmentController@desΓÇª
+  GET|HEAD        payroll-manager/plantilla/{plantilla}/edit payroll.plantillΓÇª
+  GET|HEAD        payroll-manager/reports payroll.reports.index ΓÇ║ Payroll\RepΓÇª
+  POST            payroll-manager/reports payroll.reports.store ΓÇ║ Payroll\RepΓÇª
+  GET|HEAD        payroll-manager/reports/create payroll.reports.create ΓÇ║ PayΓÇª
+  GET|HEAD        payroll-manager/reports/{report} payroll.reports.show ΓÇ║ PayΓÇª
+  PUT|PATCH       payroll-manager/reports/{report} payroll.reports.update ΓÇ║ PΓÇª
+  DELETE          payroll-manager/reports/{report} payroll.reports.destroy ΓÇ║ ΓÇª
+  GET|HEAD        payroll-manager/reports/{report}/edit payroll.reports.edit ΓÇª
+  GET|HEAD        payroll-manager/runs payroll.runs.index ΓÇ║ Payroll\PayrollRuΓÇª
+  GET|HEAD        payroll-manager/runs/create payroll.runs.create ΓÇ║ Payroll\PΓÇª
+  POST            payroll-manager/runs/store payroll.runs.store ΓÇ║ Payroll\PayΓÇª
+  GET|HEAD        payroll-manager/runs/{id} payroll.runs.show ΓÇ║ Payroll\PayroΓÇª
+  POST            payroll-manager/runs/{id}/compute payroll.runs.compute ΓÇ║ PaΓÇª
+  GET|HEAD        payroll-manager/runs/{id}/export payroll.runs.export ΓÇ║ PayrΓÇª
+  POST            payroll-manager/runs/{id}/lock payroll.runs.lock ΓÇ║ Payroll\ΓÇª
+  GET|HEAD        payroll-manager/salary-matrix payroll.salary-matrix.index  ΓÇª
+  POST            payroll-manager/salary-matrix payroll.salary-matrix.store  ΓÇª
+  GET|HEAD        payroll-manager/salary-matrix/create payroll.salary-matrix.ΓÇª
+  GET|HEAD        payroll-manager/salary-matrix/{salary_matrix} payroll.salarΓÇª
+  PUT|PATCH       payroll-manager/salary-matrix/{salary_matrix} payroll.salarΓÇª
+  DELETE          payroll-manager/salary-matrix/{salary_matrix} payroll.salarΓÇª
+  GET|HEAD        payroll-manager/salary-matrix/{salary_matrix}/edit payroll.ΓÇª
+  GET|HEAD        payroll-manager/settings payroll.settings.index ΓÇ║ Payroll\PΓÇª
+  POST            payroll-manager/settings payroll.settings.store ΓÇ║ Payroll\PΓÇª
+  GET|HEAD        payroll-manager/settings/create payroll.settings.create ΓÇ║ PΓÇª
+  GET|HEAD        payroll-manager/settings/{setting} payroll.settings.show ΓÇ║ ΓÇª
+  PUT|PATCH       payroll-manager/settings/{setting} payroll.settings.update ΓÇª
+  DELETE          payroll-manager/settings/{setting} payroll.settings.destroyΓÇª
+  GET|HEAD        payroll-manager/settings/{setting}/edit payroll.settings.edΓÇª
+  POST            reset-password password.update ΓÇ║ Auth\ResetPasswordControllΓÇª
+  GET|HEAD        reset-password/{token} password.reset ΓÇ║ Auth\ResetPasswordCΓÇª
+  GET|HEAD        storage/{path} storage.local ΓÇ║ vendor/laravel/framework/srcΓÇª
+  PUT             storage/{path} storage.local.upload ΓÇ║ vendor/laravel/framewΓÇª
+  GET|HEAD        student/{id} ................... student ΓÇ║ routes/web.php:68
+  GET|HEAD        up vendor/laravel/framework/src/Illuminate/Foundation/ConfiΓÇª
+  GET|HEAD        {fallbackPlaceholder} ................... routes/web.php:506
+
+                                                          Showing [255] routes
+

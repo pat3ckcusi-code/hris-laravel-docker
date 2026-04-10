@@ -1,0 +1,1541 @@
+﻿
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::approved_leave_with_lwop_integrates_into_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::pending_leave_does_not_affect_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::employee_without_assignment_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::ended_assignment_excluded_from_future_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::earnings_and_deductions_coexist_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::department_hierarchy_supports_parent_child(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::payroll_export_route_accessible_for_locked_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::leave_management_accessible_for_eligible_employee(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::leave_management_blocked_for_job_order(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_run_lifecycle_draft_compute_lock(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_detail_contains_all_components(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_request_workflow_create_and_approve(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::document_request_lifecycle(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::dtr_records_capture_am_pm_time_pairs(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::eta_and_locator_requests_can_be_created(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::salary_matrix_maps_correctly_to_plantilla(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::lwop_deduction_formula_is_correct(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_integration_lwop_affects_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::loan_deductions_reduce_net_pay(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::dtr_absent_days_counted_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::approval_log_records_payroll_approval(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::plantilla_assignment_links_employee_to_position(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_settings_store_and_retrieve(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::hr_audit_trail_records_actions(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_balance_tracks_per_employee(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::new_earning_type_hazard_pay_included_in_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::multiple_earning_types_coexist_with_hazard_pay(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::new_loan_deduction_type_applies_monthly_payment(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::paid_off_loan_excluded_from_deductions(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::non_recurring_earning_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::payroll_computation_service_is_injectable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::models_have_correct_relationships(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::non_recurring_deduction_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::payroll_handles_100_employees(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::dashboard_loads_within_acceptable_time(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::hr_manager_dashboard_responds_quickly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::payroll_dashboard_responds_quickly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::recompute_replaces_previous_details(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::multiple_earnings_sum_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::all_migrations_run_successfully(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::users_table_has_all_required_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::payroll_tables_have_required_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::dtr_table_has_am_pm_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::app_key_is_configurable_via_env(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::database_connection_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::mail_driver_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::cache_driver_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::crud_operations_work_on_test_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::department_hierarchy_works_on_test_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::setting_model_works_for_system_configuration(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::payroll_run_can_be_created_with_all_fields(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_plantilla_creates_exception_for_empty_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_salary_matrix_records_error_not_crash(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_dtr_records_employee_as_absent(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::locked_payroll_run_cannot_be_computed_via_controller(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::locked_payroll_run_preserves_locked_status(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::payroll_computation_creates_audit_log(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::absence_detection_creates_payroll_exception(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::hr_audit_trail_stores_structured_details(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::payroll_detail_net_pay_never_goes_negative(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_user_redirected_to_login(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_hr_manager_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_payroll_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_mayor_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_with_valid_credentials_succeeds(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_with_invalid_credentials_fails(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::logout_terminates_session(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_hr_manager_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payroll_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_mayor_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::hr_manager_can_access_hr_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::payroll_manager_can_access_payroll_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::mayor_can_access_mayor_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_lock_payroll_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_compute_payroll_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_form_contains_csrf_token(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::password_is_hashed_in_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::password_field_hidden_from_serialization(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::pds_encrypts_sensitive_fields(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::hr_actions_generate_audit_trail(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payslips_of_others(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payroll_reports(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::employee_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::hr_manager_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_manager_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::mayor_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::department_head_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_sidebar_has_grouped_navigation(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::hr_manager_sidebar_has_key_links(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::login_page_has_proper_form_labels(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::all_dashboards_return_html_with_title(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_settings_page_loads_with_form(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::employee_sidebar_shows_self_service_links(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::logout_button_present_on_dashboards(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   PASS  Tests\Feature\CrossCutting\AuthenticationTest
+  Γ£ô login page loads                                                     4.32s  
+  Γ£ô valid credentials login                                              0.06s  
+  Γ£ô invalid credentials rejected                                         0.24s  
+  Γ£ô inactive user blocked                                                0.05s  
+  Γ£ô separated user blocked                                               0.03s  
+  Γ£ô logout                                                               0.07s  
+  Γ£ô force password change page                                           0.06s  
+  Γ£ô force password change submission                                     0.10s  
+  Γ£ô forgot password page                                                 0.02s  
+  Γ£ô reset password email                                                 0.25s  
+  Γ£ô simulate concurrent logins                                           1.35s  
+  Γ£ô unauthenticated user redirected to login                             0.04s  
+  Γ£ô authenticated user cannot access login                               0.04s  
+
+   FAIL  Tests\Feature\CrossCutting\DatabasePerformanceTest
+  Γ£ô user query with 100 records                                          0.30s  
+  Γ£ô leave request query with relationships                               0.17s  
+  Γ¿» dtr query performance 90 days                                        0.04s  
+  Γ¿» employee dashboard no n plus 1                                       0.06s  
+  Γ£ô department head dashboard no n plus 1                                0.13s  
+  Γ¿» hr dashboard no n plus 1                                             0.15s  
+  Γ£ô critical tables have indexes                                         0.04s  
+  Γ£ô bulk user creation performance                                       0.26s  
+  Γ¿» bulk leave balance query                                             0.05s  
+  Γ£ô audit log write performance                                          0.21s  
+  Γ£ô audit log read performance with filtering                            0.11s  
+
+   FAIL  Tests\Feature\CrossCutting\ErrorHandlingStabilityTest
+  Γ£ô leave request missing fields                                         0.05s  
+  Γ£ô eta invalid date                                                     0.03s  
+  Γ£ô locator invalid time range                                           0.05s  
+  Γ¿» duplicate leave request                                              0.05s  
+  Γ¿» leave request insufficient balance                                   0.05s  
+  Γ£ô access nonexistent leave request                                     0.05s  
+  Γ£ô approve nonexistent leave                                            0.05s  
+  Γ¿» stability mixed operations 500 cycles                                0.04s  
+  Γ¿» memory stability over iterations                                     0.04s  
+  Γ¿» concurrent leave filing data integrity                               0.04s  
+
+   PASS  Tests\Feature\CrossCutting\RoleBasedAccessTest
+  Γ£ô employee cannot access department head routes                        0.04s  
+  Γ£ô employee cannot access hr manager routes                             0.04s  
+  Γ£ô employee cannot access mayor routes                                  0.05s  
+  Γ£ô employee cannot access leave manager routes                          0.05s  
+  Γ£ô department head cannot access mayor routes                           0.05s  
+  Γ£ô department head cannot access hr routes                              0.05s  
+  Γ£ô hr manager cannot access mayor routes                                0.05s  
+  Γ£ô leave manager cannot access hr routes                                0.05s  
+  Γ£ô front desk cannot access admin routes                                0.04s  
+  Γ£ô records manager cannot access leave manager routes                   0.03s  
+  Γ£ô comprehensive role isolation                                         0.82s  
+  Γ£ô no privilege escalation via manual role change                       0.04s  
+
+   FAIL  Tests\Feature\CrossCutting\SecurityTest
+  Γ£ô login sql injection email                                            0.06s  
+  Γ£ô login sql injection password                                         0.24s  
+  Γ£ô search sql injection                                                 0.04s  
+  Γ£ô url parameter sql injection                                          0.04s  
+  Γ¿» xss in leave reason                                                  0.05s  
+  Γ£ô xss in document request                                              0.07s  
+  Γ£ô xss in eta reason                                                    0.03s  
+  Γ£ô form without csrf token rejected                                     0.05s  
+  Γ£ô mass assignment role escalation                                      0.10s  
+  Γ¿» employee cannot view other employee leave                            0.04s  
+  Γ£ô employee cannot cancel other employee leave                          0.04s  
+  Γ£ô brute force login rate limiting                                      4.19s  
+  Γ¿» security headers present                                             0.04s  
+  Γ¿» path traversal in routes                                             0.03s  
+
+   PASS  Tests\Feature\ISO25010\PerformanceEfficiencyTest
+  Γ£ô payroll handles 100 employees                                        0.64s  
+  Γ£ô dashboard loads within acceptable time                               0.04s  
+  Γ£ô hr manager dashboard responds quickly                                0.04s  
+  Γ£ô payroll dashboard responds quickly                                   0.05s  
+  Γ£ô recompute replaces previous details                                  0.05s  
+  Γ£ô multiple earnings sum correctly                                      0.06s  
+
+   FAIL  Tests\Feature\Performance\LoadTest
+  Γ£ô login throughput 500 users                                           3.32s  
+  Γ£ô multi role dashboard load                                            2.13s  
+  Γ¿» leave filing throughput                                              0.06s  
+  Γ¿» approval throughput                                                  0.06s  
+  Γ£ô api endpoints under stress                                           1.09s  
+  Γ¿» document request queue load                                          0.03s  
+  Γ£ô hr analytics with growing dataset                                    1.17s  
+  Γ¿» mixed workload simulation                                            0.05s  
+  Γ£ô database connection stability                                        0.04s  
+
+   FAIL  Tests\Feature\RoleBased\AdministrativeOfficerTest
+  Γ£ô admin officer dashboard loads                                        0.04s  
+  Γ£ô pending requests page                                                0.42s  
+  Γ¿» approve leave request                                                0.05s  
+  Γ£ô reject leave request                                                 0.04s  
+  Γ¿» approve eta request                                                  0.04s  
+  Γ¿» approve locator request                                              0.05s  
+  Γ¿» approval concurrency 100 requests                                    0.04s  
+  Γ£ô filed travel orders loads                                            0.21s  
+  Γ£ô filed office orders loads                                            0.20s  
+  Γ£ô travel orders page                                                   0.19s  
+  Γ£ô office orders page                                                   0.23s  
+  Γ£ô statistics page                                                      0.22s  
+  Γ£ô statistics data api                                                  0.04s  
+  Γ¿» statistics scales with department data                               0.21s  
+  Γ£ô approved requests page                                               0.55s  
+
+   FAIL  Tests\Feature\RoleBased\DepartmentHeadTest
+  Γ£ô department head dashboard loads                                      0.05s  
+  Γ£ô department head dashboard metrics api                                0.06s  
+  Γ£ô dashboard metrics concurrent access                                  0.39s  
+  Γ£ô employees on duty endpoint                                           0.08s  
+  Γ£ô pending requests page loads                                          0.04s  
+  Γ£ô leave requests list api                                              0.05s  
+  Γ£ô eta requests list api                                                0.04s  
+  Γ£ô locator requests list api                                            0.04s  
+  Γ¿» approve leave request                                                0.04s  
+  Γ£ô reject leave request                                                 0.04s  
+  Γ¿» approve eta request                                                  0.04s  
+  Γ¿» approve locator request                                              0.05s  
+  Γ¿» simulate 200 simultaneous approvals                                  0.09s  
+  Γ£ô statistics page loads                                                0.05s  
+  Γ£ô statistics data api                                                  0.04s  
+  Γ¿» statistics query performance                                         0.20s  
+  Γ£ô travel orders page loads                                             0.04s  
+  Γ£ô office orders page loads                                             0.03s  
+  Γ£ô create travel order                                                  0.11s  
+  Γ£ô create office order                                                  0.06s  
+  Γ£ô travel orders api endpoints                                          0.03s  
+  Γ£ô filed travel orders page                                             0.05s  
+  Γ£ô filed office orders page                                             0.05s  
+  Γ£ô approved requests page                                               0.04s  
+
+   FAIL  Tests\Feature\RoleBased\EmployeeTest
+  Γ£ô employee dashboard loads successfully                                0.05s  
+  Γ¿» employee dashboard shows summary data                                0.05s  
+  Γ¿» dashboard concurrent logins performance                              0.04s  
+  Γ£ô employee can access pds page                                         0.13s  
+  Γ£ô employee can save pds draft                                          0.06s  
+  Γ£ô employee can update pds draft                                        0.04s  
+  Γ£ô pds export works                                                     2.87s  
+  Γ£ô employee can access eta page                                         0.04s  
+  Γ£ô employee can submit eta                                              0.05s  
+  Γ£ô multiple eta submissions simultaneously                              0.06s  
+  Γ¿» employee can fetch eta data                                          0.03s  
+  Γ¿» employee can cancel eta                                              0.04s  
+  Γ£ô employee can access locator page                                     0.04s  
+  Γ£ô employee can submit locator                                          0.05s  
+  Γ¿» locator data endpoint returns json                                   0.05s  
+  Γ£ô locator concurrent updates                                           0.07s  
+  Γ£ô employee can access leave management                                 0.05s  
+  Γ¿» employee can file leave request                                      0.05s  
+  Γ£ô job order employee cannot file leave                                 0.06s  
+  Γ¿» leave permission based visibility                                    0.04s  
+  Γ¿» simulate 500 leave filings                                           0.03s  
+  Γ£ô employee can access document requests                                0.05s  
+  Γ£ô employee can submit document request                                 0.04s  
+  Γ£ô document request queue handling                                      0.16s  
+  Γ£ô employee can access payslips                                         0.06s  
+  Γ£ô payslip stress test batch access                                     0.70s  
+  Γ£ô employee can access attendance                                       0.05s  
+  Γ¿» attendance query performance                                         0.04s  
+
+   FAIL  Tests\Feature\RoleBased\FrontDeskTest
+  Γ£ô front desk dashboard loads                                           0.13s  
+  Γ£ô fetch requests                                                       0.04s  
+  Γ¿» accept document request                                              0.05s  
+  Γ¿» reject document request                                              0.05s  
+  Γ¿» complete document request                                            0.04s  
+  Γ¿» stress continuous request handling                                   0.05s  
+  Γ¿» update status                                                        0.05s  
+
+   FAIL  Tests\Feature\RoleBased\HRManagerTest
+  Γ£ô hr manager dashboard loads                                           0.07s  
+  Γ£ô chart data api                                                       0.04s  
+  Γ£ô chart data stress test with 5000 records                             0.98s  
+  Γ£ô employees by filter                                                  0.07s  
+  Γ£ô records page loads                                                   0.16s  
+  Γ£ô records data api                                                     0.04s  
+  Γ£ô records action on employee                                           0.03s  
+  Γ£ô bulk records operations                                              0.58s  
+  Γ£ô leave management page                                                0.24s  
+  Γ£ô leave data api                                                       0.05s  
+  Γ¿» hr leave action approve                                              0.04s  
+  Γ¿» org wide leave processing simulation                                 0.04s  
+  Γ£ô audit page loads                                                     0.13s  
+  Γ£ô audit data api                                                       0.04s  
+  Γ£ô audit logs under concurrent actions                                  0.09s  
+  Γ£ô roles page loads                                                     0.20s  
+  Γ£ô role escalation prevention                                           0.06s  
+  Γ£ô department head cannot access hr routes                              0.04s  
+  Γ£ô settings page loads                                                  0.30s  
+  Γ£ô update settings                                                      0.05s  
+  Γ£ô frontdesk page loads                                                 0.25s  
+  Γ£ô frontdesk data api                                                   0.04s  
+  Γ£ô reports page loads                                                   0.15s  
+
+   FAIL  Tests\Feature\RoleBased\LeaveManagerTest
+  Γ£ô manage balance page loads                                            0.16s  
+  Γ¿» update leave balance                                                 0.05s  
+  Γ¿» concurrent balance adjustments                                       0.05s  
+  Γ£ô manage credits page loads                                            0.15s  
+  Γ¿» apply credits                                                        0.04s  
+  Γ¿» approved leaves with large dataset                                   0.04s  
+  Γ£ô cancel leaves page loads                                             0.26s  
+  Γ¿» cancel leave date with refund                                        0.05s  
+  Γ¿» cancel leave rollback integrity                                      0.03s  
+  Γ¿» create holiday                                                       0.06s  
+  Γ£ô list holidays                                                        0.04s  
+  Γ¿» bulk cancel by holiday                                               0.06s  
+  Γ£ô employee search                                                      0.04s  
+
+   FAIL  Tests\Feature\RoleBased\MayorTest
+  Γ£ô mayor dashboard loads                                                0.05s  
+  Γ£ô mayor chart data                                                     0.03s  
+  Γ£ô executive dashboard under load                                       0.32s  
+  Γ£ô employees filter                                                     0.11s  
+  Γ£ô approvals page loads                                                 0.23s  
+  Γ£ô leave requests data                                                  0.04s  
+  Γ¿» mayor approve leave                                                  0.05s  
+  Γ£ô mayor reject leave                                                   0.05s  
+  Γ¿» simulate 100 concurrent approvals                                    0.03s  
+  Γ£ô travel order approvals page                                          0.23s  
+  Γ¿» approve travel order                                                 0.05s  
+  Γ£ô reports page loads                                                   0.12s  
+  Γ£ô consolidated report performance                                      0.20s  
+  Γ£ô policies page loads                                                  0.09s  
+  Γ£ô events page loads                                                    0.10s  
+  Γ£ô employees page loads                                                 0.11s  
+  Γ£ô settings page loads                                                  0.10s  
+
+   FAIL  Tests\Feature\RoleBased\RecordsManagerTest
+  Γ£ô records manager dashboard loads                                      0.33s  
+  Γ£ô employees list page                                                  0.39s  
+  Γ£ô create employee                                                      0.17s  
+  Γ£ô update employee                                                      0.05s  
+  Γ£ô deactivate employee                                                  0.05s  
+  Γ£ô bulk employee operations                                             0.23s  
+  Γ£ô departments page loads                                               0.22s  
+  Γ£ô create department                                                    0.04s  
+  Γ¿» update department                                                    0.04s  
+  Γ¿» department hierarchy creation                                        0.04s  
+  Γ£ô access management page                                               0.11s  
+  Γ£ô permission enforcement                                               0.05s  
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\DatabasePerformanceTesΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'employee_id' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `dtrs` (`date`, `updated_at`, `created_at`) values (2026-04-06 00:00:00, 2026-04-06 12:16:20, 2026-04-06 12:16:20))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'employee_id' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\DaΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90152' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90152, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:20, 2026-04-06 12:16:20))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90152' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\DatabasePerformanceTest > hr dashboardΓÇª   
+  HR dashboard with 30 employees: 36 queries
+Failed asserting that 36 is equal to 30 or is less than 30.
+
+  at tests\Feature\CrossCutting\DatabasePerformanceTest.php:167
+    163Γûò 
+    164Γûò         $queryCount = $this->getQueryCount();
+    165Γûò         $this->stopQueryLog();
+    166Γûò 
+  Γ₧£ 167Γûò         $this->assertLessThanOrEqual(30, $queryCount,
+    168Γûò             "HR dashboard with 30 employees: {$queryCount} queries");
+    169Γûò     }
+    170Γûò 
+    171Γûò     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  1   tests\Feature\CrossCutting\DatabasePerformanceTest.php:167
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\DaΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90305' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90305, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90305' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\ErΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90004' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90004, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90004' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\ErΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90005, 0, 15, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\ErΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90008' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90008, 100, 100, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90008' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\ErΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90011' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90011, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90011' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\ErΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90012' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90012, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:21, 2026-04-06 12:16:21))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90012' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\SeΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90005, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:23, 2026-04-06 12:16:23))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\SeΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90011' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90011, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:23, 2026-04-06 12:16:23))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90011' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\SecurityTest > security headersΓÇª  Error   
+  Call to undefined method Tests\Feature\CrossCutting\SecurityTest::addWarning()
+
+  at tests\Feature\CrossCutting\SecurityTest.php:297
+    293Γûò         }
+    294Γûò 
+    295Γûò         // Advisory: report missing headers but don't fail
+    296Γûò         if (!empty($missingHeaders)) {
+  Γ₧£ 297Γûò             $this->addWarning('Missing security headers: ' . implode(', ', $missingHeaders));
+    298Γûò         }
+    299Γûò 
+    300Γûò         $this->assertTrue(true);
+    301Γûò     }
+
+  1   tests\Feature\CrossCutting\SecurityTest.php:297
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\CrossCutting\SecurityTest > path traversal in routeΓÇª   
+  Path traversal vulnerability detected
+Failed asserting that 200 is not equal to 200.
+
+  at tests\Feature\CrossCutting\SecurityTest.php:313
+    309Γûò         $user = $this->createEmployee();
+    310Γûò 
+    311Γûò         $response = $this->actingAs($user)->get('/dashboard/employee/../../etc/passwd');
+    312Γûò 
+  Γ₧£ 313Γûò         $this->assertNotEquals(200, $response->getStatusCode(),
+    314Γûò             'Path traversal vulnerability detected');
+    315Γûò     }
+    316Γûò }
+    317Γûò
+
+  1   tests\Feature\CrossCutting\SecurityTest.php:313
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\Performance\LoaΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90506' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90506, 30, 30, 0, 3, 0, 0, 2026-04-06 12:16:34, 2026-04-06 12:16:34))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90506' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\Performance\LoaΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90508' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90508, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:34, 2026-04-06 12:16:34))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90508' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\Performance\LoadTest > document reqΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Load test #0, Requested, 2026-04-06 12:16:35, 2026-04-06 12:16:35))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\Performance\LoaΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90893' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90893, 50, 50, 0, 3, 0, 0, 2026-04-06 12:16:37, 2026-04-06 12:16:37))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90893' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\AdminΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90004' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90004, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:37, 2026-04-06 12:16:37))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90004' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\AdministrativeOfficerTestΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `eta` (`user_id`, `status`, `updated_at`, `created_at`) values (1735, pending, 2026-04-06 12:16:37, 2026-04-06 12:16:37))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\AdministrativeOfficerTestΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `locators` (`user_id`, `status`, `updated_at`, `created_at`) values (1737, pending, 2026-04-06 12:16:37, 2026-04-06 12:16:37))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\AdminΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90012' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90012, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:37, 2026-04-06 12:16:37))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90012' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\AdministrativeOfficerTest > statistics scΓÇª   
+  Statistics executed 155 queries (max 30)
+Failed asserting that 155 is equal to 30 or is less than 30.
+
+  at tests\Feature\RoleBased\AdministrativeOfficerTest.php:270
+    266Γûò 
+    267Γûò         $response->assertStatus(200);
+    268Γûò         $this->assertLessThanOrEqual(2000, $elapsed,
+    269Γûò             "Statistics took {$elapsed}ms (max 2000ms)");
+  Γ₧£ 270Γûò         $this->assertLessThanOrEqual(30, $queryCount,
+    271Γûò             "Statistics executed {$queryCount} queries (max 30)");
+    272Γûò     }
+    273Γûò 
+    274Γûò     public function test_approved_requests_page(): void
+
+  1   tests\Feature\RoleBased\AdministrativeOfficerTest.php:270
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\DeparΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90015' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90015, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:40, 2026-04-06 12:16:40))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90015' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\DepartmentHeadTest > apprΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `eta` (`user_id`, `status`, `updated_at`, `created_at`) values (1816, pending, 2026-04-06 12:16:40, 2026-04-06 12:16:40))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\DepartmentHeadTest > apprΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `locators` (`user_id`, `status`, `updated_at`, `created_at`) values (1818, pending, 2026-04-06 12:16:40, 2026-04-06 12:16:40))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\DeparΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90023' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90023, 30, 15, 0, 3, 0, 0, 2026-04-06 12:16:40, 2026-04-06 12:16:40))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90023' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\DepartmentHeadTest > statistics query perΓÇª   
+  Statistics generated 155 queries
+Failed asserting that 155 is equal to 30 or is less than 30.
+
+  at tests\Feature\RoleBased\DepartmentHeadTest.php:309
+    305Γûò         $queryCount = $this->getQueryCount();
+    306Γûò         $slowQueries = $this->getSlowQueries(200);
+    307Γûò         $this->stopQueryLog();
+    308Γûò 
+  Γ₧£ 309Γûò         $this->assertLessThanOrEqual(30, $queryCount,
+    310Γûò             "Statistics generated {$queryCount} queries");
+    311Γûò         $this->assertEmpty($slowQueries,
+    312Γûò             "Found " . count($slowQueries) . " slow queries (>200ms)");
+    313Γûò     }
+
+  1   tests\Feature\RoleBased\DepartmentHeadTest.php:309
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmploΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90002' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90002, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:41, 2026-04-06 12:16:41))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90002' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmploΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90003' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90003, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:41, 2026-04-06 12:16:41))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90003' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmployeeTest > employee cΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `eta` (`user_id`, `status`, `updated_at`, `created_at`) values (1916, pending, 2026-04-06 12:16:44, 2026-04-06 12:16:44))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmployeeTest > employee cΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `eta` (`user_id`, `status`, `updated_at`, `created_at`) values (1917, pending, 2026-04-06 12:16:44, 2026-04-06 12:16:44))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'departure_date' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmployeeTest > locator daΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `locators` (`user_id`, `status`, `updated_at`, `created_at`) values (1920, pending, 2026-04-06 12:16:44, 2026-04-06 12:16:44))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'application_type' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmploΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90027' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90027, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:45, 2026-04-06 12:16:45))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90027' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmploΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90029' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90029, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:45, 2026-04-06 12:16:45))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90029' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmploΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90031' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90031, 30, 30, 0, 3, 0, 0, 2026-04-06 12:16:45, 2026-04-06 12:16:45))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90031' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\EmployeeTest > attendanceΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'employee_id' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `dtrs` (`date`, `updated_at`, `created_at`) values (2026-04-06 00:00:00, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'employee_id' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\FrontDeskTest > accept doΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Bank application, Requested, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\FrontDeskTest > reject doΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Rejection test, Requested, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\FrontDeskTest > completeΓÇª   QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Completion test, Accepted, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\FrontDeskTest > stress coΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Stress test #0, Requested, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\FrontDeskTest > update stΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `document_requests` (`document_type`, `purpose`, `status`, `updated_at`, `created_at`) values (Certificate of Employment, Status test, Accepted, 2026-04-06 12:16:46, 2026-04-06 12:16:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\HRManΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90323' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90323, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:49, 2026-04-06 12:16:49))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90323' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\HRManΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90325' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90325, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:49, 2026-04-06 12:16:49))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90325' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90003' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90003, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:50, 2026-04-06 12:16:50))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90003' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90005, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:50, 2026-04-06 12:16:50))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90005' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90008' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90008, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:50, 2026-04-06 12:16:50))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90008' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90010' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90010, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:51, 2026-04-06 12:16:51))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90010' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90013' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90013, 14, 15, 0, 3, 0, 0, 2026-04-06 12:16:51, 2026-04-06 12:16:51))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90013' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90015' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90015, 14, 15, 0, 3, 0, 0, 2026-04-06 12:16:51, 2026-04-06 12:16:51))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90015' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveManagerTest > create holiday            
+  Holiday creation failed: HTTP 302
+Failed asserting that false is true.
+
+  at tests\Feature\RoleBased\LeaveManagerTest.php:258
+    254Γûò             'holiday_date' => now()->addMonth()->toDateString(),
+    255Γûò             'type'         => 'Regular',
+    256Γûò         ]);
+    257Γûò 
+  Γ₧£ 258Γûò         $this->assertTrue(
+    259Γûò             $response->isSuccessful(),
+    260Γûò             "Holiday creation failed: HTTP {$response->getStatusCode()}"
+    261Γûò         );
+    262Γûò     }
+
+  1   tests\Feature\RoleBased\LeaveManagerTest.php:258
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90019' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90019, 14, 15, 0, 3, 0, 0, 2026-04-06 12:16:51, 2026-04-06 12:16:51))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90019' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\MayorΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90128' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90128, 15, 15, 0, 3, 0, 0, 2026-04-06 12:16:52, 2026-04-06 12:16:52))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90128' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\MayorΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90132' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (TEST-90132, 30, 15, 0, 3, 0, 0, 2026-04-06 12:16:52, 2026-04-06 12:16:52))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'TEST-90132' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\MayorTest > approve traveΓÇª  QueryException   
+  SQLSTATE[42S22]: Column not found: 1054 Unknown column 'return_date' in 'field list' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `travel_orders` (`destination`, `purpose`, `return_date`, `employee_ids`, `updated_at`, `created_at`) values (Provincial Capitol, Official business, 2026-04-11 00:00:00, "[1,2,3]", 2026-04-06 12:16:52, 2026-04-06 12:16:52))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:47
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[42S22]: Column not found: 1054 Unknown column 'return_date' in 'field list'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\RecordsManagerTest > updaΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `departments` (`DeptCode`, `Dept_name`) values (UPD-DEPT, To Be Updated))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'EmpNo' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\RecordsManagerTest > department hierarchyΓÇª   
+  Parent department was not created
+Failed asserting that null is not null.
+
+  at tests\Feature\RoleBased\RecordsManagerTest.php:237
+    233Γûò                 );
+    234Γûò             }
+    235Γûò         }
+    236Γûò 
+  Γ₧£ 237Γûò         $this->assertNotNull($parent, 'Parent department was not created');
+    238Γûò     }
+    239Γûò 
+    240Γûò     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    241Γûò     // 4. Access Management
+
+  1   tests\Feature\RoleBased\RecordsManagerTest.php:237
+
+
+  Tests:    56 failed, 158 passed (236 assertions)
+  Duration: 42.05s
+

@@ -1,0 +1,366 @@
+/* =========================================================================
+   Employee — shared styles for ETA, Locator, Leave-management pages
+   ========================================================================= */
+
+/* ── PDS-like form styles (shared ETA & Locator) ── */
+
+.pds-section {
+    border: 1px solid #dbe3ed;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 14px;
+}
+
+.field-grid {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.field-grid.two   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.field-grid.four  { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.field-grid.six   { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+.pds-form label {
+    display: grid;
+    gap: 5px;
+    font-size: 0.83rem;
+    color: #334155;
+    font-weight: 600;
+}
+
+input.form-input,
+select.form-input,
+textarea.form-input,
+input[type="date"].form-input,
+input[type="time"].form-input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 9px;
+    font: inherit;
+    font-size: 0.88rem;
+    color: #0f172a;
+    background: #ffffff;
+}
+
+input.form-input:focus,
+select.form-input:focus,
+textarea.form-input:focus {
+    outline: none;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.muted {
+    color: #64748b;
+    font-size: 0.92rem;
+}
+
+/* ── DataTable overrides ────────────────────────── */
+
+table.dataTable thead th { background: #f8fafc; }
+
+/* ETA table */
+#eta-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+#eta-table th,
+#eta-table td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+#eta-table tbody tr:nth-child(even) { background: #fbfdff; }
+#eta-table tbody tr:hover { background: #f1f5f9; }
+
+/* Locator table */
+#locator-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+#locator-table th,
+#locator-table td {
+    border: 1px solid #e2e8f0;
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+#locator-table tbody tr:nth-child(even) { background: #fbfdff; }
+#locator-table tbody tr:hover { background: #f1f5f9; }
+
+.dataTables_wrapper .dataTables_paginate .paginate_button { background: transparent; border: 0; }
+
+/* Force uppercase display */
+.upper { text-transform: uppercase; }
+
+/* ── Leave Management ───────────────────────────── */
+
+
+/* ── Module Page Layout ─────────────────────────── */
+
+.module-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.module-page section {
+    margin: 0;
+}
+
+.module-page section > h2 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+/* Reduce grid bottom margin inside module sections so gap handles spacing */
+.module-page .grid {
+    margin-bottom: 6px;
+}
+
+@media (min-width: 1100px) {
+    .leave-flex-row {
+        display: flex;
+        flex-direction: row;
+        gap: 32px;
+        align-items: flex-start;
+        width: 100%;
+    }
+    .leave-col {
+        flex: 1 1 0;
+        min-width: 260px;
+        max-width: 420px;
+    }
+    .leave-col-allocation {
+        flex: 2 1 0;
+        min-width: 320px;
+        max-width: 1000px;
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 1099px) {
+    .leave-flex-row {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        width: 100%;
+    }
+    .leave-col, .leave-col-allocation {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+/* 6.B details block */
+.details6b-block {
+    background: none;
+    border: 1.5px solid #e0e7ef;
+    border-radius: 10px;
+    padding: 18px 20px 14px 20px;
+    margin-bottom: 18px;
+}
+
+.details6b-block label,
+.details6b-block .font-weight-bold {
+    font-weight: 600 !important;
+}
+
+.details6b-block .form-check {
+    margin-bottom: 8px;
+}
+
+.details6b-block input[type="text"] {
+    margin-top: 6px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border: 1.2px solid #cbd5e1;
+    padding: 7px 10px;
+    font-size: 1em;
+    width: 100%;
+    background: none;
+}
+
+.details6b-block .small {
+    color: #64748b;
+    font-size: 0.98em;
+    margin-bottom: 4px;
+}
+
+.d-none  { display: none !important; }
+.d-block { display: block !important; }
+
+/* My requests table */
+.my-requests-table,
+.my-requests-table th,
+.my-requests-table td {
+    border: 1px solid #ddd;
+    border-collapse: collapse;
+}
+
+.my-requests-table th,
+.my-requests-table td {
+    padding: 7px 10px;
+    font-size: 0.88rem;
+    vertical-align: middle;
+}
+
+.my-requests-table thead th {
+    background: #fff7ed;
+    color: #9a3412;
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 2px solid #fddcab;
+}
+
+.my-requests-table tbody tr:nth-child(even) {
+    background: #fbfbfb;
+}
+
+.my-requests-table tbody tr:hover {
+    background: #fff7ed;
+}
+
+/* ── Table action button variants ───────────────── */
+
+.btn.btn-sm {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    border-radius: 7px;
+    line-height: 1.3;
+}
+
+/* View button: uses standard orange to stay consistent with login */
+.btn.btn-info {
+    background: linear-gradient(120deg, #ea580c, #fb923c);
+}
+
+/* Cancel button: red tone */
+.btn.btn-danger {
+    background: linear-gradient(120deg, #dc2626, #ef4444);
+}
+
+/* Pagination tighten */
+.module-page nav {
+    margin-top: 6px;
+}
+
+/* Submit button left-aligned to sit flush with table header */
+.module-page .actions {
+    justify-content: flex-start;
+}
+
+/* ── Employee Dashboard ─────────────────────────── */
+
+.employee-dashboard {
+    display: grid;
+    gap: 12px;
+}
+
+.metric-tile {
+    border: 1px solid #dbe3ed;
+    background: #ffffff;
+    display: grid;
+    gap: 4px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+}
+
+.metric-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.metric-tile strong {
+    font-size: 1.02rem;
+    color: #0f172a;
+}
+
+.metric-tile small {
+    color: #475569;
+    font-size: 0.84rem;
+}
+
+.hero-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    border-radius: 16px;
+    padding: 18px;
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
+    border: 1px solid #dbe3ed;
+    color: #0f172a;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.eyebrow {
+    margin: 0 0 4px;
+    color: #475569;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.hero-copy h2 {
+    margin: 0 0 8px;
+    font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+}
+
+.hero-copy p {
+    margin: 0;
+    color: #475569;
+    font-size: 0.93rem;
+    max-width: 56ch;
+}
+
+.hero-actions {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.action-btn {
+    border-radius: 9px;
+    padding: 8px 11px;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.action-btn:hover {
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.primary-action {
+    background: #0f172a;
+    color: #fff;
+    border: 1px solid #0f172a;
+}
+
+.secondary-action {
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+}
+
+.ghost-action {
+    background: #f8fafc;
+    color: #334155;
+    border: 1px solid #dbe3ed;
+}

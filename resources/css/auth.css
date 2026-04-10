@@ -1,0 +1,295 @@
+/* =========================================================================
+   Auth — Shared styles for login, forgot-password, reset-password,
+   force-password-change pages (standalone pages, not layout-based).
+   Scoped with body.auth-page so they don't leak into dashboard views.
+   ========================================================================= */
+
+/* ── CSS variables ──────────────────────────────── */
+
+body.auth-page {
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --mist: #f8fafc;
+    --accent: #ff5100;
+    --panel: rgba(255, 255, 255, 0.92);
+    --ring: rgba(255, 115, 0, 0.25);
+    --shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
+}
+
+/* ── Body base ──────────────────────────────────── */
+
+body.auth-page {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Outfit', sans-serif;
+    color: var(--ink);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+body.auth-page * { box-sizing: border-box; }
+
+body.auth-page-login {
+    background:
+        linear-gradient(145deg, rgba(2, 6, 23, 0.6), rgba(15, 23, 42, 0.55)),
+        radial-gradient(circle at 15% 20%, rgba(255, 115, 0, 0.35), transparent 45%);
+    background-color: #0f172a;
+    background-size: cover;
+    background-position: center;
+}
+
+body.auth-page-plain {
+    background: #f8fafc;
+    padding: 18px;
+}
+
+/* ── Login shell ────────────────────────────────── */
+
+body.auth-page .login-shell {
+    width: min(520px, 100%);
+    background: var(--panel);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(3px);
+}
+
+body.auth-page .login-shell .card {
+    padding: 20px 24px 16px;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    min-height: auto;
+}
+
+body.auth-page .login-shell .card h2 {
+    margin: 0 0 8px;
+    font-size: 1.45rem;
+}
+
+body.auth-page .login-shell .card p {
+    margin: 0 0 12px;
+    color: #475569;
+    font-size: 0.96rem;
+}
+
+/* ── Generic auth card (forgot-password / reset-password) ── */
+
+body.auth-page-login > .card {
+    width: min(520px, 100%);
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+    padding: 34px;
+}
+
+body.auth-page-login > .card h2 { margin: 0 0 10px; }
+body.auth-page-login > .card p  { margin: 0 0 20px; color: #475569; }
+
+/* ── Plain auth card (force-password-change) ────── */
+
+body.auth-page-plain > .card {
+    width: min(460px, 100%);
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+}
+
+body.auth-page-plain > .card h1 { margin: 0 0 8px; font-size: 1.4rem; }
+body.auth-page-plain > .card p  { margin: 0 0 16px; color: #475569; }
+
+/* ── Auth form elements ─────────────────────────── */
+
+body.auth-page .field {
+    margin-bottom: 10px;
+}
+
+body.auth-page-plain .field {
+    margin-bottom: 12px;
+}
+
+body.auth-page label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+body.auth-page .input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 11px 13px;
+    font: inherit;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+body.auth-page .input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 5px var(--ring);
+}
+
+body.auth-page-plain input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+}
+
+body.auth-page-plain input:focus {
+    outline: none;
+    border-color: #ea580c;
+    box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.2);
+}
+
+/* ── Meta row (remember + forgot) ───────────────── */
+
+body.auth-page .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 4px 0 12px;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: #334155;
+}
+
+body.auth-page .remember {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+body.auth-page .meta a {
+    color: #c2410c;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+body.auth-page .meta a:hover {
+    text-decoration: underline;
+}
+
+/* ── Auth buttons ───────────────────────────────── */
+
+body.auth-page .btn {
+    border: 0;
+    background: linear-gradient(120deg, #ea580c, #fb923c);
+    color: #fff;
+    border-radius: 12px;
+    width: 100%;
+    padding: 12px 15px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 140ms ease, filter 140ms ease;
+}
+
+body.auth-page .btn:hover { filter: brightness(1.05); }
+body.auth-page .btn:active { transform: translateY(1px); }
+
+body.auth-page-plain .btn {
+    border-radius: 10px;
+    padding: 11px 13px;
+}
+
+body.auth-page-login > .card .btn {
+    margin-top: 8px;
+}
+
+body.auth-page-login .card .btn.btn-forgot {
+    margin-top: 16px;
+}
+
+/* ── Alerts ─────────────────────────────────────── */
+
+body.auth-page .error {
+    background: #fff7ed;
+    color: #9a3412;
+    border: 1px solid #fdba74;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+}
+
+body.auth-page-plain .error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    font-size: 0.9rem;
+}
+
+body.auth-page .success {
+    background: #ecfeff;
+    color: #155e75;
+    border: 1px solid #a5f3fc;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+}
+
+body.auth-page .msg {
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    background: #ecfeff;
+    color: #155e75;
+    border: 1px solid #a5f3fc;
+}
+
+/* ── Logos ───────────────────────────────────────── */
+
+body.auth-page .logos {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: center;
+}
+
+body.auth-page .logos img {
+    width: 100%;
+    max-height: 56px;
+    object-fit: contain;
+}
+
+/* ── Link row (back to login) ───────────────────── */
+
+body.auth-page .link {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 0.92rem;
+}
+
+body.auth-page .link a {
+    color: #c2410c;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* ── Responsive ─────────────────────────────────── */
+
+@media (max-width: 860px) {
+    body.auth-page .login-shell {
+        max-width: 520px;
+    }
+
+    body.auth-page .login-shell .card {
+        padding: 26px 22px;
+    }
+
+    body.auth-page .logos img {
+        max-height: 48px;
+    }
+}

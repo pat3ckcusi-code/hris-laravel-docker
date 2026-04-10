@@ -1,0 +1,655 @@
+﻿
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::approved_leave_with_lwop_integrates_into_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::pending_leave_does_not_affect_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::employee_without_assignment_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::ended_assignment_excluded_from_future_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::earnings_and_deductions_coexist_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::department_hierarchy_supports_parent_child(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::payroll_export_route_accessible_for_locked_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::leave_management_accessible_for_eligible_employee(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\CompatibilityTest::leave_management_blocked_for_job_order(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_run_lifecycle_draft_compute_lock(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_detail_contains_all_components(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_request_workflow_create_and_approve(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::document_request_lifecycle(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::dtr_records_capture_am_pm_time_pairs(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::eta_and_locator_requests_can_be_created(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::salary_matrix_maps_correctly_to_plantilla(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::lwop_deduction_formula_is_correct(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_integration_lwop_affects_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::loan_deductions_reduce_net_pay(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::dtr_absent_days_counted_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::approval_log_records_payroll_approval(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::plantilla_assignment_links_employee_to_position(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::payroll_settings_store_and_retrieve(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::hr_audit_trail_records_actions(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\FunctionalSuitabilityTest::leave_balance_tracks_per_employee(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::new_earning_type_hazard_pay_included_in_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::multiple_earning_types_coexist_with_hazard_pay(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::new_loan_deduction_type_applies_monthly_payment(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::paid_off_loan_excluded_from_deductions(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::non_recurring_earning_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::payroll_computation_service_is_injectable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::models_have_correct_relationships(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\MaintainabilityTest::non_recurring_deduction_excluded_from_payroll(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::payroll_handles_100_employees(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::dashboard_loads_within_acceptable_time(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::hr_manager_dashboard_responds_quickly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::payroll_dashboard_responds_quickly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::recompute_replaces_previous_details(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PerformanceEfficiencyTest::multiple_earnings_sum_correctly(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::all_migrations_run_successfully(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::users_table_has_all_required_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::payroll_tables_have_required_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::dtr_table_has_am_pm_columns(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::app_key_is_configurable_via_env(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::database_connection_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::mail_driver_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::cache_driver_is_configurable(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::crud_operations_work_on_test_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::department_hierarchy_works_on_test_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::setting_model_works_for_system_configuration(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\PortabilityTest::payroll_run_can_be_created_with_all_fields(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_plantilla_creates_exception_for_empty_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_salary_matrix_records_error_not_crash(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::missing_dtr_records_employee_as_absent(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::locked_payroll_run_cannot_be_computed_via_controller(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::locked_payroll_run_preserves_locked_status(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::payroll_computation_creates_audit_log(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::absence_detection_creates_payroll_exception(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::hr_audit_trail_stores_structured_details(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\ReliabilityTest::payroll_detail_net_pay_never_goes_negative(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_user_redirected_to_login(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_hr_manager_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_payroll_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::unauthenticated_access_to_mayor_redirected(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_with_valid_credentials_succeeds(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_with_invalid_credentials_fails(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::logout_terminates_session(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_hr_manager_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payroll_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_mayor_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::hr_manager_can_access_hr_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::payroll_manager_can_access_payroll_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::mayor_can_access_mayor_dashboard(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_lock_payroll_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_compute_payroll_run(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::login_form_contains_csrf_token(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::password_is_hashed_in_database(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::password_field_hidden_from_serialization(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::pds_encrypts_sensitive_fields(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::hr_actions_generate_audit_trail(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payslips_of_others(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\SecurityTest::employee_cannot_access_payroll_reports(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::employee_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::hr_manager_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_manager_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::mayor_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::department_head_dashboard_contains_sidebar(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_sidebar_has_grouped_navigation(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::hr_manager_sidebar_has_key_links(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::login_page_has_proper_form_labels(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::all_dashboards_return_html_with_title(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::payroll_settings_page_loads_with_form(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::employee_sidebar_shows_self_service_links(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   WARN  Metadata found in doc-comment for method Tests\Feature\ISO25010\UsabilityTest::logout_button_present_on_dashboards(). Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+   PASS  Tests\Unit\ExampleTest
+  Γ£ô that true is true
+
+   PASS  Tests\Feature\CrossCutting\AuthenticationTest
+  Γ£ô login page loads                                                     4.18s  
+  Γ£ô valid credentials login                                              0.07s  
+  Γ£ô invalid credentials rejected                                         0.24s  
+  Γ£ô inactive user blocked                                                0.03s  
+  Γ£ô separated user blocked                                               0.05s  
+  Γ£ô logout                                                               0.04s  
+  Γ£ô force password change page                                           0.04s  
+  Γ£ô force password change submission                                     0.05s  
+  Γ£ô forgot password page                                                 0.04s  
+  Γ£ô reset password email                                                 0.25s  
+  Γ£ô simulate concurrent logins                                           1.36s  
+  Γ£ô unauthenticated user redirected to login                             0.03s  
+  Γ£ô authenticated user cannot access login                               0.04s  
+
+   PASS  Tests\Feature\CrossCutting\DatabasePerformanceTest
+  Γ£ô user query with 100 records                                          0.27s  
+  Γ£ô leave request query with relationships                               0.20s  
+  Γ£ô dtr query performance 90 days                                        0.08s  
+  Γ£ô employee dashboard no n plus 1                                       0.05s  
+  Γ£ô department head dashboard no n plus 1                                0.08s  
+  Γ£ô hr dashboard no n plus 1                                             0.12s  
+  Γ£ô critical tables have indexes                                         0.03s  
+  Γ£ô bulk user creation performance                                       0.26s  
+  Γ£ô bulk leave balance query                                             0.35s  
+  Γ£ô audit log write performance                                          0.23s  
+  Γ£ô audit log read performance with filtering                            0.11s  
+
+   PASS  Tests\Feature\CrossCutting\ErrorHandlingStabilityTest
+  Γ£ô leave request missing fields                                         0.04s  
+  Γ£ô eta invalid date                                                     0.04s  
+  Γ£ô locator invalid time range                                           0.04s  
+  Γ£ô duplicate leave request                                              0.06s  
+  Γ£ô leave request insufficient balance                                   0.05s  
+  Γ£ô access nonexistent leave request                                     0.04s  
+  Γ£ô approve nonexistent leave                                            0.05s  
+  Γ£ô stability mixed operations 500 cycles                                1.83s  
+  Γ£ô memory stability over iterations                                     0.28s  
+  Γ£ô concurrent leave filing data integrity                               0.21s  
+
+   PASS  Tests\Feature\CrossCutting\RoleBasedAccessTest
+  Γ£ô employee cannot access department head routes                        0.04s  
+  Γ£ô employee cannot access hr manager routes                             0.03s  
+  Γ£ô employee cannot access mayor routes                                  0.04s  
+  Γ£ô employee cannot access leave manager routes                          0.04s  
+  Γ£ô department head cannot access mayor routes                           0.03s  
+  Γ£ô department head cannot access hr routes                              0.03s  
+  Γ£ô hr manager cannot access mayor routes                                0.04s  
+  Γ£ô leave manager cannot access hr routes                                0.04s  
+  Γ£ô front desk cannot access admin routes                                0.05s  
+  Γ£ô records manager cannot access leave manager routes                   0.05s  
+  Γ£ô comprehensive role isolation                                         0.82s  
+  Γ£ô no privilege escalation via manual role change                       0.04s  
+
+   WARN  Tests\Feature\CrossCutting\SecurityTest
+  Γ£ô login sql injection email                                            0.04s  
+  Γ£ô login sql injection password                                         0.23s  
+  Γ£ô search sql injection                                                 0.04s  
+  Γ£ô url parameter sql injection                                          0.04s  
+  Γ£ô xss in leave reason                                                  0.05s  
+  Γ£ô xss in document request                                              0.04s  
+  Γ£ô xss in eta reason                                                    0.03s  
+  Γ£ô form without csrf token rejected                                     0.04s  
+  Γ£ô mass assignment role escalation                                      0.05s  
+  Γ£ô employee cannot view other employee leave                            0.04s  
+  Γ£ô employee cannot cancel other employee leave                          0.05s  
+  Γ£ô brute force login rate limiting                                      4.16s  
+  ΓÇª security headers present ΓåÆ Missing security headers: X-Content-TypeΓÇª 0.04s  
+  Γ£ô path traversal in routes                                             0.04s  
+
+   FAIL  Tests\Feature\ExampleTest
+  Γ¿» the application returns a successful response                        0.03s  
+
+   PASS  Tests\Feature\ISO25010\CompatibilityTest
+  Γ£ô approved leave with lwop integrates into payroll                     0.07s  
+  Γ£ô pending leave does not affect payroll                                0.05s  
+  Γ£ô employee without assignment excluded from payroll                    0.04s  
+  Γ£ô ended assignment excluded from future payroll                        0.05s  
+  Γ£ô earnings and deductions coexist correctly                            0.06s  
+  Γ£ô department hierarchy supports parent child                           0.03s  
+  Γ£ô payroll export route accessible for locked run                       0.05s  
+  Γ£ô leave management accessible for eligible employee                    0.03s  
+  Γ£ô leave management blocked for job order                               0.03s  
+
+   FAIL  Tests\Feature\ISO25010\FunctionalSuitabilityTest
+  Γ£ô payroll run lifecycle draft compute lock                             0.06s  
+  Γ£ô payroll detail contains all components                               0.04s  
+  Γ¿» leave request workflow create and approve                            0.04s  
+  Γ£ô document request lifecycle                                           0.07s  
+  Γ£ô dtr records capture am pm time pairs                                 0.04s  
+  Γ£ô eta and locator requests can be created                              0.03s  
+  Γ£ô salary matrix maps correctly to plantilla                            0.02s  
+  Γ£ô lwop deduction formula is correct                                    0.03s  
+  Γ£ô leave integration lwop affects payroll                               0.06s  
+  Γ£ô loan deductions reduce net pay                                       0.05s  
+  Γ£ô dtr absent days counted correctly                                    0.05s  
+  Γ£ô approval log records payroll approval                                0.04s  
+  Γ£ô plantilla assignment links employee to position                      0.05s  
+  Γ£ô payroll settings store and retrieve                                  0.05s  
+  Γ£ô hr audit trail records actions                                       0.04s  
+  Γ¿» leave balance tracks per employee                                    0.04s  
+
+   PASS  Tests\Feature\ISO25010\MaintainabilityTest
+  Γ£ô new earning type hazard pay included in payroll                      0.06s  
+  Γ£ô multiple earning types coexist with hazard pay                       0.05s  
+  Γ£ô new loan deduction type applies monthly payment                      0.05s  
+  Γ£ô paid off loan excluded from deductions                               0.04s  
+  Γ£ô non recurring earning excluded from payroll                          0.04s  
+  Γ£ô payroll computation service is injectable                            0.06s  
+  Γ£ô models have correct relationships                                    0.05s  
+  Γ£ô non recurring deduction excluded from payroll                        0.07s  
+
+   PASS  Tests\Feature\ISO25010\PerformanceEfficiencyTest
+  Γ£ô payroll handles 100 employees                                        0.62s  
+  Γ£ô dashboard loads within acceptable time                               0.03s  
+  Γ£ô hr manager dashboard responds quickly                                0.05s  
+  Γ£ô payroll dashboard responds quickly                                   0.05s  
+  Γ£ô recompute replaces previous details                                  0.07s  
+  Γ£ô multiple earnings sum correctly                                      0.04s  
+
+   PASS  Tests\Feature\ISO25010\PortabilityTest
+  Γ£ô all migrations run successfully                                      0.04s  
+  Γ£ô users table has all required columns                                 0.07s  
+  Γ£ô payroll tables have required columns                                 0.10s  
+  Γ£ô dtr table has am pm columns                                          0.06s  
+  Γ£ô app key is configurable via env                                      0.03s  
+  Γ£ô database connection is configurable                                  0.07s  
+  Γ£ô mail driver is configurable                                          0.04s  
+  Γ£ô cache driver is configurable                                         0.03s  
+  Γ£ô crud operations work on test database                                0.05s  
+  Γ£ô department hierarchy works on test database                          0.03s  
+  Γ£ô setting model works for system configuration                         0.02s  
+  Γ£ô payroll run can be created with all fields                           0.04s  
+
+   PASS  Tests\Feature\ISO25010\ReliabilityTest
+  Γ£ô missing plantilla creates exception for empty run                    0.05s  
+  Γ£ô missing salary matrix records error not crash                        0.05s  
+  Γ£ô missing dtr records employee as absent                               0.05s  
+  Γ£ô locked payroll run cannot be computed via controller                 0.04s  
+  Γ£ô locked payroll run preserves locked status                           0.04s  
+  Γ£ô payroll computation creates audit log                                0.05s  
+  Γ£ô absence detection creates payroll exception                          0.04s  
+  Γ£ô hr audit trail stores structured details                             0.07s  
+  Γ£ô payroll detail net pay never goes negative                           0.06s  
+
+   PASS  Tests\Feature\ISO25010\SecurityTest
+  Γ£ô unauthenticated user redirected to login                             0.04s  
+  Γ£ô unauthenticated access to hr manager redirected                      0.03s  
+  Γ£ô unauthenticated access to payroll redirected                         0.03s  
+  Γ£ô unauthenticated access to mayor redirected                           0.02s  
+  Γ£ô login with valid credentials succeeds                                0.06s  
+  Γ£ô login with invalid credentials fails                                 0.24s  
+  Γ£ô logout terminates session                                            0.04s  
+  Γ£ô employee cannot access hr manager dashboard                          0.04s  
+  Γ£ô employee cannot access payroll dashboard                             0.04s  
+  Γ£ô employee cannot access mayor dashboard                               0.03s  
+  Γ£ô hr manager can access hr dashboard                                   0.04s  
+  Γ£ô payroll manager can access payroll dashboard                         0.04s  
+  Γ£ô mayor can access mayor dashboard                                     0.05s  
+  Γ£ô employee cannot lock payroll run                                     0.04s  
+  Γ£ô employee cannot compute payroll run                                  0.03s  
+  Γ£ô login form contains csrf token                                       0.08s  
+  Γ£ô password is hashed in database                                       0.04s  
+  Γ£ô password field hidden from serialization                             0.05s  
+  Γ£ô pds encrypts sensitive fields                                        0.06s  
+  Γ£ô hr actions generate audit trail                                      0.03s  
+  Γ£ô employee cannot access payslips of others                            0.03s  
+  Γ£ô employee cannot access payroll reports                               0.04s  
+
+   PASS  Tests\Feature\ISO25010\UsabilityTest
+  Γ£ô employee dashboard contains sidebar                                  0.05s  
+  Γ£ô hr manager dashboard contains sidebar                                0.04s  
+  Γ£ô payroll manager dashboard contains sidebar                           0.04s  
+  Γ£ô mayor dashboard contains sidebar                                     0.05s  
+  Γ£ô department head dashboard contains sidebar                           0.04s  
+  Γ£ô payroll sidebar has grouped navigation                               0.04s  
+  Γ£ô hr manager sidebar has key links                                     0.06s  
+  Γ£ô login page has proper form labels                                    0.03s  
+  Γ£ô all dashboards return html with title                                0.08s  
+  Γ£ô payroll settings page loads with form                                0.16s  
+  Γ£ô employee sidebar shows self service links                            0.04s  
+  Γ£ô logout button present on dashboards                                  0.04s  
+
+   PASS  Tests\Feature\Performance\LoadTest
+  Γ£ô login throughput 500 users                                           3.46s  
+  Γ£ô multi role dashboard load                                            1.87s  
+  Γ£ô leave filing throughput                                              1.85s  
+  Γ£ô approval throughput                                                  1.00s  
+  Γ£ô api endpoints under stress                                           1.06s  
+  Γ£ô document request queue load                                          0.69s  
+  Γ£ô hr analytics with growing dataset                                    1.16s  
+  Γ£ô mixed workload simulation                                            0.74s  
+  Γ£ô database connection stability                                        0.04s  
+
+   PASS  Tests\Feature\RoleBased\AdministrativeOfficerTest
+  Γ£ô admin officer dashboard loads                                        0.06s  
+  Γ£ô pending requests page                                                0.04s  
+  Γ£ô approve leave request                                                0.04s  
+  Γ£ô reject leave request                                                 0.05s  
+  Γ£ô approve eta request                                                  0.18s  
+  Γ£ô approve locator request                                              0.06s  
+  Γ£ô approval concurrency 100 requests                                    1.17s  
+  Γ£ô filed travel orders loads                                            0.05s  
+  Γ£ô filed office orders loads                                            0.04s  
+  Γ£ô travel orders page                                                   0.04s  
+  Γ£ô office orders page                                                   0.03s  
+  Γ£ô statistics page                                                      0.05s  
+  Γ£ô statistics data api                                                  0.05s  
+  Γ£ô statistics scales with department data                               0.22s  
+  Γ£ô approved requests page                                               0.04s  
+
+   PASS  Tests\Feature\RoleBased\DepartmentHeadTest
+  Γ£ô department head dashboard loads                                      0.04s  
+  Γ£ô department head dashboard metrics api                                0.04s  
+  Γ£ô dashboard metrics concurrent access                                  0.28s  
+  Γ£ô employees on duty endpoint                                           0.05s  
+  Γ£ô pending requests page loads                                          0.04s  
+  Γ£ô leave requests list api                                              0.04s  
+  Γ£ô eta requests list api                                                0.04s  
+  Γ£ô locator requests list api                                            0.05s  
+  Γ£ô approve leave request                                                0.05s  
+  Γ£ô reject leave request                                                 0.05s  
+  Γ£ô approve eta request                                                  0.05s  
+  Γ£ô approve locator request                                              0.05s  
+  Γ£ô simulate 200 simultaneous approvals                                  1.38s  
+  Γ£ô statistics page loads                                                0.06s  
+  Γ£ô statistics data api                                                  0.04s  
+  Γ£ô statistics query performance                                         0.23s  
+  Γ£ô travel orders page loads                                             0.04s  
+  Γ£ô office orders page loads                                             0.04s  
+  Γ£ô create travel order                                                  0.04s  
+  Γ£ô create office order                                                  0.05s  
+  Γ£ô travel orders api endpoints                                          0.04s  
+  Γ£ô filed travel orders page                                             0.04s  
+  Γ£ô filed office orders page                                             0.04s  
+  Γ£ô approved requests page                                               0.05s  
+
+   PASS  Tests\Feature\RoleBased\EmployeeTest
+  Γ£ô employee dashboard loads successfully                                0.06s  
+  Γ£ô employee dashboard shows summary data                                0.03s  
+  Γ£ô dashboard concurrent logins performance                              0.16s  
+  Γ£ô employee can access pds page                                         0.03s  
+  Γ£ô employee can save pds draft                                          0.05s  
+  Γ£ô employee can update pds draft                                        0.05s  
+  Γ£ô pds export works                                                     0.31s  
+  Γ£ô employee can access eta page                                         0.04s  
+  Γ£ô employee can submit eta                                              0.04s  
+  Γ£ô multiple eta submissions simultaneously                              0.06s  
+  Γ£ô employee can fetch eta data                                          0.04s  
+  Γ£ô employee can cancel eta                                              0.03s  
+  Γ£ô employee can access locator page                                     0.03s  
+  Γ£ô employee can submit locator                                          0.04s  
+  Γ£ô locator data endpoint returns json                                   0.03s  
+  Γ£ô locator concurrent updates                                           0.06s  
+  Γ£ô employee can access leave management                                 0.03s  
+  Γ£ô employee can file leave request                                      0.08s  
+  Γ£ô job order employee cannot file leave                                 0.03s  
+  Γ£ô leave permission based visibility                                    0.04s  
+  Γ£ô simulate 500 leave filings                                           2.92s  
+  Γ£ô employee can access document requests                                0.04s  
+  Γ£ô employee can submit document request                                 0.03s  
+  Γ£ô document request queue handling                                      0.15s  
+  Γ£ô employee can access payslips                                         0.05s  
+  Γ£ô payslip stress test batch access                                     0.66s  
+  Γ£ô employee can access attendance                                       0.04s  
+  Γ£ô attendance query performance                                         0.10s  
+
+   PASS  Tests\Feature\RoleBased\FrontDeskTest
+  Γ£ô front desk dashboard loads                                           0.05s  
+  Γ£ô fetch requests                                                       0.05s  
+  Γ£ô accept document request                                              0.05s  
+  Γ£ô reject document request                                              0.05s  
+  Γ£ô complete document request                                            0.06s  
+  Γ£ô stress continuous request handling                                   1.05s  
+  Γ£ô update status                                                        0.05s  
+
+   PASS  Tests\Feature\RoleBased\HRManagerTest
+  Γ£ô hr manager dashboard loads                                           0.06s  
+  Γ£ô chart data api                                                       0.03s  
+  Γ£ô chart data stress test with 5000 records                             0.99s  
+  Γ£ô employees by filter                                                  0.07s  
+  Γ£ô records page loads                                                   0.05s  
+  Γ£ô records data api                                                     0.05s  
+  Γ£ô records action on employee                                           0.05s  
+  Γ£ô bulk records operations                                              0.50s  
+  Γ£ô leave management page                                                0.05s  
+  Γ£ô leave data api                                                       0.04s  
+  Γ£ô hr leave action approve                                              0.06s  
+  Γ£ô org wide leave processing simulation                                 2.76s  
+  Γ£ô audit page loads                                                     0.06s  
+  Γ£ô audit data api                                                       0.05s  
+  Γ£ô audit logs under concurrent actions                                  0.08s  
+  Γ£ô roles page loads                                                     0.04s  
+  Γ£ô role escalation prevention                                           0.04s  
+  Γ£ô department head cannot access hr routes                              0.03s  
+  Γ£ô settings page loads                                                  0.05s  
+  Γ£ô update settings                                                      0.05s  
+  Γ£ô frontdesk page loads                                                 0.05s  
+  Γ£ô frontdesk data api                                                   0.04s  
+  Γ£ô reports page loads                                                   0.04s  
+
+   FAIL  Tests\Feature\RoleBased\LeaveManagerTest
+  Γ£ô manage balance page loads                                            0.05s  
+  Γ£ô update leave balance                                                 0.04s  
+  Γ£ô concurrent balance adjustments                                       0.32s  
+  Γ£ô manage credits page loads                                            0.05s  
+  Γ£ô apply credits                                                        0.05s  
+  Γ£ô approved leaves with large dataset                                   0.81s  
+  Γ£ô cancel leaves page loads                                             0.05s  
+  Γ£ô cancel leave date with refund                                        0.05s  
+  Γ£ô cancel leave rollback integrity                                      0.06s  
+  Γ£ô create holiday                                                       0.07s  
+  Γ£ô list holidays                                                        0.05s  
+  Γ¿» bulk cancel by holiday                                               0.11s  
+  Γ£ô employee search                                                      0.04s  
+
+   PASS  Tests\Feature\RoleBased\MayorTest
+  Γ£ô mayor dashboard loads                                                0.06s  
+  Γ£ô mayor chart data                                                     0.05s  
+  Γ£ô executive dashboard under load                                       0.34s  
+  Γ£ô employees filter                                                     0.08s  
+  Γ£ô approvals page loads                                                 0.04s  
+  Γ£ô leave requests data                                                  0.04s  
+  Γ£ô mayor approve leave                                                  0.05s  
+  Γ£ô mayor reject leave                                                   0.04s  
+  Γ£ô simulate 100 concurrent approvals                                    1.04s  
+  Γ£ô travel order approvals page                                          0.05s  
+  Γ£ô approve travel order                                                 0.05s  
+  Γ£ô reports page loads                                                   0.05s  
+  Γ£ô consolidated report performance                                      0.18s  
+  Γ£ô policies page loads                                                  0.05s  
+  Γ£ô events page loads                                                    0.04s  
+  Γ£ô employees page loads                                                 0.05s  
+  Γ£ô settings page loads                                                  0.04s  
+
+   FAIL  Tests\Feature\RoleBased\RecordsManagerTest
+  Γ£ô records manager dashboard loads                                      0.04s  
+  Γ£ô employees list page                                                  0.05s  
+  Γ£ô create employee                                                      0.05s  
+  Γ£ô update employee                                                      0.06s  
+  Γ£ô deactivate employee                                                  0.05s  
+  Γ£ô bulk employee operations                                             0.19s  
+  Γ£ô departments page loads                                               0.04s  
+  Γ£ô create department                                                    0.04s  
+  Γ¿» update department                                                    0.04s  
+  Γ¿» department hierarchy creation                                        0.03s  
+  Γ£ô access management page                                               0.05s  
+  Γ£ô permission enforcement                                               0.04s  
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\ExampleTest > the application returns a successfulΓÇª    
+  Expected response status code [200] but received 302.
+Failed asserting that 302 is identical to 200.
+
+  at tests\Feature\ExampleTest.php:17
+     13Γûò     public function test_the_application_returns_a_successful_response(): void
+     14Γûò     {
+     15Γûò         $response = $this->get('/');
+     16Γûò 
+  Γ₧£  17Γûò         $response->assertStatus(200);
+     18Γûò     }
+     19Γûò }
+     20Γûò
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\ISO25010\FunctiΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'EMP69d3aa09a0289' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (EMP69d3aa09a0289, 15, 15, 0, 0, 0, 0, 2026-04-06 12:41:45, 2026-04-06 12:41:45))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'EMP69d3aa09a0289' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\ISO25010\FunctiΓÇª  UniqueConstraintViolationException   
+  SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'EMP69d3aa0a33a53' for key 'leave_balances_empno_unique' (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `leave_balances` (`EmpNo`, `VL`, `SL`, `WLNS`, `SPL`, `CTO`, `SP`, `updated_at`, `created_at`) values (EMP69d3aa0a33a53, 15, 15, 3, 7, 0, 3, 2026-04-06 12:41:46, 2026-04-06 12:41:46))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'EMP69d3aa0a33a53' for key 'leave_balances_empno_unique'")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\LeaveManagerTest > bulk cancel by holiday    
+  Bulk cancel by holiday failed: HTTP 500
+Failed asserting that false is true.
+
+  at tests\Feature\RoleBased\LeaveManagerTest.php:314
+    310Γûò             'date'          => $holidayDate,
+    311Γûò             'holiday_title' => 'Test Holiday',
+    312Γûò         ]);
+    313Γûò 
+  Γ₧£ 314Γûò         $this->assertTrue(
+    315Γûò             $response->isSuccessful(),
+    316Γûò             "Bulk cancel by holiday failed: HTTP {$response->getStatusCode()}"
+    317Γûò         );
+    318Γûò     }
+
+  1   tests\Feature\RoleBased\LeaveManagerTest.php:314
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\RecordsManagerTest > updaΓÇª  QueryException   
+  SQLSTATE[HY000]: General error: 1364 Field 'Designation' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: HRIS_test, SQL: insert into `departments` (`DeptCode`, `Dept_name`, `EmpNo`) values (UPD-DEPT, To Be Updated, TEST-90011))
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+    834Γûò             $exceptionType = $this->isUniqueConstraintError($e)
+    835Γûò                 ? UniqueConstraintViolationException::class
+    836Γûò                 : QueryException::class;
+    837Γûò 
+  Γ₧£ 838Γûò             throw new $exceptionType(
+    839Γûò                 $this->getNameWithReadWriteType(),
+    840Γûò                 $query,
+    841Γûò                 $this->prepareBindings($bindings),
+    842Γûò                 $e,
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:838
+
+  2   vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+      NunoMaduro\Collision\Exceptions\TestException::("SQLSTATE[HY000]: General error: 1364 Field 'Designation' doesn't have a default value")
+
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\RoleBased\RecordsManagerTest > department hierarchyΓÇª   
+  Parent department was not created
+Failed asserting that null is not null.
+
+  at tests\Feature\RoleBased\RecordsManagerTest.php:238
+    234Γûò                 );
+    235Γûò             }
+    236Γûò         }
+    237Γûò 
+  Γ₧£ 238Γûò         $this->assertNotNull($parent, 'Parent department was not created');
+    239Γûò     }
+    240Γûò 
+    241Γûò     // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    242Γûò     // 4. Access Management
+
+  1   tests\Feature\RoleBased\RecordsManagerTest.php:238
+
+
+  Tests:    6 failed, 1 incomplete, 297 passed (558 assertions)
+  Duration: 55.85s
+

@@ -1,0 +1,375 @@
+/* =========================================================================
+   PDS — Personal Data Sheet (CS Form No. 212)
+   ========================================================================= */
+
+/* ── Form shell ─────────────────────────────────── */
+
+.pds-form {
+    display: grid;
+    gap: 12px;
+}
+
+.pds-head,
+.pds-section {
+    border: 1px solid #dbe3ed;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 14px;
+}
+
+/* ── Sticky nav ─────────────────────────────────── */
+
+.pds-nav {
+    position: sticky;
+    top: 12px;
+    z-index: 5;
+}
+
+.pds-nav-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pds-nav-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pds-nav-btn.active {
+    background: #0f172a;
+    border-color: #0f172a;
+    color: #ffffff;
+}
+
+.pds-nav-mobile-label,
+.pds-nav-select {
+    display: none;
+}
+
+/* ── Pane visibility (JS-driven) ────────────────── */
+
+.pds-form.js-ready .pds-pane        { display: none; }
+.pds-form.js-ready .pds-pane.active  { display: block; }
+
+/* ── Header ─────────────────────────────────────── */
+
+.pds-kicker {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.pds-head h2 {
+    margin: 4px 0;
+    font-size: 1.2rem;
+    color: #0f172a;
+}
+
+.pds-meta {
+    margin: 0;
+    color: #334155;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.pds-note {
+    margin-top: 10px;
+    border-radius: 10px;
+    padding: 10px 11px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+/* ── Section content ────────────────────────────── */
+
+.pds-section h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    color: #0f172a;
+}
+
+/* ── PDS field-grid (scoped to .pds-form) ──────── */
+
+.pds-form .field-grid       { display: grid; gap: 10px; margin-bottom: 10px; }
+.pds-form .field-grid.two   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pds-form .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pds-form .field-grid.four  { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pds-form .field-grid.six   { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+.pds-form label {
+    display: grid;
+    gap: 5px;
+    font-size: 0.83rem;
+    color: #334155;
+    font-weight: 600;
+}
+
+.pds-form input,
+.pds-form select,
+.pds-form textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 9px;
+    font: inherit;
+    font-size: 0.88rem;
+    color: #0f172a;
+    background: #ffffff;
+}
+
+.pds-form input:focus,
+.pds-form select:focus,
+.pds-form textarea:focus {
+    outline: none;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.pds-form fieldset {
+    border: 1px solid #dbe3ed;
+    border-radius: 10px;
+    padding: 10px;
+    margin: 0;
+}
+
+.pds-form legend {
+    padding: 0 5px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+/* ── Address grid ───────────────────────────────── */
+
+.pds-form .address-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* ── Tables inside PDS ──────────────────────────── */
+
+.pds-form .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+
+.pds-form table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+}
+
+.pds-form caption {
+    text-align: left;
+    padding: 4px 0 8px;
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 0.9rem;
+}
+
+.pds-form th,
+.pds-form td {
+    border: 1px solid #dbe3ed;
+    padding: 6px;
+    vertical-align: top;
+    font-size: 0.82rem;
+    color: #334155;
+}
+
+.pds-form th {
+    background: #f8fafc;
+    font-weight: 700;
+}
+
+/* ── Questions (Section IX) ─────────────────────── */
+
+.pds-form .question-list {
+    display: grid;
+    gap: 10px;
+}
+
+.pds-form .question-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px;
+    background: #f8fafc;
+}
+
+.pds-form .question-item p {
+    margin: 0 0 8px;
+    color: #0f172a;
+}
+
+.pds-form .answer-row {
+    display: grid;
+    grid-template-columns: auto auto minmax(220px, 1fr);
+    gap: 10px;
+    align-items: center;
+}
+
+.pds-form .answer-row label {
+    margin: 0;
+    font-weight: 600;
+}
+
+.pds-form .details-field {
+    display: grid;
+    gap: 5px;
+    font-size: 0.8rem;
+}
+
+/* ── Declaration ────────────────────────────────── */
+
+.declaration-text {
+    margin: 0 0 10px;
+    color: #334155;
+    font-size: 0.88rem;
+}
+
+/* ── Actions ────────────────────────────────────── */
+
+.pds-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    align-items: center;
+}
+
+.pds-save-feedback {
+    font-weight: 500;
+    animation: fadeInOut 3s ease-in-out;
+}
+
+@keyframes fadeInOut {
+    0%   { opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.pds-pane-controls {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.btn.btn-secondary {
+    background: #f8fafc;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+}
+
+/* ── Toggle switch (Present checkbox) ───────────── */
+
+.toggle-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: normal;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-switch input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    width: 36px;
+    height: 20px;
+    background: #ddd;
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.18s ease;
+    flex: 0 0 auto;
+}
+
+.toggle-slider::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.18s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider {
+    background: #28a745;
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider::after {
+    transform: translateX(16px);
+}
+
+.toggle-label {
+    font-size: 0.9rem;
+    color: #333;
+}
+
+/* ── Responsive ─────────────────────────────────── */
+
+@media (max-width: 1100px) {
+    .pds-nav-buttons { display: none; }
+
+    .pds-nav-mobile-label,
+    .pds-nav-select { display: block; }
+
+    .pds-nav-mobile-label {
+        margin-bottom: 6px;
+        font-size: 0.8rem;
+    }
+
+    .pds-form .field-grid.four,
+    .pds-form .field-grid.six {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pds-form .field-grid.three,
+    .pds-form .field-grid.two,
+    .pds-form .address-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pds-form .answer-row {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .pds-actions {
+        flex-direction: column;
+    }
+
+    .pds-actions .btn {
+        width: 100%;
+    }
+
+    .pds-pane-controls {
+        flex-direction: column;
+    }
+
+    .pds-pane-controls .btn {
+        width: 100%;
+    }
+}
