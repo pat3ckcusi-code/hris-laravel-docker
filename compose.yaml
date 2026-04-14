@@ -62,6 +62,22 @@ services:
     networks:
       - hris-network
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: hris-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8091:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-s3cr3t}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hris-network
+
 networks:
   hris-network:
     driver: bridge
