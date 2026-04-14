@@ -18,7 +18,7 @@ return new class extends Migration
             $table->unsignedInteger('pending_alert_threshold')->default(50);
             // Email template
             $table->string('email_template_subject')->default('HRIS Notification');
-            $table->text('email_template_body')->default('This is an automated HRIS update for your request.');
+            $table->text('email_template_body');
             // Signatories
             $table->string('mayor_name')->nullable();
             $table->string('mayor_designation')->nullable();
