@@ -21,6 +21,11 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# Install Node.js for frontend asset building
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /var/www/html
 
@@ -29,6 +34,9 @@ COPY . .
 
 # Install PHP dependencies
 RUN composer install --optimize-autoloader --no-dev --no-interaction --no-progress
+
+# Build frontend assets
+RUN npm ci && npx vite build && rm -rf node_modules
 
 # Ensure storage and cache directories are writable
 RUN chmod -R 775 storage bootstrap/cache
