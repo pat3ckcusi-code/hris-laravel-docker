@@ -39,8 +39,10 @@ RUN composer install --optimize-autoloader --no-dev --no-interaction --no-progre
 RUN npm ci && npx vite build && rm -rf node_modules
 
 # Ensure storage and cache directories are writable
-RUN chmod -R 775 storage bootstrap/cache
+RUN chmod -R 775 storage bootstrap/cache \
+ && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 9000
 
-CMD ["php-fpm"]
+# Fix permissions on bind-mounted storage before starting PHP-FPM
+CMD chown -R www-data:www-data storage bootstrap/cache && php-fpm

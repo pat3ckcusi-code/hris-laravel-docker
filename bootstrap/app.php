@@ -11,6 +11,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: '*');
         $middleware->prepend(\App\Http\Middleware\RejectPathTraversal::class);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\ForcePasswordChange::class);
