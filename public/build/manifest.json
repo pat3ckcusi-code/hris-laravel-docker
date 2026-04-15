@@ -1,0 +1,114 @@
+{
+  "_sweetalert2.esm.all.js": {
+    "file": "assets/js/sweetalert2.esm.all.js",
+    "name": "sweetalert2.esm.all"
+  },
+  "resources/css/aboutus.css": {
+    "file": "assets/css/aboutus.css",
+    "src": "resources/css/aboutus.css",
+    "isEntry": true,
+    "name": "aboutus",
+    "names": [
+      "aboutus.css"
+    ]
+  },
+  "resources/css/app.css": {
+    "file": "assets/css/app.css",
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "name": "app",
+    "names": [
+      "app.css"
+    ]
+  },
+  "resources/css/front_desk.css": {
+    "file": "assets/css/front_desk.css",
+    "src": "resources/css/front_desk.css",
+    "isEntry": true,
+    "name": "front_desk",
+    "names": [
+      "front_desk.css"
+    ]
+  },
+  "resources/css/hr_manager.css": {
+    "file": "assets/css/hr_manager.css",
+    "src": "resources/css/hr_manager.css",
+    "isEntry": true,
+    "name": "hr_manager",
+    "names": [
+      "hr_manager.css"
+    ]
+  },
+  "resources/css/records_manager.css": {
+    "file": "assets/css/records_manager.css",
+    "src": "resources/css/records_manager.css",
+    "isEntry": true,
+    "name": "records_manager",
+    "names": [
+      "records_manager.css"
+    ]
+  },
+  "resources/css/request_document.css": {
+    "file": "assets/css/request_document.css",
+    "src": "resources/css/request_document.css",
+    "isEntry": true,
+    "name": "request_document",
+    "names": [
+      "request_document.css"
+    ]
+  },
+  "resources/css/request_documents.css": {
+    "file": "assets/css/request_documents.css",
+    "src": "resources/css/request_documents.css",
+    "isEntry": true,
+    "name": "request_documents",
+    "names": [
+      "request_documents.css"
+    ]
+  },
+  "resources/js/app.js": {
+    "file": "assets/js/app.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "imports": [
+      "_sweetalert2.esm.all.js"
+    ],
+    "css": [
+      "assets/css/app2.css"
+    ]
+  },
+  "resources/js/front_desk.js": {
+    "file": "assets/js/front_desk.js",
+    "name": "front_desk",
+    "src": "resources/js/front_desk.js",
+    "isEntry": true
+  },
+  "resources/js/hr_manager.js": {
+    "file": "assets/js/hr_manager.js",
+    "name": "hr_manager",
+    "src": "resources/js/hr_manager.js",
+    "isEntry": true,
+    "imports": [
+      "_sweetalert2.esm.all.js"
+    ]
+  },
+  "resources/js/records_manager.js": {
+    "file": "assets/js/records_manager.js",
+    "name": "records_manager",
+    "src": "resources/js/records_manager.js",
+    "isEntry": true
+  },
+  "resources/js/request_document.js": {
+    "file": "assets/js/request_document.js",
+    "name": "request_document",
+    "src": "resources/js/request_document.js",
+    "isEntry": true
+  },
+  "resources/js/request_documents.js": {
+    "file": "assets/js/request_documents.js",
+    "name": "request_documents",
+    "src": "resources/js/request_documents.js",
+    "isEntry": true
+  }
+}
