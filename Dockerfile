@@ -44,5 +44,11 @@ RUN chmod -R 775 storage bootstrap/cache \
 
 EXPOSE 9000
 
-# Fix permissions on bind-mounted storage before starting PHP-FPM
-CMD chown -R www-data:www-data storage bootstrap/cache && php-fpm
+# On container start: install PHP deps if missing, rebuild Vite assets
+# (the repo is bind-mounted over /var/www/html by Komodo, so image-built
+# assets are masked — rebuild at runtime against the current source).
+CMD set -e; \
+    [ -f vendor/autoload.php ] || composer install --optimize-autoloader --no-dev --no-interaction --no-progress; \
+    npm ci --no-audit --no-fund && npm run build; \
+    chown -R www-data:www-data storage bootstrap/cache public/build; \
+    exec php-fpm
