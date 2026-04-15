@@ -1,54 +1,49 @@
-FROM php:8.2-fpm
+# syntax=docker/dockerfile:1.7
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    unzip \
-    libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    libonig-dev \
-    libxml2-dev \
-    libzip-dev \
-    zip \
-    build-essential \
-    pkg-config \
- && docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) \
-    pdo_mysql mbstring gd zip bcmath pcntl
+# Stage 1: build frontend assets with Vite
+FROM node:20-alpine AS assets
+WORKDIR /app
+COPY package.json package-lock.json vite.config.js ./
+RUN npm ci --no-audit --no-fund
+COPY resources ./resources
+COPY public ./public
+RUN npx vite build
 
-# Install Composer
+# Stage 2: PHP-FPM application image
+FROM php:8.2-fpm AS app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl unzip \
+        libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
+        libonig-dev libxml2-dev libzip-dev \
+        zip build-essential pkg-config \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Install Node.js for frontend asset building
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
- && apt-get install -y nodejs \
- && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /var/www/html
 
-# Copy project files
+COPY composer.json composer.lock ./
+RUN composer install --optimize-autoloader --no-dev --no-interaction --no-progress --no-scripts --prefer-dist
+
 COPY . .
+COPY --from=assets /app/public/build ./public/build
 
-# Install PHP dependencies
-RUN composer install --optimize-autoloader --no-dev --no-interaction --no-progress
+RUN composer dump-autoload --optimize --no-dev \
+    && mkdir -p storage/app storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
-# Build frontend assets
-RUN npm ci && npx vite build && rm -rf node_modules
-
-# Ensure storage and cache directories are writable
-RUN chmod -R 775 storage bootstrap/cache \
- && chown -R www-data:www-data storage bootstrap/cache
+COPY docker/app-entrypoint.sh /usr/local/bin/app-entrypoint
+RUN chmod +x /usr/local/bin/app-entrypoint
 
 EXPOSE 9000
+ENTRYPOINT ["app-entrypoint"]
+CMD ["php-fpm"]
 
-# On container start: install PHP deps if missing, rebuild Vite assets
-# (the repo is bind-mounted over /var/www/html by Komodo, so image-built
-# assets are masked — rebuild at runtime against the current source).
-CMD set -e; \
-    [ -f vendor/autoload.php ] || composer install --optimize-autoloader --no-dev --no-interaction --no-progress; \
-    npm ci --no-audit --no-fund && npm run build; \
-    chown -R www-data:www-data storage bootstrap/cache public/build; \
-    exec php-fpm
+# Stage 3: nginx image with public/ baked in
+FROM nginx:stable-alpine AS nginx
+COPY --from=assets /app/public /var/www/html/public
+COPY nginx.conf /etc/nginx/conf.d/default.conf

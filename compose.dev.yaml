@@ -1,0 +1,22 @@
+# Local development overlay.
+# Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build
+#
+# Bind-mounts the source tree over the image so edits are live.
+# Anonymous volumes preserve the image's vendor/ and node_modules/
+# so host state doesn't mask them.
+
+services:
+  app:
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+      - /var/www/html/public/build
+
+  nginx:
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
