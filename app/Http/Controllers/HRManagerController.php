@@ -530,6 +530,8 @@ class HRManagerController extends Controller
         if ($settings) {
             $settings->update($validated);
         } else {
+            $validated['email_template_subject'] ??= '';
+            $validated['email_template_body']    ??= '';
             Setting::create($validated);
         }
 

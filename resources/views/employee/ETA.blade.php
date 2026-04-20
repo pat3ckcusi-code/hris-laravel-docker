@@ -100,6 +100,7 @@
                         <th>Date of Arrival</th>
                         <th>Destination</th>
                         <th>Purpose</th>
+                        <th>Approved By</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>

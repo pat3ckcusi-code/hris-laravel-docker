@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\ResetPasswordController;
+use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentRequestController;
 use App\Http\Controllers\FrontDeskController;
@@ -11,6 +12,14 @@ use App\Http\Controllers\HRManagerController;
 use App\Http\Controllers\LeaveManagerController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\MayorController;
+use App\Http\Controllers\OfficeOrderController;
+use App\Http\Controllers\RecordsManagerController;
+use App\Http\Controllers\TravelOrderController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\Employee\EmployeeAttendanceController;
+use App\Http\Controllers\Employee\EmployeePayslipController;
+use App\Http\Controllers\Employee\EtaController;
+use App\Http\Controllers\Employee\LocatorController;
 use App\Http\Controllers\Payroll\PayrollDashboardController;
 use App\Http\Controllers\Payroll\PayrollRunController;
 use App\Http\Controllers\Payroll\AttendanceController as PayrollAttendanceController;
@@ -26,6 +35,11 @@ use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
 use App\Http\Controllers\Payroll\PayrollSettingsController;
+use App\Mail\LeaveRequestStatusNotification;
+use App\Models\Department;
+use App\Models\LeaveRequest;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -82,31 +96,31 @@ Route::middleware('auth')->group(function () {
         ->name('dashboard.employee.pds');
 
     // Employee Self-Service Modules
-    Route::get('/dashboard/employee/eta-locator', [\App\Http\Controllers\Employee\EtaController::class, 'index'])
+    Route::get('/dashboard/employee/eta-locator', [EtaController::class, 'index'])
         ->name('dashboard.employee.eta');
-    Route::post('/dashboard/employee/eta-locator', [\App\Http\Controllers\Employee\EtaController::class, 'store'])
+    Route::post('/dashboard/employee/eta-locator', [EtaController::class, 'store'])
         ->name('employee.eta.store');
-    Route::get('/dashboard/employee/eta-locator/data', [\App\Http\Controllers\Employee\EtaController::class, 'data'])
+    Route::get('/dashboard/employee/eta-locator/data', [EtaController::class, 'data'])
         ->name('employee.eta.data');
-    Route::get('/dashboard/employee/eta-locator/{eta}/print', [\App\Http\Controllers\Employee\EtaController::class, 'printSingle'])
+    Route::get('/dashboard/employee/eta-locator/{eta}/print', [EtaController::class, 'printSingle'])
         ->name('employee.eta.print.single');
-    Route::post('/dashboard/employee/eta-locator/{eta}/cancel', [\App\Http\Controllers\Employee\EtaController::class, 'cancel'])
+    Route::post('/dashboard/employee/eta-locator/{eta}/cancel', [EtaController::class, 'cancel'])
         ->name('employee.eta.cancel');
-    Route::get('/dashboard/employee/leave/{leave}/print', [\App\Http\Controllers\LeaveRequestController::class, 'printSingle'])
+    Route::get('/dashboard/employee/leave/{leave}/print', [LeaveRequestController::class, 'printSingle'])
         ->name('employee.leave.print.single');
-    Route::get('/dashboard/employee/eta-locator/print', [\App\Http\Controllers\Employee\EtaController::class, 'print'])
+    Route::get('/dashboard/employee/eta-locator/print', [EtaController::class, 'print'])
         ->name('employee.eta.print');
-    Route::get('/dashboard/employee/locator', [\App\Http\Controllers\Employee\LocatorController::class, 'index'])
+    Route::get('/dashboard/employee/locator', [LocatorController::class, 'index'])
         ->name('dashboard.employee.locator');
-    Route::post('/dashboard/employee/locator', [\App\Http\Controllers\Employee\LocatorController::class, 'store'])
+    Route::post('/dashboard/employee/locator', [LocatorController::class, 'store'])
         ->name('employee.locator.store');
-    Route::get('/dashboard/employee/locator/{locator}/edit', [\App\Http\Controllers\Employee\LocatorController::class, 'edit'])
+    Route::get('/dashboard/employee/locator/{locator}/edit', [LocatorController::class, 'edit'])
         ->name('employee.locator.edit');
-    Route::put('/dashboard/employee/locator/{locator}', [\App\Http\Controllers\Employee\LocatorController::class, 'update'])
+    Route::put('/dashboard/employee/locator/{locator}', [LocatorController::class, 'update'])
         ->name('employee.locator.update');
-    Route::get('/dashboard/employee/locator/data', [\App\Http\Controllers\Employee\LocatorController::class, 'data'])
+    Route::get('/dashboard/employee/locator/data', [LocatorController::class, 'data'])
         ->name('employee.locator.data');
-    Route::get('/dashboard/employee/locator/{locator}/print', [\App\Http\Controllers\Employee\LocatorController::class, 'printSingle'])
+    Route::get('/dashboard/employee/locator/{locator}/print', [LocatorController::class, 'printSingle'])
         ->name('employee.locator.print.single');
     Route::get('/dashboard/employee/request-documents', [DocumentRequestController::class, 'index'])
         ->name('dashboard.employee.request-documents');
@@ -134,36 +148,36 @@ Route::middleware('auth')->group(function () {
         ->name('dashboard.employee.pds.export');
 
     // Employee Self-Service: Payslips & Attendance (read-only, scoped to logged-in user)
-    Route::get('/dashboard/employee/payslips', [\App\Http\Controllers\Employee\EmployeePayslipController::class, 'index'])
+    Route::get('/dashboard/employee/payslips', [EmployeePayslipController::class, 'index'])
         ->name('dashboard.employee.payslips');
-    Route::get('/dashboard/employee/attendance', [\App\Http\Controllers\Employee\EmployeeAttendanceController::class, 'index'])
+    Route::get('/dashboard/employee/attendance', [EmployeeAttendanceController::class, 'index'])
         ->name('dashboard.employee.attendance');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');
-    Route::get('/dashboard/records-manager/employees', [\App\Http\Controllers\RecordsManagerController::class, 'index'])
+    Route::get('/dashboard/records-manager/employees', [RecordsManagerController::class, 'index'])
         ->name('dashboard.records-manager.employees');
     Route::get('/dashboard/records-manager/departments', [DashboardController::class, 'recordsManagerDepartments'])
         ->name('dashboard.records-manager.departments');
     Route::get('/dashboard/records-manager/access', [DashboardController::class, 'recordsManagerAccess'])
         ->name('dashboard.records-manager.access');
-    Route::post('/dashboard/records-manager/users', [\App\Http\Controllers\RecordsManagerController::class, 'store'])
+    Route::post('/dashboard/records-manager/users', [RecordsManagerController::class, 'store'])
         ->name('dashboard.records-manager.users.store');
     Route::post('/dashboard/records-manager/departments', [DashboardController::class, 'storeDepartmentRecord'])
         ->name('dashboard.records-manager.departments.store');
     Route::put('/dashboard/records-manager/departments/{department}', [DashboardController::class, 'updateDepartmentRecord'])
         ->name('dashboard.records-manager.departments.update');
-    Route::put('/dashboard/records-manager/users/{user}', [\App\Http\Controllers\RecordsManagerController::class, 'update'])
+    Route::put('/dashboard/records-manager/users/{user}', [RecordsManagerController::class, 'update'])
         ->name('dashboard.records-manager.users.update');
-    Route::delete('/dashboard/records-manager/users/{user}', [\App\Http\Controllers\RecordsManagerController::class, 'destroy'])
+    Route::delete('/dashboard/records-manager/users/{user}', [RecordsManagerController::class, 'destroy'])
         ->name('dashboard.records-manager.users.destroy');
-    Route::post('/records-manager/employees/{id}/reset-password', [\App\Http\Controllers\RecordsManagerController::class, 'resetPassword'])
+    Route::post('/records-manager/employees/{id}/reset-password', [RecordsManagerController::class, 'resetPassword'])
         ->name('records-manager.employees.reset-password');
 
     // Self-Service: Change Password (all authenticated users)
-    Route::get('/user/change-password', [\App\Http\Controllers\UserController::class, 'showChangePassword'])
+    Route::get('/user/change-password', [UserController::class, 'showChangePassword'])
         ->name('user.change-password.form');
-    Route::post('/user/change-password', [\App\Http\Controllers\UserController::class, 'changePassword'])
+    Route::post('/user/change-password', [UserController::class, 'changePassword'])
         ->name('user.change-password');
 
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
@@ -189,56 +203,58 @@ Route::middleware(['auth', 'role:department-head'])->group(function () {
 // Administrative Officer routes (mirrors Department Head, excludes Self-Service)
 Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::prefix('admin-officer')->name('admin-officer.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\AdministrativeOfficerController::class, 'index'])->name('index');
-        Route::get('/pending-requests', [\App\Http\Controllers\AdministrativeOfficerController::class, 'pendingRequests'])->name('pending-requests');
-        Route::get('/approved-requests', [\App\Http\Controllers\AdministrativeOfficerController::class, 'approvedRequests'])->name('approved-requests');
-        Route::get('/statistics', [\App\Http\Controllers\AdministrativeOfficerController::class, 'statistics'])->name('statistics');
-        Route::get('/statistics/data', [\App\Http\Controllers\AdministrativeOfficerController::class, 'statisticsData'])->name('statistics.data');
-        Route::get('/statistics/details', [\App\Http\Controllers\AdministrativeOfficerController::class, 'statisticsDetails'])->name('statistics.details');
-        Route::get('/travel-orders', [\App\Http\Controllers\AdministrativeOfficerController::class, 'travelOrders'])->name('travel-orders');
-        Route::get('/travel-orders/{id}', [\App\Http\Controllers\AdministrativeOfficerController::class, 'showTravelOrder'])->name('travel-orders.show');
-        Route::get('/office-orders', [\App\Http\Controllers\AdministrativeOfficerController::class, 'officeOrders'])->name('office-orders');
-        Route::get('/filed-travel-orders', [\App\Http\Controllers\AdministrativeOfficerController::class, 'filedTravelOrders'])->name('filed-travel-orders');
-        Route::get('/filed-office-orders', [\App\Http\Controllers\AdministrativeOfficerController::class, 'filedOfficeOrders'])->name('filed-office-orders');
+        Route::get('/', [AdministrativeOfficerController::class, 'index'])->name('index');
+        Route::get('/pending-requests', [AdministrativeOfficerController::class, 'pendingRequests'])->name('pending-requests');
+        Route::get('/approved-requests', [AdministrativeOfficerController::class, 'approvedRequests'])->name('approved-requests');
+        Route::get('/statistics', [AdministrativeOfficerController::class, 'statistics'])->name('statistics');
+        Route::get('/statistics/data', [AdministrativeOfficerController::class, 'statisticsData'])->name('statistics.data');
+        Route::get('/statistics/details', [AdministrativeOfficerController::class, 'statisticsDetails'])->name('statistics.details');
+        Route::get('/travel-orders', [AdministrativeOfficerController::class, 'travelOrders'])->name('travel-orders');
+        Route::get('/travel-orders/{id}', [AdministrativeOfficerController::class, 'showTravelOrder'])->name('travel-orders.show');
+        Route::get('/office-orders', [AdministrativeOfficerController::class, 'officeOrders'])->name('office-orders');
+        Route::get('/filed-travel-orders', [AdministrativeOfficerController::class, 'filedTravelOrders'])->name('filed-travel-orders');
+        Route::get('/filed-office-orders', [AdministrativeOfficerController::class, 'filedOfficeOrders'])->name('filed-office-orders');
     });
 
     // Administrative Officer approval actions
-    Route::post('/admin-officer/leave/{id}/approve', [\App\Http\Controllers\AdministrativeOfficerController::class, 'approve'])->name('admin-officer.leave.approve');
-    Route::post('/admin-officer/leave/{id}/reject', [\App\Http\Controllers\AdministrativeOfficerController::class, 'reject'])->name('admin-officer.leave.reject');
-    Route::post('/admin-officer/eta/{id}/approve', [\App\Http\Controllers\AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
-    Route::post('/admin-officer/eta/{id}/reject', [\App\Http\Controllers\AdministrativeOfficerController::class, 'rejectEta'])->name('admin-officer.eta.reject');
-    Route::post('/admin-officer/locator/{id}/approve', [\App\Http\Controllers\AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
-    Route::post('/admin-officer/locator/{id}/reject', [\App\Http\Controllers\AdministrativeOfficerController::class, 'rejectLocator'])->name('admin-officer.locator.reject');
+    Route::post('/admin-officer/leave/{id}/approve', [AdministrativeOfficerController::class, 'approve'])->name('admin-officer.leave.approve');
+    Route::post('/admin-officer/leave/{id}/reject', [AdministrativeOfficerController::class, 'reject'])->name('admin-officer.leave.reject');
+    Route::post('/admin-officer/eta/{id}/approve', [AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
+    Route::post('/admin-officer/eta/{id}/reject', [AdministrativeOfficerController::class, 'rejectEta'])->name('admin-officer.eta.reject');
+    Route::post('/admin-officer/locator/{id}/approve', [AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
+    Route::post('/admin-officer/locator/{id}/reject', [AdministrativeOfficerController::class, 'rejectLocator'])->name('admin-officer.locator.reject');
 });
 
 // Shared dashboard API endpoints (accessible by both department-head and administrative-officer)
 Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-officer'])->group(function () {
-    Route::get('/api/department/dashboard-metrics', [\App\Http\Controllers\DepartmentHeadController::class, 'dashboardMetrics'])->name('api.department.dashboard-metrics');
-    Route::get('/api/department/kpis', [\App\Http\Controllers\DepartmentHeadController::class, 'dashboardMetrics'])->name('api.department.kpis');
-    Route::get('/api/department/employees-on-duty', [\App\Http\Controllers\DepartmentHeadController::class, 'employeesOnDuty'])->name('api.department.employees-on-duty');
-    Route::get('/api/department/leave-requests', [\App\Http\Controllers\DepartmentHeadController::class, 'leaveRequestsList'])->name('api.department.leave-requests');
-    Route::get('/api/department/locator-requests', [\App\Http\Controllers\DepartmentHeadController::class, 'locatorRequestsList'])->name('api.department.locator-requests');
-    Route::get('/api/department/eta-requests', [\App\Http\Controllers\DepartmentHeadController::class, 'etaRequestsList'])->name('api.department.eta-requests');
+    Route::get('/api/department/dashboard-metrics', [DepartmentHeadController::class, 'dashboardMetrics'])->name('api.department.dashboard-metrics');
+    Route::get('/api/department/kpis', [DepartmentHeadController::class, 'dashboardMetrics'])->name('api.department.kpis');
+    Route::get('/api/department/employees-on-duty', [DepartmentHeadController::class, 'employeesOnDuty'])->name('api.department.employees-on-duty');
+    Route::get('/api/department/leave-requests', [DepartmentHeadController::class, 'leaveRequestsList'])->name('api.department.leave-requests');
+    Route::get('/api/department/locator-requests', [DepartmentHeadController::class, 'locatorRequestsList'])->name('api.department.locator-requests');
+    Route::get('/api/department/eta-requests', [DepartmentHeadController::class, 'etaRequestsList'])->name('api.department.eta-requests');
     // Travel & Office Order API endpoints (shared)
-    Route::get('/api/department-employees', [\App\Http\Controllers\TravelOrderController::class, 'getDepartmentEmployees'])->name('api.department-employees');
-    Route::post('/api/travel-orders', [\App\Http\Controllers\TravelOrderController::class, 'store'])->name('api.travel-orders');
-    Route::get('/api/department/travel-orders', [\App\Http\Controllers\TravelOrderController::class, 'index'])->name('api.department.travel-orders');
-    Route::get('/api/travel-orders/{id}', [\App\Http\Controllers\TravelOrderController::class, 'show'])->name('api.travel-orders.show');
-    Route::post('/api/office-orders', [\App\Http\Controllers\OfficeOrderController::class, 'store'])->name('api.office-orders');
-    Route::get('/api/department/office-orders', [\App\Http\Controllers\OfficeOrderController::class, 'index'])->name('api.department.office-orders');
-    Route::get('/api/office-orders/{id}', [\App\Http\Controllers\OfficeOrderController::class, 'show'])->name('api.office-orders.show');
+    Route::get('/api/department-employees', [TravelOrderController::class, 'getDepartmentEmployees'])->name('api.department-employees');
+    Route::post('/api/travel-orders', [TravelOrderController::class, 'store'])->name('api.travel-orders');
+    Route::get('/api/department/travel-orders', [TravelOrderController::class, 'index'])->name('api.department.travel-orders');
+    Route::get('/api/travel-orders/{id}', [TravelOrderController::class, 'show'])->name('api.travel-orders.show');
+    Route::post('/api/office-orders', [OfficeOrderController::class, 'store'])->name('api.office-orders');
+    Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
+    Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
 });
 
-// Department Head-only actions
-Route::middleware(['auth', 'role:department-head'])->group(function () {
-    Route::post('/department-head/leave/{id}/approve', [\App\Http\Controllers\DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
-    Route::post('/department-head/leave/{id}/reject', [\App\Http\Controllers\DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
+// Department Head and Administrative Officer shared actions
+Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
+    // Leave approval actions
+    Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
+    Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
+    
     // ETA and Locator actions
-    Route::post('/department-head/eta/{id}/approve', [\App\Http\Controllers\DepartmentHeadController::class, 'approveEta'])->name('department-head.eta.approve');
-    Route::post('/department-head/eta/{id}/reject', [\App\Http\Controllers\DepartmentHeadController::class, 'rejectEta'])->name('department-head.eta.reject');
+    Route::post('/department-head/eta/{id}/approve', [DepartmentHeadController::class, 'approveEta'])->name('department-head.eta.approve');
+    Route::post('/department-head/eta/{id}/reject', [DepartmentHeadController::class, 'rejectEta'])->name('department-head.eta.reject');
 
-    Route::post('/department-head/locator/{id}/approve', [\App\Http\Controllers\DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
-    Route::post('/department-head/locator/{id}/reject', [\App\Http\Controllers\DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');
+    Route::post('/department-head/locator/{id}/approve', [DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
+    Route::post('/department-head/locator/{id}/reject', [DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');
 });
 
 // Leave Manager pages
@@ -491,23 +507,23 @@ Route::get('/dev/preview-leave-email', function () {
         abort(404);
     }
 
-    $employee = \App\Models\User::first();
-    $leave = \App\Models\LeaveRequest::latest()->first();
+    $employee = User::first();
+    $leave = LeaveRequest::latest()->first();
     if (! $employee || ! $leave) {
         return 'No sample employee or leave request found in the database.';
     }
 
     if (! empty($employee->Dept_id)) {
-        $dept = \App\Models\Department::find($employee->Dept_id);
+        $dept = Department::find($employee->Dept_id);
         $employee->department_name = $dept->Dept_name ?? null;
     }
 
     $formatted = [
-        'filed' => \Carbon\Carbon::parse($leave->created_at)->format('l, F j, Y'),
-        'start' => \Carbon\Carbon::parse($leave->start_date)->format('l, F j, Y'),
-        'end' => \Carbon\Carbon::parse($leave->end_date)->format('l, F j, Y'),
+        'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
+        'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
+        'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
     ];
 
-    $mailable = new \App\Mail\LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved');
+    $mailable = new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved');
     return $mailable->render();
 })->name('dev.preview.leave.email');

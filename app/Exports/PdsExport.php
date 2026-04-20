@@ -9,10 +9,8 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Events\AfterSheet;
-use PhpOffice\PhpSpreadsheet\Style\Protection;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
@@ -353,10 +351,10 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
                 $sheet->getStyle($range)->getProtection()->setLocked(true);
 
                 // Also set cell-level locked flag for each cell in the used range to ensure no cells remain unlocked
-                $colCount = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+                $colCount = Coordinate::columnIndexFromString($highestColumn);
                 for ($r = 1; $r <= $highestRow; $r++) {
                     for ($c = 1; $c <= $colCount; $c++) {
-                        $cellAddr = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c) . $r;
+                        $cellAddr = Coordinate::stringFromColumnIndex($c) . $r;
                         $sheet->getStyle($cellAddr)->getProtection()->setLocked(true);
                     }
                 }

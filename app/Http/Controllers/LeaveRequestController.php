@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\LeaveRequest;
+use App\Models\LeaveDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
 use setasign\Fpdi\Fpdi;
 use App\Models\Department;
@@ -63,7 +63,7 @@ class LeaveRequestController extends Controller
             abort(403);
         }
 
-        return $this->leaveRequestService->generatePdfResponse($leave);
+        return $this->leaveRequestService->generateExcelResponse($leave);
     }
 
     public function store(Request $request)
@@ -87,7 +87,7 @@ class LeaveRequestController extends Controller
 
             
             $conflicts = [];
-            $existing = \App\Models\LeaveDate::whereIn('leave_date', $dates)
+            $existing = LeaveDate::whereIn('leave_date', $dates)
                 ->where('is_cancelled', false)
                 ->whereHas('leaveRequest', function($q) {
                     $q->where('user_id', Auth::id())
@@ -307,7 +307,7 @@ class LeaveRequestController extends Controller
 
             // create per-day records in leave_dates
             foreach ($dates as $d) {
-                \App\Models\LeaveDate::create([
+                LeaveDate::create([
                     'leave_request_id' => $leave->id,
                     'leave_date' => $d,
                     'is_lwop' => false,
@@ -436,7 +436,7 @@ class LeaveRequestController extends Controller
             $interval = new \DateInterval('P1D');
             $range = new \DatePeriod($periodStart, $interval, (clone $periodEnd)->modify('+1 day'));
             foreach ($range as $dt) {
-                \App\Models\LeaveDate::create([
+                LeaveDate::create([
                     'leave_request_id' => $leave->id,
                     'leave_date' => $dt->format('Y-m-d'),
                     'is_lwop' => false,

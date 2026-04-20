@@ -6,12 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Locator;
 use App\Models\Department;
 use App\Models\User;
+use App\Services\LocatorExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
-use setasign\Fpdi\Fpdi;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\FileLocatorOfficialNotification;
 use App\Mail\FileLocatorPersonalNotification;
@@ -139,7 +138,7 @@ class LocatorController extends Controller
         return redirect()->route('dashboard.employee.locator')->with('success', 'Locator filed successfully.');
     }
 
-    public function printSingle(Locator $locator)
+    public function printSingle(Locator $locator, LocatorExportService $exportService)
     {
         $user = Auth::user();
 
@@ -178,96 +177,7 @@ class LocatorController extends Controller
 
         if ($locator->status !== 'approved') abort(403);
 
-        // Use the locator owner (applicant) for printed applicant details
-        $owner = $locator->user ?? User::find($locator->user_id);
-
-        $fullNameParts = [];
-        if ($owner) {
-            if (!empty($owner->first_name)) $fullNameParts[] = $owner->first_name;
-            if (!empty($owner->middle_name)) $fullNameParts[] = $owner->middle_name;
-            if (!empty($owner->last_name)) $fullNameParts[] = $owner->last_name;
-            if (empty($fullNameParts) && !empty($owner->name)) $fullNameParts[] = $owner->name;
-        }
-        $fullName = implode(' ', $fullNameParts);
-
-        $travelDate = $locator->travel_date ? (\Illuminate\Support\Carbon::parse($locator->travel_date)->toFormattedDateString()) : '';
-
-        $dept = '';
-        if ($owner && !empty($owner->Dept_id)) {
-            $department = Department::find($owner->Dept_id);
-            $dept = $department ? ($department->Dept_name ?? '') : '';
-        }
-
-        $templatePath = storage_path('app/templates/LOCATOR.pdf');
-        if (!file_exists($templatePath)) {
-            return view('employee.locator-print', ['locators' => collect([$locator])]);
-        }
-
-        $pdf = new Fpdi();
-        $pdf->setSourceFile($templatePath);
-        $tplId = $pdf->importPage(1);
-        $pdf->AddPage();
-        $pdf->useTemplate($tplId);
-
-        $pdf->SetFont('Arial','B',9);
-        $pdf->SetXY(20, 36); $pdf->Write(5, $fullName);
-        $pdf->SetFont('Arial','',9);
-        $pdf->SetXY(75, 36); $pdf->Write(5, $travelDate);
-        $pdf->SetFont('Arial','B',9);
-        if (strtolower($locator->application_type) === 'official') {
-            $pdf->SetXY(36, 75); $pdf->Write(5, 'X');
-        } else {
-            $pdf->SetXY(68, 75); $pdf->Write(5, 'X');
-        }
-        $pdf->SetFont('Arial','',9);
-        $pdf->SetXY(22, 81); $pdf->Write(5, $locator->location ?? '');
-        $pdf->SetXY(72, 64); $pdf->Write(5, $locator->intended_departure_time ?? '');
-        $pdf->SetXY(72, 69); $pdf->Write(5, $locator->intended_arrival_time ?? '');
-        $pdf->SetXY(10, 88); $pdf->MultiCell(120,5,$locator->detail ?? '');
-
-        //double
-        $pdf->SetFont('Arial','B',9);
-        $pdf->SetXY(110, 36); $pdf->Write(5, $fullName);
-        $pdf->SetFont('Arial','',9);
-        $pdf->SetXY(175, 36); $pdf->Write(5, $travelDate);
-        $pdf->SetFont('Arial','B',9);
-        if (strtolower($locator->application_type) === 'official') {
-            $pdf->SetXY(136, 75); $pdf->Write(5, 'X');
-        } else {
-            $pdf->SetXY(168, 75); $pdf->Write(5, 'X');
-        }
-        $pdf->SetFont('Arial','',9);
-        $pdf->SetXY(122, 81); $pdf->Write(5, $locator->location ?? '');
-        $pdf->SetXY(175, 64); $pdf->Write(5, $locator->intended_departure_time ?? '');
-        $pdf->SetXY(175, 69); $pdf->Write(5, $locator->intended_arrival_time ?? '');
-        $pdf->SetXY(110, 88); $pdf->MultiCell(120,5,$locator->detail ?? '');
-
-        $deptHeadName = null;
-        if ($owner && !empty($owner->Dept_id)) {
-            $department = Department::find($owner->Dept_id);
-            if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                $head = User::where('EmpNo', $department->EmpNo)->first();
-                if ($head) {
-                    $parts = [];
-                    if (!empty($head->first_name)) $parts[] = $head->first_name;
-                    if (!empty($head->middle_name)) $parts[] = $head->middle_name;
-                    if (!empty($head->last_name)) $parts[] = $head->last_name;
-                    if (empty($parts) && !empty($head->name)) $parts[] = $head->name;
-                    $deptHeadName = implode(' ', $parts);
-                }
-            }
-        }
-        if ($deptHeadName) {
-            $pdf->SetFont('Arial','B',9);
-            $pdf->SetXY(34, 111); $pdf->Write(5, $deptHeadName);
-            $pdf->SetXY(132, 111); $pdf->Write(5, $deptHeadName);
-            $pdf->SetFont('Arial','',9);
-        }
-
-        $pdfContent = $pdf->Output('S');
-        return response($pdfContent, 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="locator-'. $locator->id .'.pdf"');
+        return $exportService->generateExcelResponse($locator);
     }
 
     public function data(Request $request)

@@ -4,9 +4,7 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\PayrollRun;
-use App\Models\PayrollDetail;
 use App\Models\PayrollAuditLog;
-use App\Models\User;
 use App\Services\PayrollComputationService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;

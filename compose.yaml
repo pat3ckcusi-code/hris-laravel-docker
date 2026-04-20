@@ -13,6 +13,7 @@ services:
     volumes:
       - storage_app:/var/www/html/storage/app
       - storage_logs:/var/www/html/storage/logs
+      - ./storage/app/templates:/var/www/html/storage/app/templates   # host-bind: always use latest template
     networks: [hris-network]
     depends_on:
       db:

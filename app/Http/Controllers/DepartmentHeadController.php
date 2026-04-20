@@ -8,18 +8,16 @@ use App\Models\User;
 use App\Models\LeaveRequest;
 use App\Models\Eta;
 use App\Models\Locator;
+use App\Models\TravelOrder;
+use App\Models\LeaveDate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\Rule;
-use Illuminate\Http\Response;
-use Illuminate\Http\Request as HttpRequest;
-use App\Http\Controllers\LeaveRequestController as LRController;
 use Carbon\Carbon;
 use App\Services\DepartmentService;
 use App\Services\DepartmentHeadService;
+use App\Services\LeaveRequestService;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Mail\LeaveRequestStatusNotification;
@@ -30,9 +28,9 @@ class DepartmentHeadController extends Controller
 {
     private DepartmentService $departmentService;
     private DepartmentHeadService $departmentHeadService;
-    private \App\Services\LeaveRequestService $leaveRequestService;
+    private LeaveRequestService $leaveRequestService;
 
-    public function __construct(DepartmentService $departmentService, DepartmentHeadService $departmentHeadService, \App\Services\LeaveRequestService $leaveRequestService)
+    public function __construct(DepartmentService $departmentService, DepartmentHeadService $departmentHeadService, LeaveRequestService $leaveRequestService)
     {
         $this->departmentService = $departmentService;
         $this->departmentHeadService = $departmentHeadService;
@@ -192,7 +190,7 @@ class DepartmentHeadController extends Controller
 
         $cacheKey = "dh_stats_{$dept->Dept_id}_{$month}_{$year}";
         $rows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($dept, $month, $year) {
-            $employees = \App\Models\User::where('Dept_id', $dept->Dept_id)->get();
+            $employees = User::where('Dept_id', $dept->Dept_id)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
             // Batch aggregate queries instead of per-employee N+1
@@ -212,7 +210,7 @@ class DepartmentHeadController extends Controller
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
-            $leaveCounts = \App\Models\LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
+            $leaveCounts = LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
                 ->whereMonth('start_date', $month)
@@ -282,7 +280,7 @@ class DepartmentHeadController extends Controller
         }
 
         if (strtoupper($type) === 'LEAVE') {
-            $records = \App\Models\LeaveRequest::where('user_id', $user->id)
+            $records = LeaveRequest::where('user_id', $user->id)
                 ->where('status', 'approved')
                 ->whereMonth('start_date', $month)
                 ->whereYear('start_date', $year)
@@ -346,12 +344,12 @@ class DepartmentHeadController extends Controller
         }
 
         $today = Carbon::today()->toDateString();
-        $employees = \App\Models\User::where('Dept_id', $dept->Dept_id)->get();
+        $employees = User::where('Dept_id', $dept->Dept_id)->get();
         $employeeIds = $employees->pluck('id')->toArray();
 
         // Employees on approved leave today — check individual leave_dates rows first,
         // then fall back to approved requests whose date range covers today.
-        $onLeaveViaDates = \App\Models\LeaveDate::where('leave_date', $today)
+        $onLeaveViaDates = LeaveDate::where('leave_date', $today)
             ->where('is_cancelled', false)
             ->whereHas('leaveRequest', fn ($q) => $q->where('status', 'approved')->whereIn('user_id', $employeeIds))
             ->with('leaveRequest:id,user_id')
@@ -430,7 +428,7 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
 
-        $rows = \App\Models\LeaveRequest::with('user')
+        $rows = LeaveRequest::with('user')
             ->whereIn('user_id', $employeeIds)
             ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
             ->orderBy('created_at', 'desc')
@@ -526,12 +524,12 @@ class DepartmentHeadController extends Controller
     public function showTravelOrder(Request $request, $id)
     {
         $user = $request->user();
-        $order = \App\Models\TravelOrder::find($id);
+        $order = TravelOrder::find($id);
         if (!$order) return redirect()->back()->with('error', 'Travel order not found.');
 
         // collect employees for this order
         $empNos = DB::table('travel_order_employees')->where('travel_order_id', $order->id)->pluck('emp_no')->toArray();
-        $employees = \App\Models\User::whereIn('EmpNo', $empNos)->get();
+        $employees = User::whereIn('EmpNo', $empNos)->get();
 
         return view('department-head.travel-order-show', compact('order', 'employees'));
     }
@@ -556,6 +554,25 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
+        // Capture audit information before approval
+        $leaveId = $leave->id;
+        $approverId = $user->id;
+        $approverName = $user->name;
+        $approverAccessLevel = $user->access_level;
+        
+        Log::info('Leave request approved by user', [
+            'leave_id' => $leaveId,
+            'approver_id' => $approverId,
+            'approver_name' => $approverName,
+            'approver_access_level' => $approverAccessLevel,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
+
         return $this->leaveRequestService->approveLeave($request, $id);
     }
 
@@ -578,8 +595,25 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('success', 'ETA already approved.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
         $eta->status = 'approved';
+        $eta->approved_by = $user->id;
+        $eta->approved_role = $normalizedRole;
+        $eta->approved_at = now();
         $eta->save();
+        
+        // Audit log with role normalization
+        Log::info('ETA approved by user', [
+            'eta_id' => $eta->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
+            'approver_access_level' => $user->access_level,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
 
         // notify employee about ETA approval
         try {
@@ -613,7 +647,7 @@ class DepartmentHeadController extends Controller
         return redirect()->back()->with('success', 'ETA approved.');
     }
 
-    public function rejectEta(HttpRequest $request, $id)
+    public function rejectEta(Request $request, $id)
     {
         $user = Auth::user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
@@ -628,8 +662,25 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
         $eta->status = 'declined';
+        $eta->approved_by = $user->id;
+        $eta->approved_role = $normalizedRole;
+        $eta->approved_at = now();
         $eta->save();
+        
+        // Audit log with role normalization
+        Log::info('ETA rejected by user', [
+            'eta_id' => $eta->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
+            'approver_access_level' => $user->access_level,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
 
         // notify employee about ETA rejection
         try {
@@ -682,8 +733,22 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('success', 'Locator already approved.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
         $locator->status = 'approved';
         $locator->save();
+        
+        // Audit log with role normalization
+        Log::info('Locator approved by user', [
+            'locator_id' => $locator->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
+            'approver_access_level' => $user->access_level,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
 
         // notify employee about Locator approval
         try {
@@ -724,7 +789,7 @@ class DepartmentHeadController extends Controller
         return redirect()->back()->with('success', 'Locator approved.');
     }
 
-    public function rejectLocator(HttpRequest $request, $id)
+    public function rejectLocator(Request $request, $id)
     {
         $user = Auth::user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
@@ -739,8 +804,22 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
         $locator->status = 'declined';
         $locator->save();
+        
+        // Audit log with role normalization
+        Log::info('Locator rejected by user', [
+            'locator_id' => $locator->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
+            'approver_access_level' => $user->access_level,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
 
         // notify employee about Locator rejection
         try {
@@ -781,7 +860,7 @@ class DepartmentHeadController extends Controller
         return redirect()->back()->with('success', 'Locator request rejected.');
     }
 
-    public function reject(HttpRequest $request, $id)
+    public function reject(Request $request, $id)
     {
         $request->validate([
             'rejection_notes' => ['required', 'string', 'max:2000'],
@@ -806,6 +885,19 @@ class DepartmentHeadController extends Controller
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
+        // Get normalized role for audit logging
+        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        
+        Log::info('Leave request rejected by user', [
+            'leave_id' => $leave->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
+            'approver_access_level' => $user->access_level,
+            'approver_normalized_role' => $normalizedRole,
+            'employee_id' => $employee->id,
+            'employee_dept_id' => $employee->Dept_id,
+        ]);
+
         $leave->status = 'declined';
         $leave->rejection_notes = $request->input('rejection_notes');
         $leave->save();
@@ -814,7 +906,7 @@ class DepartmentHeadController extends Controller
         try {
             $employee = $leave->user;
             if ($employee && !empty($employee->Dept_id)) {
-                $empDept = \App\Models\Department::find($employee->Dept_id);
+                $empDept = Department::find($employee->Dept_id);
                 if ($empDept) $employee->department_name = $empDept->Dept_name ?? null;
             }
             $formatted = [
@@ -857,5 +949,17 @@ class DepartmentHeadController extends Controller
         }
 
         return redirect()->back()->with('success', 'Leave request rejected.');
+    }
+
+    /**
+     * Normalize a role string for consistent comparison.
+     * Converts hyphens/underscores to spaces and lowercases.
+     */
+    private function normalizeRole(string $role): string
+    {
+        $normalized = strtolower(trim($role));
+        $normalized = str_replace(['_', '-'], ' ', $normalized);
+
+        return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
     }
 }

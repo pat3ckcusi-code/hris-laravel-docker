@@ -14,10 +14,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Throwable;
 use Illuminate\Validation\Rule;
+use App\Models\HRAuditTrail;
 use App\Services\PdsService;
 use App\Services\RecordsService;
 
@@ -145,6 +144,57 @@ class DashboardController extends Controller
 
             $pds->saveSectionData($sectionKey, $sectionData);
 
+            // Synchronize name fields with users table when personal info is saved
+            if ($sectionKey === 'pds-personal-info' && is_array($sectionData)) {
+                $nameUpdates = [];
+
+                $surname = $sectionData['personal[surname]'] ?? null;
+                if ($surname !== null && trim($surname) !== '') {
+                    $nameUpdates['last_name'] = trim($surname);
+                }
+
+                $firstName = $sectionData['personal[first_name]'] ?? null;
+                if ($firstName !== null && trim($firstName) !== '') {
+                    $nameUpdates['first_name'] = trim($firstName);
+                }
+
+                $middleName = $sectionData['personal[middle_name]'] ?? null;
+                if ($middleName !== null && trim($middleName) !== '') {
+                    $nameUpdates['middle_name'] = trim($middleName);
+                }
+
+                $nameExt = $sectionData['personal[name_extension]'] ?? null;
+                if ($nameExt !== null && trim($nameExt) !== '') {
+                    $nameUpdates['name_extension'] = trim($nameExt);
+                }
+
+                if (!empty($nameUpdates)) {
+                    // Rebuild the composite "name" column: LAST, FIRST MIDDLE EXT
+                    $last = $nameUpdates['last_name'] ?? $user->last_name ?? '';
+                    $first = $nameUpdates['first_name'] ?? $user->first_name ?? '';
+                    $middle = $nameUpdates['middle_name'] ?? $user->middle_name ?? '';
+                    $ext = $nameUpdates['name_extension'] ?? $user->name_extension ?? '';
+                    $fullName = trim("$last, $first $middle $ext");
+                    $fullName = preg_replace('/\s+/', ' ', $fullName);
+                    $nameUpdates['name'] = $fullName;
+
+                    $user->forceFill($nameUpdates)->save();
+                }
+            }
+
+            // Audit log
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'PDS',
+                'action' => 'save_draft',
+                'target_type' => 'App\\Models\\Pds',
+                'target_id' => $pds->id,
+                'details' => [
+                    'section_key' => $sectionKey,
+                    'EmpNo' => $user->EmpNo,
+                ],
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Section saved successfully.',
@@ -167,6 +217,18 @@ class DashboardController extends Controller
         $spreadsheet = $pdsService->exportToExcel($user);
 
         $filename = 'PDS_' . strtoupper(str_replace(' ', '_', (string) $user->name)) . '_' . now()->format('Y-m-d') . '.xlsx';
+
+        HRAuditTrail::create([
+            'actor_user_id' => $user->id,
+            'module' => 'PDS',
+            'action' => 'export',
+            'target_type' => 'App\\Models\\Pds',
+            'target_id' => Pds::where('user_id', $user->id)->value('id'),
+            'details' => [
+                'EmpNo' => $user->EmpNo,
+                'filename' => $filename,
+            ],
+        ]);
 
         return response()->streamDownload(
             function () use ($spreadsheet): void {
@@ -210,7 +272,7 @@ class DashboardController extends Controller
     public function recordsManagerDepartments(Request $request): View
     {
         $this->ensureRecordsManager($request);
-        [$employees] = app(\App\Services\RecordsService::class)->collections();
+        [$employees] = app(RecordsService::class)->collections();
         $departmentEmployeeCounts = $employees
             ->groupBy('Dept_id')
             ->map(fn ($group) => $group->count());
@@ -253,6 +315,13 @@ class DashboardController extends Controller
         $assignedDepartmentsCount = count($assignedDepartmentIds);
         $unassignedDepartmentsCount = $totalDepartments - $assignedDepartmentsCount;
 
+        $departmentHeadUsers = User::query()
+            ->whereRaw('LOWER(access_level) = ?', ['department head'])
+            ->whereNotNull('EmpNo')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'EmpNo', 'last_name', 'first_name', 'middle_name']);
+
         return view('dashboards.records-manager-departments', [
             'user' => $request->user(),
             'departments' => $departments,
@@ -263,6 +332,7 @@ class DashboardController extends Controller
             'unassignedDepartmentsCount' => $unassignedDepartmentsCount,
             'search' => $search,
             'statusFilter' => $statusFilter,
+            'departmentHeadUsers' => $departmentHeadUsers,
         ]);
     }
 
@@ -274,13 +344,24 @@ class DashboardController extends Controller
             // DeptCode may be omitted to allow server-side auto-generation
             'DeptCode' => ['nullable', 'string', 'max:255', Rule::unique('departments', 'DeptCode')],
             'Dept_name' => ['required', 'string', 'max:255', Rule::unique('departments', 'Dept_name')],
-            'EmpNo' => ['required', 'string', 'max:255'],
+            'EmpNo' => ['required', 'string', 'max:255', 'exists:users,EmpNo'],
             'Designation' => ['required', 'string', 'max:255'],
             'parent_dept_id' => ['nullable', 'exists:departments,Dept_id'],
         ], [
             'DeptCode.unique' => 'Department code already exists. Please use a different code.',
             'Dept_name.unique' => 'Department name already exists. Please use a different name.',
+            'EmpNo.exists' => 'Invalid EmpNo: no user found with this employee number.',
         ]);
+
+        // Verify the selected employee has department head role
+        $storeUser = User::query()->where('EmpNo', $validated['EmpNo'])->first(['id', 'access_level']);
+        if ($storeUser && mb_strtolower(trim((string) $storeUser->access_level)) !== 'department head') {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'EmpNo' => 'Invalid EmpNo: must belong to a valid user with department head role.',
+                ]);
+        }
 
         $validated = $this->normalizeDepartmentTextInput($validated);
 
@@ -317,13 +398,41 @@ class DashboardController extends Controller
                 'max:255',
                 Rule::unique('departments', 'Dept_name')->ignore($department->Dept_id, 'Dept_id'),
             ],
-            'EmpNo' => ['required', 'string', 'max:255'],
+            'EmpNo' => ['nullable', 'string', 'max:255'],
             'Designation' => ['required', 'string', 'max:255'],
             'parent_dept_id' => ['nullable', 'exists:departments,Dept_id'],
         ], [
             'DeptCode.unique' => 'Department code already exists. Please use a different code.',
             'Dept_name.unique' => 'Department name already exists. Please use a different name.',
         ]);
+
+        // Validate EmpNo against users table when provided
+        $empNo = $validated['EmpNo'] ?? null;
+        if ($empNo !== null && $empNo !== '') {
+            $empNoUpper = mb_strtoupper(trim($empNo));
+            $matchingUser = User::query()
+                ->where('EmpNo', $empNoUpper)
+                ->first(['id', 'EmpNo', 'access_level']);
+
+            if (! $matchingUser) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'EmpNo' => 'Invalid EmpNo: no user found with this employee number.',
+                    ]);
+            }
+
+            if (mb_strtolower(trim((string) $matchingUser->access_level)) !== 'department head') {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'EmpNo' => 'Invalid EmpNo: must belong to a valid user with department head role.',
+                    ]);
+            }
+        } else {
+            // Null-safe: keep the existing EmpNo when none is provided
+            $empNo = $department->EmpNo;
+        }
 
         if ((int) ($validated['parent_dept_id'] ?? 0) === (int) $department->Dept_id) {
             return back()
@@ -349,13 +458,29 @@ class DashboardController extends Controller
             }
         }
 
+        $oldEmpNo = $department->EmpNo;
+
         $department->forceFill([
             'DeptCode' => $validated['DeptCode'],
             'Dept_name' => $validated['Dept_name'],
-            'EmpNo' => $validated['EmpNo'],
+            'EmpNo' => $empNo ? mb_strtoupper(trim($empNo)) : $oldEmpNo,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,
         ])->save();
+
+        HRAuditTrail::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'module' => 'Department Management',
+            'action' => 'update',
+            'target_type' => 'Department',
+            'target_id' => $department->Dept_id,
+            'details' => [
+                'department_id' => $department->Dept_id,
+                'old_emp_no' => $oldEmpNo,
+                'new_emp_no' => $department->EmpNo,
+                'updated_at' => now()->toDateTimeString(),
+            ],
+        ]);
 
         return back()->with('status', 'Department updated successfully.');
     }

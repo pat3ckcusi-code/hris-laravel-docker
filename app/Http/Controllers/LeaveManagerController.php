@@ -18,11 +18,28 @@ use Illuminate\Http\JsonResponse;
 class LeaveManagerController extends Controller
 {
     /**
+     * Allowed access levels for leave balance management.
+     */
+    private const BALANCE_ACCESS_LEVELS = ['department head', 'hr manager', 'employee'];
+
+    /**
      * Show the manage leave balance page.
      */
     public function manageBalance(Request $request)
     {
-        $balances = LeaveBalance::with('user')->orderBy('EmpNo')->get();
+        $allowed = self::BALANCE_ACCESS_LEVELS;
+
+        $balances = LeaveBalance::with('user')
+            ->whereHas('user', function ($query) use ($allowed) {
+                $query->whereRaw(
+                    "LOWER(REPLACE(REPLACE(access_level, '_', ' '), '-', ' ')) IN (" .
+                    implode(',', array_fill(0, count($allowed), '?')) . ")",
+                    $allowed
+                );
+            })
+            ->orderBy('EmpNo')
+            ->get();
+
         $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
 
         return view('leave-manager.manage-balance', [

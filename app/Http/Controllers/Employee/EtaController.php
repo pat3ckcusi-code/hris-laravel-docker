@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Employee;
 
 use App\Http\Controllers\Controller;
 use App\Models\Eta;
+use App\Models\HRAuditTrail;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use App\Models\Department;
 use App\Models\User;
-use setasign\Fpdi\Fpdi;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\EtaNotification;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Illuminate\Support\Carbon;
 
 class EtaController extends Controller
 {
@@ -201,8 +204,8 @@ class EtaController extends Controller
         }
         $fullName = implode(' ', $fullNameParts);
 
-        $departure = $eta->departure_date ? (\Illuminate\Support\Carbon::parse($eta->departure_date)->toFormattedDateString()) : '';
-        $arrival = $eta->arrival_date ? (\Illuminate\Support\Carbon::parse($eta->arrival_date)->toFormattedDateString()) : '';
+        $departure = $eta->departure_date ? Carbon::parse($eta->departure_date)->toFormattedDateString() : '';
+        $arrival = $eta->arrival_date ? Carbon::parse($eta->arrival_date)->toFormattedDateString() : '';
 
         $dept = '';
         if ($owner && !empty($owner->Dept_id)) {
@@ -211,58 +214,17 @@ class EtaController extends Controller
         }
         $position = $owner->designation ?? $owner->AcctName ?? '';
         $destination = $eta->destination ?? '';
-        $dateapproved = $eta->updated_at ? $eta->updated_at->toDateString() : now()->toDateString();
+        $dateApproved = $eta->approved_at
+            ? Carbon::parse($eta->approved_at)->toFormattedDateString()
+            : ($eta->updated_at ? $eta->updated_at->toFormattedDateString() : now()->toFormattedDateString());
         $purpose = $eta->purpose ?? '';
         $reason = $eta->purpose_details ?? $eta->purpose ?? '';
 
-        $templatePath = storage_path('app/templates/ETA.pdf');
-        if (!file_exists($templatePath)) {
-            $etas = collect([$eta]);
-            return view('employee.eta-print', compact('etas'))->with('filter', 'single');
-        }
-
-        $pdf = new Fpdi();
-        $pdf->setSourceFile($templatePath);
-        $tplId = $pdf->importPage(1);
-        $pdf->AddPage();
-        $pdf->useTemplate($tplId);
-
-        // Fill fields
-        $pdf->SetFont('Arial', '', 9);
-        $pdf->SetXY(42, 43); $pdf->Write(5, $fullName);
-        $pdf->SetXY(127, 49); $pdf->Write(5, $departure);
-        $pdf->SetXY(127, 59); $pdf->Write(5, $arrival);
-        $pdf->SetXY(42, 49); $pdf->Write(5, $dept);
-        $pdf->SetXY(42, 54); $pdf->Write(5, $position);
-        $pdf->SetXY(42, 59); $pdf->Write(5, $destination);
-        $pdf->SetFont('Arial','B',9);
-        $pdf->SetXY(130, 147); $pdf->Write(5, $dateapproved);
-
-        // Purpose checkboxes
-        $pdf->SetFont('Arial', 'B', 14);
-        $etaPurposes = [
-            'Audit-Inspection-Licensing' => [62, 64],
-            'Client Support'              => [111, 64],
-            'Conference'                  => [145, 64],
-            'Construction Repair Maintenance' => [14, 69],
-            'Economic Development'        => [78, 69],
-            'Legal-Law Enforcement'       => [14, 74],
-            'Legislator'                  => [61, 74],
-            'Meeting'                     => [95, 74],
-            'Training'                    => [128, 74],
-            'Seminar'                     => [161, 74],
-            'General Expense/Other'       => [125, 69]
-        ];
-
-        if (isset($etaPurposes[$purpose])) {
-            [$x, $y] = $etaPurposes[$purpose];
-            $pdf->SetXY($x, $y);
-            $pdf->Write(5,'X');
-        }
-        // Department head
-        $deptHeadName = null;
-        if (!empty($user->Dept_id)) {
-            $department = Department::find($user->Dept_id);
+        // Resolve department head name and designation
+        $deptHeadName = '';
+        $department = null;
+        if ($owner && !empty($owner->Dept_id)) {
+            $department = Department::find($owner->Dept_id);
             if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                 $head = User::where('EmpNo', $department->EmpNo)->first();
                 if ($head) {
@@ -275,20 +237,133 @@ class EtaController extends Controller
                 }
             }
         }
-        if ($deptHeadName) {
-            $pdf->SetFont('Arial','B',9);
-            $pdf->SetXY(20, 148); $pdf->Write(5, $deptHeadName);
-        }
-        $pdf->SetFont('Arial','B',11);
-        $pdf->SetXY(40, 131); $pdf->Write(11,'X');
-        $pdf->SetFont('Arial','',11);
-        $pdf->SetXY(23,84);
-        $pdf->MultiCell(115,5,$reason);
 
-        $pdfContent = $pdf->Output('S');
-        return response($pdfContent, 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="eta-'. $eta->id .'.pdf"');
+        // Resolve Mayor/Vice Mayor executive signatory
+        $settings = Setting::first();
+        [$execName, $execDesignation] = $this->resolveExecutiveSignatory($department, $settings);
+
+        // Load Excel template
+        $templatePath = storage_path('app/templates/ETA.xlsx');
+        if (!file_exists($templatePath)) {
+            $etas = collect([$eta]);
+            return view('employee.eta-print', compact('etas'))->with('filter', 'single');
+        }
+
+        $spreadsheet = IOFactory::load($templatePath);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Purpose checkbox mapping: purpose => [checkboxCell for copy1, checkboxCell for copy2]
+        $purposeCheckboxes = [
+            'Audit-Inspection-Licensing'      => ['F10', 'F40'],
+            'Client Support'                  => ['K10', 'K40'],
+            'Conference'                      => ['M10', 'M40'],
+            'Construction Repair Maintenance' => ['B11', 'B41'],
+            'Economic Development'            => ['G11', 'G41'],
+            'General Expense/Other'           => ['K11', 'K41'],
+            'Legal-Law Enforcement'           => ['B12', 'B42'],
+            'Legislator'                      => ['F12', 'F42'],
+            'Meeting'                         => ['I12', 'I42'],
+            'Training'                        => ['K12', 'K42'],
+            'Seminar'                         => ['M12', 'M42'],
+        ];
+
+        // Fill both copies of the form (rows 1-30 and rows 31-60)
+        // --- Copy 1 (top half) ---
+        $sheet->setCellValue('D6', $fullName);
+        $sheet->setCellValue('D7', $dept);
+        $sheet->setCellValue('D8', $position);
+        $sheet->setCellValue('D9', $destination);
+        $sheet->setCellValue('K6', $departure);
+        $sheet->setCellValue('K8', $arrival);
+        $sheet->setCellValue('A14', $reason);
+        if (isset($purposeCheckboxes[$purpose])) {
+            $sheet->setCellValue($purposeCheckboxes[$purpose][0], '✓');
+        }
+        // Approval section
+        if ($eta->status === 'approved') {
+            $sheet->setCellValue('D24', '✓');
+        }
+        if ($deptHeadName) {
+            $sheet->setCellValue('A22', $deptHeadName);
+        }
+        $sheet->setCellValue('J27', $dateApproved);
+
+        // --- Copy 2 (bottom half, +30 row offset) ---
+        $sheet->setCellValue('D36', $fullName);
+        $sheet->setCellValue('D37', $dept);
+        $sheet->setCellValue('D38', $position);
+        $sheet->setCellValue('D39', $destination);
+        $sheet->setCellValue('K36', $departure);
+        $sheet->setCellValue('K38', $arrival);
+        $sheet->setCellValue('A44', $reason);
+        if (isset($purposeCheckboxes[$purpose])) {
+            $sheet->setCellValue($purposeCheckboxes[$purpose][1], '✓');
+        }
+        // Approval section
+        if ($eta->status === 'approved') {
+            $sheet->setCellValue('D54', '✓');
+        }
+        if ($deptHeadName) {
+            $sheet->setCellValue('A52', $deptHeadName);
+        }
+        $sheet->setCellValue('J58', $dateApproved);
+
+        // Apply sheet protection
+        $lockApplied = false;
+        try {
+            $this->protectAllSheets($spreadsheet, $owner);
+            $lockApplied = true;
+        } catch (\Exception $e) {
+            Log::warning('ETA sheet protection failed', [
+                'eta_id' => $eta->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Audit log
+        $filename = 'ETA-' . $eta->id . '-' . now()->format('Ymd-His') . '.xlsx';
+
+        Log::info('ETA print action (excel)', [
+            'eta_id' => $eta->id,
+            'printed_by' => $user->id,
+            'role' => $user->access_level ?? 'unknown',
+            'dept_head_name' => $deptHeadName,
+            'executive_signatory' => $execName,
+            'lock_applied' => $lockApplied,
+            'format_preserved' => true,
+            'filename' => $filename,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => $user->id,
+            'module' => 'ETA',
+            'action' => 'print',
+            'target_type' => 'eta',
+            'target_id' => $eta->id,
+            'details' => [
+                'eta_id' => $eta->id,
+                'employee_name' => $fullName,
+                'role' => $user->access_level ?? 'unknown',
+                'dept_head_name' => $deptHeadName,
+                'executive_signatory' => $execName,
+                'lock_applied' => $lockApplied,
+                'filename' => $filename,
+            ],
+        ]);
+
+        // Stream directly to browser without persisting to disk
+        return response()->streamDownload(
+            function () use ($spreadsheet): void {
+                $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+                $writer->save('php://output');
+                $spreadsheet->disconnectWorksheets();
+            },
+            $filename,
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]
+        );
     }
 
     public function data(Request $request)
@@ -362,5 +437,106 @@ class EtaController extends Controller
         }
 
         return redirect()->route('dashboard.employee.eta')->with('success', 'ETA cancelled.');
+    }
+
+    /**
+     * Walk the department parent chain to the root department.
+     */
+    private function resolveRootDepartment(?Department $dept, int $maxDepth = 10): ?Department
+    {
+        if (!$dept) {
+            return null;
+        }
+
+        $current = $dept;
+        $visited = [];
+
+        while ($current->parent_dept_id && $maxDepth-- > 0) {
+            if (in_array($current->parent_dept_id, $visited, true)) {
+                break;
+            }
+            $visited[] = $current->Dept_id;
+            $parent = Department::where('Dept_id', $current->parent_dept_id)->first();
+            if (!$parent) {
+                break;
+            }
+            $current = $parent;
+        }
+
+        return $current;
+    }
+
+    /**
+     * Check if a department falls under the Vice Mayor's office.
+     */
+    private function isUnderViceMayor(?Department $dept): bool
+    {
+        $root = $this->resolveRootDepartment($dept);
+        if (!$root) {
+            return false;
+        }
+
+        $name = strtolower(str_replace(['-', '_'], ' ', trim($root->Dept_name ?? '')));
+
+        return str_contains($name, 'vice mayor') || str_contains($name, 'vice-mayor');
+    }
+
+    /**
+     * Resolve the executive signatory (Mayor or Vice Mayor) for a department.
+     *
+     * @return array{0: string, 1: string} [name, designation]
+     */
+    private function resolveExecutiveSignatory(?Department $dept, ?Setting $settings): array
+    {
+        if (!$settings) {
+            return ['', ''];
+        }
+
+        if ($this->isUnderViceMayor($dept)) {
+            return [
+                $settings->vice_mayor_name ?? '',
+                $settings->vice_mayor_designation ?? 'City Vice Mayor',
+            ];
+        }
+
+        return [
+            $settings->mayor_name ?? '',
+            $settings->mayor_designation ?? 'City Mayor',
+        ];
+    }
+
+    /**
+     * Lock all sheets in the spreadsheet to prevent editing.
+     */
+    private function protectAllSheets(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet, ?User $owner): void
+    {
+        $first = $owner->first_name ?? ($owner->firstname ?? '');
+        $last  = $owner->last_name ?? ($owner->lastname ?? '');
+        $password = strtoupper($first . substr((string) $last, 0, 1));
+
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            // NOTE: We intentionally skip bulk getStyle($range)->setLocked() here.
+            // All cells are locked by default in Excel when sheet protection is
+            // enabled. Calling getStyle() on the entire range forces PhpSpreadsheet
+            // to create explicit style objects per cell, which destroys the
+            // inherited template formatting (fonts, borders, alignment, colours).
+            $protection = $sheet->getProtection();
+            $protection->setSheet(true);
+            $protection->setPassword($password);
+            $protection->setSort(false);
+            $protection->setInsertRows(false);
+            $protection->setInsertColumns(false);
+            $protection->setFormatCells(false);
+            $protection->setFormatColumns(false);
+            $protection->setFormatRows(false);
+            $protection->setDeleteRows(false);
+            $protection->setDeleteColumns(false);
+            $protection->setAutoFilter(false);
+            $protection->setPivotTables(false);
+            $protection->setObjects(false);
+            $protection->setScenarios(false);
+            $protection->setSelectLockedCells(false);
+            $protection->setSelectUnlockedCells(false);
+        }
     }
 }

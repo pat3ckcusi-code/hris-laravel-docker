@@ -5,6 +5,41 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string|null $leave_type
+ * @property string|null $start_date
+ * @property string|null $end_date
+ * @property string|null $reason
+ * @property string $status
+ * @property string|null $detailed_status
+ * @property string|null $rejection_notes
+ * @property float|null $total_days
+ * @property float|null $paid_days
+ * @property float|null $lwop_days
+ * @property string|null $date_filed
+ * @property string|null $details_location
+ * @property string|null $details_location_specify
+ * @property string|null $details_sick_illness
+ * @property string|null $details_sick_treatment
+ * @property float|null $balance_vacation_leave
+ * @property float|null $balance_sick_leave
+ * @property float|null $balance_wellness_leave
+ * @property float|null $balance_solo_parent_leave
+ * @property float|null $balance_special_leave_privilege
+ * @property int|null $approved_by
+ * @property string|null $approved_role
+ * @property \Illuminate\Support\Carbon|null $approved_at
+ * @property string|null $remarks
+ * @property string|null $action_remarks
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\User|null $user
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\LeaveDate> $leaveDates
+ *
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class LeaveRequest extends Model
 {
     use HasFactory;

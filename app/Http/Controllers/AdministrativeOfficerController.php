@@ -8,11 +8,11 @@ use App\Models\User;
 use App\Models\LeaveRequest;
 use App\Models\Eta;
 use App\Models\Locator;
+use App\Models\TravelOrder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request as HttpRequest;
 use Carbon\Carbon;
 use App\Services\DepartmentService;
 use App\Services\DepartmentHeadService;
@@ -453,7 +453,7 @@ class AdministrativeOfficerController extends Controller
     public function showTravelOrder(Request $request, $id)
     {
         $user = $request->user();
-        $order = \App\Models\TravelOrder::find($id);
+        $order = TravelOrder::find($id);
         if (!$order) return redirect()->back()->with('error', 'Travel order not found.');
 
         $empNos = DB::table('travel_order_employees')->where('travel_order_id', $order->id)->pluck('emp_no')->toArray();
@@ -537,7 +537,7 @@ class AdministrativeOfficerController extends Controller
         return redirect()->back()->with('success', 'ETA approved.');
     }
 
-    public function rejectEta(HttpRequest $request, $id)
+    public function rejectEta(Request $request, $id)
     {
         $user = Auth::user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
@@ -640,7 +640,7 @@ class AdministrativeOfficerController extends Controller
         return redirect()->back()->with('success', 'Locator approved.');
     }
 
-    public function rejectLocator(HttpRequest $request, $id)
+    public function rejectLocator(Request $request, $id)
     {
         $user = Auth::user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
@@ -693,7 +693,7 @@ class AdministrativeOfficerController extends Controller
         return redirect()->back()->with('success', 'Locator request rejected.');
     }
 
-    public function reject(HttpRequest $request, $id)
+    public function reject(Request $request, $id)
     {
         $request->validate([
             'rejection_notes' => ['required', 'string', 'max:2000'],

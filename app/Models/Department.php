@@ -7,6 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $Dept_id
+ * @property string|null $DeptCode
+ * @property string|null $Dept_name
+ * @property string|null $EmpNo
+ * @property string|null $Designation
+ * @property int|null $parent_dept_id
+ * @property-read \App\Models\Department|null $parent
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Department> $children
+ *
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class Department extends Model
 {
     use HasFactory;

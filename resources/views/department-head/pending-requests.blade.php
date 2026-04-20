@@ -402,9 +402,42 @@ function confirmApproveEta(id) {
         window.Swal.fire({ title: 'Approve ETA?', icon: 'question', showCancelButton: true, confirmButtonText: 'Approve' })
         .then((r) => {
             if (r.isConfirmed) {
-                fetch(form.action, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: new URLSearchParams({ _token: token }) })
-                .then(res => res.json()).then(data => Swal.fire({ icon: 'success', text: data.message || 'Approved' }).then(()=> location.reload()))
-                .catch(()=> Swal.fire({ icon: 'error', text: 'Failed to approve' }));
+                console.log('[ETA Approval] Submitting request to:', form.action);
+                fetch(form.action, { 
+                    method: 'POST', 
+                    headers: { 
+                        'X-CSRF-TOKEN': token, 
+                        'X-Requested-With': 'XMLHttpRequest', 
+                        'Accept': 'application/json' 
+                    }, 
+                    body: new URLSearchParams({ _token: token }) 
+                })
+                .then(res => {
+                    console.log('[ETA Approval] Response status:', res.status);
+                    if (!res.ok) {
+                        console.error('[ETA Approval] HTTP error, status:', res.status);
+                        return res.json().then(data => {
+                            console.error('[ETA Approval] Error response body:', data);
+                            throw new Error(data.message || `HTTP ${res.status}: ${res.statusText}`);
+                        }).catch(err => {
+                            console.error('[ETA Approval] Failed to parse error response:', err);
+                            throw err;
+                        });
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    console.log('[ETA Approval] Success response:', data);
+                    Swal.fire({ icon: 'success', text: data.message || 'Approved' }).then(()=> location.reload());
+                })
+                .catch(err => {
+                    console.error('[ETA Approval] Request failed:', err.message || err);
+                    Swal.fire({ 
+                        icon: 'error', 
+                        title: 'Approval Failed',
+                        text: err.message || 'Failed to approve ETA. Please check console for details.' 
+                    });
+                });
             }
         });
     } else { if (confirm('Approve this ETA?') && form) form.submit(); }

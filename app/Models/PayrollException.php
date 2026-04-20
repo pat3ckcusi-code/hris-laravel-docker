@@ -5,6 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $payroll_run_id
+ * @property string|null $type
+ * @property string|null $description
+ * @property bool $resolved_flag
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\PayrollRun|null $payrollRun
+ *
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class PayrollException extends Model
 {
     use HasFactory;

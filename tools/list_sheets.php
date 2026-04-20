@@ -1,5 +1,5 @@
 <?php
-$zip='C:\xampp\htdocs\HRIS\storage\app\templates\PDS.xlsx';
+$zip='C:\hris-laravel-docker\storage\app\templates\PDS.xlsx';
 $z=new ZipArchive();
 if($z->open($zip)===true){
     $s = $z->getFromName('xl/workbook.xml');

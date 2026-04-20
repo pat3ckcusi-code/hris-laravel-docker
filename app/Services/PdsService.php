@@ -8,6 +8,9 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Protection;
+use Illuminate\Support\Facades\Log;
 
 class PdsService
 {
@@ -25,15 +28,30 @@ class PdsService
         $pdsData = $pds->getAllSectionData();
 
         $templatePath = storage_path('app/templates/PDS.xlsx');
+
+        // Clear PHP's file-stat and realpath caches so PHP-FPM always reads the
+        // latest template from the bind-mounted host directory.
+        clearstatcache(true);
+
         if (!is_file($templatePath)) {
             throw new \RuntimeException('PDS template file is missing.');
         }
 
+        $templateVersion = md5_file($templatePath);
+
+        // Load template via IOFactory — this preserves all cell formatting,
+        // merged cells, styles, and sheet structure from the .xlsx file.
         $spreadsheet = IOFactory::load($templatePath);
         $this->removeInvalidDefinedNames($spreadsheet);
         $this->removeExtraSheets($spreadsheet, ['C1', 'C2', 'C3', 'C4']);
         $this->fillCscPdsTemplate($spreadsheet, $user, $pdsData);
         $this->protectAllSheets($spreadsheet, $user);
+
+        Log::info('PDS exported', [
+            'user_id' => $user->id,
+            'EmpNo' => $user->EmpNo,
+            'template_version' => $templateVersion,
+        ]);
 
         return $spreadsheet;
     }
@@ -762,8 +780,8 @@ class PdsService
         if ($value === '✓') {
             $styleArray = [
                 'alignment' => [
-                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
-                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
                 ],
                 'font' => [
                     'name' => 'Arial',
@@ -838,8 +856,8 @@ class PdsService
         $topLeft = $start;
         if ($preserve !== '') {
             $sheet->setCellValue($topLeft, $preserve);
-            $sheet->getStyle($topLeft)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle($topLeft)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+            $sheet->getStyle($topLeft)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle($topLeft)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
             $sheet->getStyle($topLeft)->getAlignment()->setWrapText(true);
         }
     }
@@ -860,7 +878,7 @@ class PdsService
             $highestCol = $sheet->getHighestColumn();
             $range = 'A1:' . $highestCol . $highestRow;
             $sheet->getStyle($range)->getProtection()->setLocked(
-                \PhpOffice\PhpSpreadsheet\Style\Protection::PROTECTION_PROTECTED
+                Protection::PROTECTION_PROTECTED
             );
 
             // Enable sheet protection with password

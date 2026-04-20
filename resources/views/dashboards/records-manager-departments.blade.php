@@ -69,7 +69,14 @@
 
             <label>
                 Reference Employee No.
-                <input type="text" name="EmpNo" value="{{ old('EmpNo') }}" data-uppercase-input required>
+                <select name="EmpNo" required>
+                    <option value="">-- Select Department Head --</option>
+                    @foreach ($departmentHeadUsers as $deptHead)
+                        <option value="{{ $deptHead->EmpNo }}" @selected(old('EmpNo') === $deptHead->EmpNo)>
+                            {{ $deptHead->EmpNo }} — {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
+                        </option>
+                    @endforeach
+                </select>
             </label>
 
             <label>
@@ -130,7 +137,14 @@
 
             <label>
                 Reference Employee No.
-                <input type="text" name="EmpNo" id="updateDeptEmpNo" value="{{ old('EmpNo') }}" data-uppercase-input required>
+                <select name="EmpNo" id="updateDeptEmpNo">
+                    <option value="">-- Select Department Head --</option>
+                    @foreach ($departmentHeadUsers as $deptHead)
+                        <option value="{{ $deptHead->EmpNo }}" @selected(old('EmpNo') === $deptHead->EmpNo)>
+                            {{ $deptHead->EmpNo }} — {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
+                        </option>
+                    @endforeach
+                </select>
             </label>
 
             <label>

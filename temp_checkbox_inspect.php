@@ -1,7 +1,11 @@
 <?php
 require __DIR__ . '/vendor/autoload.php';
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+
 $path = __DIR__ . '/storage/app/templates/csc-form-212-template.xlsx';
-$spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+$spreadsheet = IOFactory::load($path);
 $sheet = $spreadsheet->getSheetByName('C1');
 $ranges = [
   ['A10','S18'],
@@ -9,12 +13,12 @@ $ranges = [
 foreach ($ranges as [$start,$end]) {
   [$startCol,$startRow] = [preg_replace('/\d+/','',$start),(int)preg_replace('/\D+/','',$start)];
   [$endCol,$endRow] = [preg_replace('/\d+/','',$end),(int)preg_replace('/\D+/','',$end)];
-  $startIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($startCol);
-  $endIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($endCol);
+  $startIndex = Coordinate::columnIndexFromString($startCol);
+  $endIndex = Coordinate::columnIndexFromString($endCol);
   for ($r=$startRow; $r<=$endRow; $r++) {
     echo "ROW $r\n";
     for ($c=$startIndex; $c<=$endIndex; $c++) {
-      $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c);
+      $col = Coordinate::stringFromColumnIndex($c);
       $coord = $col.$r;
       $value = $sheet->getCell($coord)->getValue();
       $locked = $sheet->getStyle($coord)->getProtection()->getLocked();

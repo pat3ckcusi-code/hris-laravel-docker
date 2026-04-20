@@ -10,7 +10,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
 use Throwable;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Notifications\EmployeeDefaultPasswordNotification;
+use App\Notifications\PasswordResetByAdminNotification;
 
 class RecordsManagerController extends Controller
 {
@@ -147,7 +148,7 @@ class RecordsManagerController extends Controller
         ]);
 
         try {
-            $newUser->notify(new \App\Notifications\EmployeeDefaultPasswordNotification($defaultPassword));
+            $newUser->notify(new EmployeeDefaultPasswordNotification($defaultPassword));
         } catch (Throwable $exception) {
             return response()->json(['success' => false, 'message' => 'Could not send credentials email. Account not created.'], 500);
         }
@@ -235,7 +236,7 @@ class RecordsManagerController extends Controller
         ])->save();
 
         try {
-            $employee->notify(new \App\Notifications\PasswordResetByAdminNotification($temporaryPassword));
+            $employee->notify(new PasswordResetByAdminNotification($temporaryPassword));
         } catch (Throwable $exception) {
             if ($request->expectsJson()) {
                 return response()->json(['status' => 'error', 'message' => 'Password was reset but the email could not be sent. Please inform the employee manually.'], 500);

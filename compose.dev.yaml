@@ -1,22 +1,284 @@
-# Local development overlay.
-# Usage: docker compose -f compose.yaml -f compose.dev.yaml up --build
+# =============================================================================
+# HRIS — Local Development Stack  (standalone)
+# =============================================================================
+# Usage:
+#   docker compose -f compose.dev.yaml up --build
+#   docker compose -f compose.dev.yaml down          # stop, keep volumes
+#   docker compose -f compose.dev.yaml down -v        # stop + remove volumes
 #
-# Bind-mounts the source tree over the image so edits are live.
-# Anonymous volumes preserve the image's vendor/ and node_modules/
-# so host state doesn't mask them.
+# Prerequisites:
+#   - Docker Engine >= 24 with Compose V2 plugin
+#   - Copy .env.example → .env and populate secrets (or rely on defaults below)
+#
+# Service map:
+#   ┌──────────┐   ┌───────┐   ┌────────┐   ┌───────────┐
+#   │  nginx   │──▶│  app  │──▶│   db   │   │  mailpit  │
+#   │ :8090    │   │ :9000 │   │ :3306  │   │ :8025/1025│
+#   └──────────┘   └───┬───┘   └────────┘   └───────────┘
+#                      │       ┌────────────┐
+#                      └──────▶│   queue    │
+#                              └────────────┘
+#   ┌──────────┐   ┌─────────────┐
+#   │  vite    │   │ phpmyadmin  │
+#   │ :5173    │   │ :8091       │
+#   └──────────┘   └─────────────┘
+# =============================================================================
 
+name: hris-dev
+
+# ─── Shared logging anchor ──────────────────────────────────────────────────
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    tag: "{{.Name}}"
+
+# ─── Shared env block for PHP services (app + queue) ────────────────────────
+x-php-env: &php-env
+  APP_NAME:         "${APP_NAME:-HRIS}"
+  APP_ENV:          local
+  APP_DEBUG:        "true"
+  APP_URL:          "http://localhost:${NGINX_PORT:-8090}"
+  APP_KEY:          "${APP_KEY:-}"
+  LOG_CHANNEL:      stderr
+  LOG_LEVEL:        debug
+  DB_CONNECTION:    mysql
+  DB_HOST:          db
+  DB_PORT:          "3306"
+  DB_DATABASE:      "${DB_DATABASE:-hris}"
+  DB_USERNAME:      "${DB_USERNAME:-laravel_user}"
+  DB_PASSWORD:      "${DB_PASSWORD:-laravel_pass}"
+  SESSION_DRIVER:   database
+  CACHE_STORE:      database
+  QUEUE_CONNECTION: database
+  MAIL_MAILER:      smtp
+  MAIL_HOST:        mailpit
+  MAIL_PORT:        "1025"
+  MAIL_USERNAME:    ""
+  MAIL_PASSWORD:    ""
+  MAIL_FROM_ADDRESS: "${MAIL_FROM_ADDRESS:-noreply@hris.local}"
+  MAIL_FROM_NAME:   "${MAIL_FROM_NAME:-HRIS Dev}"
+
+# =============================================================================
+#  SERVICES
+# =============================================================================
 services:
+
+  # ── Backend: PHP-FPM (Laravel) ────────────────────────────────────────────
   app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    image: hris-app:dev
+    container_name: hris-dev-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - APP_ENV=local
-      - APP_DEBUG=true
+      <<: *php-env
+    volumes:
+      - .:/var/www/html                          # live source mount
+      - /var/www/html/vendor                     # keep image vendor/
+      - /var/www/html/node_modules               # keep image node_modules/
+      - /var/www/html/public/build               # keep compiled assets
+      - ./storage/app/templates:/var/www/html/storage/app/templates   # host-bind: templates
+      - ./storage/app/pds:/var/www/html/storage/app/pds               # host-bind: PDS files
+      - storage_logs:/var/www/html/storage/logs
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test:
+        ["CMD-SHELL", "php -r \"fsockopen('127.0.0.1', 9000);\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Web Server: Nginx ─────────────────────────────────────────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nginx
+    image: hris-nginx:dev
+    container_name: hris-dev-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-8090}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  # ── Database: MySQL 8.0 ───────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: hris-dev-db
+    restart: unless-stopped
+    ports:
+      - "${DB_EXTERNAL_PORT:-3307}:3306"
+    environment:
+      MYSQL_DATABASE:      "${DB_DATABASE:-hris}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-s3cr3t}"
+      MYSQL_USER:          "${DB_USERNAME:-laravel_user}"
+      MYSQL_PASSWORD:      "${DB_PASSWORD:-laravel_pass}"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost",
+         "-uroot", "-p${MYSQL_ROOT_PASSWORD:-s3cr3t}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Queue Worker: Laravel Async Jobs ──────────────────────────────────────
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    image: hris-app:dev
+    container_name: hris-dev-queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: []
+    command:
+      ["php", "artisan", "queue:work",
+       "--sleep=3", "--tries=3", "--timeout=90", "--max-jobs=500"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *php-env
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
       - /var/www/html/node_modules
-      - /var/www/html/public/build
+      - ./storage/app/templates:/var/www/html/storage/app/templates
+      - ./storage/app/pds:/var/www/html/storage/app/pds
+      - storage_logs:/var/www/html/storage/logs
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
-  nginx:
+  # ── Frontend: Vite Dev Server (HMR) ──────────────────────────────────────
+  #
+  # NOTE: If HMR websocket fails in the browser, add to vite.config.js:
+  #   server: { hmr: { host: 'localhost' } }
+  vite:
+    image: node:20-alpine
+    container_name: hris-dev-vite
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm ci --no-audit --no-fund && npx vite"
+    environment:
+      VITE_HMR_HOST: "${VITE_HMR_HOST:-localhost}"
+      VITE_PORT: "${VITE_PORT:-5173}"
+    ports:
+      - "${VITE_PORT:-5173}:5173"
     volumes:
-      - ./public:/var/www/html/public:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - .:/app
+      - vite_node_modules:/app/node_modules
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  # ── Mail: Mailpit (local SMTP catch-all + web UI) ────────────────────────
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hris-dev-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"    # Web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  # ── DB Admin: phpMyAdmin ──────────────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: hris-dev-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "${PMA_PORT:-8091}:80"
+    environment:
+      PMA_HOST:            db
+      PMA_PORT:            "3306"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-s3cr3t}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+# =============================================================================
+#  NETWORKS
+# =============================================================================
+networks:
+  hris-dev-network:
+    driver: bridge
+    name: hris-dev-network
+
+# =============================================================================
+#  VOLUMES
+# =============================================================================
+volumes:
+  db_data:
+    name: hris-dev-db-data
+  storage_logs:
+    name: hris-dev-storage-logs
+  vite_node_modules:
+    name: hris-dev-vite-node-modules
