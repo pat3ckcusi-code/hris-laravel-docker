@@ -16,7 +16,7 @@
 
     <article class="tile tab-card" data-tab="eta">
         <strong>ETA</strong>
-        <div class="muted">Estimated time of arrival</div>
+        <div class="muted">Employee Travel Authorization</div>
         <div class="tile-count">{{ $etaRequests->count() ?? 0 }}</div>
     </article>
 
@@ -65,12 +65,14 @@ function openPendingModal(type, id) {
         title.textContent = 'Pending Leave Details';
         const employee = row.getAttribute('data-employee') || '';
         const typeLabel = row.getAttribute('data-type') || '';
+        const reason = row.getAttribute('data-reason') || '';
         const period = row.getAttribute('data-period') || '';
         const total = row.getAttribute('data-total') || '';
         const filed = row.getAttribute('data-filed') || '';
         body.innerHTML = `<table style="width:100%;border-collapse:collapse"><tbody>
             <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${employee}</td></tr>
             <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${typeLabel}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Reason</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${reason}</td></tr>
             <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Period</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${period}</td></tr>
             <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${total}</td></tr>
             <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${filed}</td></tr>
@@ -135,6 +137,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                             <tr>
                                 <th>Employee</th>
                                 <th>Leave Type</th>
+                                <th>Reason / Purpose</th>
                                 <th>Period</th>
                                 <th>Total Days</th>
                                 <th>Filed At</th>
@@ -143,25 +146,53 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                         </thead>
                         <tbody>
                             @foreach($requests as $r)
-                                <tr id="leave-row-{{ $r->id }}" data-employee="{{ $r->user->name ?? '—' }}" data-type="{{ $r->leave_type }}" data-period="{{ $r->start_date ? \Carbon\Carbon::parse($r->start_date)->format('M d, Y') : '—' }} to {{ $r->end_date ? \Carbon\Carbon::parse($r->end_date)->format('M d, Y') : '—' }}" data-total="{{ $r->total_days ?? '—' }}" data-filed="{{ $r->created_at ? $r->created_at->format('M d, Y') : '—' }}">
+                                @php
+                                    $leaveTypeLabel = $r->leave_type ?? '';
+                                    $isWellness = stripos((string)$leaveTypeLabel, 'wlns') !== false || stripos((string)$leaveTypeLabel, 'wellness') !== false;
+                                    $reasonDisplay = $isWellness ? 'Wellness' : ($r->reason ?? '—');
+                                @endphp
+                                <tr id="leave-row-{{ $r->id }}" data-employee="{{ $r->user->name ?? '—' }}" data-type="{{ $r->leave_type }}" data-reason="{{ $reasonDisplay }}" data-period="{{ $r->start_date ? \Carbon\Carbon::parse($r->start_date)->format('M d, Y') : '—' }} to {{ $r->end_date ? \Carbon\Carbon::parse($r->end_date)->format('M d, Y') : '—' }}" data-total="{{ $r->total_days ?? '—' }}" data-filed="{{ $r->created_at ? $r->created_at->format('M d, Y') : '—' }}">
                                     <td>{{ $r->user->name ?? '—' }}</td>
                                     <td>{{ $r->leave_type }}</td>
+                                    <td>{{ $reasonDisplay }}</td>
                                     <td>{{ $r->start_date ? \Carbon\Carbon::parse($r->start_date)->format('M d, Y') : '—' }} to {{ $r->end_date ? \Carbon\Carbon::parse($r->end_date)->format('M d, Y') : '—' }}</td>
                                     <td>{{ $r->total_days ?? '—' }}</td>
                                     <td>{{ $r->created_at ? $r->created_at->format('M d, Y') : '—' }}</td>
                                     <td>
+                                        @php
+                                            $rawRole = strtolower(str_replace(['-', '_'], ' ', trim((string) (optional(auth()->user())->access_level ?? ''))));
+                                            $approverPrefix = ($rawRole === 'administrative officer') ? 'admin-officer' : 'department-head';
+                                        @endphp
                                         <div class="action-btns">
                                             <button class="btn-sm btn-view" type="button" onclick="openPendingModal('leave', {{ $r->id }})">View</button>
-                                            <form method="POST" action="{{ route('department-head.leave.approve', $r->id) }}" id="approve-form-{{ $r->id }}" style="display:inline">
-                                                @csrf
-                                                <button type="button" class="btn-sm btn-approve" onclick="confirmApprove({{ $r->id }})">Approve</button>
-                                            </form>
 
-                                            <form method="POST" action="{{ route('department-head.leave.reject', $r->id) }}" id="reject-form-{{ $r->id }}" style="display:inline">
-                                                @csrf
-                                                <input type="hidden" name="rejection_notes" value="" />
-                                                <button type="button" class="btn-sm btn-reject" onclick="promptReject({{ $r->id }})">Reject</button>
-                                            </form>
+                                            @if($r->status === 'pending')
+                                                @if(empty($r->printing_allowed))
+                                                    <button type="button" class="btn-sm btn-disabled-print" id="print-btn-{{ $r->id }}" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>
+                                                    <button type="button" class="btn-sm btn-warning" id="allow-print-{{ $r->id }}" onclick="allowPrinting({{ $r->id }}, '{{ $approverPrefix }}')">Allow Printing</button>
+                                                @else
+                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="btn-sm btn-primary" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
+                                                    <form method="POST" action="{{ route($approverPrefix . '.leave.approve', $r->id) }}" id="approve-form-{{ $r->id }}" style="display:inline">
+                                                        @csrf
+                                                        <button type="button" class="btn-sm btn-approve" id="approve-btn-{{ $r->id }}" onclick="confirmApprove({{ $r->id }})">Approve</button>
+                                                    </form>
+                                                    <form method="POST" action="{{ route($approverPrefix . '.leave.reject', $r->id) }}" id="reject-form-{{ $r->id }}" style="display:inline">
+                                                        @csrf
+                                                        <input type="hidden" name="rejection_notes" value="" />
+                                                        <button type="button" class="btn-sm btn-reject" onclick="promptReject({{ $r->id }})">Reject</button>
+                                                    </form>
+                                                @endif
+
+                                            @elseif($r->status === 'approved')
+                                                @if(!empty($r->printing_allowed))
+                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="btn-sm btn-primary" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
+                                                @else
+                                                    <button type="button" class="btn-sm btn-disabled-print" id="print-btn-{{ $r->id }}" disabled title="Printing not allowed until approved."><i class="fa fa-print"></i> Print</button>
+                                                @endif
+
+                                            @else
+                                                {{-- cancelled / rejected / declined -> show only view (already shown) --}}
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
@@ -178,7 +209,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                 @else
                     <table class="data-table leave-table">
                         <thead>
-                            <tr><th>Employee</th><th>Departure</th><th>Arrival</th><th>Destination</th><th>Filed At</th><th>Action</th></tr>
+                            <tr><th>Employee</th><th>Departure</th><th>Arrival</th><th>Destination</th><th>Purpose Details</th><th>Filed At</th><th>Action</th></tr>
                         </thead>
                         <tbody>
                         @foreach($etaRequests as $e)
@@ -187,6 +218,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                                 <td>{{ $e->departure_date ? \Carbon\Carbon::parse($e->departure_date)->format('M d, Y') : '—' }}</td>
                                 <td>{{ $e->arrival_date ? \Carbon\Carbon::parse($e->arrival_date)->format('M d, Y') : '—' }}</td>
                                 <td>{{ $e->destination }}</td>
+                                <td>{{ $e->purpose ?? '—' }}</td>
                                 <td>{{ $e->created_at ? $e->created_at->format('M d, Y') : '—' }}</td>
                                         <td>
                                             <div class="action-btns">
@@ -217,16 +249,17 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                 @else
                     <table class="data-table leave-table">
                         <thead>
-                            <tr><th>Employee</th><th>Type</th><th>Travel Date</th><th>Location</th><th>Filed At</th><th>Action</th></tr>
+                            <tr><th>Employee</th><th>Type</th><th>Travel Date</th><th>Location</th><th>Purpose of Travel</th><th>Filed At</th><th>Action</th></tr>
                         </thead>
                         <tbody>
-                        @foreach($locatorRequests as $l)
-                            <tr id="locator-row-{{ $l->id }}" data-employee="{{ optional($l->user)->name ?? '—' }}" data-type="{{ $l->application_type }}" data-travel="{{ $l->travel_date ? \Carbon\Carbon::parse($l->travel_date)->format('M d, Y') : '—' }}" data-location="{{ $l->location }}" data-purpose="{{ $l->purpose ?? '' }}" data-filed="{{ $l->created_at ? $l->created_at->format('M d, Y') : '—' }}">
-                                <td>{{ optional($l->user)->name ?? '—' }}</td>
-                                <td>{{ $l->application_type }}</td>
-                                   <td>{{ $l->travel_date ? \Carbon\Carbon::parse($l->travel_date)->format('M d, Y') : '—' }}</td>
-                                <td>{{ $l->location }}</td>
-                                   <td>{{ $l->created_at ? $l->created_at->format('M d, Y') : '—' }}</td>
+                                @foreach($locatorRequests as $l)
+                                    <tr id="locator-row-{{ $l->id }}" data-employee="{{ optional($l->user)->name ?? '—' }}" data-type="{{ $l->application_type }}" data-travel="{{ $l->travel_date ? \Carbon\Carbon::parse($l->travel_date)->format('M d, Y') : '—' }}" data-location="{{ $l->location }}" data-purpose="{{ $l->detail ?? '' }}" data-detail="{{ $l->detail ?? '' }}" data-filed="{{ $l->created_at ? $l->created_at->format('M d, Y') : '—' }}">
+                                          <td>{{ optional($l->user)->name ?? '—' }}</td>
+                                          <td>{{ $l->application_type }}</td>
+                                              <td>{{ $l->travel_date ? \Carbon\Carbon::parse($l->travel_date)->format('M d, Y') : '—' }}</td>
+                                          <td>{{ $l->location }}</td>
+                                          <td>{{ $l->detail ?? '—' }}</td>
+                                              <td>{{ $l->created_at ? $l->created_at->format('M d, Y') : '—' }}</td>
                                 <td>
                                     <div class="action-btns">
                                         <button class="btn-sm btn-view" type="button" onclick="openPendingModal('locator', {{ $l->id }})">View</button>
@@ -335,7 +368,15 @@ function confirmApprove(id) {
                     },
                     body: new URLSearchParams({ _token: token })
                 }).then(r => r.json()).then(data => {
-                    Swal.fire({ icon: 'success', text: data.message || 'Leave approved' }).then(()=> location.reload());
+                    Swal.fire({ icon: 'success', text: data.message || 'Leave approved' }).then(()=> {
+                        const btn = document.getElementById('approve-btn-' + id);
+                        if (btn) {
+                            btn.disabled = true;
+                            btn.classList.remove('btn-approve');
+                            btn.classList.add('btn-secondary');
+                            btn.textContent = 'Approved';
+                        }
+                    });
                 }).catch(e => {
                     Swal.fire({ icon: 'error', text: 'Failed to approve leave' });
                 });
@@ -344,6 +385,101 @@ function confirmApprove(id) {
     } else {
         if (confirm('Approve this application?')) {
             if (form) form.submit();
+        }
+    }
+}
+
+function allowPrinting(id, prefix) {
+    const token = document.querySelector(`#reject-form-${id} input[name="_token"]`)?.value || document.querySelector(`meta[name="csrf-token"]`)?.getAttribute('content');
+    if (!token) return alert('CSRF token missing');
+    const url = `/${prefix}/leave/${id}/allow-printing`;
+    if (window.Swal) {
+        Swal.fire({
+            title: 'Allow printing?',
+            text: 'This will enable printing for the applicant and show the Approve button.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Allow Printing'
+        }).then(result => {
+            if (!result.isConfirmed) return;
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: new URLSearchParams({ _token: token })
+            }).then(r => r.json()).then(data => {
+                if (data && data.success) {
+                    // update UI in-place: replace disabled print and allow-print with actual Print link and Approve button
+                    const printBtn = document.getElementById('print-btn-' + id);
+                    const allowBtn = document.getElementById('allow-print-' + id);
+                    if (printBtn) {
+                        const a = document.createElement('a');
+                        a.className = printBtn.className.replace(/btn-secondary|btn-disabled-print/, 'btn-primary');
+                        a.id = printBtn.id;
+                        a.target = '_blank';
+                        a.href = `/dashboard/employee/leave/${id}/print`;
+                        a.title = 'Print Leave Form';
+                        a.innerHTML = '<i class="fa fa-print"></i> Print';
+                        printBtn.replaceWith(a);
+                    }
+                    if (allowBtn) {
+                        // create approve form/button
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.style.display = 'inline';
+                        form.id = 'approve-form-' + id;
+                        // set action according to prefix
+                        form.action = `/${prefix}/leave/${id}/approve`;
+                        const csrf = document.createElement('input');
+                        csrf.type = 'hidden';
+                        csrf.name = '_token';
+                        csrf.value = token;
+                        form.appendChild(csrf);
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn-sm btn-approve';
+                        btn.id = 'approve-btn-' + id;
+                        btn.textContent = 'Approve';
+                        btn.onclick = function () { confirmApprove(id); };
+                        form.appendChild(btn);
+                        allowBtn.replaceWith(form);
+                        // create reject form/button and insert after approve form
+                        const rejectForm = document.createElement('form');
+                        rejectForm.method = 'POST';
+                        rejectForm.style.display = 'inline';
+                        rejectForm.id = 'reject-form-' + id;
+                        rejectForm.action = `/${prefix}/leave/${id}/reject`;
+                        const rcsrf = document.createElement('input');
+                        rcsrf.type = 'hidden';
+                        rcsrf.name = '_token';
+                        rcsrf.value = token;
+                        rejectForm.appendChild(rcsrf);
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'rejection_notes';
+                        hidden.value = '';
+                        rejectForm.appendChild(hidden);
+                        const rbtn = document.createElement('button');
+                        rbtn.type = 'button';
+                        rbtn.className = 'btn-sm btn-reject';
+                        rbtn.textContent = 'Reject';
+                        rbtn.onclick = function () { promptReject(id); };
+                        rejectForm.appendChild(rbtn);
+                        if (form.parentNode) form.parentNode.insertBefore(rejectForm, form.nextSibling);
+                    }
+                    Swal.fire({ icon: 'success', text: 'Printing allowed.' });
+                } else {
+                    Swal.fire({ icon: 'error', text: data.message || 'Failed to allow printing.' });
+                }
+            }).catch(() => Swal.fire({ icon: 'error', text: 'Failed to allow printing.' }));
+        });
+    } else {
+        if (confirm('Allow printing?')) {
+            fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': token }, body: new URLSearchParams({ _token: token }) })
+                .then(() => location.reload()).catch(() => alert('Failed to allow printing'));
         }
     }
 }
@@ -467,8 +603,39 @@ function confirmApproveLocator(id) {
     if (!form) return;
     const token = form.querySelector('input[name="_token"]').value;
     if (window.Swal) {
-        window.Swal.fire({ title: 'Approve Locator?', icon: 'question', showCancelButton: true, confirmButtonText: 'Approve' })
-        .then((r) => { if (r.isConfirmed) fetch(form.action, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: new URLSearchParams({ _token: token }) }).then(res => res.json()).then(data => Swal.fire({ icon: 'success', text: data.message || 'Approved' }).then(()=> location.reload())).catch(()=> Swal.fire({ icon: 'error', text: 'Failed to approve' })); });
+        const row = document.getElementById('locator-row-' + id);
+        const employee = row?.getAttribute('data-employee') || '';
+        const detail = row?.getAttribute('data-detail') || '';
+        const purpose = row?.getAttribute('data-purpose') || '';
+        const travel = row?.getAttribute('data-travel') || '';
+        const html = `
+            <p><strong>Employee:</strong> ${employee}</p>
+            <p><strong>Travel Date:</strong> ${travel}</p>
+            <p><strong>Detail of Travel:</strong> ${detail}</p>
+            <p><strong>Purpose of Travel:</strong> ${purpose}</p>
+        `;
+
+        window.Swal.fire({
+            title: 'Approve Locator Request?',
+            html: html,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Approve',
+            cancelButtonText: 'Cancel'
+        }).then((r) => {
+            if (!r.isConfirmed) return;
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: new URLSearchParams({ _token: token })
+            }).then(res => res.json()).then(data => {
+                Swal.fire({ icon: 'success', text: data.message || 'Locator approved.' }).then(()=> location.reload());
+            }).catch(() => Swal.fire({ icon: 'error', text: 'Failed to approve' }));
+        });
     } else { if (confirm('Approve this Locator?') && form) form.submit(); }
 }
 

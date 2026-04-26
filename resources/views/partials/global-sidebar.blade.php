@@ -166,6 +166,7 @@
             ['label' => 'Manage Leave Credits','icon' => 'leave_credits',   'route' => 'leave-manager.manage-credits',    'active' => ['leave-manager.manage-credits']],
             ['label' => 'Approved Leaves',    'icon' => 'approved_leaves',  'route' => 'leave-manager.approved-leaves',   'active' => ['leave-manager.approved-leaves']],
             ['label' => 'Cancel Leave',       'icon' => 'cancel_leave',     'route' => 'leave-manager.cancel-leaves',     'active' => ['leave-manager.cancel-leaves']],
+            ['label' => 'Employee Cancellation Requests', 'icon' => 'leave', 'route' => 'leave-manager.employee-cancellation-requests', 'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
         ],
 
         // ─── Payroll Manager ──────────────────────────────
@@ -271,6 +272,9 @@
 
             return $leave + $eta + $locator;
         },
+        'pending_employee_cancellation_requests' => fn () => \App\Models\LeaveRequest::where('status', 'approved')
+            ->where('cancellation_status', 'Pending Cancellation')
+            ->count(),
     ];
 
     // ── Resolve items for current role ──
@@ -323,7 +327,7 @@
                 @endif
                 {!! $item['label'] !!}
                 @if ($badgeCount > 0)
-                    <span class="sidebar-badge">{{ $badgeCount }}</span>
+                    <span class="sidebar-badge" data-badge-key="{{ $badgeKey }}">{{ $badgeCount }}</span>
                 @endif
             </a>
         @endforeach

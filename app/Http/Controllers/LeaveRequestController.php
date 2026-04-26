@@ -13,8 +13,10 @@ use App\Models\Department;
 use App\Models\User;
 use App\Services\LeaveRequestService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use App\Mail\LeaveRequestNotification;
 use Carbon\Carbon;
+use App\Models\HRAuditTrail;
 
 
 
@@ -55,15 +57,41 @@ class LeaveRequestController extends Controller
     {
         $user = Auth::user();
 
+        // ensure printing has been allowed and user may print
+        Log::info('Print attempt for leave request', [
+            'leave_id' => $leave->id,
+            'user_id' => $user->id ?? null,
+            'user_role' => $user->access_level ?? null,
+            'leave_status' => $leave->status ?? null,
+            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
         if (! $this->leaveRequestService->canPrint($leave, $user)) {
             abort(403);
         }
 
-        if ($leave->status !== 'approved') {
-            abort(403);
+        return $this->leaveRequestService->generateExcelResponse($leave);
+    }
+
+    /**
+     * API: return minimal leave status for client polling.
+     */
+    public function apiStatus(LeaveRequest $leave)
+    {
+        $user = Auth::user();
+        if (!$user) return response()->json(['error' => 'Unauthenticated'], 401);
+
+        // allow owner to query status; other roles may be restricted
+        if ($leave->user_id !== $user->id) {
+            return response()->json(['error' => 'Forbidden'], 403);
         }
 
-        return $this->leaveRequestService->generateExcelResponse($leave);
+        return response()->json([
+            'id' => $leave->id,
+            'status' => $leave->status,
+            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+        ]);
     }
 
     public function store(Request $request)
@@ -204,6 +232,11 @@ class LeaveRequestController extends Controller
             $spl = $snap_spl;
 
             // iterate allocations (per date) to compute deductions
+            $dedVL = 0.0;
+            $dedSL = 0.0;
+            $dedWLNS = 0.0;
+            $dedSP = 0.0;
+            $dedSPL = 0.0;
             foreach ($dates as $d) {
                 $totalDaysForDate = 0.0;
                 if (isset($allocations[$d]['days'])) {
@@ -222,6 +255,7 @@ class LeaveRequestController extends Controller
                     case 'Vacation Leave':
                         $ded = min($vl, $totalDaysForDate);
                         $vl -= $ded;
+                        $dedVL += $ded;
                         $paidDays += $ded;
                         $rem = $totalDaysForDate - $ded;
                         if ($rem > 0) {
@@ -233,11 +267,13 @@ class LeaveRequestController extends Controller
                         // Deduct from SL first, then from VL, else LWOP
                         $dedSl = min($sl, $totalDaysForDate);
                         $sl -= $dedSl;
+                        $dedSL += $dedSl;
                         $paidDays += $dedSl;
                         $rem = $totalDaysForDate - $dedSl;
                         if ($rem > 0) {
                             $dedVl = min($vl, $rem);
                             $vl -= $dedVl;
+                            $dedVL += $dedVl;
                             $paidDays += $dedVl;
                             $rem -= $dedVl;
                         }
@@ -248,6 +284,7 @@ class LeaveRequestController extends Controller
                     case 'Wellness Leave':
                         $ded = min($wlns, $totalDaysForDate);
                         $wlns -= $ded;
+                        $dedWLNS += $ded;
                         $paidDays += $ded;
                         $rem = $totalDaysForDate - $ded;
                         if ($rem > 0) $lwopDays += $rem;
@@ -255,13 +292,15 @@ class LeaveRequestController extends Controller
                     case 'Solo Parent Leave':
                         $ded = min($sp, $totalDaysForDate);
                         $sp -= $ded;
+                        $dedSP += $ded;
                         $paidDays += $ded;
                         $rem = $totalDaysForDate - $ded;
                         if ($rem > 0) $lwopDays += $rem;
                         break;
-                    case 'Special Leave Privilege':
+                    case 'Special Privilege Leave':
                         $ded = min($spl, $totalDaysForDate);
                         $spl -= $ded;
+                        $dedSPL += $ded;
                         $paidDays += $ded;
                         $rem = $totalDaysForDate - $ded;
                         if ($rem > 0) $lwopDays += $rem;
@@ -280,6 +319,14 @@ class LeaveRequestController extends Controller
             $sp = max(0, $sp);
             $spl = max(0, $spl);
 
+            // prepare printing deduction preview (include all deductible types)
+            $printingDeductionPreview = [];
+            if ($dedVL > 0) $printingDeductionPreview['VL'] = $dedVL;
+            if ($dedSL > 0) $printingDeductionPreview['SL'] = $dedSL;
+            if (!empty($dedWLNS) && $dedWLNS > 0) $printingDeductionPreview['WLNS'] = $dedWLNS;
+            if (!empty($dedSP) && $dedSP > 0) $printingDeductionPreview['SP'] = $dedSP;
+            if (!empty($dedSPL) && $dedSPL > 0) $printingDeductionPreview['SPL'] = $dedSPL;
+
             // update user's leave balance atomically and create leave request
             $leave = DB::transaction(function () use ($user, $snap_vl, $snap_sl, $snap_wlns, $snap_sp, $snap_spl, $leaveTypeValue, $startDate, $endDate, $request, $totalDays, $paidDays, $lwopDays) {
                 // create leave request with snapshot balances and computed fields
@@ -288,6 +335,7 @@ class LeaveRequestController extends Controller
                     'leave_type' => $leaveTypeValue,
                     'start_date' => $startDate,
                     'end_date' => $endDate,
+                    'date_filed' => now()->toDateString(),
                     'reason' => $request->reason,
                     'details_location' => $request->input('details_location'),
                     'details_location_specify' => $request->input('details_location_specify'),
@@ -302,9 +350,19 @@ class LeaveRequestController extends Controller
                     'balance_wellness_leave' => $snap_wlns,
                     'balance_solo_parent_leave' => $snap_sp,
                     'balance_special_leave_privilege' => $snap_spl,
+                    'printing_deduction_details' => null,
                 ]);
             });
 
+            // save printing deduction preview if available (non-destructive)
+            if (!empty($printingDeductionPreview) && \Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+                try {
+                    $leave->printing_deduction_details = json_encode($printingDeductionPreview);
+                    $leave->save();
+                } catch (\Exception $ex) {
+                    Log::error('Failed to save printing_deduction_details at filing', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+                }
+            }
             // create per-day records in leave_dates
             foreach ($dates as $d) {
                 LeaveDate::create([
@@ -422,6 +480,7 @@ class LeaveRequestController extends Controller
                 'leave_type' => $request->leave_type,
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
+                'date_filed' => now()->toDateString(),
                 'reason' => $request->reason,
                 'details_location' => $request->input('details_location'),
                 'details_location_specify' => $request->input('details_location_specify'),
@@ -514,7 +573,58 @@ class LeaveRequestController extends Controller
         return redirect()->back()->with('error', 'Editing leave requests is not supported. Please cancel and refile or contact HR for changes.');
     }
 
-    
+    /**
+     * Employee: request cancellation for an approved leave (stores reason, marks pending cancellation)
+     */
+    public function requestCancellation(Request $request, $id)
+    {
+        $leave = LeaveRequest::findOrFail($id);
+        $user = Auth::user();
+        if ($leave->user_id !== $user->id) abort(403);
+
+        if ($leave->status !== 'approved') {
+            return redirect()->back()->with('error', 'Only approved leaves can request cancellation.');
+        }
+
+        $request->validate([ 'reason' => 'required|string' ]);
+
+        $leave->cancellation_status = 'Pending Cancellation';
+        $leave->cancellation_reason = $request->input('reason');
+        $leave->cancellation_requested_at = now();
+        $leave->cancellation_requested_by = $user->id;
+        $leave->save();
+
+        Log::info('Leave cancellation requested', [
+            'leave_id' => $leave->id,
+            'employee_id' => $user->id,
+            'reason' => substr($leave->cancellation_reason ?? '', 0, 1000),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        // Notify approver (best-effort)
+        try {
+            $employee = $user;
+            $approver = null;
+            if ($employee && !empty($employee->Dept_id)) {
+                $department = Department::find($employee->Dept_id);
+                if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+                    $approver = User::where('EmpNo', $department->EmpNo)->first();
+                }
+            }
+            if ($approver && !empty($approver->email)) {
+                Mail::to($approver->email)->queue(new \App\Mail\LeaveRequestStatusNotification($employee, $leave));
+            }
+        } catch (\Exception $ex) {
+            // swallow
+        }
+
+        return redirect()->back()->with('success', 'Cancellation request submitted and pending review.');
+    }
+
+    /**
+     * Cancel (immediate) is only allowed for non-approved requests via employee UI.
+     * For approved leaves, employees must submit a cancellation request instead.
+     */
     public function cancel(Request $request, $id)
     {
         $leave = LeaveRequest::findOrFail($id);
@@ -523,19 +633,70 @@ class LeaveRequestController extends Controller
             abort(403);
         }
 
-        if ($leave->status !== 'pending') {
-            return redirect()->back()->with('error', 'Only pending leave requests can be cancelled.');
+        if ($leave->status === 'approved') {
+            return redirect()->back()->with('error', 'Approved leaves require a cancellation request. Please provide a reason.');
         }
 
-        $leave->status = 'cancelled';
-        $note = $request->input('remarks') ?? 'Cancelled by applicant';
-        // Safely write to an available remarks column if present
-        if (Schema::hasColumn('leave_requests', 'remarks')) {
-            $leave->remarks = $note;
-        } elseif (Schema::hasColumn('leave_requests', 'action_remarks')) {
-            $leave->action_remarks = $note;
+        if ($leave->status !== 'pending') {
+            return redirect()->back()->with('error', 'Only pending leave requests can be cancelled directly.');
         }
-        $leave->save();
+
+        // Require remarks for cancellation (auditability)
+        $request->validate([
+            'remarks' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $note = trim((string) $request->input('remarks')) ?: 'Cancelled by applicant';
+
+        // mark as cancelled and cancel each leave_date with metadata
+        DB::transaction(function () use ($leave, $user, $note) {
+            $leave->status = 'cancelled';
+            $leave->cancellation_status = 'Cancelled by applicant';
+            $leave->cancellation_reason = $note;
+            $leave->cancellation_remarks = $note;
+            $leave->cancellation_reviewed_by = $user->id;
+            $leave->cancellation_reviewed_at = now();
+            if (Schema::hasColumn('leave_requests', 'remarks')) {
+                $leave->remarks = $note;
+            } elseif (Schema::hasColumn('leave_requests', 'action_remarks')) {
+                $leave->action_remarks = $note;
+            }
+            $leave->save();
+
+            $dates = $leave->leaveDates()->where('is_cancelled', false)->get();
+            foreach ($dates as $ld) {
+                $ld->is_cancelled = true;
+                // LeaveDate uses 'cancel_reason' column
+                $ld->cancel_reason = $note;
+                $ld->cancelled_by = $user->id;
+                $ld->cancelled_at = now();
+                $ld->save();
+            }
+        });
+
+        Log::info('Leave request cancelled (direct)', [
+            'leave_id' => $leave->id,
+            'user_id' => $user->id,
+            'remarks' => substr($note, 0, 1000),
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        // Audit trail
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'leave',
+                'action' => 'cancel_by_applicant',
+                'target_type' => 'leave_request',
+                'target_id' => $leave->id,
+                'details' => [
+                    'remarks' => $note,
+                    'cancelled_at' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to write HRAuditTrail on cancellation', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
+        }
 
         return redirect()->back()->with('success', 'Leave request cancelled.');
     }

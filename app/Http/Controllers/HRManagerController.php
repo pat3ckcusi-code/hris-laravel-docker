@@ -526,6 +526,10 @@ class HRManagerController extends Controller
         $validated['leave_enabled']     = $request->boolean('leave_enabled');
         $validated['frontdesk_enabled'] = $request->boolean('frontdesk_enabled');
 
+        // Ensure email template fields are never null (database columns are NOT NULL)
+        $validated['email_template_subject'] = $validated['email_template_subject'] ?? '';
+        $validated['email_template_body'] = $validated['email_template_body'] ?? '';
+
         $settings = Setting::first();
         if ($settings) {
             $settings->update($validated);

@@ -32,6 +32,41 @@ class EtaController extends Controller
 
         $etas = $query->paginate(10);
 
+        // Resolve the approved-by name for each ETA
+        foreach ($etas as $eta) {
+            if (!empty($eta->approved_by)) {
+                $approverUser = User::find($eta->approved_by);
+                if ($approverUser) {
+                    $parts = array_filter([
+                        $approverUser->first_name ?? '',
+                        $approverUser->middle_name ?? '',
+                        $approverUser->last_name ?? '',
+                    ]);
+                    $eta->dept_head = !empty($parts) ? implode(' ', $parts) : ($approverUser->name ?? 'Unknown');
+                } else {
+                    $eta->dept_head = 'Unknown';
+                }
+            } else {
+                // Fallback: show department head name from department
+                $dept = $user->Dept_id ? Department::find($user->Dept_id) : null;
+                if ($dept && !empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
+                    $deptHead = User::where('EmpNo', $dept->EmpNo)->first();
+                    if ($deptHead) {
+                        $parts = array_filter([
+                            $deptHead->first_name ?? '',
+                            $deptHead->middle_name ?? '',
+                            $deptHead->last_name ?? '',
+                        ]);
+                        $eta->dept_head = !empty($parts) ? implode(' ', $parts) : ($deptHead->name ?? 'Not assigned');
+                    } else {
+                        $eta->dept_head = 'Not assigned';
+                    }
+                } else {
+                    $eta->dept_head = 'Not assigned';
+                }
+            }
+        }
+
         return view('employee.ETA', compact('etas'));
     }
 

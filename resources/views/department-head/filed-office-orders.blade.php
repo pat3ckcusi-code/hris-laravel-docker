@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <td>${row.created_at}</td>
                                             <td>
                                                 <button class="btn-sm btn-view" type="button" onclick="openOfficeOrderModal(${row.id})">View</button>
+                                                <button class="btn-sm btn-view" type="button" style="background:#16a34a" onclick="printOfficeOrder(${row.id})"><i class="fas fa-print"></i> Print</button>
                                             </td>
                                         </tr>`;
                         }).join('');
@@ -108,6 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="muted" style="font-size:0.9rem;margin-bottom:12px">View details for this office order</div>
         <div id="officeOrderModalBody"></div>
         <div class="modal-actions">
+            <button class="btn-sm btn-view" style="background:#16a34a" onclick="printOfficeOrderFromModal()"><i class="fas fa-print"></i> Print</button>
             <button class="btn-sm btn-view" onclick="closeOfficeOrderModal()">Close</button>
         </div>
     </div>
@@ -143,11 +145,56 @@ async function openOfficeOrderModal(id) {
                             <div style="border:1px solid #f1f5f9; border-radius:6px; padding:8px">${emps || '<div class="muted">No employees listed</div>'}</div>
                         </div>
                     </div>`;
+                _currentOfficeOrderData = d;
         } catch (err) {
                 body.innerHTML = '<div class="text-danger">Failed to load details</div>';
         }
 }
 function closeOfficeOrderModal(){ document.getElementById('officeOrderModalOverlay').style.display='none'; }
+
+var _currentOfficeOrderData = null;
+
+function printOfficeOrder(id) {
+    fetch(`/api/office-orders/${id}`)
+        .then(r => r.json())
+        .then(j => {
+            if (j.success) {
+                _currentOfficeOrderData = j.data;
+                printOfficeOrderContent(j.data);
+            }
+        });
+}
+
+function printOfficeOrderFromModal() {
+    if (_currentOfficeOrderData) printOfficeOrderContent(_currentOfficeOrderData);
+}
+
+function printOfficeOrderContent(d) {
+    const emps = (d.employees || []).map((e,i) => `<tr><td>${i+1}</td><td>${e.name || e.EmpNo || ''}</td><td>${e.designation || ''}</td></tr>`).join('');
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write(`<html><head><title>Office Order - ${d.office_order_num || d.id}</title>
+        <style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}.header{text-align:center;margin-bottom:18px}h2{margin:4px 0}.note{font-size:12px;color:#666;margin-top:18px}@media print{button{display:none}}</style>
+    </head><body>
+        <div class="header">
+            <h2>OFFICE ORDER</h2>
+            <p>Submitted to: HR Department</p>
+        </div>
+        <table><tbody>
+            <tr><td style="width:160px"><strong>OO Number</strong></td><td>${d.office_order_num || d.id}</td></tr>
+            <tr><td><strong>Subject</strong></td><td>${d.subject || '-'}</td></tr>
+            <tr><td><strong>Date Issued</strong></td><td>${d.issued_date || '-'}</td></tr>
+            <tr><td><strong>Effective Until</strong></td><td>${d.effective_date || '-'}</td></tr>
+            <tr><td><strong>Details</strong></td><td>${d.details || '-'}</td></tr>
+            <tr><td><strong>Remarks</strong></td><td>${d.remarks || '-'}</td></tr>
+            <tr><td><strong>Status</strong></td><td>${d.status || '-'}</td></tr>
+        </tbody></table>
+        <h3>Employees</h3>
+        <table><thead><tr><th>#</th><th>Name</th><th>Designation</th></tr></thead><tbody>${emps || '<tr><td colspan="3">No employees</td></tr>'}</tbody></table>
+        <p class="note">Office Orders are submitted to the HR Department.</p>
+        <button onclick="window.print()">Print</button>
+    </body></html>`);
+    w.document.close();
+}
 </script>
 
 @endsection

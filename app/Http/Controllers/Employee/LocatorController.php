@@ -194,6 +194,9 @@ class LocatorController extends Controller
                 'detail' => $l->detail,
                 'actual_arrival_time' => $l->actual_arrival_time,
                 'status' => $l->status,
+                'cancelled_by' => $l->cancelled_by ?? null,
+                'cancelled_at' => $l->cancelled_at ? $l->cancelled_at->toDateTimeString() : null,
+                'cancellation_remarks' => $l->cancellation_remarks ?? null,
             ];
         });
 
@@ -265,6 +268,57 @@ class LocatorController extends Controller
         $locator->update($data);
 
         return redirect()->route('dashboard.employee.locator')->with('success', 'Locator updated successfully.');
+    }
+
+    // Cancel locator (by owner) — accepts AJAX or form POST
+    public function cancel(Request $request, Locator $locator)
+    {
+        $user = Auth::user();
+        if ($locator->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if ($locator->status !== 'pending') {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'Only pending locators can be cancelled.'], 400);
+            }
+            return redirect()->back()->with('error', 'Only pending locators can be cancelled.');
+        }
+
+        $remarks = trim((string) $request->input('remarks', 'Cancelled by applicant'));
+
+        $locator->status = 'cancelled';
+        $locator->cancelled_by = $user->id;
+        $locator->cancelled_at = now();
+        $locator->cancellation_remarks = $remarks;
+        $locator->save();
+
+        // write audit trail where available
+        try {
+            if (class_exists('\App\\Models\\HRAuditTrail')) {
+                \App\Models\HRAuditTrail::create([
+                    'actor_user_id' => $user->id,
+                    'module' => 'locator',
+                    'action' => 'cancel',
+                    'target_type' => 'locator',
+                    'target_id' => $locator->id,
+                    'details' => [
+                        'cancellation_remarks' => $remarks,
+                        'cancelled_by' => $user->id,
+                        'timestamp' => now()->toDateTimeString(),
+                    ],
+                ]);
+            }
+        } catch (\Exception $e) {
+            // log but do not block user
+            \Log::error('Failed to write HRAuditTrail for Locator cancellation', ['locator_id' => $locator->id, 'error' => $e->getMessage()]);
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true, 'message' => 'Locator cancelled.']);
+        }
+
+        return redirect()->route('dashboard.employee.locator')->with('success', 'Locator cancelled.');
     }
    
     private function normalizeTime($time)

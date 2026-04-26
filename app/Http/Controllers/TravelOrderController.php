@@ -86,6 +86,13 @@ class TravelOrderController extends Controller
             return ['EmpNo' => $u->EmpNo, 'name' => ($u->last_name . ', ' . $u->first_name), 'designation' => $u->designation ?? ''];
         })->values();
 
+        // Resolve creator and recommender names
+        $creator = $order->created_by ? User::find($order->created_by) : null;
+        $recommender = $order->recommender ? User::find($order->recommender) : null;
+
+        $creatorName = $creator ? trim(($creator->last_name ?? '') . ', ' . ($creator->first_name ?? '')) : 'N/A';
+        $recommenderName = $recommender ? trim(($recommender->last_name ?? '') . ', ' . ($recommender->first_name ?? '')) : 'N/A';
+
         return response()->json(['success' => true, 'data' => [
             'id' => $order->id,
             'travel_order_num' => $order->travel_order_num,
@@ -97,6 +104,8 @@ class TravelOrderController extends Controller
             'appropriation' => $order->appropriation ?? null,
             'remarks' => $order->Remarks ?? null,
             'status' => $order->status,
+            'created_by' => $creatorName,
+            'recommender' => $recommenderName,
             'created_at' => $order->created_at,
             'employees' => $employees,
         ]]);

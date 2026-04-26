@@ -67,6 +67,7 @@ Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::get('/employee/leave-management/{id}', [LeaveRequestController::class, 'show'])->name('employee.leave.show');
     Route::get('/employee/leave-management/{id}/edit', [LeaveRequestController::class, 'edit'])->name('employee.leave.edit');
     Route::patch('/employee/leave-management/{id}/cancel', [LeaveRequestController::class, 'cancel'])->name('employee.leave.cancel');
+    Route::post('/employee/leave-management/{id}/request-cancellation', [LeaveRequestController::class, 'requestCancellation'])->name('employee.leave.request-cancellation');
 
     });
 
@@ -108,12 +109,16 @@ Route::middleware('auth')->group(function () {
         ->name('employee.eta.cancel');
     Route::get('/dashboard/employee/leave/{leave}/print', [LeaveRequestController::class, 'printSingle'])
         ->name('employee.leave.print.single');
+    // API: check leave status (printing_allowed, status)
+    Route::get('/api/leave/{leave}/status', [LeaveRequestController::class, 'apiStatus'])->name('api.leave.status');
     Route::get('/dashboard/employee/eta-locator/print', [EtaController::class, 'print'])
         ->name('employee.eta.print');
     Route::get('/dashboard/employee/locator', [LocatorController::class, 'index'])
         ->name('dashboard.employee.locator');
     Route::post('/dashboard/employee/locator', [LocatorController::class, 'store'])
         ->name('employee.locator.store');
+    Route::post('/dashboard/employee/locator/{locator}/cancel', [LocatorController::class, 'cancel'])
+        ->name('employee.locator.cancel');
     Route::get('/dashboard/employee/locator/{locator}/edit', [LocatorController::class, 'edit'])
         ->name('employee.locator.edit');
     Route::put('/dashboard/employee/locator/{locator}', [LocatorController::class, 'update'])
@@ -183,8 +188,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 });
 
-// Department Head routes (simple placeholders)
-Route::middleware(['auth', 'role:department-head'])->group(function () {
+// Department Head routes (accessible by both Department Head and Administrative Officer)
+Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
     Route::prefix('department-head')->name('department-head.')->group(function () {
         Route::get('/', [DepartmentHeadController::class, 'index'])->name('index');
         Route::get('/pending-requests', [DepartmentHeadController::class, 'pendingRequests'])->name('pending-requests');
@@ -219,6 +224,7 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     // Administrative Officer approval actions
     Route::post('/admin-officer/leave/{id}/approve', [AdministrativeOfficerController::class, 'approve'])->name('admin-officer.leave.approve');
     Route::post('/admin-officer/leave/{id}/reject', [AdministrativeOfficerController::class, 'reject'])->name('admin-officer.leave.reject');
+    Route::post('/admin-officer/leave/{id}/allow-printing', [AdministrativeOfficerController::class, 'allowPrinting'])->name('admin-officer.leave.allow-printing');
     Route::post('/admin-officer/eta/{id}/approve', [AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
     Route::post('/admin-officer/eta/{id}/reject', [AdministrativeOfficerController::class, 'rejectEta'])->name('admin-officer.eta.reject');
     Route::post('/admin-officer/locator/{id}/approve', [AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
@@ -248,6 +254,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     // Leave approval actions
     Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
     Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
+    Route::post('/department-head/leave/{id}/allow-printing', [DepartmentHeadController::class, 'allowPrinting'])->name('department-head.leave.allow-printing');
     
     // ETA and Locator actions
     Route::post('/department-head/eta/{id}/approve', [DepartmentHeadController::class, 'approveEta'])->name('department-head.eta.approve');
@@ -279,9 +286,16 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
 
     Route::get('/leave-manager/cancel-leaves', [LeaveManagerController::class, 'cancelLeaves'])
         ->name('leave-manager.cancel-leaves');
+    Route::get('/leave-manager/employee-cancellation-requests', [LeaveManagerController::class, 'employeeCancellationRequests'])
+        ->name('leave-manager.employee-cancellation-requests');
+
     // API endpoints used by cancel-leaves UI
     Route::post('/api/leave/cancel-date', [LeaveManagerController::class, 'apiCancelDate'])
         ->name('api.leave.cancel-date');
+    Route::post('/api/leave/{leave}/approve-cancellation', [LeaveManagerController::class, 'apiApproveCancellation'])->name('api.leave.approve-cancellation');
+    Route::post('/api/leave/{leave}/reject-cancellation', [LeaveManagerController::class, 'apiRejectCancellation'])->name('api.leave.reject-cancellation');
+    Route::get('/api/leave-manager/pending-cancellation-count', [LeaveManagerController::class, 'apiPendingCancellationCount'])
+        ->name('api.leave-manager.pending-cancellation-count');
     Route::get('/api/employee-search', [LeaveManagerController::class, 'employeeSearch'])
         ->name('api.employee.search');
 

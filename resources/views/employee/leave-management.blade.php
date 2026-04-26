@@ -76,7 +76,9 @@
                         <label><input type="checkbox" name="leave_types[]" value="VAWC Leave"> VAWC Leave</label>
                         <label><input type="checkbox" name="leave_types[]" value="Special Leave (Gynecological)"> Special Leave (Gynecological)</label>
                         <label><input type="checkbox" name="leave_types[]" value="Special Emergency (Calamity) Leave"> Special Emergency (Calamity) Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Special Leave Privilege"> Special Leave Privilege</label>
+                        <label><input type="checkbox" name="leave_types[]" value="Special Privilege Leave"> Special Privilege Leave</label>
+                        <label><input type="checkbox" name="leave_types[]" value="Mandatory/Forced Leave"> Mandatory/Forced Leave</label>
+                        <label><input type="checkbox" name="leave_types[]" value="Rehabilitation Privilege"> Rehabilitation Privilege</label>
                         <label><input type="checkbox" name="leave_types[]" value="Wellness Leave"> Wellness Leave</label>
                         <label><input type="checkbox" name="leave_types[]" value="Study / Examination Leave"> Study / Examination Leave</label>
                         <label><input type="checkbox" name="leave_types[]" value="Others"> Others</label>
@@ -321,7 +323,7 @@
                                                 const leaveTypeCheckboxes = document.querySelectorAll('input[name="leave_types[]"]');
                                                 const detailsMap = {
                                                     'Vacation Leave': 'detailsVacationSpecial',
-                                                    'Special Leave Privilege': 'detailsVacationSpecial',
+                                                    'Special Privilege Leave': 'detailsVacationSpecial',
                                                     'Sick Leave': 'detailsSick',
                                                     'Special Leave (Gynecological)': 'detailsWomen',
                                                     'Study / Examination Leave': 'detailsStudy',
@@ -335,8 +337,10 @@
 
                                                 function updateDetails6BVisibility() {
                                                     Object.values(sectionEls).forEach(el => {
+                                                        if (!el) return;
                                                         el.classList.remove('d-block');
                                                         el.classList.add('d-none');
+                                                        el.style.display = 'none';
                                                     });
                                                     const checked = Array.from(leaveTypeCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
                                                     const showIds = new Set();
@@ -347,8 +351,14 @@
                                                         if (sectionEls[id]) {
                                                             sectionEls[id].classList.remove('d-none');
                                                             sectionEls[id].classList.add('d-block');
+                                                            sectionEls[id].style.display = 'block';
                                                         }
                                                     });
+                                                    // Also show/hide the entire 6.B container
+                                                    const container = document.getElementById('details6BSection');
+                                                    if (container) {
+                                                        container.style.display = showIds.size > 0 ? 'block' : 'none';
+                                                    }
                                                 }
                                                 leaveTypeCheckboxes.forEach(cb => {
                                                     cb.addEventListener('change', updateDetails6BVisibility);
@@ -624,7 +634,7 @@
                     </thead>
                     <tbody>
                         @forelse($leaveRequests as $leave)
-                            <tr id="leave-row-{{ $leave->id }}" data-employee="{{ optional($leave->user)->name ?? '—' }}" data-type="{{ $leave->leave_type }}" data-period="{{ $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '—' }} to {{ $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '—' }}" data-total="{{ $leave->total_days ?? '—' }}" data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}" data-reason="{{ e($leave->reason ?? '') }}" data-status="{{ $leave->status }}" data-remarks="{{ e($leave->remarks ?? '') }}">
+                            <tr id="leave-row-{{ $leave->id }}" @if($leave->status === 'cancelled') style="text-decoration: line-through; opacity: 0.7;" @endif data-employee="{{ optional($leave->user)->name ?? '—' }}" data-type="{{ $leave->leave_type }}" data-period="{{ $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '—' }} to {{ $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '—' }}" data-total="{{ $leave->total_days ?? '—' }}" data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}" data-reason="{{ e($leave->reason ?? '') }}" data-status="{{ $leave->status }}" data-remarks="{{ e(in_array($leave->status, ['rejected','declined']) ? ($leave->rejection_notes ?? $leave->remarks ?? '') : ($leave->remarks ?? '')) }}">
                                 <td>{{ $leave->leave_type }}</td>
                                 <td>
                                     @php
@@ -642,23 +652,30 @@
                                 <td>
                                     @if($leave->status === 'cancelled')
                                         {{ $leave->remarks ? $leave->remarks : 'Cancelled by applicant' }}
+                                    @elseif(in_array($leave->status, ['rejected', 'declined']))
+                                        {{ $leave->rejection_notes ?? ($leave->remarks ?? '-') }}
                                     @else
                                         {{ $leave->remarks ?? '-' }}
                                     @endif
                                 </td>
                                 <td>
-                                    @if($leave->status !== 'cancelled')
-                                        <button class="btn btn-sm btn-info" type="button" onclick="openLeaveModal({{ $leave->id }})" title="View"><i class="fa fa-eye"></i> View</button>
-                                    @endif
-                                    @if($leave->status === 'approved')
-                                        <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="btn btn-sm btn-primary" target="_blank" title="Print Leave Form"><i class="fa fa-print"></i> Print</a>
-                                    @endif
-                                    @if($leave->status === 'pending')
-                                        <form action="{{ route('employee.leave.cancel', $leave->id) }}" method="POST" style="display:inline;" class="cancel-leave-form">
-                                            @csrf
-                                            @method('PATCH')
-                                            <button type="submit" class="btn btn-sm btn-danger" title="Cancel"><i class="fa fa-times"></i> Cancel</button>
-                                        </form>
+                                    {{-- View is always available for all statuses --}}
+                                    <button class="btn btn-sm btn-info" type="button" onclick="openLeaveModal({{ $leave->id }})" title="View"><i class="fa fa-eye"></i> View</button>
+                                    @if(!in_array($leave->status, ['cancelled','rejected','declined']))
+                                        @if(($leave->status === 'pending' || ($leave->cancellation_status ?? '') === 'Pending Cancellation') && empty($leave->printing_allowed))
+                                            <button class="btn btn-sm btn-disabled-print" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</button>
+                                        @elseif($leave->status === 'approved' && !empty($leave->printing_allowed))
+                                            <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="btn btn-sm btn-primary" target="_blank" title="Print Leave Form" id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</a>
+                                        @elseif($leave->status === 'pending' && !empty($leave->printing_allowed))
+                                            <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="btn btn-sm btn-primary" target="_blank" title="Print Leave Form" id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</a>
+                                        @endif
+
+                                        @if($leave->status === 'pending')
+                                            <button type="button" class="btn btn-sm btn-danger" title="Cancel" onclick="openPendingCancelModal({{ $leave->id }})"><i class="fa fa-times"></i> Cancel</button>
+                                        @endif
+                                        @if($leave->status === 'approved')
+                                            <button type="button" class="btn btn-sm btn-warning" title="Request Cancellation" onclick="openCancellationRequestModal({{ $leave->id }})"><i class="fa fa-times"></i> Cancel</button>
+                                        @endif
                                     @endif
                                 </td>
                             </tr>
@@ -688,6 +705,37 @@
     </div>
     <form method="dialog" class="modal-actions" style="margin-top:12px; text-align:right">
         <button class="btn" type="submit">Close</button>
+    </form>
+</dialog>
+<dialog id="cancellationRequestModal" class="employee-modal">
+    <form id="cancellationRequestForm" method="POST" class="modal-body" style="min-width:320px;">
+        @csrf
+        <h3 style="margin-top:0">Request Leave Cancellation</h3>
+        <p class="muted">Provide a reason for cancelling your approved leave. This request will be reviewed by your department head.</p>
+        <div style="margin-top:8px">
+            <label style="font-weight:600; display:block; margin-bottom:6px">Reason for Cancellation</label>
+            <textarea name="reason" id="cancellationReasonInput" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid #ddd" required></textarea>
+        </div>
+        <div class="modal-actions" style="margin-top:12px; text-align:right">
+            <button type="button" class="btn" onclick="closeCancellationModal()">Close</button>
+            <button type="submit" class="btn" style="background:#ef4444; color:#fff">Submit Request</button>
+        </div>
+    </form>
+</dialog>
+<dialog id="pendingCancelModal" class="employee-modal">
+    <form id="pendingCancelForm" method="POST" class="modal-body" style="min-width:320px;">
+        @csrf
+        @method('PATCH')
+        <h3 style="margin-top:0">Cancel Pending Leave</h3>
+        <p class="muted">Please provide a reason for cancelling this pending leave. This will be recorded for audit purposes.</p>
+        <div style="margin-top:8px">
+            <label style="font-weight:600; display:block; margin-bottom:6px">Reason for Cancellation</label>
+            <textarea name="remarks" id="pendingCancelRemarks" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid #ddd" required></textarea>
+        </div>
+        <div class="modal-actions" style="margin-top:12px; text-align:right">
+            <button type="button" class="btn" onclick="closePendingCancelModal()">Close</button>
+            <button type="submit" class="btn" style="background:#ef4444; color:#fff">Confirm Cancel</button>
+        </div>
     </form>
 </dialog>
 @endsection
@@ -775,7 +823,28 @@ function openLeaveModal(id) {
 
     if (modal && typeof modal.showModal === 'function') modal.showModal();
 }
+function openPendingCancelModal(id) {
+    const modal = document.getElementById('pendingCancelModal');
+    const form = document.getElementById('pendingCancelForm');
+    form.action = `{{ url('employee/leave-management') }}/${id}/cancel`;
+    document.getElementById('pendingCancelRemarks').value = '';
+    modal.showModal();
+}
+function closePendingCancelModal() {
+    const modal = document.getElementById('pendingCancelModal');
+    try { modal.close(); } catch (e) {}
+}
 function closeLeaveModal() { const dlg = document.getElementById('leaveModal'); if (dlg && typeof dlg.close === 'function') dlg.close(); }
+function openCancellationRequestModal(id) {
+    const dlg = document.getElementById('cancellationRequestModal');
+    const form = document.getElementById('cancellationRequestForm');
+    const reason = document.getElementById('cancellationReasonInput');
+    if (!dlg || !form) return alert('Cancellation dialog not available');
+    form.action = `/employee/leave-management/${id}/request-cancellation`;
+    reason.value = '';
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+}
+function closeCancellationModal() { const dlg = document.getElementById('cancellationRequestModal'); if (dlg && typeof dlg.close === 'function') dlg.close(); }
 </script>
 @endsection
 
@@ -810,5 +879,68 @@ function closeLeaveModal() { const dlg = document.getElementById('leaveModal'); 
                 }
             @endif
         });
+    </script>
+    <script>
+        // Polling: check printing_allowed for approved leaves with disabled print buttons
+        (function () {
+            const watches = new Map();
+
+            function initWatches() {
+                const rows = document.querySelectorAll('table.my-requests-table tbody tr[id^="leave-row-"]');
+                rows.forEach(row => {
+                    const idMatch = row.id.match(/leave-row-(\d+)/);
+                    if (!idMatch) return;
+                    const id = idMatch[1];
+                    const printBtn = document.getElementById('print-btn-' + id);
+                    if (!printBtn) return;
+                    // watch any disabled print buttons (pending or approved) so they can be enabled in-place
+                    if (printBtn.disabled) {
+                        watches.set(id, { row });
+                    }
+                });
+            }
+
+            async function checkOnce(id, ctx) {
+                try {
+                    const res = await fetch(`/api/leave/${id}/status`, { credentials: 'same-origin' });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (data && data.printing_allowed) {
+                        // replace disabled button with real print link
+                        const old = document.getElementById('print-btn-' + id);
+                        if (old) {
+                            const a = document.createElement('a');
+                            a.className = old.className.replace(/btn-secondary|btn-disabled-print/, 'btn-primary');
+                            a.id = old.id;
+                            a.target = '_blank';
+                            a.href = `/dashboard/employee/leave/${id}/print`;
+                            a.title = 'Print Leave Form';
+                            a.innerHTML = '<i class="fa fa-print"></i> Print';
+                            old.replaceWith(a);
+                        }
+                        // stop watching
+                        watches.delete(id);
+                    }
+                } catch (e) {
+                    // ignore transient errors
+                }
+            }
+
+            function poll() {
+                if (watches.size === 0) return;
+                for (const [id, ctx] of Array.from(watches.entries())) {
+                    checkOnce(id, ctx);
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                initWatches();
+                poll();
+            });
+            // also init immediately in case DOMContentLoaded already fired
+            initWatches();
+            poll();
+            setInterval(poll, 5000);
+        })();
     </script>
 @endsection

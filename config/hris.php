@@ -19,7 +19,7 @@ return [
         'WLNS' => 0, // Wellness Leave
         'SPL'  => 0, // Solo Parent Leave
         'CTO'  => 0, // Compensatory Time Off
-        'SP'   => 0, // Special Leave Privilege
+        'SP'   => 0, // Special Privilege Leave
     ],
 
 ];

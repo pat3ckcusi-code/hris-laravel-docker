@@ -13,8 +13,10 @@
     $user = auth()->user();
     if ($user && isset($user->access_level) && stripos($user->access_level, 'administrative') !== false) {
         $apiUrl = route('admin-officer.statistics.data');
+        $detailsUrl = route('admin-officer.statistics.details');
     } else {
         $apiUrl = route('department-head.statistics.data');
+        $detailsUrl = route('department-head.statistics.details');
     }
 ?>
 
@@ -24,14 +26,11 @@
     <div>
         <h1>Employee ETA / Locator Usage</h1>
     </div>
-    <div class="stats-actions">
-        <button class="month-nav" id="monthToday" data-month="{{ date('n') }}" data-year="{{ date('Y') }}">This Month</button>
-    </div>
-    
 </div>
 
 <script>
 window._employeeStatisticsApiUrl = window._employeeStatisticsApiUrl || '{{ $apiUrl ?? route("department-head.statistics.data") }}';
+window._employeeStatisticsDetailsUrl = window._employeeStatisticsDetailsUrl || '{{ $detailsUrl ?? route("department-head.statistics.details") }}';
 
 function formatBadge(count, type) {
     let cls = 'badge-usage';
@@ -202,7 +201,7 @@ document.addEventListener('click', function (e) {
         const type = usage.dataset.type;
         const month = usage.dataset.month || window._stats_current_month || {{ (int)($displayMonth ?? date('n')) }};
         const year = usage.dataset.year || window._stats_current_year || {{ (int)$displayYear }};
-        const url = new URL('{{ route('department-head.statistics.details') }}', window.location.origin);
+        const url = new URL(window._employeeStatisticsDetailsUrl || '{{ $detailsUrl ?? route("department-head.statistics.details") }}', window.location.origin);
         url.searchParams.set('empNo', empNo);
         url.searchParams.set('type', type);
         url.searchParams.set('month', month);

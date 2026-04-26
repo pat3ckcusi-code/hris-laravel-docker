@@ -13,6 +13,7 @@ use App\Models\LeaveDate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\RedirectResponse;
 use Carbon\Carbon;
 use App\Services\DepartmentService;
@@ -20,6 +21,7 @@ use App\Services\DepartmentHeadService;
 use App\Services\LeaveRequestService;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use App\Models\HRAuditTrail;
 use App\Mail\LeaveRequestStatusNotification;
 use App\Mail\ApplicationStatusNotification;
 
@@ -576,6 +578,116 @@ class DepartmentHeadController extends Controller
         return $this->leaveRequestService->approveLeave($request, $id);
     }
 
+    /**
+     * Allow printing for a pending leave request (pre-approval).
+     */
+    public function allowPrinting(Request $request, $id)
+    {
+        $user = Auth::user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $leave = LeaveRequest::findOrFail($id);
+
+        if (!$dept) {
+            return response()->json(['error' => 'Department not found for your account.'], 403);
+        }
+
+        $employee = $leave->user;
+        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+            return response()->json(['error' => 'You are not authorized to perform this action.'], 403);
+        }
+
+        if ($leave->printing_allowed) {
+            return response()->json(['success' => true, 'message' => 'Printing already allowed.']);
+        }
+
+        $leave->printing_allowed = true;
+        $leave->printing_allowed_by = $user->id;
+        $leave->printing_allowed_at = now();
+        $leave->save();
+
+        HRAuditTrail::create([
+            'actor_user_id' => $user->id,
+            'module' => 'leave',
+            'action' => 'allow_printing',
+            'target_type' => 'leave_request',
+            'target_id' => $leave->id,
+            'details' => [
+                'leave_id' => $leave->id,
+                'approver_id' => $user->id,
+                'approver_role' => $user->access_level ?? null,
+                'status' => $leave->status,
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        // Prefer existing preview and sanitize to VL/SL only
+        $deductionPreview = [];
+        if (!empty($leave->printing_deduction_details)) {
+            try {
+                $existing = json_decode($leave->printing_deduction_details, true) ?: [];
+            } catch (\Exception $e) {
+                $existing = [];
+            }
+            foreach (['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'] as $k) {
+                if (isset($existing[$k]) && is_numeric($existing[$k]) && floatval($existing[$k]) > 0) {
+                    $deductionPreview[$k] = floatval($existing[$k]);
+                }
+            }
+        }
+        if (empty($deductionPreview)) {
+            $toDeduct = floatval($leave->paid_days ?? 0);
+            if ($toDeduct > 0) {
+                $label = strtolower($leave->leave_type ?? '');
+                if (str_contains($label, 'vacation') || str_contains($label, 'vl')) {
+                    $deductionPreview = ['VL' => $toDeduct];
+                } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
+                    $deductionPreview = ['SL' => $toDeduct];
+                } elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) {
+                    $deductionPreview = ['WLNS' => $toDeduct];
+                } elseif (str_contains($label, 'special') || str_contains($label, 'spl') || str_contains($label, 'privilege')) {
+                    $deductionPreview = ['SPL' => $toDeduct];
+                } elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) {
+                    $deductionPreview = ['SP' => $toDeduct];
+                } elseif (str_contains($label, 'cto')) {
+                    $deductionPreview = ['CTO' => $toDeduct];
+                }
+            }
+        }
+
+        Log::info('Printing allowed for leave', [
+            'leave_id' => $leave->id,
+            'employee_id' => $employee->id ?? null,
+            'allowed_by' => $user->id ?? null,
+            'role' => $user->access_level ?? null,
+            'printing_allowed' => true,
+            'printing_deduction_preview' => $deductionPreview,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        // Persist a non-destructive deduction preview for printing (no balances are changed here)
+        if (!empty($deductionPreview) && Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+            try {
+                $leave->printing_deduction_details = json_encode($deductionPreview);
+                if (Schema::hasColumn('leave_requests', 'printing_deduction_applied')) {
+                    // Ensure flag indicates not yet applied
+                    $leave->printing_deduction_applied = false;
+                }
+                $leave->save();
+            } catch (\Exception $ex) {
+                Log::error('Failed to save printing_deduction_details (DH preview)', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+            }
+        }
+
+        // Optionally notify employee about printing being allowed
+        try {
+            if ($employee && !empty($employee->email)) {
+                Mail::to($employee->email)->queue(new ApplicationStatusNotification($employee, $leave, 'Leave', ['filed' => $leave->created_at ? Carbon::parse($leave->created_at)->format('l, F j, Y') : ''], 'printing_allowed'));
+            }
+        } catch (\Exception $ex) {}
+
+        return response()->json(['success' => true]);
+    }
+
     public function approveEta(Request $request, $id)
     {
         $user = Auth::user();
@@ -614,6 +726,25 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'eta',
+                'action' => 'approve',
+                'target_type' => 'eta',
+                'target_id' => $eta->id,
+                'details' => [
+                    'purpose' => $eta->purpose ?? '',
+                    'purpose_details' => $eta->purpose_details ?? '',
+                    'approver_normalized_role' => $normalizedRole,
+                    'approver_id' => $user->id,
+                    'employee_id' => $employee->id ?? null,
+                    'timestamp' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            Log::error('Failed to write HRAuditTrail for ETA approval', ['eta_id' => $eta->id, 'error' => $ex->getMessage()]);
+        }
 
         // notify employee about ETA approval
         try {
@@ -681,6 +812,25 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'eta',
+                'action' => 'reject',
+                'target_type' => 'eta',
+                'target_id' => $eta->id,
+                'details' => [
+                    'purpose' => $eta->purpose ?? '',
+                    'purpose_details' => $eta->purpose_details ?? '',
+                    'approver_normalized_role' => $normalizedRole,
+                    'approver_id' => $user->id,
+                    'employee_id' => $employee->id ?? null,
+                    'timestamp' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            Log::error('Failed to write HRAuditTrail for ETA rejection', ['eta_id' => $eta->id, 'error' => $ex->getMessage()]);
+        }
 
         // notify employee about ETA rejection
         try {
@@ -749,6 +899,26 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'locator',
+                'action' => 'approve',
+                'target_type' => 'locator',
+                'target_id' => $locator->id,
+                'details' => [
+                    'purpose_of_travel' => $locator->detail ?? '',
+                    'application_type' => $locator->application_type ?? '',
+                    'approver_normalized_role' => $normalizedRole,
+                    'approver_id' => $user->id,
+                    'employee_id' => $employee->id ?? null,
+                    'timestamp' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            Log::error('Failed to write HRAuditTrail for Locator approval', ['locator_id' => $locator->id, 'error' => $ex->getMessage()]);
+        }
 
         // notify employee about Locator approval
         try {
@@ -820,6 +990,26 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'locator',
+                'action' => 'reject',
+                'target_type' => 'locator',
+                'target_id' => $locator->id,
+                'details' => [
+                    'purpose_of_travel' => $locator->detail ?? '',
+                    'application_type' => $locator->application_type ?? '',
+                    'approver_normalized_role' => $normalizedRole,
+                    'approver_id' => $user->id,
+                    'employee_id' => $employee->id ?? null,
+                    'timestamp' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            Log::error('Failed to write HRAuditTrail for Locator rejection', ['locator_id' => $locator->id, 'error' => $ex->getMessage()]);
+        }
 
         // notify employee about Locator rejection
         try {
@@ -897,6 +1087,59 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
+
+        // If printing deduction was applied earlier, restore credits
+        if (!empty($leave->printing_deduction_applied) && !empty($leave->printing_deduction_details)) {
+            try {
+                $details = json_decode($leave->printing_deduction_details, true) ?: [];
+                DB::transaction(function () use ($details, $leave) {
+                    $employee = $leave->user;
+                    if (!$employee) return;
+                    $leaveBalance = $employee->leaveBalance;
+                    if (!$leaveBalance) return;
+                    foreach ($details as $col => $amt) {
+                        if (!is_numeric($amt) || $amt <= 0) continue;
+                        $key = strtoupper((string)$col);
+                        $candidates = [
+                            'VL' => ['balance_vacation_leave','vl','VL'],
+                            'SL' => ['balance_sick_leave','sl','SL'],
+                            'WLNS' => ['balance_wellness_leave','wlns','WLNS'],
+                            'SPL' => ['balance_special_leave_privilege','spl','SPL'],
+                            'CTO' => ['balance_cto','cto','CTO'],
+                            'SP' => ['balance_solo_parent_leave','sp','SP'],
+                        ];
+                        $found = null;
+                        foreach ($candidates[$key] ?? [strtolower($key), strtoupper($key)] as $cand) {
+                            if (array_key_exists($cand, $leaveBalance->getAttributes()) || isset($leaveBalance->{$cand})) {
+                                $found = $cand; break;
+                            }
+                        }
+                        if ($found) {
+                            $leaveBalance->{$found} = floatval($leaveBalance->{$found} ?? 0) + floatval($amt);
+                        }
+                    }
+                    $leaveBalance->save();
+                    // clear printing flags
+                    $leave->printing_allowed = false;
+                    if (Schema::hasColumn('leave_requests', 'printing_deduction_applied')) {
+                        $leave->printing_deduction_applied = false;
+                    }
+                    if (Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+                        $leave->printing_deduction_details = null;
+                    }
+                    // do NOT write leave balance columns into leave_requests here; keep balances in leave_balances table only
+                    $leave->save();
+                });
+                Log::info('Printing deduction restored due to rejection', [
+                    'leave_id' => $leave->id,
+                    'restored_by' => auth()->id(),
+                    'details' => $leave->printing_deduction_details,
+                    'timestamp' => now()->toDateTimeString(),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to restore printing deduction on rejection', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         $leave->status = 'declined';
         $leave->rejection_notes = $request->input('rejection_notes');

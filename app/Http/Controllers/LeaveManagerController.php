@@ -9,11 +9,14 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveDate;
 use App\Models\Holiday;
 use App\Models\User;
+use App\Models\HRAuditTrail;
 use App\Events\HolidayCreated;
 use App\Services\HolidayLeaveCancellationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class LeaveManagerController extends Controller
 {
@@ -67,17 +70,23 @@ class LeaveManagerController extends Controller
      */
     public function cancelLeaves(Request $request)
     {
-        // show approved leave requests so individual dates can be cancelled
+        // show approved and cancelled leave requests that are part of the auto-cancel workflow only.
         $query = LeaveRequest::with(['user', 'leaveDates'])
-            ->where('status', 'approved');
+            ->where(function($q) {
+                $q->whereIn('status', ['approved', 'cancelled'])
+                  ->whereNull('cancellation_status');
+            });
 
         // Filter by month (format: YYYY-MM)
         $month = $request->query('month');
         if ($month && preg_match('/^\d{4}-\d{2}$/', $month)) {
             $start = $month . '-01';
             $end = date('Y-m-t', strtotime($start));
-            $query->whereHas('leaveDates', function($q) use ($start, $end) {
-                $q->whereBetween('leave_date', [$start, $end]);
+            $query->where(function ($q) use ($start, $end) {
+                $q->whereRaw('DATE(date_filed) BETWEEN ? AND ?', [$start, $end])
+                  ->orWhere(function ($q2) use ($start, $end) {
+                      $q2->whereBetween('start_date', [$start, $end]);
+                  });
             });
         }
 
@@ -89,14 +98,71 @@ class LeaveManagerController extends Controller
             });
         }
 
-        $requests = $query->orderBy('date_filed', 'desc')->paginate(25);
+        // Filter by leave request status if provided
+        $status = strtolower((string) $request->query('status', ''));
+        if ($status !== '') {
+            $allowedStatuses = ['approved', 'cancelled', 'pending'];
+            if (in_array($status, $allowedStatuses, true)) {
+                $query->where('status', $status);
+            }
+        }
+
+        $requests = $query->orderBy('date_filed', 'desc')->paginate(10);
 
         $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
 
         return view('leave-manager.cancel-leaves', [
             'requests' => $requests,
             'departments' => $departments,
+            'selectedMonth' => $month,
         ]);
+    }
+
+    /**
+     * Show the employee cancellation requests page.
+     */
+    public function employeeCancellationRequests(Request $request)
+    {
+        $query = LeaveRequest::with(['user', 'leaveDates'])
+            ->where('status', 'approved')
+            ->where('cancellation_status', 'Pending Cancellation');
+
+        $month = $request->query('month');
+        if ($month && preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $start = $month . '-01';
+            $end = date('Y-m-t', strtotime($start));
+            $query->whereHas('leaveDates', function($q) use ($start, $end) {
+                $q->whereBetween('leave_date', [$start, $end]);
+            });
+        }
+
+        $emp = $request->query('emp');
+        if ($emp) {
+            $query->whereHas('user', function($q) use ($emp) {
+                $q->where('EmpNo', $emp);
+            });
+        }
+
+        $requests = $query->orderBy('cancellation_requested_at', 'desc')->paginate(25);
+
+        $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
+
+        return view('leave-manager.employee-cancellation-requests', [
+            'requests' => $requests,
+            'departments' => $departments,
+        ]);
+    }
+
+    /**
+     * API: pending employee cancellation requests badge count.
+     */
+    public function apiPendingCancellationCount(): JsonResponse
+    {
+        $count = LeaveRequest::where('status', 'approved')
+            ->where('cancellation_status', 'Pending Cancellation')
+            ->count();
+
+        return response()->json(['count' => $count]);
     }
 
     /**
@@ -191,6 +257,230 @@ class LeaveManagerController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json(['error' => 'Failed to cancel date'], 500);
+        }
+    }
+
+    /**
+     * Approve a pending cancellation request for an entire leave.
+     * Expects: leave_id, remarks (optional)
+     */
+    public function apiApproveCancellation(Request $request, $leave)
+    {
+        $leave = LeaveRequest::with(['user','leaveDates'])->find($leave);
+        if (! $leave) return response()->json(['error' => 'Leave not found'], 404);
+
+        if ($leave->cancellation_status !== 'Pending Cancellation') {
+            return response()->json(['error' => 'No pending cancellation request for this leave'], 422);
+        }
+
+        if ($leave->status !== 'approved') {
+            return response()->json(['error' => 'Only approved leaves can be cancelled'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $user = $leave->user;
+            $lb = $user->leaveBalance ?? null;
+
+            // Prefer returning applied per-type deductions if present (printing_deduction_details contains applied log)
+            $applied = [];
+            if (!empty($leave->printing_deduction_details)) {
+                try { $applied = json_decode($leave->printing_deduction_details, true) ?: []; } catch (\Exception $e) { $applied = []; }
+            }
+
+            if (!empty($applied) && $lb) {
+                // restore per-type amounts from applied deduction log
+                $candidates = [
+                    'VL' => ['balance_vacation_leave','vl','VL'],
+                    'SL' => ['balance_sick_leave','sl','SL'],
+                    'WLNS' => ['balance_wellness_leave','wlns','WLNS'],
+                    'SPL' => ['balance_special_leave_privilege','spl','SPL'],
+                    'CTO' => ['balance_cto','cto','CTO'],
+                    'SP' => ['balance_solo_parent_leave','sp','SP'],
+                ];
+                $restored = [];
+                foreach ($applied as $type => $amt) {
+                    if (!is_numeric($amt) || floatval($amt) <= 0) continue;
+                    $key = strtoupper((string)$type);
+                    $found = null;
+                    foreach ($candidates[$key] as $cand) {
+                        if (array_key_exists($cand, $lb->getAttributes()) || isset($lb->{$cand})) { $found = $cand; break; }
+                    }
+                    if ($found) {
+                        $before = floatval($lb->{$found} ?? 0);
+                        $lb->{$found} = $before + floatval($amt);
+                        $restored[$key] = floatval($amt);
+                    }
+                }
+                $lb->save();
+
+                // mark all non-cancelled leave dates as cancelled and annotate
+                $dates = $leave->leaveDates()->where('is_cancelled', false)->get();
+                foreach ($dates as $ld) {
+                    $ld->is_cancelled = true;
+                    $ld->cancel_reason = $leave->cancellation_reason ?? 'Cancelled by manager approval';
+                    $ld->cancelled_by = Auth::id();
+                    $ld->cancelled_at = now();
+                    $ld->save();
+                }
+
+                // record audit trail with per-type restored amounts
+                try {
+                    HRAuditTrail::create([
+                        'actor_user_id' => Auth::id(),
+                        'module' => 'leave',
+                        'action' => 'cancel_restore_balances',
+                        'target_type' => 'leave_request',
+                        'target_id' => $leave->id,
+                        'details' => [
+                            'restored' => $restored,
+                            'cancelled_by' => Auth::id(),
+                            'cancelled_at' => now()->toDateTimeString(),
+                            'remarks' => $request->input('remarks') ?? null,
+                            'leave_reason' => $leave->reason ?? null,
+                            'type_labels' => [
+                                'VL' => 'Vacation Leave',
+                                'SL' => 'Sick Leave',
+                                'WLNS' => 'Wellness Leave',
+                                'SPL' => 'Special Privilege Leave',
+                                'CTO' => 'CTO',
+                                'SP' => 'Solo Parent Leave',
+                            ],
+                        ],
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to write HRAuditTrail on cancellation restore', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
+                }
+
+            } else {
+                // Fallback: refund balances based on leaveDates
+                $dates = $leave->leaveDates()->where('is_cancelled', false)->get();
+                foreach ($dates as $ld) {
+                    $days = $ld->days ?? 1.0;
+                    $type = strtolower((string)($ld->leave_type ?? $leave->leave_type ?? ''));
+                    if ($lb) {
+                        if (strpos($type, 'vacation') !== false) { $lb->VL = ($lb->VL ?? 0) + $days; }
+                        elseif (strpos($type, 'sick') !== false) { $lb->SL = ($lb->SL ?? 0) + $days; }
+                        elseif (strpos($type, 'wellness') !== false) { $lb->WLNS = ($lb->WLNS ?? 0) + $days; }
+                        elseif (strpos($type, 'solo') !== false) { $lb->SP = ($lb->SP ?? 0) + $days; }
+                        elseif (strpos($type, 'special') !== false || strpos($type, 'spl') !== false) { $lb->SPL = ($lb->SPL ?? 0) + $days; }
+                    }
+                    $ld->is_cancelled = true;
+                    $ld->cancel_reason = $leave->cancellation_reason ?? 'Cancelled by manager approval';
+                    $ld->cancelled_by = Auth::id();
+                    $ld->cancelled_at = now();
+                    $ld->save();
+                }
+
+                if ($lb) $lb->save();
+            }
+
+            // fallback refund if no leaveDates
+            if ($dates->isEmpty() && $leave->paid_days > 0 && $lb) {
+                $tn = strtolower((string)$leave->leave_type);
+                $days = $leave->paid_days;
+                if (strpos($tn, 'vacation') !== false) { $lb->VL = ($lb->VL ?? 0) + $days; }
+                elseif (strpos($tn, 'sick') !== false) { $lb->SL = ($lb->SL ?? 0) + $days; }
+                elseif (strpos($tn, 'wellness') !== false) { $lb->WLNS = ($lb->WLNS ?? 0) + $days; }
+                elseif (strpos($tn, 'solo') !== false) { $lb->SP = ($lb->SP ?? 0) + $days; }
+                elseif (strpos($tn, 'special') !== false || strpos($tn, 'spl') !== false) { $lb->SPL = ($lb->SPL ?? 0) + $days; }
+                $lb->save();
+            }
+
+            $leave->status = 'cancelled';
+            $leave->cancellation_status = 'Cancelled by applicant';
+            $leave->cancellation_reviewed_by = Auth::id();
+            $leave->cancellation_reviewed_at = now();
+            $leave->cancellation_remarks = $request->input('remarks') ?? null;
+            $leave->save();
+
+            DB::commit();
+
+            // Log audit
+            \Illuminate\Support\Facades\Log::info('Cancellation approved', [
+                'leave_id' => $leave->id,
+                'employee_id' => $user->id,
+                'manager_id' => Auth::id(),
+                'reason' => substr($leave->cancellation_reason ?? '', 0, 1000),
+                'remarks' => substr($leave->cancellation_remarks ?? '', 0, 1000),
+                'timestamp' => now()->toDateTimeString(),
+            ]);
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Failed to approve cancellation: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Reject a pending cancellation request.
+     * Expects: leave_id, remarks (required)
+     */
+    public function apiRejectCancellation(Request $request, $leave)
+    {
+        $request->validate([ 'remarks' => 'required|string' ]);
+        $leave = LeaveRequest::with(['user', 'leaveDates'])->find($leave);
+        if (! $leave) return response()->json(['error' => 'Leave not found'], 404);
+
+        if ($leave->cancellation_status !== 'Pending Cancellation') {
+            return response()->json(['error' => 'No pending cancellation request for this leave'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $user = $leave->user;
+            $lb = $user?->leaveBalance;
+
+            $cancelledDates = $leave->leaveDates()->where('is_cancelled', true)->get();
+            foreach ($cancelledDates as $ld) {
+                $days = $ld->days ?? 1.0;
+                $type = strtolower((string)($ld->leave_type ?? $leave->leave_type ?? ''));
+                if ($lb) {
+                    if (strpos($type, 'vacation') !== false) { $lb->VL = ($lb->VL ?? 0) + $days; }
+                    elseif (strpos($type, 'sick') !== false) { $lb->SL = ($lb->SL ?? 0) + $days; }
+                    elseif (strpos($type, 'wellness') !== false) { $lb->WLNS = ($lb->WLNS ?? 0) + $days; }
+                    elseif (strpos($type, 'solo') !== false) { $lb->SP = ($lb->SP ?? 0) + $days; }
+                    elseif (strpos($type, 'special') !== false || strpos($type, 'spl') !== false) { $lb->SPL = ($lb->SPL ?? 0) + $days; }
+                }
+                $ld->is_cancelled = false;
+                $ld->cancel_reason = null;
+                $ld->cancelled_by = null;
+                $ld->cancelled_at = null;
+                $ld->save();
+            }
+
+            if ($lb) {
+                $lb->save();
+            }
+
+            $leave->cancellation_status = 'Rejected';
+            $leave->cancellation_reviewed_by = Auth::id();
+            $leave->cancellation_reviewed_at = now();
+            $leave->cancellation_remarks = $request->input('remarks');
+            $leave->save();
+
+            DB::commit();
+
+            // Log audit
+            \Illuminate\Support\Facades\Log::info('Cancellation rejected', [
+                'leave_id' => $leave->id,
+                'employee_id' => $leave->user ? $leave->user->id : null,
+                'manager_id' => Auth::id(),
+                'remarks' => substr($leave->cancellation_remarks ?? '', 0, 1000),
+                'timestamp' => now()->toDateTimeString(),
+            ]);
+
+            try {
+                if ($leave->user && !empty($leave->user->email)) {
+                    Mail::to($leave->user->email)->queue(new \App\Mail\LeaveRequestStatusNotification($leave->user, $leave));
+                }
+            } catch (\Exception $ex) {}
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Failed to reject cancellation: ' . $e->getMessage()], 500);
         }
     }
 

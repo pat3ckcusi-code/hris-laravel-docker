@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <td>${row.created_at}</td>
                                             <td>
                                                 <button class="btn-sm btn-view" type="button" onclick="openTravelOrderModal(${row.id})">View</button>
+                                                <button class="btn-sm btn-view" type="button" style="background:#16a34a" onclick="printTravelOrder(${row.id})"><i class="fas fa-print"></i> Print</button>
                                             </td>
                                         </tr>`;
                         }).join('');
@@ -108,6 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="muted" style="font-size:0.9rem;margin-bottom:12px">View details for this travel order</div>
         <div id="travelOrderModalBody"></div>
         <div class="modal-actions">
+            <button class="btn-sm btn-view" style="background:#16a34a" onclick="printTravelOrderFromModal()"><i class="fas fa-print"></i> Print</button>
             <button class="btn-sm btn-view" onclick="closeTravelOrderModal()">Close</button>
         </div>
     </div>
@@ -134,6 +136,8 @@ async function openTravelOrderModal(id) {
                                     <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Departure</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.departure || '-'}</td></tr>
                                     <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Return</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.return || '-'}</td></tr>
                                     <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Purpose</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.purpose || '-'}</td></tr>
+                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Created By</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.created_by || '-'}</td></tr>
+                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Recommender</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.recommender || '-'}</td></tr>
                                     <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.remarks || '-'}</td></tr>
                                 </tbody>
                             </table>
@@ -143,11 +147,56 @@ async function openTravelOrderModal(id) {
                             <div style="border:1px solid #f1f5f9; border-radius:6px; padding:8px">${emps || '<div class="muted">No employees listed</div>'}</div>
                         </div>
                     </div>`;
+                _currentTravelOrderData = d;
         } catch (err) {
                 body.innerHTML = '<div class="text-danger">Failed to load details</div>';
         }
 }
 function closeTravelOrderModal(){ document.getElementById('travelOrderModalOverlay').style.display='none'; }
+
+var _currentTravelOrderData = null;
+
+function printTravelOrder(id) {
+    fetch(`/api/travel-orders/${id}`)
+        .then(r => r.json())
+        .then(j => {
+            if (j.success) {
+                _currentTravelOrderData = j.data;
+                printTravelOrderContent(j.data);
+            }
+        });
+}
+
+function printTravelOrderFromModal() {
+    if (_currentTravelOrderData) printTravelOrderContent(_currentTravelOrderData);
+}
+
+function printTravelOrderContent(d) {
+    const emps = (d.employees || []).map((e,i) => `<tr><td>${i+1}</td><td>${e.name || e.EmpNo || ''}</td><td>${e.designation || ''}</td></tr>`).join('');
+    const w = window.open('', '_blank', 'width=800,height=600');
+    w.document.write(`<html><head><title>Travel Order - ${d.travel_order_num}</title>
+        <style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}.header{text-align:center;margin-bottom:18px}h2{margin:4px 0}.note{font-size:12px;color:#666;margin-top:18px}@media print{button{display:none}}</style>
+    </head><body>
+        <div class="header">
+            <h2>TRAVEL ORDER</h2>
+            <p>Submitted to: City Mayor's Office</p>
+        </div>
+        <table><tbody>
+            <tr><td style="width:160px"><strong>TO Number</strong></td><td>${d.travel_order_num}</td></tr>
+            <tr><td><strong>Destination</strong></td><td>${d.destination}</td></tr>
+            <tr><td><strong>Departure</strong></td><td>${d.departure || '-'}</td></tr>
+            <tr><td><strong>Return</strong></td><td>${d.return || '-'}</td></tr>
+            <tr><td><strong>Purpose</strong></td><td>${d.purpose || '-'}</td></tr>
+            <tr><td><strong>Remarks</strong></td><td>${d.remarks || '-'}</td></tr>
+            <tr><td><strong>Status</strong></td><td>${d.status || '-'}</td></tr>
+        </tbody></table>
+        <h3>Employees</h3>
+        <table><thead><tr><th>#</th><th>Name</th><th>Designation</th></tr></thead><tbody>${emps || '<tr><td colspan="3">No employees</td></tr>'}</tbody></table>
+        <p class="note">Travel Orders are submitted to the City Mayor\'s Office for signature.</p>
+        <button onclick="window.print()">Print</button>
+    </body></html>`);
+    w.document.close();
+}
 </script>
 
 @endsection

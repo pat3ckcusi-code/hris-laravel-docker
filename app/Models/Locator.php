@@ -42,6 +42,18 @@ class Locator extends Model
         'detail',
         'actual_arrival_time',
         'status',
+        'cancelled_by',
+        'cancelled_at',
+        'cancellation_remarks',
+    ];
+
+    protected $casts = [
+        'travel_date' => 'date',
+        'intended_departure_time' => 'string',
+        'intended_arrival_time' => 'string',
+        'actual_arrival_time' => 'string',
+        'cancelled_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
 
     public function user()

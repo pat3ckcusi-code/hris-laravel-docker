@@ -44,4 +44,9 @@ class Eta extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
 }

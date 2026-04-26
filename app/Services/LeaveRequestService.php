@@ -15,6 +15,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use App\Models\HRAuditTrail;
 use App\Mail\LeaveRequestStatusNotification;
 use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -41,6 +42,16 @@ class LeaveRequestService
      */
     public function canPrint(LeaveRequest $leave, User $user): bool
     {
+        // printing must be explicitly allowed before any party may print
+        if (empty($leave->printing_allowed)) {
+            return false;
+        }
+
+        // do not allow printing for declined or cancelled requests
+        if (in_array($leave->status, ['declined', 'cancelled', 'rejected'], true)) {
+            return false;
+        }
+
         if ($leave->user_id === $user->id) {
             return true;
         }
@@ -197,16 +208,80 @@ class LeaveRequestService
 
         $purpose = (string) ($leave->reason ?? '');
 
+        // Compute printable reason, with Wellness override when WLNS is present in preview or leave type
+        $reason = (string) ($leave->reason ?? '');
+        $isWellnessPreview = false;
+        if (!empty($preview)) {
+            if (isset($preview['WLNS']) && floatval($preview['WLNS']) > 0) $isWellnessPreview = true;
+        }
+        if ($isWellnessPreview || stripos((string)($leave->leave_type ?? ''), 'wellness') !== false || stripos((string)($leave->leave_type ?? ''), 'wlns') !== false) {
+            $reason = 'Wellness';
+        }
+
         $empLB = $employee->leaveBalance ?? null;
-        $displayTotalEarnedVL = $leave->balance_vacation_leave ?? ($empLB->VL ?? 0);
-        $displayTotalEarnedSL = $leave->balance_sick_leave ?? ($empLB->SL ?? 0);
+        $displayTotalEarnedVL = $empLB ? ($empLB->VL ?? ($leave->balance_vacation_leave ?? 0)) : ($leave->balance_vacation_leave ?? 0);
+        $displayTotalEarnedSL = $empLB ? ($empLB->SL ?? ($leave->balance_sick_leave ?? 0)) : ($leave->balance_sick_leave ?? 0);
+        $displayTotalEarnedWLNS = $empLB ? ($empLB->WLNS ?? ($leave->balance_wellness_leave ?? 0)) : ($leave->balance_wellness_leave ?? 0);
+        $displayTotalEarnedSPL = $empLB ? ($empLB->SPL ?? ($leave->balance_special_leave_privilege ?? 0)) : ($leave->balance_special_leave_privilege ?? 0);
+        $displayTotalEarnedCTO = $empLB ? ($empLB->CTO ?? ($leave->balance_cto ?? 0)) : ($leave->balance_cto ?? 0);
+        $displayTotalEarnedSP = $empLB ? ($empLB->SP ?? ($leave->balance_solo_parent_leave ?? 0)) : ($leave->balance_solo_parent_leave ?? 0);
 
+        // Prefer per-type preview if available
+        $preview = [];
+        if (!empty($leave->printing_deduction_details)) {
+            try { $preview = json_decode($leave->printing_deduction_details, true) ?: []; } catch (\Exception $e) { $preview = []; }
+        }
         $lt = strtolower((string)($leave->leave_type ?? ''));
-        $displayRequestedVL = (stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? ($leave->paid_days ?? 0) : 0;
-        $displayRequestedSL = (stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? ($leave->paid_days ?? 0) : 0;
+        $displayRequestedVL = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? ($leave->paid_days ?? 0) : 0);
+        $displayRequestedSL = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? ($leave->paid_days ?? 0) : 0);
 
-        $displayBalanceVL = $empLB ? ($empLB->VL ?? $displayTotalEarnedVL) : $displayTotalEarnedVL;
-        $displayBalanceSL = $empLB ? ($empLB->SL ?? $displayTotalEarnedSL) : $displayTotalEarnedSL;
+        $displayRequestedWLNS = isset($preview['WLNS']) ? floatval($preview['WLNS']) : 0;
+        $displayRequestedSPL = isset($preview['SPL']) ? floatval($preview['SPL']) : 0;
+        $displayRequestedCTO = isset($preview['CTO']) ? floatval($preview['CTO']) : 0;
+        $displayRequestedSP = isset($preview['SP']) ? floatval($preview['SP']) : 0;
+
+        $displayBalanceVL = $displayTotalEarnedVL - $displayRequestedVL;
+        $displayBalanceSL = $displayTotalEarnedSL - $displayRequestedSL;
+
+        // Also compute combined totals for Section 7.A (Total Earned, Less This Application, Balance)
+        $combinedTotalEarned = $displayTotalEarnedVL + $displayTotalEarnedSL + $displayTotalEarnedWLNS + $displayTotalEarnedSPL + $displayTotalEarnedCTO + $displayTotalEarnedSP;
+        $combinedLess = $displayRequestedVL + $displayRequestedSL + $displayRequestedWLNS + $displayRequestedSPL + $displayRequestedCTO + $displayRequestedSP;
+        $combinedBalance = $combinedTotalEarned - $combinedLess;
+
+        Log::info('Leave print values computed', [
+            'leave_id' => $leave->id,
+            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+            'leave_status' => $leave->status,
+            'vl_total_earned' => $displayTotalEarnedVL,
+            'vl_requested' => $displayRequestedVL,
+            'vl_balance' => $displayBalanceVL,
+            'sl_total_earned' => $displayTotalEarnedSL,
+            'sl_requested' => $displayRequestedSL,
+            'sl_balance' => $displayBalanceSL,
+            'wlns_total_earned' => $displayTotalEarnedWLNS,
+            'wlns_requested' => $displayRequestedWLNS,
+            'spl_total_earned' => $displayTotalEarnedSPL,
+            'spl_requested' => $displayRequestedSPL,
+            'cto_total_earned' => $displayTotalEarnedCTO,
+            'cto_requested' => $displayRequestedCTO,
+            'sp_total_earned' => $displayTotalEarnedSP,
+            'sp_requested' => $displayRequestedSP,
+            'combined_total_earned' => $combinedTotalEarned,
+            'combined_less' => $combinedLess,
+            'combined_balance' => $combinedBalance,
+        ]);
+
+        // Attempt to write combined totals into mapping keys for Section 7.A if mapping contains them
+        $write('total_earned', number_format($combinedTotalEarned, 3, '.', ''));
+        $write('less_this_application', number_format($combinedLess, 3, '.', ''));
+        $write('balance_total', number_format($combinedBalance, 3, '.', ''));
+
+        // write reason field into PDF mapping if present
+        try {
+            $put('reason', $reason);
+        } catch (\Throwable $_) {
+            // ignore if mapping doesn't include reason
+        }
 
         $PaidDays = $leave->paid_days ?? 0;
         $LWOPDays = $leave->lwop_days ?? 0;
@@ -414,6 +489,15 @@ class LeaveRequestService
     public function approveLeave($request, $id)
     {
         $leave = LeaveRequest::findOrFail($id);
+        // Enforce that Department Head / Administrative Officer must allow printing first
+        $actor = auth()->user();
+        $actorRole = strtolower(str_replace(['-','_'], ' ', trim((string) ($actor->access_level ?? ''))));
+        if (in_array($actorRole, ['department head', 'administrative officer'], true) && empty($leave->printing_allowed)) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Printing must be allowed before approval.'], 422);
+            }
+            return redirect()->back()->with('error', 'Printing must be allowed before approval.');
+        }
 
         if ($leave->status === 'approved') {
             if ($request->ajax() || $request->wantsJson()) {
@@ -498,12 +582,6 @@ class LeaveRequestService
 
         if (!$column) {
             $leave->status = 'approved';
-            $leaveBalance->refresh();
-            $leave->balance_vacation_leave = $leaveBalance->VL;
-            $leave->balance_sick_leave = $leaveBalance->SL;
-            $leave->balance_wellness_leave = $leaveBalance->WLNS;
-            $leave->balance_solo_parent_leave = $leaveBalance->SP;
-            $leave->balance_special_leave_privilege = $leaveBalance->SPL;
             $leave->save();
             // notify employee about approval
             try {
@@ -544,43 +622,173 @@ class LeaveRequestService
             return redirect()->back()->with('success', 'Leave approved.');
         }
 
+        $deductionLog = [];
+        // capture original leave balances for audit
+        $originalBalances = [
+            'VL' => $leaveBalance->VL ?? 0,
+            'SL' => $leaveBalance->SL ?? 0,
+            'WLNS' => $leaveBalance->WLNS ?? 0,
+            'SP' => $leaveBalance->SP ?? 0,
+            'SPL' => $leaveBalance->SPL ?? 0,
+            'CTO' => $leaveBalance->CTO ?? 0,
+        ];
         try {
-            DB::transaction(function () use ($leaveBalance, $column, $toDeduct, $leave) {
-                if ($column === 'SL') {
-                    $dedFromSL = min($leaveBalance->SL, $toDeduct);
-                    $leaveBalance->SL -= $dedFromSL;
-                    $remaining = $toDeduct - $dedFromSL;
-                    if ($remaining > 0) {
-                        $dedFromVL = min($leaveBalance->VL, $remaining);
-                        $leaveBalance->VL -= $dedFromVL;
-                        $remaining -= $dedFromVL;
-                    }
-                    if (isset($remaining) && $remaining > 0) {
-                        throw new \Exception('Insufficient combined SL/VL balance.');
-                    }
-                } else {
-                    if ($leaveBalance->$column < $toDeduct) {
-                        throw new \Exception('Insufficient leave balance for ' . $column . '.');
-                    }
-                    $leaveBalance->$column -= $toDeduct;
-                }
+            // If a per-type preview exists, apply those deductions exactly.
+            $preview = [];
+            if (!empty($leave->printing_deduction_details)) {
+                try { $preview = json_decode($leave->printing_deduction_details, true) ?: []; } catch (\Exception $_) { $preview = []; }
+            }
 
-                $leaveBalance->save();
+            if (!empty($preview)) {
+                // helper to resolve field name on leaveBalance
+                // tries preferred DB-style column names first (balance_*), then lowercase/uppercase short codes
+                $resolveField = function ($leaveBalance, $key) {
+                    $map = [
+                        'VL' => ['balance_vacation_leave', 'vl', 'VL'],
+                        'SL' => ['balance_sick_leave', 'sl', 'SL'],
+                        'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
+                        'SPL' => ['balance_special_leave_privilege', 'spl', 'SPL'],
+                        'CTO' => ['balance_cto', 'cto', 'CTO'],
+                        'SP' => ['balance_solo_parent_leave', 'sp', 'SP'],
+                    ];
+                    $candidates = $map[$key] ?? [strtolower($key), strtoupper($key)];
+                    foreach ($candidates as $cand) {
+                        if (array_key_exists($cand, $leaveBalance->getAttributes()) || isset($leaveBalance->{$cand})) {
+                            return $cand;
+                        }
+                    }
+                    return null;
+                };
 
-                $leave->status = 'approved';
-                $leave->balance_vacation_leave = $leaveBalance->VL;
-                $leave->balance_sick_leave = $leaveBalance->SL;
-                $leave->balance_wellness_leave = $leaveBalance->WLNS;
-                $leave->balance_solo_parent_leave = $leaveBalance->SP;
-                $leave->balance_special_leave_privilege = $leaveBalance->SPL;
-                $leave->save();
-            });
+                DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField) {
+                    foreach ($preview as $col => $amt) {
+                        if (!is_numeric($amt) || floatval($amt) <= 0) continue;
+                        $amt = floatval($amt);
+                        $key = strtoupper((string)$col);
+                        $field = $resolveField($leaveBalance, $key);
+                        if (!$field) {
+                            // unknown or non-deductible type; skip
+                            continue;
+                        }
+                        if (floatval($leaveBalance->{$field} ?? 0) < $amt) {
+                            throw new \Exception('Insufficient ' . $key . ' balance.');
+                        }
+                        $leaveBalance->{$field} = floatval($leaveBalance->{$field} ?? 0) - $amt;
+                        $deductionLog[$key] = $amt;
+                    }
+                    $leaveBalance->save();
+
+                    $leave->status = 'approved';
+
+                    if (\Schema::hasColumn('leave_requests', 'printing_deduction_applied')) {
+                        $leave->printing_deduction_applied = true;
+                    }
+                    if (\Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+                        $leave->printing_deduction_details = json_encode($deductionLog);
+                    }
+
+                    // persist only metadata; do NOT update leave_requests balance snapshot fields here
+                    $leave->save();
+                });
+            } else {
+                // Fallback: previous single-column deduction behavior
+                DB::transaction(function () use ($leaveBalance, $column, $toDeduct, $leave, &$deductionLog, $resolveField) {
+                    $colKey = strtoupper((string)$column);
+
+                    if ($colKey === 'SL') {
+                        $slField = $resolveField($leaveBalance, 'SL');
+                        $vlField = $resolveField($leaveBalance, 'VL');
+                        $dedFromSL = min(floatval($leaveBalance->{$slField} ?? 0), $toDeduct);
+                        if ($slField) $leaveBalance->{$slField} = floatval($leaveBalance->{$slField} ?? 0) - $dedFromSL;
+                        $deductionLog['SL'] = $dedFromSL;
+                        $remaining = $toDeduct - $dedFromSL;
+                        if ($remaining > 0) {
+                            $dedFromVL = min(floatval($leaveBalance->{$vlField} ?? 0), $remaining);
+                            if ($vlField) $leaveBalance->{$vlField} = floatval($leaveBalance->{$vlField} ?? 0) - $dedFromVL;
+                            $deductionLog['VL'] = $dedFromVL;
+                            $remaining -= $dedFromVL;
+                        }
+                        if (isset($remaining) && $remaining > 0) {
+                            throw new \Exception('Insufficient combined SL/VL balance.');
+                        }
+                    } else if ($colKey === 'WLNS') {
+                        $fld = $resolveField($leaveBalance, 'WLNS');
+                        if (floatval($leaveBalance->{$fld} ?? 0) < $toDeduct) {
+                            throw new \Exception('Insufficient wellness leave (WLNS) balance.');
+                        }
+                        $leaveBalance->{$fld} = floatval($leaveBalance->{$fld} ?? 0) - $toDeduct;
+                        $deductionLog['WLNS'] = $toDeduct;
+                    } else {
+                        $fld = $resolveField($leaveBalance, $colKey);
+                        if (!$fld) {
+                            throw new \Exception('Unsupported leave balance column: ' . $column);
+                        }
+                        if (floatval($leaveBalance->{$fld} ?? 0) < $toDeduct) {
+                            throw new \Exception('Insufficient leave balance for ' . $column . '.');
+                        }
+                        $leaveBalance->{$fld} = floatval($leaveBalance->{$fld} ?? 0) - $toDeduct;
+                        $deductionLog[$colKey] = $toDeduct;
+                    }
+
+                    $leaveBalance->save();
+
+                    $leave->status = 'approved';
+
+                    // Persist deduction metadata on the leave to indicate official deduction at approval
+                    if (\Schema::hasColumn('leave_requests', 'printing_deduction_applied')) {
+                        $leave->printing_deduction_applied = true;
+                    }
+                    if (\Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+                        $leave->printing_deduction_details = json_encode($deductionLog);
+                    }
+
+                    // do NOT write updated balances into leave_requests table; balances are kept in leave_balances only
+                    $leave->save();
+                });
+            }
         } catch (\Exception $e) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
             }
             return redirect()->back()->with('error', $e->getMessage());
         }
+
+            try {
+                HRAuditTrail::create([
+                    'actor_user_id' => auth()->id(),
+                    'module' => 'leave',
+                    'action' => 'deduct_leave_balances',
+                    'target_type' => 'leave_request',
+                    'target_id' => $leave->id,
+                    'details' => [
+                        'original_balances' => $originalBalances,
+                        'printing_preview' => (!empty($leave->printing_deduction_details) ? json_decode($leave->printing_deduction_details, true) : []),
+                        'leave_reason' => $reason,
+                        'deduction_details' => $deductionLog,
+                        'leave_status' => $leave->status,
+                        'approver_id' => auth()->id(),
+                        'timestamp' => now()->toDateTimeString(),
+                        'type_labels' => [
+                            'VL' => 'Vacation Leave',
+                            'SL' => 'Sick Leave',
+                            'WLNS' => 'Wellness Leave',
+                            'SPL' => 'Special Privilege Leave',
+                            'CTO' => 'CTO',
+                            'SP' => 'Solo Parent Leave',
+                        ],
+                    ],
+                ]);
+            } catch (\Exception $ex) {
+                Log::error('Failed to write HRAuditTrail for leave deduction', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+            }
+
+        Log::info('Leave approved and credits deducted', [
+            'leave_id' => $leave->id,
+            'employee_id' => $user->id ?? null,
+            'deduction_details' => $deductionLog,
+            'leave_status' => $leave->status,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
 
         // notify employee about approval after transaction (runs for both Ajax and non-Ajax)
         try {
@@ -726,19 +934,13 @@ class LeaveRequestService
                     $matchedOthers = true;
                 }
             } else {
-                // Unknown leave type → mark as Others
+                // Unknown leave type → mark as Others (do not populate D39 cell)
                 $sheet->setCellValue('B39', $checkMark);
-                $sheet->setCellValue('D39', $type);
                 $matchedOthers = true;
             }
         }
 
-        if ($matchedOthers && !empty($leave->reason)) {
-            $currentOthers = $sheet->getCell('D39')->getValue();
-            if (empty($currentOthers)) {
-                $sheet->setCellValue('D39', $leave->reason);
-            }
-        }
+        // Do not populate D39 (description cell) as it is not part of official layout.
 
         // --- 3. Details of Leave (right side) ---
         $location = strtolower(trim((string)($leave->details_location ?? '')));
@@ -785,26 +987,54 @@ class LeaveRequestService
         $sheet->setCellValue('H45', $checkMark);
 
         // --- 5. Leave Credit Certification (Section 7.A) ---
-        $empLB = $employee->leaveBalance ?? null;
-        $vlEarned = $leave->balance_vacation_leave ?? ($empLB->VL ?? 0);
-        $slEarned = $leave->balance_sick_leave ?? ($empLB->SL ?? 0);
+
+        $empLB = $employee ? ($employee->leaveBalance ?? null) : null;
+        $vlCurrent = floatval($empLB ? ($empLB->VL ?? $leave->balance_vacation_leave ?? 0) : ($leave->balance_vacation_leave ?? 0));
+        $slCurrent = floatval($empLB ? ($empLB->SL ?? $leave->balance_sick_leave ?? 0) : ($leave->balance_sick_leave ?? 0));
+        // Prefer per-type deduction preview if available (from filing or allow-print preview)
+        $preview = [];
+        if (!empty($leave->printing_deduction_details)) {
+            try {
+                $preview = json_decode($leave->printing_deduction_details, true) ?: [];
+            } catch (\Exception $e) {
+                $preview = [];
+            }
+        }
 
         $lt = strtolower((string)($leave->leave_type ?? ''));
-        $vlRequested = (stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? ($leave->paid_days ?? 0) : 0;
-        $slRequested = (stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? ($leave->paid_days ?? 0) : 0;
-
-        $vlBalance = $empLB ? ($empLB->VL ?? $vlEarned) : $vlEarned;
-        $slBalance = $empLB ? ($empLB->SL ?? $slEarned) : $slEarned;
-
+        $vlRequested = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
+        $slRequested = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
+        $vlBalance = $vlCurrent - $vlRequested;
+        $slBalance = $slCurrent - $slRequested;
+        // Compute printable reason, with Wellness override when WLNS is present in preview or leave type
+        $reasonText = (string) ($leave->reason ?? '');
+        $isWellnessPreview = (isset($preview['WLNS']) && floatval($preview['WLNS']) > 0);
+        if ($isWellnessPreview || stripos($lt, 'wellness') !== false || stripos($lt, 'wlns') !== false) {
+            $reasonText = 'Wellness';
+        }
+        // Write reason into cell C40 as requested
+        $sheet->setCellValue('C40', $reasonText ?: '');
         // As of date
         $sheet->setCellValue('D53', $dateFiled);
-
-        $sheet->setCellValue('D56', $this->formatBalance($vlEarned));
-        $sheet->setCellValue('E56', $this->formatBalance($slEarned));
+        $sheet->setCellValue('D56', $this->formatBalance($vlCurrent));
+        $sheet->setCellValue('E56', $this->formatBalance($slCurrent));
         $sheet->setCellValue('D57', $this->formatBalance($vlRequested));
         $sheet->setCellValue('E57', $this->formatBalance($slRequested));
         $sheet->setCellValue('D58', $this->formatBalance($vlBalance));
         $sheet->setCellValue('E58', $this->formatBalance($slBalance));
+
+        Log::info('Leave Excel print Section 7.A values', [
+            'leave_id' => $leave->id,
+            'employee_id' => $employee->id ?? null,
+            'vl_total_earned' => $vlCurrent,
+            'vl_requested' => $vlRequested,
+            'vl_balance' => $vlBalance,
+            'sl_total_earned' => $slCurrent,
+            'sl_requested' => $slRequested,
+            'sl_balance' => $slBalance,
+            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+            'leave_status' => $leave->status,
+        ]);
 
         // HR Manager name
         $siteSettings = Setting::first();

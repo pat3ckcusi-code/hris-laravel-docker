@@ -58,6 +58,13 @@ class LeaveRequest extends Model
         'leave_type',
         'start_date',
         'end_date',
+        'cancellation_status',
+        'cancellation_reason',
+        'cancellation_remarks',
+        'cancellation_requested_at',
+        'cancellation_reviewed_at',
+        'cancellation_requested_by',
+        'cancellation_reviewed_by',
         'reason',
         'status', 
         'detailed_status',
@@ -76,6 +83,13 @@ class LeaveRequest extends Model
         'balance_wellness_leave',
         'balance_solo_parent_leave',
         'balance_special_leave_privilege',
+        // printing control
+        'printing_allowed',
+        'printing_allowed_by',
+        'printing_allowed_at',
+        // printing deduction tracking
+        'printing_deduction_applied',
+        'printing_deduction_details',
         
     ];
 

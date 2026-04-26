@@ -10,7 +10,29 @@
         </header>
 
         <div class="card-body">
-                <p class="muted">Below are approved leaves. Click a date button to cancel it and refund credits.</p>
+                <style>
+                    #cancel-leaves-table {
+                        table-layout: fixed;
+                        width: 100%;
+                    }
+                    #cancel-leaves-table th,
+                    #cancel-leaves-table td {
+                        white-space: normal !important;
+                        word-wrap: break-word;
+                        overflow-wrap: anywhere;
+                        padding: 8px 10px;
+                        font-size: 13px;
+                    }
+                    #cancel-leaves-table th { font-weight: 700; }
+                    #cancel-leaves-table th:nth-child(1), #cancel-leaves-table td:nth-child(1) { width: 5%; }
+                    #cancel-leaves-table th:nth-child(2), #cancel-leaves-table td:nth-child(2) { width: 18%; }
+                    #cancel-leaves-table th:nth-child(3), #cancel-leaves-table td:nth-child(3) { width: 12%; }
+                    #cancel-leaves-table th:nth-child(4), #cancel-leaves-table td:nth-child(4) { width: 12%; }
+                    #cancel-leaves-table th:nth-child(5), #cancel-leaves-table td:nth-child(5) { width: 20%; }
+                    #cancel-leaves-table th:nth-child(6), #cancel-leaves-table td:nth-child(6) { width: 16%; }
+                    #cancel-leaves-table th:nth-child(7), #cancel-leaves-table td:nth-child(7) { width: 9%; }
+                </style>
+                <p class="muted">Below are approved leaves for auto-cancel workflows (holiday-related cancellations). Employee cancellation requests are handled on the separate "Employee Cancellation Requests" page.</p>
 
                 {{-- Bulk Holiday Actions --}}
                 <div class="holiday-actions mb-3" style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -40,17 +62,29 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="filter-field" style="min-width:200px;">
+                        <label for="filter-status" class="small mb-1">Status</label>
+                        <select id="filter-status" name="status" class="form-control form-control-sm">
+                            <option value="">All statuses</option>
+                            <option value="approved" @if(request('status') === 'approved') selected @endif>Approved</option>
+                            <option value="cancelled" @if(request('status') === 'cancelled') selected @endif>Cancelled</option>
+                            <option value="pending" @if(request('status') === 'pending') selected @endif>Pending</option>
+                        </select>
+                    </div>
                     <div class="filter-field" style="flex:1">                        
                         <div style="display: flex; align-items: center; gap: 12px; position:relative; width:100%;">
                             <label for="claEmployeeSearch" class="filter-label-emp mb-0" style="font-size:1.18rem;font-weight:600; white-space:nowrap;">Employee</label>
                             <input type="text" id="claEmployeeSearch" class="form-control form-control-lg filter-input-emp" style="font-size:1.15rem; flex:1; min-width:0;" placeholder="Type name or EmpNo to search" autocomplete="off">
-                            <input type="hidden" id="claEmployee" name="claEmployee" value="">
+                            <input type="hidden" id="claEmployee" name="claEmployee" value="{{ request('emp', '') }}">
                             <div id="claEmployee_suggestions" class="list-group" style="position:absolute;z-index:1050;top:100%;left:0;right:0;display:none;max-height:240px;overflow:auto"></div>
                         </div>
                     </div>
                 </div>
 
                 <div class="table-responsive">
+                    <div class="table-summary" style="margin-bottom:10px;font-size:0.95rem;color:#555;">
+                        Showing {{ $requests->firstItem() ?? 0 }} to {{ $requests->lastItem() ?? 0 }} of {{ $requests->total() }} records.
+                    </div>
                     <table id="cancel-leaves-table" class="leave-table">
                                 <thead>
                                         <tr>
@@ -58,6 +92,7 @@
             <th>Employee</th>
             <th>Department</th>
             <th>Leave Type</th>
+            <th>Filed / Start</th>
             <th>Dates</th>
             <th>Action</th>
         </tr>
@@ -83,14 +118,51 @@
                                                         <td class="text-center">{{ strtoupper($r->leave_type ?? '') }}</td>
                                                         <td>
                                                             @php
+                                                                $fileDate = $r->date_filed ? \Carbon\Carbon::parse($r->date_filed) : null;
+                                                                $rawDates = $r->leaveDates->sortBy('leave_date');
+                                                                $firstDate = $rawDates->first();
+                                                                $startDate = $firstDate ? \Carbon\Carbon::parse($firstDate->leave_date) : null;
+                                                                $selectedMonth = $selectedMonth ?? request('month');
+                                                                $fileLabel = $fileDate ? $fileDate->format('M d, Y') : '-';
+                                                                $startLabel = $startDate ? $startDate->format('M d, Y') : '-';
+                                                            @endphp
+                                                            <div style="font-size:0.95rem; line-height:1.25;">
+                                                                <strong>Filed:</strong> {{ $fileLabel }}<br>
+                                                                <strong>Start:</strong> {{ $startLabel }}
+                                                            </div>
+                                                            @if($selectedMonth && $fileDate && $startDate)
+                                                                @php
+                                                                    $fileMonth = $fileDate->format('Y-m');
+                                                                    $startMonth = $startDate->format('Y-m');
+                                                                    $monthLabel = $fileDate->format('F');
+                                                                    $startLabelText = $startDate->format('F');
+                                                                @endphp
+                                                                @if($fileMonth === $selectedMonth && $startMonth !== $selectedMonth)
+                                                                    <div class="badge badge-warning" style="display:inline-block;margin-top:6px;font-size:0.85rem;">
+                                                                        Filed in {{ $monthLabel }}, starts in {{ $startLabelText }}
+                                                                    </div>
+                                                                @endif
+                                                            @endif
+                                                        </td>
+                                                        <td>
+                                                            @php
                                                                 $rawDates = $r->leaveDates->sortBy('leave_date');
                                                             @endphp
                                                             <div class="dates-container">
-                                                            @if($rawDates->count())
+                                                                @if($rawDates->count())
                                                                 @foreach($rawDates as $ld)
-                                                                    @php $label = \Carbon\Carbon::parse($ld->leave_date)->format('M d, Y'); @endphp
+                                                                    @php
+                                                                        $label = \Carbon\Carbon::parse($ld->leave_date)->format('M d, Y');
+                                                                        $cancelInfo = '';
+                                                                        if ($ld->is_cancelled) {
+                                                                            $who = $ld->cancelled_by ? (\App\Models\User::find($ld->cancelled_by)->name ?? $ld->cancelled_by) : '—';
+                                                                            $when = $ld->cancelled_at ? \Carbon\Carbon::parse($ld->cancelled_at)->format('M d, Y H:i') : '';
+                                                                            $reason = $ld->cancel_reason ?? '-';
+                                                                            $cancelInfo = "Cancelled by: {$who}\nAt: {$when}\nReason: {$reason}";
+                                                                        }
+                                                                    @endphp
                                                                     @if($ld->is_cancelled)
-                                                                        <button type="button" class="btn btn-sm cancelled-date mr-1" disabled title="Already cancelled">{{ $label }}</button>
+                                                                        <button type="button" class="btn btn-sm cancelled-date mr-1" disabled title="{{ $cancelInfo }}">{{ $label }}</button>
                                                                     @else
                                                                         <button type="button" class="btn btn-sm btn-outline-danger mr-1 cancel-date-btn" data-id="{{ $r->id }}" data-date="{{ $ld->leave_date }}">{{ $label }}</button>
                                                                     @endif
@@ -101,6 +173,14 @@
                                                             </div>
                                                         </td>
                                                         <td>
+                                                            @if(!empty($r->cancellation_status))
+                                                                <div style="margin-bottom:6px"><strong class="text-warning">{{ $r->cancellation_status }}</strong></div>
+                                                                <div style="margin-bottom:6px;font-size:0.95rem;color:#444">Reason: {{ $r->cancellation_reason ?? '-' }}</div>
+                                                                @if(!empty($r->cancellation_reviewed_at))
+                                                                    <div style="font-size:0.9rem;color:#555">Reviewed by: @php $rev = $r->cancellation_reviewed_by ? \App\Models\User::find($r->cancellation_reviewed_by) : null; @endphp {{ $rev ? trim(($rev->last_name ?? '') . ', ' . ($rev->first_name ?? '')) : '-' }} at {{ \Carbon\Carbon::parse($r->cancellation_reviewed_at)->format('M d, Y H:i') }}</div>
+                                                                    <div style="font-size:0.9rem;color:#555">Remarks: {{ $r->cancellation_remarks ?? '-' }}</div>
+                                                                @endif
+                                                            @endif
                                                                 @php
                                                                     $cancelledDates = $r->leaveDates->where('is_cancelled', true)->map(function($d){ return \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'); })->values()->all();
                                                                 @endphp
@@ -116,7 +196,13 @@
                                                                 @else
                                                                         <button type="button" class="btn btn-sm disabled-print-btn" disabled>Print</button>
                                                                 @endif
-                                                                {{-- <small class="text-muted d-block mt-1">Click a date to cancel. This refunds 1 day to leave credits.</small> --}}
+                                                                {{-- Cancellation request actions --}}
+                                                                @if(!empty($r->cancellation_status) && $r->cancellation_status === 'Pending Cancellation')
+                                                                    <div style="margin-top:8px">
+                                                                        <button class="btn btn-sm btn-success approve-cancellation-btn" data-id="{{ $r->id }}">Approve</button>
+                                                                        <button class="btn btn-sm btn-secondary reject-cancellation-btn" data-id="{{ $r->id }}" style="margin-left:8px">Reject</button>
+                                                                    </div>
+                                                                @endif
                                                         </td>
                                                 </tr>
                                         @endforeach
@@ -404,9 +490,24 @@
 
     $(document).on('click', function(e){ if (!$(e.target).closest('#claEmployee_suggestions, #claEmployeeSearch').length) $('#claEmployee_suggestions').hide(); });
 
-    function applyFilters(){ const month = $('#filter-month').val()||''; const emp = $('#claEmployee').val()||''; const params = []; if (month) params.push('month='+encodeURIComponent(month)); if (emp) params.push('emp='+encodeURIComponent(emp)); const url = '{{ route('leave-manager.cancel-leaves') }}' + (params.length ? ('?'+params.join('&')) : ''); window.location.href = url; }
+    function applyFilters(){ const month = $('#filter-month').val()||''; const status = $('#filter-status').val()||''; const emp = $('#claEmployee').val()||''; const params = []; if (month) params.push('month='+encodeURIComponent(month)); if (status) params.push('status='+encodeURIComponent(status)); if (emp) params.push('emp='+encodeURIComponent(emp)); const url = '{{ route('leave-manager.cancel-leaves') }}' + (params.length ? ('?'+params.join('&')) : ''); window.location.href = url; }
 
-    $(document).on('change', '#filter-month', function(){ applyFilters(); });
+    $(document).on('change', '#filter-month, #filter-status', function(){ applyFilters(); });
+
+    function pollPendingCancellationBadge() {
+        const badge = $('.sidebar-badge[data-badge-key="pending_employee_cancellation_requests"]');
+        if (!badge.length) return;
+        $.getJSON('{{ route('api.leave-manager.pending-cancellation-count') }}')
+            .done(function(resp){
+                const count = parseInt(resp.count || 0, 10);
+                badge.text(count);
+                if (count <= 0) {
+                    badge.hide();
+                } else {
+                    badge.show();
+                }
+            });
+    }
 
     $(function(){
         // Initialize DataTable for sorting and pagination on cancel-leaves table
@@ -431,7 +532,46 @@
                 }
             });
         }
+
+        pollPendingCancellationBadge();
+        setInterval(pollPendingCancellationBadge, 20000);
     });
+
+    // Approve cancellation request
+    $(document).on('click', '.approve-cancellation-btn', function(){
+        const leaveId = $(this).data('id');
+        if (!leaveId) return;
+        if (typeof Swal === 'undefined') { if (!confirm('Approve cancellation request?')) return; }
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({ title: 'Approve cancellation?', text: 'This will cancel the approved leave and refund credits.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Yes, approve', confirmButtonColor: '#16a34a' })
+            .then(function(res){ if (!res.isConfirmed) return; doApproveCancellation(leaveId); });
+        } else {
+            doApproveCancellation(leaveId);
+        }
+    });
+
+    function doApproveCancellation(id) {
+        $.post(`{{ url('/api/leave') }}/${id}/approve-cancellation`, { _token: '{{ csrf_token() }}' })
+            .done(function(resp){ if (resp && resp.success) { if (typeof Swal !== 'undefined') Swal.fire('Approved', 'Cancellation approved and credits refunded.', 'success').then(()=>window.location.reload()); else { alert('Approved'); window.location.reload(); } } else { const msg = resp && resp.error ? resp.error : 'Failed to approve'; if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg); } })
+            .fail(function(xhr){ let msg = 'Failed to approve cancellation.'; try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){} if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg); });
+    }
+
+    // Reject cancellation request
+    $(document).on('click', '.reject-cancellation-btn', function(){
+        const leaveId = $(this).data('id');
+        if (!leaveId) return;
+        if (typeof Swal === 'undefined') {
+            const remarks = prompt('Enter remarks for rejection:'); if (!remarks) return; doRejectCancellation(leaveId, remarks);
+            return;
+        }
+        Swal.fire({ title: 'Reject cancellation?', input: 'text', inputPlaceholder: 'Manager remarks (required)', showCancelButton: true, confirmButtonText: 'Reject', inputValidator: (v) => { if (!v || !v.trim()) return 'Remarks required'; } }).then(function(res){ if (!res.isConfirmed) return; doRejectCancellation(leaveId, res.value); });
+    });
+
+    function doRejectCancellation(id, remarks) {
+        $.post(`{{ url('/api/leave') }}/${id}/reject-cancellation`, { remarks: remarks, _token: '{{ csrf_token() }}' })
+            .done(function(resp){ if (resp && resp.success) { if (typeof Swal !== 'undefined') Swal.fire('Rejected', 'Cancellation request rejected.', 'success').then(()=>window.location.reload()); else { alert('Rejected'); window.location.reload(); } } else { const msg = resp && resp.error ? resp.error : 'Failed to reject'; if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg); } })
+            .fail(function(xhr){ let msg = 'Failed to reject cancellation.'; try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){} if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg); });
+    }
 })(jQuery);
 </script>
 @endsection

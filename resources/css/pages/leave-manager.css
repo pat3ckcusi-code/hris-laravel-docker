@@ -157,12 +157,24 @@
     color: #ffffff !important;
 }
 
-.disabled-print-btn {
-    background-color: #b0b0b0 !important;
-    color: #fff !important;
-    border-color: #b0b0b0 !important;
+.disabled-print-btn,
+.btn-disabled-print {
+    background: #d3d3d3 !important;
+    background-image: none !important;
+    color: #808080 !important;
+    border-color: #d3d3d3 !important;
     cursor: not-allowed !important;
     opacity: 1 !important;
+}
+
+.btn-disabled-print:hover,
+.btn-disabled-print:focus,
+.disabled-print-btn:hover,
+.disabled-print-btn:focus {
+    background: #d3d3d3 !important;
+    background-image: none !important;
+    color: #808080 !important;
+    border-color: #d3d3d3 !important;
 }
 
 /* ── Filter bar (cancel-leaves) ─────────────────── */

@@ -4,6 +4,12 @@
 ])
 
 @section('content')
+@php
+    $creator = $order->created_by ? \App\Models\User::find($order->created_by) : null;
+    $recommenderUser = $order->recommender ? \App\Models\User::find($order->recommender) : null;
+    $creatorName = $creator ? trim(($creator->first_name ?? '') . ' ' . ($creator->last_name ?? '')) : 'N/A';
+    $recommenderName = $recommenderUser ? trim(($recommenderUser->first_name ?? '') . ' ' . ($recommenderUser->last_name ?? '')) : 'N/A';
+@endphp
 <div class="card">
   <div class="card-header"><h3 class="card-title">Travel Order Details</h3></div>
   <div class="card-body">
@@ -16,9 +22,12 @@
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Departure</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ optional($order->start_date)->format('M d, Y') ?? '-' }}</td></tr>
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Return</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ optional($order->end_date)->format('M d, Y') ?? '-' }}</td></tr>
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Purpose</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $order->purpose }}</td></tr>
+            <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Created By</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $creatorName }}</td></tr>
+            <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Recommender</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $recommenderName }}</td></tr>
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Per Diem</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $order->per_diem ?? '-' }}</td></tr>
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Appropriation</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $order->appropriation ?? '-' }}</td></tr>
             <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px; border:1px solid #f1f5f9">{{ $order->Remarks ?? '-' }}</td></tr>
+            <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Submitted To</strong></td><td style="padding:8px; border:1px solid #f1f5f9">City Mayor's Office</td></tr>
           </tbody>
         </table>
       </div>
