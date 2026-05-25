@@ -214,6 +214,9 @@
         // ─── Front Desk ───────────────────────────────────
         'front desk' => [
             ['label' => 'Dashboard', 'icon' => 'dashboard', 'route' => 'front-desk.index', 'active' => ['front-desk.*']],
+            ['label' => 'Pending Requests', 'icon' => 'pending_requests', 'route' => 'employee.pending-requests', 'active' => ['employee.pending-requests'], 'badge' => 'pending_document_requests'],
+            ['label' => 'Approved Requests', 'icon' => 'approved_requests', 'route' => 'employee.approved-requests', 'active' => ['employee.approved-requests'], 'badge' => 'approved_document_requests'],
+            ['label' => 'Document Settings', 'icon' => 'settings', 'route' => 'employee.document-settings', 'active' => ['employee.document-settings']],
         ],
 
         // ─── Mayor ────────────────────────────────────────
@@ -275,6 +278,8 @@
         'pending_employee_cancellation_requests' => fn () => \App\Models\LeaveRequest::where('status', 'approved')
             ->where('cancellation_status', 'Pending Cancellation')
             ->count(),
+        'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),
+        'approved_document_requests' => fn () => \App\Models\DocumentRequest::whereIn('status', ['Accepted', 'Completed'])->count(),
     ];
 
     // ── Resolve items for current role ──

@@ -9,7 +9,6 @@ mkdir -p storage/app storage/logs \
          bootstrap/cache
 
 # Seed bundled templates only when the host-mounted directory is empty (first run).
-# After that, the host directory is the source of truth — update templates there.
 if [ -d /opt/app-templates ]; then
   mkdir -p storage/app/templates
   if [ -z "$(ls -A storage/app/templates 2>/dev/null)" ]; then
@@ -23,8 +22,7 @@ fi
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 
-# Persist APP_KEY across restarts: store in the volume when generated,
-# reload from the volume on subsequent boots.
+# Persist APP_KEY across restarts.
 APP_KEY_FILE="storage/app/.app_key"
 if [ -z "$APP_KEY" ]; then
   if [ -f "$APP_KEY_FILE" ]; then
@@ -42,10 +40,18 @@ if [ -z "$APP_KEY" ]; then
   fi
 fi
 
-# Rebuild caches against the live environment (env vars from compose)
-php artisan config:clear >/dev/null 2>&1 || true
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+if [ "${APP_ENV:-production}" = "local" ]; then
+  echo "[entrypoint] Dev mode — clearing caches and running migrations..."
+  php artisan config:clear  >/dev/null 2>&1 || true
+  php artisan route:clear   >/dev/null 2>&1 || true
+  php artisan view:clear    >/dev/null 2>&1 || true
+  php artisan migrate --force 2>&1 || true
+else
+  echo "[entrypoint] Production mode — building caches..."
+  php artisan config:clear  >/dev/null 2>&1 || true
+  php artisan config:cache  >/dev/null 2>&1 || true
+  php artisan route:cache   >/dev/null 2>&1 || true
+  php artisan view:cache    >/dev/null 2>&1 || true
+fi
 
 exec "$@"

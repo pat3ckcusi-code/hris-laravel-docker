@@ -24,11 +24,11 @@
                             Document Type
                             <select id="document_type" name="document_type" class="form-input" required>
                                 <option value="">Select document type</option>
-                                <option value="Certificate of Employment">Certificate of Employment</option>
-                                <option value="Service Record">Service Record</option>
-                                <option value="Employment ID Certification">Employment ID Certification</option>
-                                <option value="Payslip Request">Payslip Request</option>
-                                <option value="Other HR Document">Other HR Document</option>
+                                @forelse ($documentTypes as $docType)
+                                    <option value="{{ $docType->name }}">{{ $docType->name }}</option>
+                                @empty
+                                    <option value="" disabled>No document types available — contact Front Desk</option>
+                                @endforelse
                             </select>
                         </label>
 

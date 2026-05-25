@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class DocumentType extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'parts',
+        'header_image',
+        'footer_image',
+    ];
+
+    protected $casts = [
+        'parts' => 'array',
+    ];
+}

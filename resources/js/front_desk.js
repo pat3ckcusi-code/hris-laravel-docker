@@ -54,11 +54,11 @@ if (appRoot) {
 
     function badgeClass(status) {
         switch (status) {
-            case 'Requested': return 'badge-requested';
-            case 'Accepted': return 'badge-approved';
-            case 'Completed': return 'badge-completed';
-            case 'Rejected': return 'badge-rejected';
-            default: return 'badge-default';
+            case 'Requested':  return 'badge-requested';
+            case 'Processed':  return 'badge-approved';
+            case 'Released':   return 'badge-completed';
+            case 'Rejected':   return 'badge-rejected';
+            default:           return 'badge-default';
         }
     }
 
@@ -69,21 +69,30 @@ if (appRoot) {
 
         return `
             <div class="fd-actions">
-                <button type="button" class="fd-action-btn fd-accept-btn" data-action="accept" data-id="${row.id}"><i class="fas fa-check"></i> Accept</button>
-                <button type="button" class="fd-action-btn fd-reject-btn" data-action="reject" data-id="${row.id}"><i class="fas fa-times"></i> Reject</button>
+                <button type="button" class="fd-action-btn fd-print-btn" data-action="print" data-id="${row.id}"><i class="fas fa-print"></i> Print</button>
+                <button type="button" class="fd-action-btn fd-accept-btn" data-action="process" data-id="${row.id}"><i class="fas fa-check"></i> Process</button>
             </div>
         `;
     }
 
     function approvedActionHtml(row) {
-        if (row.status !== 'Accepted') {
+        if (row.status === 'Released') {
+            return `
+                <div class="fd-actions">
+                    <button type="button" class="fd-action-btn fd-print-btn" data-action="print" data-id="${row.id}"><i class="fas fa-print"></i> Print</button>
+                    <span class="muted">Released</span>
+                </div>
+            `;
+        }
+
+        if (row.status !== 'Processed') {
             return '<span class="muted">No action</span>';
         }
 
         return `
             <div class="fd-actions">
                 <button type="button" class="fd-action-btn fd-print-btn" data-action="print" data-id="${row.id}"><i class="fas fa-print"></i> Print</button>
-                <button type="button" class="fd-action-btn fd-complete-btn" data-action="complete" data-id="${row.id}"><i class="fas fa-box"></i> Mark as Complete</button>
+                <button type="button" class="fd-action-btn fd-complete-btn" data-action="release" data-id="${row.id}"><i class="fas fa-box-open"></i> Release</button>
             </div>
         `;
     }
@@ -128,10 +137,25 @@ if (appRoot) {
     }
 
     function updateSummary(summary) {
-        document.getElementById('summaryTotal').textContent = String(summary.total || 0);
-        document.getElementById('summaryPending').textContent = String(summary.pending || 0);
-        document.getElementById('summaryApproved').textContent = String(summary.approved || 0);
-        document.getElementById('summaryCompleted').textContent = String(summary.completed || 0);
+        const elements = {
+            summaryTotal: document.getElementById('summaryTotal'),
+            summaryPending: document.getElementById('summaryPending'),
+            summaryApproved: document.getElementById('summaryApproved'),
+            summaryCompleted: document.getElementById('summaryCompleted'),
+        };
+
+        if (elements.summaryTotal) {
+            elements.summaryTotal.textContent = String(summary.total || 0);
+        }
+        if (elements.summaryPending) {
+            elements.summaryPending.textContent = String(summary.pending || 0);
+        }
+        if (elements.summaryApproved) {
+            elements.summaryApproved.textContent = String(summary.approved || 0);
+        }
+        if (elements.summaryCompleted) {
+            elements.summaryCompleted.textContent = String(summary.completed || 0);
+        }
     }
 
     async function loadData() {
@@ -232,10 +256,10 @@ if (appRoot) {
 
         try {
             switch (button.dataset.action) {
-                case 'accept': {
-                    const allowed = await confirmAction('Accept request?', 'This request will move to Approved table and employee will be emailed.');
+                case 'process': {
+                    const allowed = await confirmAction('Process request?', 'This request will move to Approved table and employee will be notified.');
                     if (!allowed) return;
-                    await postAction(urls.accept, id, 'Request accepted.');
+                    await postAction(urls.accept, id, 'Request processed.');
                     break;
                 }
                 case 'reject': {
@@ -244,10 +268,10 @@ if (appRoot) {
                     await postAction(urls.reject, id, 'Request rejected.');
                     break;
                 }
-                case 'complete': {
-                    const allowed = await confirmAction('Mark as complete?', 'Employee will be notified that the document is ready for pick-up.');
+                case 'release': {
+                    const allowed = await confirmAction('Release document?', 'Employee will be notified that the document is ready for pick-up.');
                     if (!allowed) return;
-                    await postAction(urls.complete, id, 'Request marked as completed.');
+                    await postAction(urls.complete, id, 'Document released.');
                     break;
                 }
                 case 'print':
@@ -301,4 +325,164 @@ if (appRoot) {
     }
 
     init();
+}
+
+// Global functions for server-rendered Pending Requests view
+window.getSwal = function() {
+    return window.Swal && typeof window.Swal.fire === 'function' ? window.Swal : null;
+}
+
+window.getCsrfToken = function() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+}
+
+window.acceptRequest = async function(requestId) {
+    const Swal = window.getSwal();
+    const confirmed = await (Swal
+        ? Swal.fire({
+            icon: 'question',
+            title: 'Confirm Accept',
+            text: 'Are you sure you want to accept this request?',
+            showCancelButton: true,
+            confirmButtonText: 'Accept',
+            cancelButtonText: 'Cancel',
+        })
+        : { isConfirmed: window.confirm('Accept this request?') });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+        const response = await fetch(
+            '/dashboard/employee/front-desk/accept',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.getCsrfToken(),
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ request_id: requestId }),
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Failed to accept request: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (Swal) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: data.message || 'Request accepted successfully.',
+            });
+        } else {
+            alert(data.message || 'Request accepted successfully.');
+        }
+
+        // Reload the page to reflect changes
+        window.location.reload();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'An error occurred.';
+        if (Swal) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: message,
+            });
+        } else {
+            alert(message);
+        }
+    }
+}
+
+window.rejectRequest = async function(requestId) {
+    const Swal = window.getSwal();
+
+    if (!Swal) {
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (!reason || reason.trim() === '') {
+            alert('Rejection reason is required.');
+            return;
+        }
+        window.submitReject(requestId, reason);
+        return;
+    }
+
+    const result = await Swal.fire({
+        icon: 'question',
+        title: 'Reject Request',
+        text: 'Please provide a reason for rejection:',
+        input: 'textarea',
+        inputPlaceholder: 'Enter rejection reason...',
+        inputValidator: (value) => {
+            if (!value || value.trim() === '') {
+                return 'Rejection reason is required.';
+            }
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Reject',
+        cancelButtonText: 'Cancel',
+    });
+
+    if (result.isConfirmed) {
+        await window.submitReject(requestId, result.value);
+    }
+}
+
+window.submitReject = async function(requestId, reason) {
+    const Swal = window.getSwal();
+
+    try {
+        const response = await fetch(
+            '/dashboard/employee/front-desk/reject',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.getCsrfToken(),
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    request_id: requestId,
+                    remarks: reason,
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`Failed to reject request: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (Swal) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: data.message || 'Request rejected successfully.',
+            });
+        } else {
+            alert(data.message || 'Request rejected successfully.');
+        }
+
+        // Reload the page to reflect changes
+        window.location.reload();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'An error occurred.';
+        if (Swal) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: message,
+            });
+        } else {
+            alert(message);
+        }
+    }
 }

@@ -165,12 +165,12 @@
                         }
                         const d = new Date(val); d.setHours(0,0,0,0);
                         // weekend
-                        if (d.getDay() === 0 || d.getDay() === 6) {
-                            addDateBtn.disabled = true;
-                            datePickerMsg.style.display = '';
-                            datePickerMsg.textContent = 'Weekends are excluded.';
-                            return;
-                        }
+                        // if (d.getDay() === 0 || d.getDay() === 6) {
+                        //     addDateBtn.disabled = true;
+                        //     datePickerMsg.style.display = '';
+                        //     datePickerMsg.textContent = 'Weekends are excluded.';
+                        //     return;
+                        // }
                         addDateBtn.disabled = false;
                         datePickerMsg.style.display = 'none';
                     }
@@ -189,10 +189,10 @@
                         }
                         const d = new Date(val); d.setHours(0,0,0,0);
                         // Exclude weekends
-                        if (d.getDay() === 0 || d.getDay() === 6) { 
-                            if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded.' }); } else { alert('Weekends are excluded.'); }
-                            return; 
-                        }
+                        // if (d.getDay() === 0 || d.getDay() === 6) { 
+                        //     if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded.' }); } else { alert('Weekends are excluded.'); }
+                        //     return; 
+                        // }
                         // Per-date vacation lead-time will be validated on submit
                         selectedDates.push(val);
                         selectedDates.sort();
@@ -527,11 +527,11 @@
                             return;
                         }
                         const d = new Date(val); d.setHours(0,0,0,0);
-                        if (d.getDay() === 0 || d.getDay() === 6) {
-                            addDateBtn.disabled = true;
-                            if (datePickerMsg) { datePickerMsg.style.display = ''; datePickerMsg.textContent = 'Weekends are excluded.'; }
-                            return;
-                        }
+                        // if (d.getDay() === 0 || d.getDay() === 6) {
+                        //     addDateBtn.disabled = true;
+                        //     if (datePickerMsg) { datePickerMsg.style.display = ''; datePickerMsg.textContent = 'Weekends are excluded.'; }
+                        //     return;
+                        // }
                         const checkedTypes = getCheckedLeaveTypes().map(t => t.value);
                         if (checkedTypes.includes('Vacation Leave')) {
                             const today = new Date(); today.setHours(0,0,0,0);
@@ -559,15 +559,15 @@
                             return;
                         }
                         const d = new Date(val); d.setHours(0,0,0,0);
-                        if (d.getDay() === 0 || d.getDay() === 6) {
-                            const checked = getCheckedLeaveTypes().map(t => t.value);
-                            if (checked.includes('Vacation Leave')) {
-                                if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded. Vacation Leave still requires calendar days; you cannot add weekend dates here.' }); } else { alert('Weekends are excluded. Vacation Leave still requires calendar days; you cannot add weekend dates here.'); }
-                            } else {
-                                if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded.' }); } else { alert('Weekends are excluded.'); }
-                            }
-                            return;
-                        }
+                        // if (d.getDay() === 0 || d.getDay() === 6) {
+                        //     const checked = getCheckedLeaveTypes().map(t => t.value);
+                        //     if (checked.includes('Vacation Leave')) {
+                        //         if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded. Vacation Leave still requires calendar days; you cannot add weekend dates here.' }); } else { alert('Weekends are excluded. Vacation Leave still requires calendar days; you cannot add weekend dates here.'); }
+                        //     } else {
+                        //         if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Weekends are excluded.' }); } else { alert('Weekends are excluded.'); }
+                        //     }
+                        //     return;
+                        // }
                         const checkedTypes = getCheckedLeaveTypes().map(t => t.value);
                         if (checkedTypes.includes('Vacation Leave')) {
                             const today = new Date(); today.setHours(0,0,0,0);

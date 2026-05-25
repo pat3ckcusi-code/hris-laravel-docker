@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentRequestController;
+use App\Http\Controllers\DocumentSettingsController;
 use App\Http\Controllers\FrontDeskController;
 use App\Http\Controllers\DepartmentHeadController;
 use App\Http\Controllers\HRManagerController;
@@ -131,8 +132,28 @@ Route::middleware('auth')->group(function () {
         ->name('dashboard.employee.request-documents');
     Route::post('/document-requests', [DocumentRequestController::class, 'store'])
         ->name('document-requests.store');
+    Route::get('/document-requests/{documentRequest}/preview', [DocumentRequestController::class, 'preview'])
+        ->name('document-requests.preview');
+    Route::get('/document-requests/{documentRequest}/print', [DocumentRequestController::class, 'print'])
+        ->name('document-requests.print');
     Route::get('/dashboard/employee/front-desk', [FrontDeskController::class, 'index'])
         ->name('front-desk.index');
+    Route::get('/dashboard/employee/pending-requests', [FrontDeskController::class, 'pendingRequests'])
+        ->name('employee.pending-requests');
+    Route::get('/dashboard/employee/approved-requests', [FrontDeskController::class, 'approvedRequests'])
+        ->name('employee.approved-requests');
+    Route::get('/dashboard/employee/document-settings', [DocumentSettingsController::class, 'index'])
+        ->name('employee.document-settings');
+    Route::get('/dashboard/employee/document-settings/create', [DocumentSettingsController::class, 'create'])
+        ->name('employee.document-settings.create');
+    Route::post('/dashboard/employee/document-settings', [DocumentSettingsController::class, 'store'])
+        ->name('employee.document-settings.store');
+    Route::get('/dashboard/employee/document-settings/{documentType}/edit', [DocumentSettingsController::class, 'edit'])
+        ->name('employee.document-settings.edit');
+    Route::put('/dashboard/employee/document-settings/{documentType}', [DocumentSettingsController::class, 'update'])
+        ->name('employee.document-settings.update');
+    Route::delete('/dashboard/employee/document-settings/{documentType}', [DocumentSettingsController::class, 'destroy'])
+        ->name('employee.document-settings.destroy');
     Route::get('/dashboard/employee/front-desk/requests', [FrontDeskController::class, 'fetchRequests'])
         ->name('front-desk.requests');
     Route::post('/dashboard/employee/front-desk/accept', [FrontDeskController::class, 'acceptRequest'])
@@ -141,6 +162,8 @@ Route::middleware('auth')->group(function () {
         ->name('front-desk.reject');
     Route::post('/dashboard/employee/front-desk/complete', [FrontDeskController::class, 'completeRequest'])
         ->name('front-desk.complete');
+    Route::post('/requests/{id}/complete', [FrontDeskController::class, 'complete'])
+        ->name('requests.complete');
     Route::get('/dashboard/employee/front-desk/print/{id}', [FrontDeskController::class, 'printRequest'])
         ->name('front-desk.print-request');
     Route::post('/dashboard/employee/front-desk/update-status', [FrontDeskController::class, 'updateStatus'])
@@ -541,3 +564,30 @@ Route::get('/dev/preview-leave-email', function () {
     $mailable = new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved');
     return $mailable->render();
 })->name('dev.preview.leave.email');
+// DEBUG: Test document requests endpoint
+Route::get('/test-doc-requests', function () {
+    $requests = \App\Models\DocumentRequest::query()
+        ->leftJoin('users', 'document_requests.EmpNo', '=', 'users.EmpNo')
+        ->leftJoin('departments', 'users.Dept_id', '=', 'departments.Dept_id')
+        ->select([
+            'document_requests.*',
+            'users.name as employee_name',
+            'departments.Dept_name as department_name',
+        ])
+        ->orderByDesc('document_requests.requested_on')
+        ->orderByDesc('document_requests.id')
+        ->get();
+
+    return [
+        'total_records' => $requests->count(),
+        'records' => $requests->map(function ($r) {
+            return [
+                'id' => $r->id,
+                'emp_no' => $r->EmpNo,
+                'employee_name' => $r->employee_name,
+                'status' => $r->status,
+                'document_type' => $r->document_type,
+            ];
+        }),
+    ];
+});

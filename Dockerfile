@@ -15,10 +15,10 @@ FROM php:8.2-fpm AS app
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl unzip \
         libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
-        libonig-dev libxml2-dev libzip-dev \
+        libonig-dev libxml2-dev libzip-dev libicu-dev \
         zip build-essential pkg-config \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl \
+    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl intl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -26,12 +26,17 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 
 COPY composer.json composer.lock ./
-RUN composer install --optimize-autoloader --no-dev --no-interaction --no-progress --no-scripts --prefer-dist
+ENV COMPOSER_MEMORY_LIMIT=-1
+# --no-scripts: app source not copied yet, artisan would fail
+RUN composer install --no-scripts --no-interaction --no-progress --prefer-dist
 
 COPY . .
 COPY --from=assets /app/public/build ./public/build
 
-RUN composer dump-autoload --optimize --no-dev \
+# Temporary .env lets artisan bootstrap for package:discover during dump-autoload
+RUN cp .env.example .env \
+    && composer dump-autoload --optimize \
+    && rm -f .env \
     && mkdir -p storage/app storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache \

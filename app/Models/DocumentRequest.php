@@ -44,4 +44,14 @@ class DocumentRequest extends Model
         'processed_on' => 'datetime',
         'released_on' => 'datetime',
     ];
+
+    public function employee()
+    {
+        return $this->belongsTo(User::class, 'EmpNo', 'EmpNo');
+    }
+
+    public function documentType()
+    {
+        return $this->belongsTo(DocumentType::class, 'document_type', 'name');
+    }
 }

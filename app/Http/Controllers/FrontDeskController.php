@@ -27,6 +27,74 @@ class FrontDeskController extends Controller
         ]);
     }
 
+    public function pendingRequests(Request $request): View
+    {
+        $this->ensureFrontDesk($request);
+
+        $requests = $this->filteredRequests()
+            ->where('document_requests.status', 'Requested')
+            ->orderByDesc('document_requests.requested_on')
+            ->orderByDesc('document_requests.id')
+            ->get()
+            ->map(fn (DocumentRequest $requestItem) => $this->transformRequest($requestItem));
+
+        return view('front-desk-pending', [
+            'requests' => $requests,
+            'summary' => $this->buildSummaryFromCollection($requests),
+            'documentTypes' => DocumentRequest::query()
+                ->select('document_type')
+                ->distinct()
+                ->orderBy('document_type')
+                ->pluck('document_type'),
+        ]);
+    }
+
+    public function approvedRequests(Request $request): View
+    {
+        $this->ensureFrontDesk($request);
+
+        $requests = $this->filteredRequests()
+            ->where('document_requests.status', 'Accepted')
+            ->orderByDesc('document_requests.requested_on')
+            ->orderByDesc('document_requests.id')
+            ->get()
+            ->map(fn (DocumentRequest $requestItem) => $this->transformRequest($requestItem));
+
+        return view('employee.approved-requests', [
+            'requests' => $requests,
+            'summary' => $this->buildSummaryFromCollection($requests),
+            'documentTypes' => DocumentRequest::query()
+                ->select('document_type')
+                ->distinct()
+                ->orderBy('document_type')
+                ->pluck('document_type'),
+        ]);
+    }
+
+    public function complete(Request $request, int $id): JsonResponse
+    {
+        $this->ensureFrontDesk($request);
+
+        $docRequest = DocumentRequest::query()->findOrFail($id);
+        $docRequest->status = 'Completed';
+        $docRequest->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function documentSettings(Request $request): View
+    {
+        $this->ensureFrontDesk($request);
+
+        return view('front-desk-settings', [
+            'documentTypes' => DocumentRequest::query()
+                ->select('document_type')
+                ->distinct()
+                ->orderBy('document_type')
+                ->pluck('document_type'),
+        ]);
+    }
+
     public function fetchRequests(Request $request): JsonResponse
     {
         $this->ensureFrontDesk($request);
@@ -151,15 +219,17 @@ class FrontDeskController extends Controller
     {
         $this->ensureFrontDesk($request);
 
-        $documentRequest = $this->filteredRequests()
-            ->where('document_requests.id', $id)
-            ->firstOrFail();
+        $documentRequest = DocumentRequest::with(['employee', 'documentType'])
+            ->findOrFail($id);
 
-        $employee = User::query()->where('EmpNo', $documentRequest->EmpNo)->first();
+        $template = $documentRequest->documentType->parts ?? [];
+        
+        $employee = $documentRequest->employee;
 
-        return view('front-desk-print-request', [
-            'requestItem' => $this->transformRequest($documentRequest),
-            'designation' => (string) ($employee->designation ?? $documentRequest->department_name ?? 'Employee'),
+        return view('frontdesk.print', [
+            'documentRequest' => $documentRequest,
+            'employee' => $employee,
+            'template' => $template,
         ]);
     }
 
