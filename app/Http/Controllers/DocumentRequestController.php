@@ -13,16 +13,40 @@ use Carbon\Carbon;
 
 class DocumentRequestController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $user = Auth::user();
         $documentTypes = DocumentType::all();
 
-        $requests = DocumentRequest::query()
-            ->where('EmpNo', $user->EmpNo)
-            ->orderByDesc('requested_on')
-            ->orderByDesc('id')
-            ->paginate(15);
+        $query = DocumentRequest::query()->where('EmpNo', $user->EmpNo);
+
+        $month = $request->query('month');
+        if ($month === null) {
+            $month = now()->month;
+        }
+        if (is_numeric($month) && $month >= 1 && $month <= 12) {
+            $query->whereMonth('requested_on', $month)->whereYear('requested_on', now()->year);
+        }
+
+        $search = $request->query('search');
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('document_type', 'like', '%' . $search . '%')
+                  ->orWhere('purpose', 'like', '%' . $search . '%')
+                  ->orWhere('status', 'like', '%' . $search . '%');
+            });
+        }
+
+        $allowedSorts = ['requested_on', 'document_type', 'status', 'id'];
+        $sort = $request->query('sort');
+        $dir = strtolower($request->query('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $dir);
+        } else {
+            $query->orderByDesc('requested_on')->orderByDesc('id');
+        }
+
+        $requests = $query->paginate(10)->withQueryString();
 
         return view('request_documents', [
             'user' => $user,

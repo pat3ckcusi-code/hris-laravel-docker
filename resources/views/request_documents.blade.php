@@ -5,7 +5,7 @@
 
 @section('page_head')
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    @vite(['resources/css/request_documents.css', 'resources/js/request_documents.js'])
+    @vite(['resources/css/request_documents.css', 'resources/js/request_documents.js', 'resources/css/hris-table.css', 'resources/js/hris-table.js'])
     @include('partials.table-styles')
 @endsection
 
@@ -58,47 +58,51 @@
         </section>
 
         <section class="tile request-table-tile">
-            <div class="request-table-heading">
-                <h2 style="margin: 0;">Request History</h2>
-            </div>
+            <x-hris.table-layout
+                title="Request History"
+                subtitle="Track your document requests and statuses."
+                :paginator="$requests"
+                :showExport="false"
+            >
+                @php
+                    $currentSort = request('sort');
+                    $currentDir = strtolower(request('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+                    $sortUrl = function ($column) use ($currentSort, $currentDir) {
+                        $params = request()->except('page');
+                        $params['sort'] = $column;
+                        $params['dir'] = ($currentSort === $column && $currentDir === 'asc') ? 'desc' : 'asc';
+                        return request()->url() . '?' . http_build_query($params);
+                    };
+                    $activeClass = function ($column) use ($currentSort) {
+                        return $currentSort === $column ? 'text-blue-600 font-semibold' : 'text-slate-600';
+                    };
+                @endphp
 
-            <div style="overflow:auto">
-                <table id="documentRequestsTable" class="display leave-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Document</th>
-                            <th>Status</th>
-                            <th>Purpose</th>
-                            <th>HR Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($requests as $requestItem)
+                <div class="hris-table-wrapper">
+                    <table class="hris-table">
+                        <thead>
                             <tr>
-                                <td>{{ optional($requestItem->requested_on)->format('M d, Y h:i A') ?? '-' }}</td>
-                                <td>{{ $requestItem->document_type }}</td>
-                                <td>
-                                    @php
-                                        $status = strtolower((string) $requestItem->status);
-                                        $badgeClass = match ($status) {
-                                            'requested' => 'badge-requested',
-                                            'pending' => 'badge-pending',
-                                            'completed' => 'badge-completed',
-                                            'rejected' => 'badge-rejected',
-                                            default => 'badge-default',
-                                        };
-                                    @endphp
-                                    <span class="badge {{ $badgeClass }}">{{ $requestItem->status }}</span>
-                                </td>
-                                <td class="purpose-cell">{{ $requestItem->purpose }}</td>
-                                <td class="notes-cell">{{ $requestItem->hr_notes ?: '-' }}</td>
+                                <th><a href="{{ $sortUrl('requested_on') }}" class="{{ $activeClass('requested_on') }}">Date</a></th>
+                                <th><a href="{{ $sortUrl('document_type') }}" class="{{ $activeClass('document_type') }}">Document</a></th>
+                                <th><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th>Purpose</th>
+                                <th>HR Notes</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            <div style="margin-top:10px">{{ $requests->links() }}</div>
+                        </thead>
+                        <tbody>
+                            @foreach ($requests as $requestItem)
+                                <tr>
+                                    <td>{{ optional($requestItem->requested_on)->format('M d, Y h:i A') ?? '-' }}</td>
+                                    <td>{{ $requestItem->document_type }}</td>
+                                    <td><x-hris.status-badge :status="$requestItem->status" /></td>
+                                    <td>{{ $requestItem->purpose }}</td>
+                                    <td>{{ $requestItem->hr_notes ?: '-' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-hris.table-layout>
         </section>
     </div>
 @endsection

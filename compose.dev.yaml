@@ -137,12 +137,12 @@ services:
     container_name: hris-dev-db
     restart: unless-stopped
     ports:
-      - "${DB_EXTERNAL_PORT:-3307}:3306"
+      - "3306:3306"
     environment:
-      MYSQL_DATABASE:      "${DB_DATABASE:-hris}"
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-s3cr3t}"
-      MYSQL_USER:          "${DB_USERNAME:-laravel_user}"
-      MYSQL_PASSWORD:      "${DB_PASSWORD:-laravel_pass}"
+      MYSQL_ROOT_PASSWORD: "adminPa55w0rd!"
+      MYSQL_DATABASE: "hris"
+      MYSQL_USER: "hris_user"
+      MYSQL_PASSWORD: "hris_pass"
     volumes:
       - db_data:/var/lib/mysql
     networks: [hris-dev-network]
@@ -154,8 +154,7 @@ services:
           memory: 1G
     healthcheck:
       test:
-        ["CMD", "mysqladmin", "ping", "-h", "localhost",
-         "-uroot", "-p${MYSQL_ROOT_PASSWORD:-s3cr3t}"]
+        ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -prootpass123 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -252,7 +251,7 @@ services:
     environment:
       PMA_HOST:            db
       PMA_PORT:            "3306"
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-s3cr3t}"
+      MYSQL_ROOT_PASSWORD: "rootpass123"
     depends_on:
       db:
         condition: service_healthy

@@ -21,16 +21,38 @@ class EtaController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $query = Eta::where('user_id', $user->id)->orderBy('departure_date', 'desc');
+        $query = Eta::where('user_id', $user->id);
 
-        $filter = $request->query('filter');
-        if ($filter === 'weekly') {
-            $query->whereBetween('departure_date', [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()]);
-        } elseif ($filter === 'monthly') {
-            $query->whereMonth('departure_date', now()->month)->whereYear('departure_date', now()->year);
+        // Default monthly filter is current month unless the user explicitly chooses All Months.
+        $month = $request->query('month');
+        if ($month === null) {
+            $month = now()->month;
+        }
+        if (is_numeric($month) && $month >= 1 && $month <= 12) {
+            $query->whereMonth('departure_date', $month)->whereYear('departure_date', now()->year);
         }
 
-        $etas = $query->paginate(10);
+        // Search functionality
+        $search = $request->query('search');
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('destination', 'like', '%' . $search . '%')
+                  ->orWhere('purpose', 'like', '%' . $search . '%')
+                  ->orWhere('purpose_details', 'like', '%' . $search . '%');
+            });
+        }
+
+        // Sortable columns
+        $allowedSorts = ['departure_date', 'arrival_date', 'destination', 'purpose', 'status', 'created_at'];
+        $sort = $request->query('sort');
+        $dir = strtolower($request->query('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $dir);
+        } else {
+            $query->orderBy('departure_date', 'desc');
+        }
+
+        $etas = $query->paginate(10)->withQueryString();
 
         // Resolve the approved-by name for each ETA
         foreach ($etas as $eta) {

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * @property int $id
- * @property string|null $EmpNo
+ * @property int|null $user_id
  * @property float|null $VL
  * @property float|null $SL
  * @property float|null $WLNS
@@ -24,8 +24,10 @@ class LeaveBalance extends Model
 {
     use HasFactory;
 
+    protected $table = 'leave_balances';
+
     protected $fillable = [
-        'EmpNo',
+        'user_id',
         'VL',
         'SL',
         'WLNS',
@@ -36,6 +38,6 @@ class LeaveBalance extends Model
 
     public function user()
     {
-        return $this->hasOne(User::class, 'EmpNo', 'EmpNo');
+        return $this->belongsTo(User::class, 'user_id', 'id');
     }
 }

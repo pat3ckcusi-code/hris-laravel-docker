@@ -38,7 +38,7 @@
                 <tbody>
                     @foreach($balances as $balance)
                         <tr>
-                            <td>{{ $balance->EmpNo }}</td>
+                            <td>{{ $balance->user?->EmpNo ?? '-' }}</td>
                             <td>
                                 @if($balance->user)
                                     {{ trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')) }}

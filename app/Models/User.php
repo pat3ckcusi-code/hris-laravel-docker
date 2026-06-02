@@ -48,7 +48,7 @@ class User extends Authenticatable
 
     public function leaveBalance()
     {
-        return $this->hasOne(LeaveBalance::class, 'EmpNo', 'EmpNo');
+        return $this->hasOne(LeaveBalance::class, 'user_id', 'id');
     }
 
     /**

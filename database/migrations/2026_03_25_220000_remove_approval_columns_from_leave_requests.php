@@ -2,17 +2,32 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    protected function foreignKeyExists(string $table, string $column): bool
+    {
+        $connection = config('database.default');
+        $database = config("database.connections.{$connection}.database");
+
+        $result = DB::selectOne(
+            'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL',
+            [$database, $table, $column]
+        );
+
+        return $result !== null;
+    }
+
     public function up(): void
     {
         Schema::table('leave_requests', function (Blueprint $table) {
             // Drop foreign keys if they exist, then drop columns
             if (Schema::hasColumn('leave_requests', 'approver_id')) {
-                // remove foreign key if present
-                try { $table->dropForeign(['approver_id']); } catch (\Throwable $e) {}
+                if ($this->foreignKeyExists('leave_requests', 'approver_id')) {
+                    $table->dropForeign(['approver_id']);
+                }
                 $table->dropColumn('approver_id');
             }
 
@@ -27,7 +42,9 @@ return new class extends Migration
                 if (Schema::hasColumn('leave_requests', $c)) {
                     // drop foreign keys for *_by columns
                     if (in_array($c, ['recommended_by','approved_by','finalized_by'])) {
-                        try { $table->dropForeign([$c]); } catch (\Throwable $e) {}
+                        if ($this->foreignKeyExists('leave_requests', $c)) {
+                            $table->dropForeign([$c]);
+                        }
                     }
                     $table->dropColumn($c);
                 }

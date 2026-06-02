@@ -40,7 +40,9 @@ class LeaveManagerController extends Controller
                     $allowed
                 );
             })
-            ->orderBy('EmpNo')
+            ->join('users', 'leave_balances.user_id', '=', 'users.id')
+            ->orderBy('users.EmpNo')
+            ->select('leave_balances.*')
             ->get();
 
         $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
@@ -56,7 +58,11 @@ class LeaveManagerController extends Controller
      */
     public function manageCredits(Request $request)
     {
-        $balances = LeaveBalance::with('user')->orderBy('EmpNo')->get();
+        $balances = LeaveBalance::with('user')
+            ->join('users', 'leave_balances.user_id', '=', 'users.id')
+            ->orderBy('users.EmpNo')
+            ->select('leave_balances.*')
+            ->get();
         $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
 
         return view('leave-manager.manage-credits', [

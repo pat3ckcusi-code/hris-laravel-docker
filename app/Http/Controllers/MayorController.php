@@ -484,9 +484,49 @@ class MayorController extends Controller
         return view('mayor.policies');
     }
 
-    public function employees()
+    public function employees(Request $request)
     {
-        return view('mayor.employees');
+        $search = trim((string) $request->query('search', ''));
+        $statusFilter = trim((string) $request->query('status', ''));
+        $departmentFilter = trim((string) $request->query('department', ''));
+
+        $employeesQuery = User::query()
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->orderBy('middle_name');
+
+        if ($search !== '') {
+            $employeesQuery->where(function ($query) use ($search): void {
+                $query
+                    ->where('last_name', 'like', '%' . $search . '%')
+                    ->orWhere('first_name', 'like', '%' . $search . '%')
+                    ->orWhere('middle_name', 'like', '%' . $search . '%')
+                    ->orWhere('name', 'like', '%' . $search . '%')
+                    ->orWhere('email', 'like', '%' . $search . '%')
+                    ->orWhere('EmpNo', 'like', '%' . $search . '%');
+            });
+        }
+
+        if (in_array($statusFilter, ['Active', 'Inactive', 'Separated'], true)) {
+            $employeesQuery->where('Status', $statusFilter);
+        }
+
+        if ($departmentFilter !== '') {
+            $employeesQuery->where('Dept_id', $departmentFilter);
+        }
+
+        $employees = $employeesQuery->paginate(10)->withQueryString();
+
+        $departments = Department::query()->orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+
+        return view('mayor.employees', [
+            'user' => $request->user(),
+            'employees' => $employees,
+            'departments' => $departments,
+            'search' => $search,
+            'statusFilter' => $statusFilter,
+            'departmentFilter' => $departmentFilter,
+        ]);
     }
 
     public function events()

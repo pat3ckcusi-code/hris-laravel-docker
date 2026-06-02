@@ -6,7 +6,7 @@
 @endphp
 
 @section('page_styles')
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    @vite(['resources/css/hris-table.css', 'resources/js/hris-table.js'])
 @endsection
 
 @section('page_head')
@@ -14,34 +14,34 @@
 @endsection
 
 @section('content')
-    <div style="display:flex; flex-direction:column; gap:12px">
-        <div class="tile">
-            <h2 style="margin-top:0">File Employee Travel Authorization</h2>
+    <div class="space-y-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm">
+            <h2 class="text-2xl font-semibold text-slate-900 mb-4">File Employee Travel Authorization</h2>
 
             @if(session('success'))
             @endif
 
-            <form id="eta-file-form" class="pds-form" method="POST" action="{{ route('employee.eta.store') }}" data-processing-submit>
+            <form id="eta-file-form" class="space-y-6" method="POST" action="{{ route('employee.eta.store') }}" data-processing-submit>
                 @csrf
-                <div class="pds-section">
-                    <div class="field-grid two">
-                        <label>
-                            Departure Date
-                            <input id="departure_date" class="form-input" type="date" name="departure_date" required min="{{ date('Y-m-d') }}">
-                            @error('departure_date') <div class="muted" style="color:#b91c1c">{{ $message }}</div> @enderror
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-slate-700">Departure Date</span>
+                            <input id="departure_date" class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" type="date" name="departure_date" required min="{{ date('Y-m-d') }}">
+                            @error('departure_date') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
 
-                        <label>
-                            Date of Arrival
-                            <input id="arrival_date" class="form-input" type="date" name="arrival_date" min="{{ date('Y-m-d') }}">
-                            @error('arrival_date') <div class="muted" style="color:#b91c1c">{{ $message }}</div> @enderror
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-slate-700">Date of Arrival</span>
+                            <input id="arrival_date" class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" type="date" name="arrival_date" min="{{ date('Y-m-d') }}">
+                            @error('arrival_date') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
                     </div>
 
-                    <div class="field-grid two">                        
-                        <label>
-                            Purpose
-                            <select class="form-input" name="purpose" required>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-slate-700">Purpose</span>
+                            <select class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" name="purpose" required>
                                 <option value="">Select purpose</option>
                                 <option value="Audit-Inspection-Licensing" {{ old('purpose') == 'Audit-Inspection-Licensing' ? 'selected' : '' }}>Audit-Inspection-Licensing</option>
                                 <option value="Client Support" {{ old('purpose') == 'Client Support' ? 'selected' : '' }}>Client Support</option>
@@ -55,121 +55,118 @@
                                 <option value="Seminar" {{ old('purpose') == 'Seminar' ? 'selected' : '' }}>Seminar</option>
                                 <option value="General Expense/Other" {{ old('purpose') == 'General Expense/Other' ? 'selected' : '' }}>General Expense/Other</option>
                             </select>
-                            @error('purpose') <div class="muted" style="color:#b91c1c">{{ $message }}</div> @enderror
+                            @error('purpose') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
 
-                        <label>
-                            Destination
-                            <input class="form-input" type="text" name="destination" required placeholder="City, Province/State, Country">
-                            @error('destination') <div class="muted" style="color:#b91c1c">{{ $message }}</div> @enderror
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-slate-700">Destination</span>
+                            <input class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" type="text" name="destination" required placeholder="City, Province/State, Country">
+                            @error('destination') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
                     </div>
 
-                    <div class="field-grid">
-                        <label>
-                            Purpose Details (ex: "Proceeding to HR Department for Technical Support.")
-                            <textarea class="form-input" name="purpose_details" rows="3" placeholder="Provide details of travel or purpose of travel">{{ old('purpose_details') }}</textarea>
-                            @error('purpose_details') <div class="muted" style="color:#b91c1c">{{ $message }}</div> @enderror
+                    <div class="space-y-3">
+                        <label class="block space-y-2">
+                            <span class="text-sm font-medium text-slate-700">Purpose Details</span>
+                            <textarea class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" name="purpose_details" rows="3" placeholder="Provide details of travel or purpose of travel">{{ old('purpose_details') }}</textarea>
+                            @error('purpose_details') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
                     </div>
                 </div>
 
-                <div class="actions" style="margin-top:12px">
-                    <button class="btn" type="submit">File ETA</button>
+                <div class="flex justify-end mt-2">
+                    <button class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" type="submit">File ETA</button>
                 </div>
             </form>
         </div>
 
-        <div class="tile">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-                <h2 style="margin:0">Filed ETAs</h2>
-                <div>
-                    <a href="{{ route('dashboard.employee.eta') }}">All</a>
-                    &nbsp;|&nbsp;
-                    <a href="{{ route('dashboard.employee.eta', ['filter' => 'weekly']) }}">Weekly</a>
-                    &nbsp;|&nbsp;
-                    <a href="{{ route('dashboard.employee.eta', ['filter' => 'monthly']) }}">Monthly</a>
-                </div>
-            </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm">
+            <x-hris.table-layout
+                title="Filed ETAs"
+                subtitle="Your submitted ETA records are listed below."
+                :paginator="$etas"
+                :showExport="false"
+            >
+                <div class="hris-table-wrapper">
+                    @php
+                        $currentSort = request('sort');
+                        $currentDir = strtolower(request('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+                        $sortUrl = function ($column) use ($currentSort, $currentDir) {
+                            $params = request()->except('page');
+                            $params['sort'] = $column;
+                            $params['dir'] = ($currentSort === $column && $currentDir === 'asc') ? 'desc' : 'asc';
+                            return request()->url() . '?' . http_build_query($params);
+                        };
+                        $activeClass = function ($column) use ($currentSort) {
+                            return $currentSort === $column ? 'text-blue-600 font-semibold' : 'text-slate-600';
+                        };
+                    @endphp
 
-            <div style="overflow:auto">
-                <table id="eta-table" class="display leave-table" style="width:100%">
-                    <thead>
-                    <tr>
-                        <th>Departure Date</th>
-                        <th>Date of Arrival</th>
-                        <th>Destination</th>
-                        <th>Purpose</th>
-                        <th>Approved By</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @foreach($etas as $eta)
+                    <table class="hris-table">
+                        <thead>
                             <tr>
-                                <td>{{ $eta->departure_date }}</td>
-                                <td>{{ $eta->arrival_date ?? '-' }}</td>
-                                <td>{{ $eta->destination }}</td>
-                                <td>
-                                    <div>{{ $eta->purpose }}</div>
-                                    @if(!empty($eta->purpose_details))
-                                        <div class="muted" style="font-size:0.9rem">{{ $eta->purpose_details }}</div>
-                                    @endif
-                                </td>
-                                <td>{{ $eta->dept_head ?? 'Not assigned' }}</td>
-                                <td>
-                                    @php
-                                        $etaBadgeClass = match(strtolower((string) $eta->status)) {
-                                            'pending' => 'badge-pending',
-                                            'approved' => 'badge-approved',
-                                            'rejected' => 'badge-rejected',
-                                            'cancelled' => 'badge-cancelled',
-                                            default => 'badge-default',
-                                        };
-                                    @endphp
-                                    <span class="badge {{ $etaBadgeClass }}">{{ $eta->status ? ucfirst($eta->status) : '' }}</span>
-                                </td>
-                            <td>
-                                @if($eta->status === 'approved')
-                                    <a class="btn-sm btn-print" href="{{ route('employee.eta.print.single', ['eta' => $eta->id]) }}" target="_blank">Print</a>
-                                @elseif($eta->status === 'pending')
-                                    <form method="POST" action="{{ route('employee.eta.cancel', ['eta' => $eta->id]) }}" id="cancel-eta-form-{{ $eta->id }}" style="display:inline">
-                                        @csrf
-                                        <button type="button" class="btn-sm btn-reject" onclick="confirmCancelEta({{ $eta->id }})">Cancel</button>
-                                    </form>
-                                @else
-                                    <span class="muted">{{ ucfirst($eta->status) }}</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                    </tbody>
+                                <th><a href="{{ $sortUrl('departure_date') }}" class="{{ $activeClass('departure_date') }}">Departure Date</a></th>
+                                <th><a href="{{ $sortUrl('arrival_date') }}" class="{{ $activeClass('arrival_date') }}">Date of Arrival</a></th>
+                                <th><a href="{{ $sortUrl('destination') }}" class="{{ $activeClass('destination') }}">Destination</a></th>
+                                <th><a href="{{ $sortUrl('purpose') }}" class="{{ $activeClass('purpose') }}">Purpose</a></th>
+                                <th>Approved By</th>
+                                <th><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($etas as $eta)
+                                <tr>
+                                    <td>{{ $eta->departure_date }}</td>
+                                    <td>{{ $eta->arrival_date ?? '-' }}</td>
+                                    <td>{{ $eta->destination }}</td>
+                                    <td>
+                                        <div>{{ $eta->purpose }}</div>
+                                        @if(!empty($eta->purpose_details))
+                                            <div class="text-sm text-slate-500">{{ $eta->purpose_details }}</div>
+                                        @endif
+                                    </td>
+                                    <td>{{ $eta->dept_head ?? 'Not assigned' }}</td>
+                                    <td>
+                                        @php
+                                            $status = strtolower((string) $eta->status);
+                                            $badgeType = match($status) {
+                                                'pending' => 'pending',
+                                                'approved' => 'approved',
+                                                'rejected' => 'rejected',
+                                                'cancelled' => 'cancelled',
+                                                default => 'default',
+                                            };
+                                        @endphp
+                                        <x-hris.status-badge :status="$status" />
+                                    </td>
+                                    <td>
+                                        @if($eta->status === 'approved')
+                                            <a class="hris-btn hris-btn-secondary" href="{{ route('employee.eta.print.single', ['eta' => $eta->id]) }}" target="_blank">Print</a>
+                                        @elseif($eta->status === 'pending')
+                                            <form method="POST" action="{{ route('employee.eta.cancel', ['eta' => $eta->id]) }}" id="cancel-eta-form-{{ $eta->id }}" class="inline-block">
+                                                @csrf
+                                                <button type="button" class="hris-btn hris-btn-danger" onclick="confirmCancelEta({{ $eta->id }})">Cancel</button>
+                                            </form>
+                                        @else
+                                            <span class="text-sm text-gray-500">{{ ucfirst($eta->status) }}</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="px-4 py-4 text-center text-sm text-slate-500">No ETA records found for the selected filters.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
                     </table>
-                    <div style="margin-top:10px; display:flex; justify-content:flex-end">
-                        {{ $etas->appends(request()->query())->links() }}
-                    </div>
-            </div>
+                </div>
+            </x-hris.table-layout>
         </div>
     </div>
 @endsection
 
 @section('page_scripts')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script>
-        $(function(){
-            if ($.fn.DataTable && $.fn.DataTable.isDataTable && $.fn.DataTable.isDataTable('#eta-table')) {
-                return;
-            }
-            $('#eta-table').DataTable({
-                responsive: true,
-                paging: false,
-                info: false,
-                searching: false,
-            });
-        });
-    </script>
     <script>
         (function(){
             const dep = document.getElementById('departure_date');

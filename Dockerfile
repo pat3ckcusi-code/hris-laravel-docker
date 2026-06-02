@@ -10,7 +10,7 @@ COPY public ./public
 RUN npx vite build
 
 # Stage 2: PHP-FPM application image
-FROM php:8.2-fpm AS app
+FROM php:8.4-fpm AS app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl unzip \

@@ -5,16 +5,20 @@
     $subtitle = 'Manage all types of leave requests and approvals.';
 @endphp
 
+@section('page_styles')
+    @vite(['resources/css/hris-table.css', 'resources/js/hris-table.js'])
+@endsection
+
 @section('content')
-    <div class="module-page">
+    <div class="space-y-6">
 
         {{-- Notifications --}}
         @if(session('success'))
-            <div class="alert alert-success">{{ session('success') }}</div>
+            <div class="rounded-lg bg-green-50 p-4 text-sm text-green-800 border border-green-200">{{ session('success') }}</div>
         @endif
         @if($errors->any())
-            <div class="alert alert-danger">
-                <ul>
+            <div class="rounded-lg bg-red-50 p-4 text-sm text-red-800 border border-red-200">
+                <ul class="list-disc list-inside space-y-1">
                     @foreach($errors->all() as $error)
                         <li>{{ $error }}</li>
                     @endforeach
@@ -22,18 +26,36 @@
             </div>
         @endif
 
-        {{-- Leave Balances (Dummy Data, replace with real calculation) --}}
-        <section>
-                <h2>Leave Balances</h2>
-                <div class="grid" style="grid-auto-flow: column; grid-template-columns: unset;">
-                    <div class="tile"><strong>Vacation Leave (VL):</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->VL ?? 0)) }} days</div>
-                    <div class="tile"><strong>Sick Leave (SL):</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SL ?? 0)) }} days</div>
-                    <div class="tile"><strong>Wellness Leave (WLNS):</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->WLNS ?? 0)) }} days</div>
-                    <div class="tile"><strong>CTO:</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->CTO ?? 0)) }} days</div>
-                    <div class="tile"><strong>SPL:</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SPL ?? 0)) }} days</div>
-                    <div class="tile"><strong>Solo Parent (SP):</strong> {{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SP ?? 0)) }} days</div>
+        {{-- Leave Balances Section --}}
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold text-slate-900 mb-4">Leave Balances</h2>
+            <div class="flex gap-2 overflow-x-auto">
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Vacation Leave (VL)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->VL ?? 0)) }}</p>
                 </div>
-                    </section>
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Sick Leave (SL)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SL ?? 0)) }}</p>
+                </div>
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Wellness Leave (WLNS)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->WLNS ?? 0)) }}</p>
+                </div>
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Compensatory Time Off (CTO)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->CTO ?? 0)) }}</p>
+                </div>
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Special Privilege Leave (SPL)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SPL ?? 0)) }}</p>
+                </div>
+                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
+                    <p class="text-xs text-slate-600 font-medium">Solo Parent Leave (SP)</p>
+                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SP ?? 0)) }}</p>
+                </div>
+            </div>
+        </div>
                     <script>
                         document.addEventListener('DOMContentLoaded', function () {
                             const cancelForms = document.querySelectorAll('form.cancel-leave-form');
@@ -60,50 +82,98 @@
                     </script>
 
         {{-- Leave Application Form --}}
-        <section style="width:100%;">
-            <h2>Apply for Leave</h2>
-            <form method="POST" action="{{ route('employee.leave.apply') }}" style="width:100%;">
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold text-slate-900 mb-4">Apply for Leave</h2>
+            <form method="POST" action="{{ route('employee.leave.apply') }}" class="space-y-6">
                 @csrf
-                <div class="tile" style="grid-column:1/-1;">
-                    <label style="display:block; font-weight:600; margin-bottom:6px;">Select up to 3 leave types in one application. Maternity, Paternity, and Adoption must be filed separately.</label>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;">
-                        <label><input type="checkbox" name="leave_types[]" value="Vacation Leave"> Vacation Leave (VL)</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Sick Leave"> Sick Leave (SL)</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Maternity Leave"> Maternity Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Paternity Leave"> Paternity Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Adoption Leave"> Adoption Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Solo Parent Leave"> Solo Parent Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="VAWC Leave"> VAWC Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Special Leave (Gynecological)"> Special Leave (Gynecological)</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Special Emergency (Calamity) Leave"> Special Emergency (Calamity) Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Special Privilege Leave"> Special Privilege Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Mandatory/Forced Leave"> Mandatory/Forced Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Rehabilitation Privilege"> Rehabilitation Privilege</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Wellness Leave"> Wellness Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Study / Examination Leave"> Study / Examination Leave</label>
-                        <label><input type="checkbox" name="leave_types[]" value="Others"> Others</label>
+                <div class="space-y-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p class="text-sm text-blue-700 font-medium">Select up to 3 leave types in one application. Maternity, Paternity, and Adoption must be filed separately.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Vacation Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Vacation Leave (VL)</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Sick Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Sick Leave (SL)</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Maternity Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Maternity Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Paternity Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Paternity Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Adoption Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Adoption Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Solo Parent Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Solo Parent Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="VAWC Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">VAWC Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Special Leave (Gynecological)" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Special Leave (Gynecological)</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Special Emergency (Calamity) Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Special Emergency Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Special Privilege Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Special Privilege Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Mandatory/Forced Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Mandatory/Forced Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Rehabilitation Privilege" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Rehabilitation Privilege</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Wellness Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Wellness Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Study / Examination Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Study / Examination Leave</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
+                            <input type="checkbox" name="leave_types[]" value="Others" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                            <span class="text-sm text-slate-700">Others</span>
+                        </label>
                     </div>
                 </div>
-                <div class="tile" style="grid-column:1/-1;">
-                    <div class="leave-flex-row">
-                        <div class="leave-col">
-                            <label style="font-weight:600; display:block;">Select Dates</label>
-                            <div style="display:flex; align-items:center;">
-                                <input type="date" id="datePicker" class="form-input leave-date-custom" style="width:70%; min-width:220px;" placeholder="mm/dd/yyyy" />
-                                <button type="button" id="addDateBtn" class="btn" style="padding:10px 18px; font-size:1em; border-top-left-radius:0; border-bottom-left-radius:0; margin-left:-1px;">Add</button>
+                <div class="border-t pt-6">
+                    <h3 class="text-lg font-semibold text-slate-900 mb-4">Select Dates & Allocate Days</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div class="lg:col-span-1 space-y-4">
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-slate-700">Select Dates</label>
+                                <div class="flex gap-1">
+                                    <input type="date" id="datePicker" class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                    <button type="button" id="addDateBtn" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Add</button>
+                                </div>
+                                <p class="text-xs text-slate-500">Select multiple non-consecutive weekdays. Weekends and holidays are excluded.</p>
+                                <div id="datePickerMsg" class="text-sm text-red-600 font-medium mt-2 hidden"></div>
+                                <input type="hidden" name="leave_dates" id="leaveDatesInput" />
                             </div>
-                            <span style="font-size:0.95em; color:#888;">Select multiple non-consecutive weekdays. Weekends and holidays are excluded.</span>
-                            <div id="datePickerMsg" style="font-size:0.9em; color:#b91c1c; margin-top:6px; display:none;"></div>
-                            <input type="hidden" name="leave_dates" id="leaveDatesInput" />
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-slate-700">Selected Dates</label>
+                                <div id="selectedDatesList" class="border border-gray-300 rounded-lg p-3 min-h-44 bg-gray-50 overflow-y-auto"></div>
+                            </div>
                         </div>
-                        <div class="leave-col">
-                            <label style="font-weight:600; display:block;">Selected Dates</label>
-                            <div id="selectedDatesList" style="border:1px solid #ddd; border-radius:8px; padding:10px 12px; min-height:44px; background:#fafbfc;"></div>
-                        </div>
-                        <div class="leave-col-allocation">
-                            <label style="font-weight:600; display:block;">Day Allocation Per Leave Type</label>
-                            <div id="allocationSection"></div>
-                            <span style="font-size:0.95em; color:#888;">Assign each selected date to a leave type. Totals are auto-computed to avoid encoding errors.</span>
+                        <div class="lg:col-span-3 space-y-2">
+                            <label class="block text-sm font-medium text-slate-700">Day Allocation Per Leave Type</label>
+                            <div id="allocationSection" class="border border-gray-300 rounded-lg p-3 min-h-96 bg-gray-50 overflow-y-auto"></div>
+                            <p class="text-xs text-slate-500">Assign each date to a leave type. Totals auto-compute to avoid errors.</p>
                         </div>
                     </div>
                 </div>
@@ -619,75 +689,87 @@
 
         {{-- Leave Request Tracking & History --}}
         <section>
-            <h2>My Leave Requests</h2>
-            <div style="overflow-x:auto;">
-                <table class="table my-requests-table" style="width:100%;min-width:600px;border-collapse:collapse;">
-                    <thead>
-                        <tr>
-                            <th>Type</th>
-                            <th>Dates</th>
-                            <th>No of days</th>
-                            <th>Status</th>
-                            <th>Remarks</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($leaveRequests as $leave)
-                            <tr id="leave-row-{{ $leave->id }}" @if($leave->status === 'cancelled') style="text-decoration: line-through; opacity: 0.7;" @endif data-employee="{{ optional($leave->user)->name ?? '—' }}" data-type="{{ $leave->leave_type }}" data-period="{{ $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '—' }} to {{ $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '—' }}" data-total="{{ $leave->total_days ?? '—' }}" data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}" data-reason="{{ e($leave->reason ?? '') }}" data-status="{{ $leave->status }}" data-remarks="{{ e(in_array($leave->status, ['rejected','declined']) ? ($leave->rejection_notes ?? $leave->remarks ?? '') : ($leave->remarks ?? '')) }}">
-                                <td>{{ $leave->leave_type }}</td>
-                                <td>
-                                    @php
-                                        $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
-                                        $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
-                                    @endphp
-                                    {{ $s }}@if($e) to {{ $e }}@endif
-                                </td>
-                                <td>
-                                    {{ $leave->total_days ?? (($leave->start_date && $leave->end_date) ? (\Carbon\Carbon::parse($leave->start_date)->diffInDays(\Carbon\Carbon::parse($leave->end_date)) + 1) : '-') }}
-                                </td>
-                                <td>
-                                    <span class="chip {{ $leave->status }}">{{ ucfirst($leave->status) }}</span>
-                                </td>
-                                <td>
-                                    @if($leave->status === 'cancelled')
-                                        {{ $leave->remarks ? $leave->remarks : 'Cancelled by applicant' }}
-                                    @elseif(in_array($leave->status, ['rejected', 'declined']))
-                                        {{ $leave->rejection_notes ?? ($leave->remarks ?? '-') }}
-                                    @else
-                                        {{ $leave->remarks ?? '-' }}
-                                    @endif
-                                </td>
-                                <td>
-                                    {{-- View is always available for all statuses --}}
-                                    <button class="btn btn-sm btn-info" type="button" onclick="openLeaveModal({{ $leave->id }})" title="View"><i class="fa fa-eye"></i> View</button>
-                                    @if(!in_array($leave->status, ['cancelled','rejected','declined']))
-                                        @if(($leave->status === 'pending' || ($leave->cancellation_status ?? '') === 'Pending Cancellation') && empty($leave->printing_allowed))
-                                            <button class="btn btn-sm btn-disabled-print" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</button>
-                                        @elseif($leave->status === 'approved' && !empty($leave->printing_allowed))
-                                            <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="btn btn-sm btn-primary" target="_blank" title="Print Leave Form" id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</a>
-                                        @elseif($leave->status === 'pending' && !empty($leave->printing_allowed))
-                                            <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="btn btn-sm btn-primary" target="_blank" title="Print Leave Form" id="print-btn-{{ $leave->id }}"><i class="fa fa-print"></i> Print</a>
-                                        @endif
+            <x-hris.table-layout
+                title="My Leave Requests"
+                subtitle="Review and manage your submitted leave requests."
+                :paginator="$leaveRequests"
+                :showExport="false"
+            >
+                @php
+                    $currentSort = request('sort');
+                    $currentDir = strtolower(request('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+                    $sortUrl = function ($column) use ($currentSort, $currentDir) {
+                        $params = request()->except('page');
+                        $params['sort'] = $column;
+                        $params['dir'] = ($currentSort === $column && $currentDir === 'asc') ? 'desc' : 'asc';
+                        return request()->url() . '?' . http_build_query($params);
+                    };
+                    $activeClass = function ($column) use ($currentSort) {
+                        return $currentSort === $column ? 'text-blue-600 font-semibold' : 'text-slate-600';
+                    };
+                @endphp
 
-                                        @if($leave->status === 'pending')
-                                            <button type="button" class="btn btn-sm btn-danger" title="Cancel" onclick="openPendingCancelModal({{ $leave->id }})"><i class="fa fa-times"></i> Cancel</button>
-                                        @endif
-                                        @if($leave->status === 'approved')
-                                            <button type="button" class="btn btn-sm btn-warning" title="Request Cancellation" onclick="openCancellationRequestModal({{ $leave->id }})"><i class="fa fa-times"></i> Cancel</button>
-                                        @endif
-                                    @endif
-                                </td>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 my-requests-table">
+                        <thead>
+                            <tr>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('leave_type') }}" class="{{ $activeClass('leave_type') }}">Type</a></th>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('start_date') }}" class="{{ $activeClass('start_date') }}">Dates</a></th>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('total_days') }}" class="{{ $activeClass('total_days') }}">No of days</a></th>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase">Remarks</th>
+                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase">Actions</th>
                             </tr>
-                        @empty
-                            <tr><td colspan="6">No leave requests found.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-                <div style="margin-top:12px;">
-                    {{ $leaveRequests->links() }}
+                        </thead>
+                        <tbody>
+                            @forelse($leaveRequests as $leave)
+                                @php
+                                    $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
+                                    $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
+                                @endphp
+                                <tr id="leave-row-{{ $leave->id }}" data-employee="{{ $leave->user->name ?? '—' }}" data-type="{{ $leave->leave_type }}" data-period="{{ $s }}@if($e) to {{ $e }}@endif" data-total="{{ $leave->total_days ?? '—' }}" data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}" data-reason="{{ $leave->reason ?? '' }}" data-status="{{ $leave->status }}" data-remarks="{{ $leave->remarks ?? '' }}" class="odd:bg-white even:bg-gray-50 hover:bg-blue-50 @if($leave->status === 'cancelled') opacity-70 line-through @endif">
+                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $leave->leave_type }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $s }}@if($e) to {{ $e }}@endif</td>
+                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $leave->total_days ?? (($leave->start_date && $leave->end_date) ? (\Carbon\Carbon::parse($leave->start_date)->diffInDays(\Carbon\Carbon::parse($leave->end_date)) + 1) : '-') }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-800"><x-hris.status-badge :status="$leave->status" /></td>
+                                    <td class="px-4 py-2 text-sm text-gray-800">
+                                        @if($leave->status === 'cancelled')
+                                            {{ $leave->remarks ? $leave->remarks : 'Cancelled by applicant' }}
+                                        @elseif(in_array($leave->status, ['rejected', 'declined']))
+                                            {{ $leave->rejection_notes ?? ($leave->remarks ?? '-') }}
+                                        @else
+                                            {{ $leave->remarks ?? '-' }}
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-2 text-sm text-gray-800 flex flex-wrap gap-2">
+                                        <button type="button" class="hris-btn hris-btn-secondary" onclick="openLeaveModal({{ $leave->id }})">View</button>
+                                        @if(!in_array($leave->status, ['cancelled','rejected','declined']))
+                                            @if(($leave->status === 'pending' || ($leave->cancellation_status ?? '') === 'Pending Cancellation') && empty($leave->printing_allowed))
+                                                <button class="hris-btn hris-btn-secondary" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}">Print</button>
+                                            @elseif($leave->status === 'approved' && !empty($leave->printing_allowed))
+                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
+                                            @elseif($leave->status === 'pending' && !empty($leave->printing_allowed))
+                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
+                                            @endif
+
+                                            @if($leave->status === 'pending')
+                                                <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
+                                            @endif
+                                            @if($leave->status === 'approved')
+                                                <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
+                                            @endif
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">No leave requests found for the selected filters.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
-            </div>
+            </x-hris.table-layout>
         </section>
     </div>
 @endsection

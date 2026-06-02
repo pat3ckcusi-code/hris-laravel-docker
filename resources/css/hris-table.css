@@ -1,0 +1,544 @@
+/* ============================================================================
+   HRIS Table Styles - Unified Table Design for HRIS Modules
+   ============================================================================ */
+
+/* Table Card Container */
+.hris-table-card {
+    background: #ffffff;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+/* Table Header */
+.hris-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 2rem;
+}
+
+.hris-table-header-title {
+    flex: 1;
+}
+
+.hris-table-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 0.25rem 0;
+    line-height: 1.4;
+}
+
+.hris-table-subtitle {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0;
+}
+
+.hris-table-header-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+/* Filter Section */
+.hris-table-filters {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.hris-filter-left {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.hris-filter-right {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+.hris-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.hris-filter-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+}
+
+.hris-filter-select {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    background-color: #ffffff;
+    font-size: 0.875rem;
+    color: #1e293b;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    min-width: 150px;
+}
+
+.hris-filter-select:hover {
+    border-color: #94a3b8;
+}
+
+.hris-filter-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Search Bar */
+.hris-search-wrapper {
+    width: 100%;
+}
+
+.hris-search-form {
+    display: flex;
+}
+
+.hris-search-input-group {
+    display: flex;
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.hris-search-input {
+    flex: 1;
+    padding: 0.625rem 0.875rem;
+    border: none;
+    font-size: 0.875rem;
+    color: #1e293b;
+    outline: none;
+}
+
+.hris-search-input::placeholder {
+    color: #cbd5e1;
+}
+
+.hris-search-input:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.hris-search-button {
+    padding: 0.625rem 0.875rem;
+    background: #f1f5f9;
+    border: none;
+    cursor: pointer;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.hris-search-button:hover {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.hris-search-button:active {
+    background: #cbd5e1;
+}
+
+/* Table Wrapper */
+.hris-table-wrapper {
+    overflow-x: auto;
+    padding: 0;
+}
+
+.hris-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+}
+
+.hris-table thead {
+    background: #f1f5f9;
+    border-bottom: 2px solid #cbd5e1;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.hris-table thead tr {
+    height: auto;
+}
+
+.hris-table th {
+    padding: 1rem 1.25rem;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #334155;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.hris-table tbody tr {
+    border-bottom: 1px solid #e2e8f0;
+    transition: background-color 0.2s;
+}
+
+.hris-table tbody tr:hover {
+    background-color: #f0f9ff;
+}
+
+.hris-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.hris-table td {
+    padding: 1rem 1.25rem;
+    font-size: 0.875rem;
+    color: #1e293b;
+    vertical-align: middle;
+}
+
+.hris-table tbody tr:nth-child(odd) {
+    background: #ffffff;
+}
+
+.hris-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+/* Badge Styles */
+.hris-badge {
+    display: inline-flex;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.hris-badge.badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.hris-badge.badge-approved {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.hris-badge.badge-rejected,
+.hris-badge.badge-declined {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.hris-badge.badge-cancelled {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+
+.hris-badge.badge-default {
+    background-color: #f3f4f6;
+    color: #6b7280;
+}
+
+/* Buttons */
+.hris-btn,
+.hris-btn-primary,
+.hris-btn-secondary,
+.hris-btn-danger,
+.hris-btn-warning,
+.hris-btn-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    transition: all 0.2s;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.hris-btn-primary {
+    background-color: #3b82f6;
+    color: #ffffff;
+}
+
+.hris-btn-primary:hover {
+    background-color: #2563eb;
+    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+}
+
+.hris-btn-primary:active {
+    background-color: #1d4ed8;
+}
+
+.hris-btn-secondary {
+    background-color: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+.hris-btn-secondary:hover {
+    background-color: #e5e7eb;
+    border-color: #9ca3af;
+}
+
+.hris-btn-danger {
+    background-color: #ef4444;
+    color: #ffffff;
+}
+
+.hris-btn-danger:hover {
+    background-color: #dc2626;
+    box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+}
+
+.hris-btn-warning {
+    background-color: #f59e0b;
+    color: #ffffff;
+}
+
+.hris-btn-warning:hover {
+    background-color: #d97706;
+}
+
+.hris-btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* Pagination */
+.hris-pagination-wrapper {
+    display: flex;
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+
+.hris-pagination {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.hris-pagination-item {
+    display: inline-flex;
+}
+
+.hris-pagination-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    color: #475569;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.hris-pagination-item.active .hris-pagination-link {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+    color: #ffffff;
+}
+
+.hris-pagination-item:not(.active):not(.disabled) .hris-pagination-link:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    background-color: #f0f9ff;
+}
+
+.hris-pagination-item.disabled .hris-pagination-link {
+    color: #cbd5e1;
+    cursor: not-allowed;
+    border-color: #e2e8f0;
+}
+
+.hris-pagination-info {
+    text-align: center;
+    font-size: 0.875rem;
+    color: #64748b;
+    margin-top: 1rem;
+}
+
+/* Table Footer */
+.hris-table-footer {
+    padding: 1rem 1.5rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Empty State */
+.hris-empty-state {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    color: #64748b;
+}
+
+.hris-empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.hris-empty-state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.5rem;
+}
+
+.hris-empty-state-text {
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .hris-table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .hris-table-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hris-filter-left {
+        width: 100%;
+    }
+
+    .hris-filter-right {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .hris-table th,
+    .hris-table td {
+        padding: 0.75rem;
+        font-size: 0.8125rem;
+    }
+
+    .hris-btn,
+    .hris-btn-primary,
+    .hris-btn-secondary,
+    .hris-btn-danger {
+        padding: 0.375rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .hris-table-title {
+        font-size: 1.25rem;
+    }
+
+    .hris-pagination-link {
+        min-width: 2rem;
+        height: 2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .hris-table-wrapper {
+        font-size: 0.75rem;
+    }
+
+    .hris-table th,
+    .hris-table td {
+        padding: 0.5rem;
+    }
+
+    .hris-btn,
+    .hris-btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+    }
+
+    .hris-table-subtitle {
+        display: none;
+    }
+
+    .hris-filter-select {
+        min-width: 120px;
+    }
+}
+
+/* Utility Classes */
+.d-none {
+    display: none !important;
+}
+
+.d-block {
+    display: block !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-muted {
+    color: #64748b;
+}
+
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Align utilities */
+.align-middle {
+    vertical-align: middle;
+}
+
+.text-uppercase {
+    text-transform: uppercase;
+}
+
+.font-weight-bold {
+    font-weight: 600;
+}
+
+.font-weight-normal {
+    font-weight: 400;
+}
+
+.small {
+    font-size: 0.875rem;
+}

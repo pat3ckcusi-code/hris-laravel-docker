@@ -20,7 +20,35 @@ class LocatorController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $locators = Locator::where('user_id', $user->id)->orderBy('travel_date', 'desc')->paginate(10);
+        $query = Locator::where('user_id', $user->id);
+
+        $month = $request->query('month');
+        if ($month === null) {
+            $month = now()->month;
+        }
+        if (is_numeric($month) && $month >= 1 && $month <= 12) {
+            $query->whereMonth('travel_date', $month)->whereYear('travel_date', now()->year);
+        }
+
+        $search = $request->query('search');
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('location', 'like', '%' . $search . '%')
+                  ->orWhere('application_type', 'like', '%' . $search . '%')
+                  ->orWhere('detail', 'like', '%' . $search . '%');
+            });
+        }
+
+        $allowedSorts = ['travel_date', 'application_type', 'location', 'status', 'created_at'];
+        $sort = $request->query('sort');
+        $dir = strtolower($request->query('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $dir);
+        } else {
+            $query->orderBy('travel_date', 'desc');
+        }
+
+        $locators = $query->paginate(10)->withQueryString();
         return view('employee.locator', compact('locators'));
     }
 

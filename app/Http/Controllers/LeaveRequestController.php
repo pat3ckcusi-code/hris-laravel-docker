@@ -29,12 +29,38 @@ class LeaveRequestController extends Controller
     {
         $this->leaveRequestService = $leaveRequestService;
     }
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
-        $leaveRequests = LeaveRequest::where('user_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+        $query = LeaveRequest::where('user_id', $user->id);
+
+        $month = $request->query('month');
+        if ($month === null) {
+            $month = now()->month;
+        }
+        if (is_numeric($month) && $month >= 1 && $month <= 12) {
+            $query->whereMonth('start_date', $month)->whereYear('start_date', now()->year);
+        }
+
+        $search = $request->query('search');
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('leave_type', 'like', '%' . $search . '%')
+                  ->orWhere('remarks', 'like', '%' . $search . '%')
+                  ->orWhere('reason', 'like', '%' . $search . '%');
+            });
+        }
+
+        $allowedSorts = ['leave_type', 'start_date', 'end_date', 'total_days', 'status', 'created_at'];
+        $sort = $request->query('sort');
+        $dir = strtolower($request->query('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        if (in_array($sort, $allowedSorts, true)) {
+            $query->orderBy($sort, $dir);
+        } else {
+            $query->orderBy('created_at', 'desc');
+        }
+
+        $leaveRequests = $query->paginate(10)->withQueryString();
 
         return view('employee.leave-management', compact('leaveRequests', 'user'));
     }
