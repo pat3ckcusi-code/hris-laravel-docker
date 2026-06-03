@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Mail\LeaveRequestStatusNotification;
+use App\Notifications\HrisTransactionNotification;
 use App\Services\LeaveRequestService;
 use Carbon\Carbon;
 
@@ -262,7 +263,17 @@ class MayorController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('Mayor leave rejection email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new LeaveRequestStatusNotification($employee, $leave, $formatted, 'declined', $leave->rejection_notes, $balances));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Rejected',
+                        details: [
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => $formatted['start'],
+                            'End Date'   => $formatted['end'],
+                        ],
+                        actor: Auth::user()->name,
+                        notes: $leave->rejection_notes ?? null,
+                    ));
                     Log::info('Mayor leave rejection email queued', ['leave_id' => $leave->id, 'email' => $email]);
                 }
             }

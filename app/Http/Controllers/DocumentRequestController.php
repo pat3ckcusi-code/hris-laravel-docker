@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Auth;
+use App\Notifications\HrisTransactionNotification;
 use Carbon\Carbon;
 
 class DocumentRequestController extends Controller
@@ -91,6 +92,20 @@ class DocumentRequestController extends Controller
             'document_type' => $documentTypeName,
             'status'        => 'Requested',
         ]);
+
+        try {
+            $user->notify(new HrisTransactionNotification(
+                requestType: 'Document Request',
+                status: 'Filed',
+                details: [
+                    'Document Type' => $documentTypeName,
+                    'Purpose'       => $validated['purpose'],
+                    'Filed On'      => now()->format('l, F j, Y g:i A'),
+                ],
+            ));
+        } catch (\Exception $ex) {
+            // do not block on mail failure
+        }
 
         return response()->json([
             'success' => true,

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
+use App\Notifications\HrisTransactionNotification;
 use Illuminate\Support\Facades\Log;
 
 class LeaveManagerController extends Controller
@@ -500,8 +501,18 @@ class LeaveManagerController extends Controller
             ]);
 
             try {
-                if ($leave->user && !empty($leave->user->email)) {
-                    Mail::to($leave->user->email)->queue(new \App\Mail\LeaveRequestStatusNotification($leave->user, $leave));
+                if ($leave->user) {
+                    $leave->user->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Cancellation Rejected',
+                        details: [
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => \Carbon\Carbon::parse($leave->start_date)->format('l, F j, Y'),
+                            'End Date'   => \Carbon\Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                        ],
+                        actor: Auth::user()->name,
+                        notes: $leave->cancellation_remarks ?? null,
+                    ));
                 }
             } catch (\Exception $ex) {}
 

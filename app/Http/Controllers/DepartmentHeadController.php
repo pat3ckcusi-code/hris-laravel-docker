@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\HRAuditTrail;
 use App\Mail\LeaveRequestStatusNotification;
 use App\Mail\ApplicationStatusNotification;
+use App\Notifications\HrisTransactionNotification;
 
 
 class DepartmentHeadController extends Controller
@@ -680,8 +681,16 @@ class DepartmentHeadController extends Controller
 
         // Optionally notify employee about printing being allowed
         try {
-            if ($employee && !empty($employee->email)) {
-                Mail::to($employee->email)->queue(new ApplicationStatusNotification($employee, $leave, 'Leave', ['filed' => $leave->created_at ? Carbon::parse($leave->created_at)->format('l, F j, Y') : ''], 'printing_allowed'));
+            if ($employee) {
+                $employee->notify(new HrisTransactionNotification(
+                    requestType: 'Leave Request',
+                    status: 'Printing Allowed',
+                    details: [
+                        'Leave Type' => $leave->leave_type ?? 'N/A',
+                        'Date Filed' => $leave->created_at ? Carbon::parse($leave->created_at)->format('l, F j, Y') : 'N/A',
+                    ],
+                    actor: Auth::user()->name,
+                ));
             }
         } catch (\Exception $ex) {}
 
@@ -762,7 +771,17 @@ class DepartmentHeadController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('ETA approval email attempt', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new ApplicationStatusNotification($employee, $eta, 'ETA', $formatted, 'approved'));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'ETA',
+                        status: 'Approved',
+                        details: [
+                            'Destination'    => $eta->destination ?? 'N/A',
+                            'Departure Date' => $formatted['departure'],
+                            'Arrival Date'   => $formatted['arrival'],
+                            'Purpose'        => $eta->purpose ?? 'N/A',
+                        ],
+                        actor: Auth::user()->name,
+                    ));
                     Log::info('ETA approval email queued', ['eta_id' => $eta->id, 'email' => $email]);
                 } else {
                     Log::warning('ETA approval email not sent: employee has no email', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null]);
@@ -848,7 +867,17 @@ class DepartmentHeadController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('ETA rejection email attempt', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new ApplicationStatusNotification($employee, $eta, 'ETA', $formatted, 'declined'));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'ETA',
+                        status: 'Rejected',
+                        details: [
+                            'Destination'    => $eta->destination ?? 'N/A',
+                            'Departure Date' => $formatted['departure'],
+                            'Arrival Date'   => $formatted['arrival'],
+                            'Purpose'        => $eta->purpose ?? 'N/A',
+                        ],
+                        actor: Auth::user()->name,
+                    ));
                     Log::info('ETA rejection email queued', ['eta_id' => $eta->id, 'email' => $email]);
                 } else {
                     Log::warning('ETA rejection email not sent: employee has no email', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null]);
@@ -943,7 +972,18 @@ class DepartmentHeadController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('Locator approval email attempt', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new ApplicationStatusNotification($employee, $locator, $appType, $formatted, 'approved'));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: $appType,
+                        status: 'Approved',
+                        details: [
+                            'Location'       => $locator->location ?? 'N/A',
+                            'Travel Date'    => $formatted['travel'],
+                            'Departure Time' => $formatted['departure_time_ampm'],
+                            'Arrival Time'   => $formatted['arrival_time_ampm'],
+                            'Detail'         => $locator->detail ?? 'N/A',
+                        ],
+                        actor: Auth::user()->name,
+                    ));
                     Log::info('Locator approval email queued', ['locator_id' => $locator->id, 'email' => $email]);
                 } else {
                     Log::warning('Locator approval email not sent: employee has no email', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null]);
@@ -1034,7 +1074,18 @@ class DepartmentHeadController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('Locator rejection email attempt', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new ApplicationStatusNotification($employee, $locator, $appType, $formatted, 'declined'));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: $appType,
+                        status: 'Rejected',
+                        details: [
+                            'Location'       => $locator->location ?? 'N/A',
+                            'Travel Date'    => $formatted['travel'],
+                            'Departure Time' => $formatted['departure_time_ampm'],
+                            'Arrival Time'   => $formatted['arrival_time_ampm'],
+                            'Detail'         => $locator->detail ?? 'N/A',
+                        ],
+                        actor: Auth::user()->name,
+                    ));
                     Log::info('Locator rejection email queued', ['locator_id' => $locator->id, 'email' => $email]);
                 } else {
                     Log::warning('Locator rejection email not sent: employee has no email', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null]);
@@ -1170,7 +1221,17 @@ class DepartmentHeadController extends Controller
                 $email = $employee->email ?? null;
                 Log::info('Leave rejection email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new LeaveRequestStatusNotification($employee, $leave, $formatted, 'declined', $leave->rejection_notes, $balances));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Rejected',
+                        details: [
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => $formatted['start'],
+                            'End Date'   => $formatted['end'],
+                        ],
+                        actor: Auth::user()->name,
+                        notes: $leave->rejection_notes ?? null,
+                    ));
                     Log::info('Leave rejection email queued', ['leave_id' => $leave->id, 'email' => $email]);
                 } else {
                     Log::warning('Leave rejection email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);

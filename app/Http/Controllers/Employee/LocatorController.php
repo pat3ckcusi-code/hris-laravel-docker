@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\FileLocatorOfficialNotification;
 use App\Mail\FileLocatorPersonalNotification;
+use App\Notifications\HrisTransactionNotification;
 
 class LocatorController extends Controller
 {
@@ -147,17 +148,24 @@ class LocatorController extends Controller
             }
         }
 
-        if ($departmentHead && !empty($departmentHead->email)) {
+        if ($departmentHead) {
             try {
-                if (strtolower($locator->application_type) === 'official') {
-                    Mail::to($departmentHead->email)
-                        ->cc($employee->email ?? null)
-                        ->queue(new FileLocatorOfficialNotification($employee, $locator));
-                } else {
-                    Mail::to($departmentHead->email)
-                        ->cc($employee->email ?? null)
-                        ->queue(new FileLocatorPersonalNotification($employee, $locator));
-                }
+                $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                $appType = 'Locator - ' . ucfirst(strtolower($locator->application_type ?? 'Official'));
+                $departmentHead->notify(new HrisTransactionNotification(
+                    requestType: $appType,
+                    status: 'Filed',
+                    details: [
+                        'Employee'       => $empName,
+                        'Department'     => $employee->department_name ?? 'N/A',
+                        'Location'       => $locator->location ?? 'N/A',
+                        'Travel Date'    => Carbon::parse($locator->travel_date)->format('l, F j, Y'),
+                        'Departure Time' => Carbon::parse($locator->intended_departure_time)->format('h:i A'),
+                        'Arrival Time'   => Carbon::parse($locator->intended_arrival_time)->format('h:i A'),
+                        'Detail'         => $locator->detail ?? 'N/A',
+                    ],
+                    actor: $empName,
+                ));
             } catch (\Exception $ex) {
                 // ignore mail errors for now
             }

@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\EtaNotification;
+use App\Notifications\HrisTransactionNotification;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Carbon;
 
@@ -132,11 +133,22 @@ class EtaController extends Controller
             }
         }
 
-        if ($departmentHead && !empty($departmentHead->email)) {
+        if ($departmentHead) {
             try {
-                Mail::to($departmentHead->email)
-                    ->cc($employee->email ?? null)
-                    ->queue(new EtaNotification($employee, $eta));
+                $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                $departmentHead->notify(new HrisTransactionNotification(
+                    requestType: 'ETA',
+                    status: 'Filed',
+                    details: [
+                        'Employee'       => $empName,
+                        'Department'     => $employee->department_name ?? 'N/A',
+                        'Destination'    => $eta->destination ?? 'N/A',
+                        'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
+                        'Arrival Date'   => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+                        'Purpose'        => $eta->purpose ?? 'N/A',
+                    ],
+                    actor: $empName,
+                ));
             } catch (\Exception $ex) {
                 // do not block on mail failure; consider logging
             }

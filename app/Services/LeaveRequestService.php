@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Models\HRAuditTrail;
 use App\Mail\LeaveRequestStatusNotification;
+use App\Notifications\HrisTransactionNotification;
 use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -565,7 +566,18 @@ class LeaveRequestService
                     $email = $employee->email ?? null;
                     Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                     if (!empty($email)) {
-                        Mail::to($email)->queue(new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved', null, $balances));
+                        $employee->notify(new HrisTransactionNotification(
+                            requestType: 'Leave Request',
+                            status: 'Approved',
+                            details: [
+                                'Leave Type' => $leave->leave_type ?? 'N/A',
+                                'Start Date' => $formatted['start'],
+                                'End Date'   => $formatted['end'],
+                                'Date Filed' => $formatted['filed'],
+                                'VL Balance' => number_format($balances['VL'] ?? 0, 3),
+                                'SL Balance' => number_format($balances['SL'] ?? 0, 0),
+                            ],
+                        ));
                         Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
                     } else {
                         Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
@@ -607,7 +619,18 @@ class LeaveRequestService
                     $email = $employee->email ?? null;
                     Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                     if (!empty($email)) {
-                        Mail::to($email)->queue(new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved', null, $balances));
+                        $employee->notify(new HrisTransactionNotification(
+                            requestType: 'Leave Request',
+                            status: 'Approved',
+                            details: [
+                                'Leave Type' => $leave->leave_type ?? 'N/A',
+                                'Start Date' => $formatted['start'],
+                                'End Date'   => $formatted['end'],
+                                'Date Filed' => $formatted['filed'],
+                                'VL Balance' => number_format($balances['VL'] ?? 0, 3),
+                                'SL Balance' => number_format($balances['SL'] ?? 0, 0),
+                            ],
+                        ));
                         Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
                     } else {
                         Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
@@ -814,7 +837,18 @@ class LeaveRequestService
                 $email = $employee->email ?? null;
                 Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
                 if (!empty($email)) {
-                    Mail::to($email)->queue(new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved', null, $balances));
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Approved',
+                        details: [
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => $formatted['start'],
+                            'End Date'   => $formatted['end'],
+                            'Date Filed' => $formatted['filed'],
+                            'VL Balance' => number_format($balances['VL'] ?? 0, 3),
+                            'SL Balance' => number_format($balances['SL'] ?? 0, 0),
+                        ],
+                    ));
                     Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
                 } else {
                     Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);

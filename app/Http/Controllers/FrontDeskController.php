@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use App\Notifications\HrisTransactionNotification;
 
 class FrontDeskController extends Controller
 {
@@ -141,11 +142,7 @@ class FrontDeskController extends Controller
         $documentRequest->hr_notes = $validated['remarks'] ?? $documentRequest->hr_notes;
         $documentRequest->save();
 
-        $this->sendStatusEmail(
-            $documentRequest,
-            'Document Request Accepted',
-            'Your requested document <strong>' . e((string) $documentRequest->document_type) . '</strong> has been accepted and is now being processed.'
-        );
+        $this->sendStatusEmail($documentRequest, 'Document Request Accepted', 'Accepted');
 
         return response()->json([
             'success' => true,
@@ -171,11 +168,7 @@ class FrontDeskController extends Controller
         $documentRequest->hr_notes = $validated['remarks'] ?? $documentRequest->hr_notes;
         $documentRequest->save();
 
-        $this->sendStatusEmail(
-            $documentRequest,
-            'Document Request Rejected',
-            'Your requested document <strong>' . e((string) $documentRequest->document_type) . '</strong> has been rejected. Please contact the HR office for clarification.'
-        );
+        $this->sendStatusEmail($documentRequest, 'Document Request Rejected', 'Rejected');
 
         return response()->json([
             'success' => true,
@@ -203,11 +196,7 @@ class FrontDeskController extends Controller
         $documentRequest->hr_notes = $validated['remarks'] ?? $documentRequest->hr_notes;
         $documentRequest->save();
 
-        $this->sendStatusEmail(
-            $documentRequest,
-            'Document Request Completed',
-            'Your requested document <strong>' . e((string) $documentRequest->document_type) . '</strong> has been completed and is ready for pick-up at the HR office.'
-        );
+        $this->sendStatusEmail($documentRequest, 'Document Request Completed', 'Completed');
 
         return response()->json([
             'success' => true,
@@ -408,23 +397,30 @@ class FrontDeskController extends Controller
         return strtolower(trim($role));
     }
 
-    private function sendStatusEmail(DocumentRequest $documentRequest, string $subject, string $line): void
+    private function sendStatusEmail(DocumentRequest $documentRequest, string $subject, string $statusLabel): void
     {
         $employee = User::query()->where('EmpNo', $documentRequest->EmpNo)->first();
 
-        if (! $employee || ! $employee->email) {
+        if (! $employee) {
             return;
         }
 
-        $employeeName = (string) ($employee->name ?: ($employee->first_name ?? 'Employee'));
-
-        $html = '<p>Dear ' . e($employeeName) . ',</p>'
-            . '<p>' . $line . '</p>'
-            . '<p>We will notify you once it is ready.</p>'
-            . '<br><p>City Human Resource Office Department</p>';
-
-        Mail::html($html, function ($message) use ($employee, $subject): void {
-            $message->to($employee->email)->subject($subject);
-        });
+        try {
+            $employee->notify(new HrisTransactionNotification(
+                requestType: 'Document Request',
+                status: $statusLabel,
+                details: [
+                    'Document Type' => $documentRequest->document_type ?? 'N/A',
+                    'Purpose'       => $documentRequest->purpose ?? 'N/A',
+                    'Requested On'  => $documentRequest->requested_on
+                        ? Carbon::parse($documentRequest->requested_on)->format('l, F j, Y')
+                        : 'N/A',
+                ],
+                actor: $documentRequest->processed_by ?? $documentRequest->released_by ?? null,
+                notes: $documentRequest->hr_notes ?? null,
+            ));
+        } catch (\Exception $ex) {
+            // do not block on mail failure
+        }
     }
 }

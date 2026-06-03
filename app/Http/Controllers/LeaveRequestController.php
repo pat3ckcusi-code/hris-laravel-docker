@@ -15,6 +15,7 @@ use App\Services\LeaveRequestService;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Mail\LeaveRequestNotification;
+use App\Notifications\HrisTransactionNotification;
 use Carbon\Carbon;
 use App\Models\HRAuditTrail;
 
@@ -447,8 +448,22 @@ class LeaveRequestController extends Controller
                     'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
                 ];
 
-                if ($approver && !empty($approver->email)) {
-                    Mail::to($approver->email)->cc($employee->email ?? null)->queue(new LeaveRequestNotification($employee, $leave, $formatted));
+                if ($approver) {
+                    $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                    $approver->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Filed',
+                        details: [
+                            'Employee'   => $empName,
+                            'Department' => $employee->department_name ?? 'N/A',
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => $formatted['start'],
+                            'End Date'   => $formatted['end'],
+                            'Date Filed' => $formatted['filed'],
+                            'Reason'     => $leave->reason ?? 'N/A',
+                        ],
+                        actor: $empName,
+                    ));
                 }
             } catch (\Exception $ex) {
                 // swallow mail errors to avoid blocking the request flow; consider logging
@@ -605,8 +620,22 @@ class LeaveRequestController extends Controller
                     'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
                 ];
 
-                if ($approver && !empty($approver->email)) {
-                    Mail::to($approver->email)->cc($employee->email ?? null)->queue(new LeaveRequestNotification($employee, $leave, $formatted));
+                if ($approver) {
+                    $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                    $approver->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Filed',
+                        details: [
+                            'Employee'   => $empName,
+                            'Department' => $employee->department_name ?? 'N/A',
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Start Date' => $formatted['start'],
+                            'End Date'   => $formatted['end'],
+                            'Date Filed' => $formatted['filed'],
+                            'Reason'     => $leave->reason ?? 'N/A',
+                        ],
+                        actor: $empName,
+                    ));
                 }
             } catch (\Exception $ex) {
                 // swallow mail errors to avoid blocking the request flow; consider logging
@@ -674,8 +703,20 @@ class LeaveRequestController extends Controller
                     $approver = User::where('EmpNo', $department->EmpNo)->first();
                 }
             }
-            if ($approver && !empty($approver->email)) {
-                Mail::to($approver->email)->queue(new \App\Mail\LeaveRequestStatusNotification($employee, $leave));
+            if ($approver) {
+                $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                $approver->notify(new HrisTransactionNotification(
+                    requestType: 'Leave Request',
+                    status: 'Cancellation Requested',
+                    details: [
+                        'Employee'   => $empName,
+                        'Leave Type' => $leave->leave_type ?? 'N/A',
+                        'Start Date' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
+                        'End Date'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                        'Reason'     => $leave->cancellation_reason ?? 'N/A',
+                    ],
+                    actor: $empName,
+                ));
             }
         } catch (\Exception $ex) {
             // swallow
