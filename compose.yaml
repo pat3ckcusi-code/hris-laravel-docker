@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
       target: app
     image: hris-app:latest
+    pull_policy: build   # built locally, not in a registry — don't try to `docker compose pull` it
     container_name: hris-app
     restart: unless-stopped
     working_dir: /var/www/html
@@ -41,6 +42,7 @@ services:
       dockerfile: Dockerfile
       target: nginx
     image: hris-nginx:latest
+    pull_policy: build   # built locally, not in a registry — don't try to `docker compose pull` it
     container_name: hris-nginx
     restart: unless-stopped
     ports:
