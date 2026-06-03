@@ -694,6 +694,9 @@
                 subtitle="Review and manage your submitted leave requests."
                 :paginator="$leaveRequests"
                 :showExport="false"
+                :stickyFilters="true"
+                :scrollableTable="true"
+                :showTopPagination="true"
             >
                 @php
                     $currentSort = request('sort');

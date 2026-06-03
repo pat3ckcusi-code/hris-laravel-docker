@@ -7,7 +7,9 @@
     background: #ffffff;
     border-radius: 0.75rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
+    /* clip instead of hidden: still clips overflow visually but does NOT create a
+       scroll container, so position:sticky descendants work against the viewport */
+    overflow: clip;
     margin-bottom: 2rem;
 }
 
@@ -54,6 +56,14 @@
     border-bottom: 1px solid #e2e8f0;
     gap: 1rem;
     flex-wrap: wrap;
+}
+
+/* Sticky filter bar variant — sticks to the viewport top when scrolled past */
+.hris-filters-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07);
 }
 
 .hris-filter-left {
@@ -161,6 +171,13 @@
 .hris-table-wrapper {
     overflow-x: auto;
     padding: 0;
+}
+
+/* Scrollable body variant — gives the table a capped height so rows scroll
+   while the sticky thead stays pinned to the top of this container */
+.hris-table-scrollable {
+    max-height: clamp(320px, 52vh, 640px);
+    overflow-y: auto;
 }
 
 .hris-table {
@@ -397,6 +414,12 @@
     padding: 1rem 1.5rem;
     background: #f8fafc;
     border-top: 1px solid #e2e8f0;
+}
+
+/* Top pagination bar — same as footer but border on the bottom, not top */
+.hris-table-top-pagination {
+    border-top: none;
+    border-bottom: 1px solid #e2e8f0;
 }
 
 /* Empty State */

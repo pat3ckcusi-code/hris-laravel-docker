@@ -1074,7 +1074,7 @@ class LeaveRequestService
             // Department head name for recommendation
             if (!empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
                 $headUser = User::where('EmpNo', $dept->EmpNo)->first();
-                if ($headUser) {
+                if ($headUser && $headUser->access_level === 'department head') {
                     $headParts = array_filter([
                         $headUser->first_name ?? '',
                         $headUser->middle_name ?? '',

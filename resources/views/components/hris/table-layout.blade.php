@@ -6,6 +6,9 @@
     'showMonthFilter' => true,
     'monthFilterName' => 'month',
     'paginator' => null,
+    'showTopPagination' => false,
+    'scrollableTable' => false,
+    'stickyFilters' => false,
 ])
 
 <div class="hris-table-card">
@@ -40,10 +43,10 @@
 
     {{-- Filter bar: use $filters slot if provided, else fall back to default month/search --}}
     @isset($filters)
-        <div class="hris-table-filters">{{ $filters }}</div>
+        <div class="hris-table-filters{{ $stickyFilters ? ' hris-filters-sticky' : '' }}">{{ $filters }}</div>
     @else
         @if($showMonthFilter || $showSearch)
-            <div class="hris-table-filters">
+            <div class="hris-table-filters{{ $stickyFilters ? ' hris-filters-sticky' : '' }}">
                 @if($showMonthFilter)
                     <div class="hris-filter-left">
                         <x-hris.month-filter :name="$monthFilterName" />
@@ -58,12 +61,19 @@
         @endif
     @endisset
 
+    {{-- Top Pagination --}}
+    @if($paginator && $showTopPagination)
+        <div class="hris-table-footer hris-table-top-pagination">
+            <x-hris.table-pagination :paginator="$paginator" />
+        </div>
+    @endif
+
     {{-- Table content --}}
-    <div class="hris-table-wrapper overflow-x-auto">
+    <div class="hris-table-wrapper overflow-x-auto{{ $scrollableTable ? ' hris-table-scrollable' : '' }}">
         {{ $slot }}
     </div>
 
-    {{-- Pagination --}}
+    {{-- Bottom Pagination --}}
     @if($paginator)
         <div class="hris-table-footer">
             <x-hris.table-pagination :paginator="$paginator" />
