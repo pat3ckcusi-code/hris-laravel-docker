@@ -25,7 +25,7 @@
                         @endphp
                         <select id="filter-month" name="month" class="form-control form-control-sm">
                             @foreach($monthOptions as $val => $lbl)
-                                <option value="{{ $val }}" @if($val === request('month', date('Y-m'))) selected @endif>{{ $lbl }}</option>
+                                <option value="{{ $val }}" @if($val === $currentMonth) selected @endif>{{ $lbl }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -40,7 +40,7 @@
                 </div>
 
                 <div class="table-responsive">
-                    <table id="employee-requests-table" class="leave-table">
+                    <table id="employee-requests-table" class="hris-table">
                         <thead>
                             <tr>
                                 <th>Request ID</th>
@@ -76,8 +76,8 @@
                                     <td class="text-center">{{ ucfirst($requestItem->status ?? '-') }}</td>
                                     <td class="text-center">{{ $requestItem->cancellation_requested_at ? \Carbon\Carbon::parse($requestItem->cancellation_requested_at)->format('M d, Y H:i') : '-' }}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-success approve-cancellation-btn" data-id="{{ $requestItem->id }}">Approve</button>
-                                        <button class="btn btn-sm btn-secondary reject-cancellation-btn" data-id="{{ $requestItem->id }}" style="margin-left:8px">Reject</button>
+                                        <button class="hris-btn hris-btn-primary hris-btn-sm approve-cancellation-btn" data-id="{{ $requestItem->id }}">Approve</button>
+                                        <button class="hris-btn hris-btn-secondary hris-btn-sm reject-cancellation-btn" data-id="{{ $requestItem->id }}">Reject</button>
                                     </td>
                                 </tr>
                             @empty
@@ -110,43 +110,100 @@
             .done(function(resp){
                 const count = parseInt(resp.count || 0, 10);
                 badge.text(count);
-                if (count <= 0) {
-                    badge.hide();
-                } else {
-                    badge.show();
-                }
+                if (count <= 0) { badge.hide(); } else { badge.show(); }
             });
     }
 
-    $(function(){
-        if ($.fn.dataTable && !$.fn.dataTable.isDataTable('#employee-requests-table')) {
-            const $table = $('#employee-requests-table');
-            try {
-                $table.DataTable({
-                    paging: false,
-                    pageLength: 25,
-                    lengthChange: true,
-                    lengthMenu: [10, 25, 50, 100],
-                    autoWidth: false,
-                    order: [[1, 'asc']],
-                    columnDefs: [
-                        { orderable: false, targets: [4, 7] },
-                        { width: '10%', targets: 0 },
-                        { width: '8%', targets: 5 },
-                        { width: '14%', targets: 6 }
-                    ],
-                    dom: 'rt<"bottom"ip>',
-                    language: {
-                        emptyTable: 'No employee cancellation requests found.'
-                    }
-                });
-            } catch (e) {
-                // DataTable init failed; suppress debug output in production
-            }
-        }
+    var dt = null;
+    var dtConfig = {
+        paging: false,
+        pageLength: 25,
+        lengthChange: true,
+        lengthMenu: [10, 25, 50, 100],
+        autoWidth: false,
+        order: [[1, 'asc']],
+        columnDefs: [
+            { orderable: false, targets: [4, 7] },
+            { width: '10%', targets: 0 },
+            { width: '8%', targets: 5 },
+            { width: '14%', targets: 6 }
+        ],
+        dom: 'rt<"bottom"ip>',
+        language: { emptyTable: 'No employee cancellation requests found.' }
+    };
 
+    function initDt() {
+        if ($.fn.dataTable && !$.fn.dataTable.isDataTable('#employee-requests-table')) {
+            try { dt = $('#employee-requests-table').DataTable(dtConfig); } catch(e) {}
+        }
+    }
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML;
+    }
+
+    function fetchRows(month, emp) {
+        var params = { month: month };
+        if (emp) params.emp = emp;
+
+        // Keep URL in sync so a manual reload restores the same filter
+        var url = new URL(window.location.href);
+        url.searchParams.set('month', month);
+        if (emp) url.searchParams.set('emp', emp); else url.searchParams.delete('emp');
+        window.history.replaceState({}, '', url.toString());
+
+        $.ajax({
+            url: '{{ route('leave-manager.employee-cancellation-requests') }}',
+            data: params,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            success: function(resp) {
+                if (dt) { dt.destroy(); dt = null; }
+                var tbody = $('#employee-requests-table tbody');
+                tbody.empty();
+
+                if (!resp.rows || !resp.rows.length) {
+                    tbody.append('<tr><td colspan="8" class="text-center" style="padding:1rem;color:#6b7280;">No employee cancellation requests found.</td></tr>');
+                } else {
+                    resp.rows.forEach(function(row) {
+                        tbody.append(
+                            '<tr>' +
+                            '<td class="text-center">' + escapeHtml(row.id) + '</td>' +
+                            '<td>' + escapeHtml(row.employee) + '</td>' +
+                            '<td class="text-center">' + escapeHtml(row.department) + '</td>' +
+                            '<td class="text-center">' + escapeHtml(row.leave_type) + '</td>' +
+                            '<td>' + escapeHtml(row.cancellation_reason) + '</td>' +
+                            '<td class="text-center">' + escapeHtml(row.status) + '</td>' +
+                            '<td class="text-center">' + escapeHtml(row.requested_at) + '</td>' +
+                            '<td>' +
+                                '<button class="hris-btn hris-btn-primary hris-btn-sm approve-cancellation-btn" data-id="' + row.id + '">Approve</button> ' +
+                                '<button class="hris-btn hris-btn-secondary hris-btn-sm reject-cancellation-btn" data-id="' + row.id + '">Reject</button>' +
+                            '</td>' +
+                            '</tr>'
+                        );
+                    });
+                }
+
+                initDt();
+            },
+            error: function() {
+                // Fall back to a full reload on network/server error
+                window.location.href = '{{ route('leave-manager.employee-cancellation-requests') }}?month=' + encodeURIComponent(month);
+            }
+        });
+    }
+
+    $(function(){
+        initDt();
         pollPendingCancellationBadge();
         setInterval(pollPendingCancellationBadge, 20000);
+    });
+
+    // Month filter — AJAX, no page reload
+    $(document).on('change', '#filter-month', function(){
+        fetchRows($(this).val(), $('#claEmployee').val() || '');
     });
 
     var claEmpTimer = null, claSuggestionIndex = -1;
@@ -178,46 +235,42 @@
 
     $(document).on('click', function(e){ if (!$(e.target).closest('#claEmployee_suggestions, #claEmployeeSearch').length) $('#claEmployee_suggestions').hide(); });
 
+    // Employee search still uses full reload (preserves paginated results)
     function applyFilters(){ const month = $('#filter-month').val()||''; const emp = $('#claEmployee').val()||''; const params = []; if (month) params.push('month='+encodeURIComponent(month)); if (emp) params.push('emp='+encodeURIComponent(emp)); const url = '{{ route('leave-manager.employee-cancellation-requests') }}' + (params.length ? ('?'+params.join('&')) : ''); window.location.href = url; }
-    $(document).on('change', '#filter-month', function(){ applyFilters(); });
 
     function doApproveCancellation(id) {
         $.post(`{{ url('/api/leave') }}/${id}/approve-cancellation`, { _token: '{{ csrf_token() }}' })
             .done(function(resp){
-                    if (resp && resp.success) {
+                if (resp && resp.success) {
                     if (typeof Swal !== 'undefined') Swal.fire('Approved', 'Cancellation approved and credits refunded.', 'success').then(()=>window.location.reload());
                     else { window.location.reload(); }
                 } else {
                     const msg = resp && resp.error ? resp.error : 'Failed to approve';
                     if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                    else {}
                 }
             })
             .fail(function(xhr){
                 let msg = 'Failed to approve cancellation.';
                 try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
                 if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                else {}
             });
     }
 
     function doRejectCancellation(id, remarks) {
         $.post(`{{ url('/api/leave') }}/${id}/reject-cancellation`, { remarks: remarks, _token: '{{ csrf_token() }}' })
             .done(function(resp){
-                    if (resp && resp.success) {
+                if (resp && resp.success) {
                     if (typeof Swal !== 'undefined') Swal.fire('Rejected', 'Cancellation request rejected.', 'success').then(()=>window.location.reload());
                     else { window.location.reload(); }
                 } else {
                     const msg = resp && resp.error ? resp.error : 'Failed to reject';
                     if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                    else {}
                 }
             })
             .fail(function(xhr){
                 let msg = 'Failed to reject cancellation.';
                 try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
                 if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                else {}
             });
     }
 
@@ -236,7 +289,6 @@
             const remarks = prompt('Enter remarks for rejection:'); if (!remarks) return; doRejectCancellation(leaveId, remarks);
             return;
         }
-
         Swal.fire({ title: 'Reject cancellation?', input: 'text', inputPlaceholder: 'Manager remarks (required)', showCancelButton: true, confirmButtonText: 'Reject', inputValidator: (v) => { if (!v || !v.trim()) return 'Remarks required'; } })
             .then(function(res){ if (!res.isConfirmed) return; doRejectCancellation(leaveId, res.value); });
     });

@@ -22,53 +22,53 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="exceptions-table">
-        <thead>
-            <tr>
-                <th>Payroll Run</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($exceptions as $ex)
-                <tr id="exception-row-{{ $ex->id }}"
-                    data-id="{{ $ex->id }}"
-                    data-type="{{ $ex->type }}"
-                    data-description="{{ $ex->description ?? '' }}"
-                    data-resolved="{{ $ex->resolved_flag ? '1' : '0' }}"
-                    data-run="{{ $ex->payroll_run_id }}"
-                    data-run-period="{{ $ex->payrollRun->period ?? '' }}">
-                    <td>Run #{{ $ex->payroll_run_id }} — {{ $ex->payrollRun->period ?? '' }}</td>
-                    <td>{{ $ex->type }}</td>
-                    <td>{{ Str::limit($ex->description, 80) }}</td>
-                    <td>
-                        @if($ex->resolved_flag)
-                            <span class="status-chip status-approved">Resolved</span>
-                        @else
-                            <span class="status-chip status-draft">Unresolved</span>
-                        @endif
-                    </td>
-                    <td>
-                        <div class="action-btns">
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openShowException({{ $ex->id }})">View</button>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openEditException({{ $ex->id }})">Edit</button>
-                            <form method="POST" action="{{ route('payroll.exceptions.destroy', $ex->id) }}" style="display:inline" id="delete-exception-{{ $ex->id }}">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteException({{ $ex->id }})">Del</button>
-                            </form>
-                        </div>
-                    </td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$exceptions">
+        <table class="hris-table" id="exceptions-table">
+            <thead>
+                <tr>
+                    <th>Payroll Run</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="5" class="empty-state">No exceptions found.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $exceptions->appends(request()->query())->links() }}
+            </thead>
+            <tbody>
+                @forelse($exceptions as $ex)
+                    <tr id="exception-row-{{ $ex->id }}"
+                        data-id="{{ $ex->id }}"
+                        data-type="{{ $ex->type }}"
+                        data-description="{{ $ex->description ?? '' }}"
+                        data-resolved="{{ $ex->resolved_flag ? '1' : '0' }}"
+                        data-run="{{ $ex->payroll_run_id }}"
+                        data-run-period="{{ $ex->payrollRun->period ?? '' }}">
+                        <td>Run #{{ $ex->payroll_run_id }} — {{ $ex->payrollRun->period ?? '' }}</td>
+                        <td>{{ $ex->type }}</td>
+                        <td>{{ Str::limit($ex->description, 80) }}</td>
+                        <td>
+                            @if($ex->resolved_flag)
+                                <span class="status-chip status-approved">Resolved</span>
+                            @else
+                                <span class="status-chip status-draft">Unresolved</span>
+                            @endif
+                        </td>
+                        <td>
+                            <div class="action-btns">
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openShowException({{ $ex->id }})">View</button>
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditException({{ $ex->id }})">Edit</button>
+                                <form method="POST" action="{{ route('payroll.exceptions.destroy', $ex->id) }}" style="display:inline" id="delete-exception-{{ $ex->id }}">
+                                    @csrf @method('DELETE')
+                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeleteException({{ $ex->id }})">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="text-center text-muted">No exceptions found.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

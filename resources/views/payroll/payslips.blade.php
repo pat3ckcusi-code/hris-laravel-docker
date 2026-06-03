@@ -23,46 +23,48 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="payslips-table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Employee</th>
-                <th>Payroll Run</th>
-                <th>PDF</th>
-                <th>Generated</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($payslips as $ps)
-                <tr id="payslip-row-{{ $ps->id }}"
-                    data-employee="{{ $ps->employee->name ?? '—' }}"
-                    data-run="Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}"
-                    data-pdf="{{ $ps->pdf_path ? asset($ps->pdf_path) : '' }}"
-                    data-date="{{ $ps->created_at->format('M d, Y H:i') }}">
-                    <td>{{ $ps->id }}</td>
-                    <td>{{ $ps->employee->name ?? '—' }}</td>
-                    <td>Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}</td>
-                    <td>
-                        @if($ps->pdf_path)
-                            <a href="{{ asset($ps->pdf_path) }}" target="_blank" class="btn btn-sm btn-outline"><i class="fas fa-download"></i></a>
-                        @else
-                            <span class="text-muted">Pending</span>
-                        @endif
-                    </td>
-                    <td>{{ $ps->created_at->format('M d, Y') }}</td>
-                    <td>
-                        <button type="button" class="btn btn-sm btn-outline" onclick="openShowPayslip({{ $ps->id }})">View</button>
-                    </td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$payslips">
+        <table class="hris-table" id="payslips-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Employee</th>
+                    <th>Payroll Run</th>
+                    <th>PDF</th>
+                    <th>Generated</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="6" class="empty-state">No payslips generated yet.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $payslips->appends(request()->query())->links() }}
+            </thead>
+            <tbody>
+                @forelse($payslips as $ps)
+                    <tr id="payslip-row-{{ $ps->id }}"
+                        data-employee="{{ $ps->employee->name ?? '—' }}"
+                        data-run="Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}"
+                        data-pdf="{{ $ps->pdf_path ? asset($ps->pdf_path) : '' }}"
+                        data-date="{{ $ps->created_at->format('M d, Y H:i') }}">
+                        <td>{{ $ps->id }}</td>
+                        <td>{{ $ps->employee->name ?? '—' }}</td>
+                        <td>Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}</td>
+                        <td>
+                            @if($ps->pdf_path)
+                                <a href="{{ asset($ps->pdf_path) }}" target="_blank" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-download"></i></a>
+                            @else
+                                <span class="text-muted">Pending</span>
+                            @endif
+                        </td>
+                        <td>{{ $ps->created_at->format('M d, Y') }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openShowPayslip({{ $ps->id }})">View</button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted">No payslips generated yet.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

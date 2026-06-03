@@ -31,7 +31,7 @@
         </div>
 
         <div class="hrm-table-wrap">
-            <table class="hrm-table" id="leaveTable" data-initial-chart='@json($leaveChart)'>
+            <table class="hrm-table hris-table" id="leaveTable" data-initial-chart='@json($leaveChart)'>
                 <thead>
                     <tr>
                         <th>Employee</th>

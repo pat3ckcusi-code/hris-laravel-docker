@@ -1,21 +1,21 @@
 @props(['name' => 'month', 'label' => 'Filter by Month'])
 
 @php
-    $currentMonth = request($name) ?? date('m');
-    $currentYear = request('year') ?? date('Y');
+    $currentMonth = request($name, '');
+    $currentYear = request('year', date('Y'));
 @endphp
 
 <div class="hris-filter-group">
     <label for="month-filter-{{ $name }}" class="hris-filter-label">{{ $label }}</label>
-    <select 
+    <select
         id="month-filter-{{ $name }}"
-        name="{{ $name }}" 
+        name="{{ $name }}"
         class="hris-filter-select"
-        onchange="document.getElementById('filter-form-{{ $name }}').submit();"
+        onchange="var f=document.getElementById('filter-form-{{ $name }}');f.querySelector('[name=\'{{ $name }}\']').value=this.value;f.submit();"
     >
         <option value="">All Months</option>
         @for($i = 1; $i <= 12; $i++)
-            <option value="{{ $i }}" {{ $currentMonth == $i ? 'selected' : '' }}>
+            <option value="{{ $i }}" {{ $currentMonth == $i && $currentMonth !== '' ? 'selected' : '' }}>
                 {{ \Carbon\Carbon::create()->month($i)->format('F') }}
             </option>
         @endfor
@@ -23,6 +23,7 @@
 </div>
 
 <form id="filter-form-{{ $name }}" method="GET" class="d-none">
+    <input type="hidden" name="{{ $name }}" value="{{ $currentMonth }}">
     @foreach(request()->query() as $key => $value)
         @if($key !== $name && $key !== 'page')
             <input type="hidden" name="{{ $key }}" value="{{ $value }}">

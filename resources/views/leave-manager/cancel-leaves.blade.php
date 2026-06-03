@@ -85,7 +85,7 @@
                     <div class="table-summary" style="margin-bottom:10px;font-size:0.95rem;color:#555;">
                         Showing {{ $requests->firstItem() ?? 0 }} to {{ $requests->lastItem() ?? 0 }} of {{ $requests->total() }} records.
                     </div>
-                    <table id="cancel-leaves-table" class="leave-table">
+                    <table id="cancel-leaves-table" class="leave-table hris-table">
                                 <thead>
                                         <tr>
             <th>LeaveID</th>

@@ -38,7 +38,7 @@
         </div>
 
         @if($recentRuns->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -70,7 +70,7 @@
     <section class="payroll-section">
         <h2>Recent Audit Activity</h2>
         @if($recentAudit->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead>
                     <tr>
                         <th>Action</th>

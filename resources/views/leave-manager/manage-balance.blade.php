@@ -21,7 +21,7 @@
             </div>
 
             <div class="table-responsive">
-            <table id="leave-balance-table" class="leave-table">
+            <table id="leave-balance-table" class="leave-table hris-table">
                 <thead>
                     <tr>
                         <th>Employee Number</th>

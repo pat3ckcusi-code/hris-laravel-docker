@@ -709,39 +709,48 @@
                     };
                 @endphp
 
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 my-requests-table">
-                        <thead>
-                            <tr>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('leave_type') }}" class="{{ $activeClass('leave_type') }}">Type</a></th>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('start_date') }}" class="{{ $activeClass('start_date') }}">Dates</a></th>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('total_days') }}" class="{{ $activeClass('total_days') }}">No of days</a></th>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase">Remarks</th>
-                                <th class="sticky top-0 bg-gray-50 text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($leaveRequests as $leave)
-                                @php
-                                    $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
-                                    $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
-                                @endphp
-                                <tr id="leave-row-{{ $leave->id }}" data-employee="{{ $leave->user->name ?? '—' }}" data-type="{{ $leave->leave_type }}" data-period="{{ $s }}@if($e) to {{ $e }}@endif" data-total="{{ $leave->total_days ?? '—' }}" data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}" data-reason="{{ $leave->reason ?? '' }}" data-status="{{ $leave->status }}" data-remarks="{{ $leave->remarks ?? '' }}" class="odd:bg-white even:bg-gray-50 hover:bg-blue-50 @if($leave->status === 'cancelled') opacity-70 line-through @endif">
-                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $leave->leave_type }}</td>
-                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $s }}@if($e) to {{ $e }}@endif</td>
-                                    <td class="px-4 py-2 text-sm text-gray-800">{{ $leave->total_days ?? (($leave->start_date && $leave->end_date) ? (\Carbon\Carbon::parse($leave->start_date)->diffInDays(\Carbon\Carbon::parse($leave->end_date)) + 1) : '-') }}</td>
-                                    <td class="px-4 py-2 text-sm text-gray-800"><x-hris.status-badge :status="$leave->status" /></td>
-                                    <td class="px-4 py-2 text-sm text-gray-800">
-                                        @if($leave->status === 'cancelled')
-                                            {{ $leave->remarks ? $leave->remarks : 'Cancelled by applicant' }}
-                                        @elseif(in_array($leave->status, ['rejected', 'declined']))
-                                            {{ $leave->rejection_notes ?? ($leave->remarks ?? '-') }}
-                                        @else
-                                            {{ $leave->remarks ?? '-' }}
-                                        @endif
-                                    </td>
-                                    <td class="px-4 py-2 text-sm text-gray-800 flex flex-wrap gap-2">
+                <table class="hris-table my-requests-table">
+                    <thead>
+                        <tr>
+                            <th><a href="{{ $sortUrl('leave_type') }}" class="{{ $activeClass('leave_type') }}">Type</a></th>
+                            <th><a href="{{ $sortUrl('start_date') }}" class="{{ $activeClass('start_date') }}">Dates</a></th>
+                            <th><a href="{{ $sortUrl('total_days') }}" class="{{ $activeClass('total_days') }}">No of days</a></th>
+                            <th><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                            <th>Remarks</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($leaveRequests as $leave)
+                            @php
+                                $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
+                                $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
+                            @endphp
+                            <tr id="leave-row-{{ $leave->id }}"
+                                data-employee="{{ $leave->user->name ?? '—' }}"
+                                data-type="{{ $leave->leave_type }}"
+                                data-period="{{ $s }}@if($e) to {{ $e }}@endif"
+                                data-total="{{ $leave->total_days ?? '—' }}"
+                                data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}"
+                                data-reason="{{ $leave->reason ?? '' }}"
+                                data-status="{{ $leave->status }}"
+                                data-remarks="{{ $leave->remarks ?? '' }}"
+                                @if($leave->status === 'cancelled') style="opacity:.7;text-decoration:line-through" @endif>
+                                <td>{{ $leave->leave_type }}</td>
+                                <td>{{ $s }}@if($e) to {{ $e }}@endif</td>
+                                <td>{{ $leave->total_days ?? (($leave->start_date && $leave->end_date) ? (\Carbon\Carbon::parse($leave->start_date)->diffInDays(\Carbon\Carbon::parse($leave->end_date)) + 1) : '-') }}</td>
+                                <td><x-hris.status-badge :status="$leave->status" /></td>
+                                <td>
+                                    @if($leave->status === 'cancelled')
+                                        {{ $leave->remarks ?: 'Cancelled by applicant' }}
+                                    @elseif(in_array($leave->status, ['rejected', 'declined']))
+                                        {{ $leave->rejection_notes ?? ($leave->remarks ?? '-') }}
+                                    @else
+                                        {{ $leave->remarks ?? '-' }}
+                                    @endif
+                                </td>
+                                <td>
+                                    <div class="action-btns">
                                         <button type="button" class="hris-btn hris-btn-secondary" onclick="openLeaveModal({{ $leave->id }})">View</button>
                                         @if(!in_array($leave->status, ['cancelled','rejected','declined']))
                                             @if(($leave->status === 'pending' || ($leave->cancellation_status ?? '') === 'Pending Cancellation') && empty($leave->printing_allowed))
@@ -751,7 +760,6 @@
                                             @elseif($leave->status === 'pending' && !empty($leave->printing_allowed))
                                                 <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
                                             @endif
-
                                             @if($leave->status === 'pending')
                                                 <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
                                             @endif
@@ -759,16 +767,16 @@
                                                 <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
                                             @endif
                                         @endif
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">No leave requests found for the selected filters.</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">No leave requests found for the selected filters.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </x-hris.table-layout>
         </section>
     </div>

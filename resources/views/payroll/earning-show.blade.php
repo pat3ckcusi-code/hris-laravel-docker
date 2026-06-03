@@ -13,7 +13,7 @@
     <section class="payroll-section">
         <h2>Assigned Employees</h2>
         @if($earning->employeeEarnings->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead><tr><th>Employee</th><th>Amount</th><th>Recurring</th></tr></thead>
                 <tbody>
                     @foreach($earning->employeeEarnings as $ee)

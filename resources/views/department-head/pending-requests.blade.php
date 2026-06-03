@@ -132,7 +132,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                 @if ($requests->isEmpty())
                     <div class="muted">No pending leave requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr>
                                 <th>Employee</th>
@@ -164,30 +164,30 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                                             $approverPrefix = ($rawRole === 'administrative officer') ? 'admin-officer' : 'department-head';
                                         @endphp
                                         <div class="action-btns">
-                                            <button class="btn-sm btn-view" type="button" onclick="openPendingModal('leave', {{ $r->id }})">View</button>
+                                            <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openPendingModal('leave', {{ $r->id }})">View</button>
 
                                             @if($r->status === 'pending')
                                                 @if(empty($r->printing_allowed))
-                                                    <button type="button" class="btn-sm btn-disabled-print" id="print-btn-{{ $r->id }}" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>
-                                                    <button type="button" class="btn-sm btn-warning" id="allow-print-{{ $r->id }}" onclick="allowPrinting({{ $r->id }}, '{{ $approverPrefix }}')">Allow Printing</button>
+                                                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" id="print-btn-{{ $r->id }}" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>
+                                                    <button type="button" class="hris-btn hris-btn-warning hris-btn-sm" id="allow-print-{{ $r->id }}" onclick="allowPrinting({{ $r->id }}, '{{ $approverPrefix }}')">Allow Printing</button>
                                                 @else
-                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="btn-sm btn-primary" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
+                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="hris-btn hris-btn-primary hris-btn-sm" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
                                                     <form method="POST" action="{{ route($approverPrefix . '.leave.approve', $r->id) }}" id="approve-form-{{ $r->id }}" style="display:inline">
                                                         @csrf
-                                                        <button type="button" class="btn-sm btn-approve" id="approve-btn-{{ $r->id }}" onclick="confirmApprove({{ $r->id }})">Approve</button>
+                                                        <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" id="approve-btn-{{ $r->id }}" onclick="confirmApprove({{ $r->id }})">Approve</button>
                                                     </form>
                                                     <form method="POST" action="{{ route($approverPrefix . '.leave.reject', $r->id) }}" id="reject-form-{{ $r->id }}" style="display:inline">
                                                         @csrf
                                                         <input type="hidden" name="rejection_notes" value="" />
-                                                        <button type="button" class="btn-sm btn-reject" onclick="promptReject({{ $r->id }})">Reject</button>
+                                                        <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject({{ $r->id }})">Reject</button>
                                                     </form>
                                                 @endif
 
                                             @elseif($r->status === 'approved')
                                                 @if(!empty($r->printing_allowed))
-                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="btn-sm btn-primary" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
+                                                    <a href="{{ route('employee.leave.print.single', $r->id) }}" class="hris-btn hris-btn-primary hris-btn-sm" target="_blank" id="print-btn-{{ $r->id }}"><i class="fa fa-print"></i> Print</a>
                                                 @else
-                                                    <button type="button" class="btn-sm btn-disabled-print" id="print-btn-{{ $r->id }}" disabled title="Printing not allowed until approved."><i class="fa fa-print"></i> Print</button>
+                                                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" id="print-btn-{{ $r->id }}" disabled title="Printing not allowed until approved."><i class="fa fa-print"></i> Print</button>
                                                 @endif
 
                                             @else
@@ -207,7 +207,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                 @if ($etaRequests->isEmpty())
                     <div class="muted">No pending ETA requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr><th>Employee</th><th>Departure</th><th>Arrival</th><th>Destination</th><th>Purpose Details</th><th>Filed At</th><th>Action</th></tr>
                         </thead>
@@ -222,16 +222,16 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                                 <td>{{ $e->created_at ? $e->created_at->format('M d, Y') : '—' }}</td>
                                         <td>
                                             <div class="action-btns">
-                                                <button class="btn-sm btn-view" type="button" onclick="openPendingModal('eta', {{ $e->id }})">View</button>
+                                                <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openPendingModal('eta', {{ $e->id }})">View</button>
                                                 <form method="POST" action="{{ route('department-head.eta.approve', $e->id) }}" id="approve-eta-form-{{ $e->id }}" style="display:inline">
                                                     @csrf
-                                                    <button type="button" class="btn-sm btn-approve" onclick="confirmApproveEta({{ $e->id }})">Approve</button>
+                                                    <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEta({{ $e->id }})">Approve</button>
                                             </form>
 
                                             <form method="POST" action="{{ route('department-head.eta.reject', $e->id) }}" id="reject-eta-form-{{ $e->id }}" style="display:inline">
                                                 @csrf
                                                 <input type="hidden" name="rejection_notes" value="" />
-                                                <button type="button" class="btn-sm btn-reject" onclick="promptRejectEta({{ $e->id }})">Reject</button>
+                                                <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEta({{ $e->id }})">Reject</button>
                                             </form>
                                             </div>
                                         </td>
@@ -247,7 +247,7 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                 @if ($locatorRequests->isEmpty())
                     <div class="muted">No pending locator requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr><th>Employee</th><th>Type</th><th>Travel Date</th><th>Location</th><th>Purpose of Travel</th><th>Filed At</th><th>Action</th></tr>
                         </thead>
@@ -262,16 +262,16 @@ function closePendingModal() { const dlg = document.getElementById('pendingModal
                                               <td>{{ $l->created_at ? $l->created_at->format('M d, Y') : '—' }}</td>
                                 <td>
                                     <div class="action-btns">
-                                        <button class="btn-sm btn-view" type="button" onclick="openPendingModal('locator', {{ $l->id }})">View</button>
+                                        <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openPendingModal('locator', {{ $l->id }})">View</button>
                                         <form method="POST" action="{{ route('department-head.locator.approve', $l->id) }}" id="approve-locator-form-{{ $l->id }}" style="display:inline">
                                             @csrf
-                                            <button type="button" class="btn-sm btn-approve" onclick="confirmApproveLocator({{ $l->id }})">Approve</button>
+                                            <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveLocator({{ $l->id }})">Approve</button>
                                         </form>
 
                                         <form method="POST" action="{{ route('department-head.locator.reject', $l->id) }}" id="reject-locator-form-{{ $l->id }}" style="display:inline">
                                             @csrf
                                             <input type="hidden" name="rejection_notes" value="" />
-                                            <button type="button" class="btn-sm btn-reject" onclick="promptRejectLocator({{ $l->id }})">Reject</button>
+                                            <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectLocator({{ $l->id }})">Reject</button>
                                         </form>
                                     </div>
                                 </td>

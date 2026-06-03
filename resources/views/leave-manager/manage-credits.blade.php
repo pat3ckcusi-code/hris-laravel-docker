@@ -20,7 +20,7 @@
         </div>
 
         <div class="table-responsive">
-            <table class="credits-table table-bordered table-hover" id="leaveCreditsTable">
+            <table class="credits-table table-bordered table-hover hris-table" id="leaveCreditsTable">
                 <thead class="bg-light text-center">
                     <tr>
                         <th style="min-width:240px">Employee Name</th>

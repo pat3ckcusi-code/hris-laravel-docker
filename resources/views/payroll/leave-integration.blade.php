@@ -29,7 +29,7 @@
         </form>
     </div>
 
-    <table class="payroll-table" id="leave-int-table">
+    <table class="hris-table" id="leave-int-table">
         <thead>
             <tr>
                 <th>Employee</th>

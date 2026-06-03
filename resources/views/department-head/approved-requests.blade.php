@@ -36,7 +36,7 @@
                 @if ($requests->isEmpty())
                     <div class="muted">No approved leave requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr>
                                 <th>Employee</th>
@@ -57,8 +57,8 @@
                                     <td>{{ $r->updated_at ? $r->updated_at->format('M d, Y') : '—' }}</td>
                                     <td>
                                         <div class="action-btns">
-                                            <button class="btn-sm btn-view" type="button" onclick="openApprovedModal('leave', {{ $r->id }})">View</button>
-                                            <button type="button" class="btn-sm btn-print" onclick="printApproved('leave', {{ $r->id }})">Print</button>
+                                            <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openApprovedModal('leave', {{ $r->id }})">View</button>
+                                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="printApproved('leave', {{ $r->id }})">Print</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -73,7 +73,7 @@
                 @if ($etaRequests->isEmpty())
                     <div class="muted">No approved ETA requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr><th>Employee</th><th>Departure</th><th>Arrival</th><th>Destination</th><th>Approved At</th><th>Action</th></tr>
                         </thead>
@@ -87,8 +87,8 @@
                                 <td>{{ $e->updated_at ? $e->updated_at->format('M d, Y') : '—' }}</td>
                                 <td>
                                     <div class="action-btns">
-                                        <button class="btn-sm btn-view" type="button" onclick="openApprovedModal('eta', {{ $e->id }})">View</button>
-                                        <a class="btn-sm btn-print" href="{{ route('employee.eta.print.single', ['eta' => $e->id]) }}" target="_blank">Print</a>
+                                        <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openApprovedModal('eta', {{ $e->id }})">View</button>
+                                        <a class="hris-btn hris-btn-secondary hris-btn-sm" href="{{ route('employee.eta.print.single', ['eta' => $e->id]) }}" target="_blank">Print</a>
                                     </div>
                                 </td>
                             </tr>
@@ -103,7 +103,7 @@
                 @if ($locatorRequests->isEmpty())
                     <div class="muted">No approved locator requests.</div>
                 @else
-                    <table class="data-table leave-table">
+                    <table class="hris-table">
                         <thead>
                             <tr><th>Employee</th><th>Type</th><th>Travel Date</th><th>Location</th><th>Approved At</th><th>Action</th></tr>
                         </thead>
@@ -117,8 +117,8 @@
                                 <td>{{ $l->updated_at ? $l->updated_at->format('M d, Y') : '—' }}</td>
                                 <td>
                                     <div class="action-btns">
-                                        <button class="btn-sm btn-view" type="button" onclick="openApprovedModal('locator', {{ $l->id }})">View</button>
-                                        <a class="btn-sm btn-print" href="{{ route('employee.locator.print.single', ['locator' => $l->id]) }}" target="_blank">Print</a>
+                                        <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openApprovedModal('locator', {{ $l->id }})">View</button>
+                                        <a class="hris-btn hris-btn-secondary hris-btn-sm" href="{{ route('employee.locator.print.single', ['locator' => $l->id]) }}" target="_blank">Print</a>
                                     </div>
                                 </td>
                             </tr>

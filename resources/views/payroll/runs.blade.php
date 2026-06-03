@@ -15,42 +15,44 @@
         <div class="notice error">{{ session('error') }}</div>
     @endif
 
-    <table class="payroll-table" id="payroll-runs-table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Period</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Status</th>
-                <th>Created By</th>
-                <th>Approved By</th>
-                <th>Locked At</th>
-                <th>Created</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($runs as $run)
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$runs">
+        <table class="hris-table" id="payroll-runs-table">
+            <thead>
                 <tr>
-                    <td>{{ $run->id }}</td>
-                    <td>{{ $run->period }}</td>
-                    <td>{{ $run->period_start ? $run->period_start->format('M d, Y') : '—' }}</td>
-                    <td>{{ $run->period_end ? $run->period_end->format('M d, Y') : '—' }}</td>
-                    <td><span class="status-chip status-{{ $run->status }}">{{ ucfirst($run->status) }}</span></td>
-                    <td>{{ $run->creator->name ?? '—' }}</td>
-                    <td>{{ $run->approver->name ?? '—' }}</td>
-                    <td>{{ $run->locked_at ? $run->locked_at->format('M d, Y H:i') : '—' }}</td>
-                    <td>{{ $run->created_at->format('M d, Y') }}</td>
-                    <td>
-                        <a href="{{ route('payroll.runs.show', $run->id) }}" class="btn btn-sm btn-outline">View</a>
-                    </td>
+                    <th>ID</th>
+                    <th>Period</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                    <th>Created By</th>
+                    <th>Approved By</th>
+                    <th>Locked At</th>
+                    <th>Created</th>
+                    <th>Actions</th>
                 </tr>
-            @endforeach
-        </tbody>
-    </table>
-
-    {{ $runs->links() }}
+            </thead>
+            <tbody>
+                @foreach($runs as $run)
+                    <tr>
+                        <td>{{ $run->id }}</td>
+                        <td>{{ $run->period }}</td>
+                        <td>{{ $run->period_start ? $run->period_start->format('M d, Y') : '—' }}</td>
+                        <td>{{ $run->period_end ? $run->period_end->format('M d, Y') : '—' }}</td>
+                        <td><span class="status-chip status-{{ $run->status }}">{{ ucfirst($run->status) }}</span></td>
+                        <td>{{ $run->creator->name ?? '—' }}</td>
+                        <td>{{ $run->approver->name ?? '—' }}</td>
+                        <td>{{ $run->locked_at ? $run->locked_at->format('M d, Y H:i') : '—' }}</td>
+                        <td>{{ $run->created_at->format('M d, Y') }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <a href="{{ route('payroll.runs.show', $run->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">View</a>
+                            </div>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

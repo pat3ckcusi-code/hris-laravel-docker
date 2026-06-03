@@ -12,79 +12,79 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <div class="payroll-filters">
-        <form method="GET" action="{{ route('payroll.attendance.index') }}" class="filter-form">
-            <select name="employee_id" class="form-input">
-                <option value="">All Employees</option>
-                @foreach($employees as $emp)
-                    <option value="{{ $emp->id }}" @selected(request('employee_id') == $emp->id)>{{ $emp->name }}</option>
-                @endforeach
-            </select>
-            <input type="date" name="date" value="{{ request('date') }}" class="form-input">
-            <button type="submit" class="btn btn-sm">Filter</button>
-        </form>
-    </div>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$records">
+        <x-slot:filters>
+            <form method="GET" action="{{ route('payroll.attendance.index') }}" class="filter-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <select name="employee_id" class="hris-filter-select">
+                    <option value="">All Employees</option>
+                    @foreach($employees as $emp)
+                        <option value="{{ $emp->id }}" @selected(request('employee_id') == $emp->id)>{{ $emp->name }}</option>
+                    @endforeach
+                </select>
+                <input type="date" name="date" value="{{ request('date') }}" class="hris-filter-select">
+                <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm">Filter</button>
+            </form>
+        </x-slot:filters>
 
-    <table class="payroll-table" id="dtr-table">
-        <thead>
-            <tr>
-                <th>Employee</th>
-                <th>Date</th>
-                <th>AM In</th>
-                <th>AM Out</th>
-                <th>PM In</th>
-                <th>PM Out</th>
-                <th>Late</th>
-                <th>UT</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($records as $rec)
-                <tr id="dtr-row-{{ $rec->id }}"
-                    data-id="{{ $rec->id }}"
-                    data-employee="{{ $rec->employee->name ?? '—' }}"
-                    data-date="{{ $rec->date->format('M d, Y') }}"
-                    data-time-in-am="{{ $rec->time_in_am ?? '—' }}"
-                    data-time-out-am="{{ $rec->time_out_am ?? '—' }}"
-                    data-time-in-pm="{{ $rec->time_in_pm ?? '—' }}"
-                    data-time-out-pm="{{ $rec->time_out_pm ?? '—' }}"
-                    data-late="{{ $rec->late_minutes ?? 0 }}"
-                    data-undertime="{{ $rec->undertime_minutes ?? 0 }}"
-                    data-is-absent="{{ $rec->is_absent ? '1' : '0' }}"
-                    data-status="{{ $rec->status }}"
-                    data-time-in-am-raw="{{ $rec->time_in_am ?? '' }}"
-                    data-time-out-am-raw="{{ $rec->time_out_am ?? '' }}"
-                    data-time-in-pm-raw="{{ $rec->time_in_pm ?? '' }}"
-                    data-time-out-pm-raw="{{ $rec->time_out_pm ?? '' }}">
-                    <td>{{ $rec->employee->name ?? '—' }}</td>
-                    <td>{{ $rec->date->format('M d, Y') }}</td>
-                    <td>{{ $rec->time_in_am ?? '—' }}</td>
-                    <td>{{ $rec->time_out_am ?? '—' }}</td>
-                    <td>{{ $rec->time_in_pm ?? '—' }}</td>
-                    <td>{{ $rec->time_out_pm ?? '—' }}</td>
-                    <td>{{ $rec->late_minutes ?? 0 }}m</td>
-                    <td>{{ $rec->undertime_minutes ?? 0 }}m</td>
-                    <td><span class="status-chip">{{ ucfirst($rec->status) }}</span></td>
-                    <td>
-                        <div class="action-btns">
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openShowDtr({{ $rec->id }})">View</button>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openEditDtr({{ $rec->id }})">Edit</button>
-                            <form method="POST" action="{{ route('payroll.attendance.destroy', $rec->id) }}" style="display:inline" id="delete-dtr-{{ $rec->id }}">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteDtr({{ $rec->id }})">Del</button>
-                            </form>
-                        </div>
-                    </td>
+        <table class="hris-table" id="dtr-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>AM In</th>
+                    <th>AM Out</th>
+                    <th>PM In</th>
+                    <th>PM Out</th>
+                    <th>Late</th>
+                    <th>UT</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="10" class="empty-state">No DTR records found.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $records->appends(request()->query())->links() }}
+            </thead>
+            <tbody>
+                @forelse($records as $rec)
+                    <tr id="dtr-row-{{ $rec->id }}"
+                        data-id="{{ $rec->id }}"
+                        data-employee="{{ $rec->employee->name ?? '—' }}"
+                        data-date="{{ $rec->date->format('M d, Y') }}"
+                        data-time-in-am="{{ $rec->time_in_am ?? '—' }}"
+                        data-time-out-am="{{ $rec->time_out_am ?? '—' }}"
+                        data-time-in-pm="{{ $rec->time_in_pm ?? '—' }}"
+                        data-time-out-pm="{{ $rec->time_out_pm ?? '—' }}"
+                        data-late="{{ $rec->late_minutes ?? 0 }}"
+                        data-undertime="{{ $rec->undertime_minutes ?? 0 }}"
+                        data-is-absent="{{ $rec->is_absent ? '1' : '0' }}"
+                        data-status="{{ $rec->status }}"
+                        data-time-in-am-raw="{{ $rec->time_in_am ?? '' }}"
+                        data-time-out-am-raw="{{ $rec->time_out_am ?? '' }}"
+                        data-time-in-pm-raw="{{ $rec->time_in_pm ?? '' }}"
+                        data-time-out-pm-raw="{{ $rec->time_out_pm ?? '' }}">
+                        <td>{{ $rec->employee->name ?? '—' }}</td>
+                        <td>{{ $rec->date->format('M d, Y') }}</td>
+                        <td>{{ $rec->time_in_am ?? '—' }}</td>
+                        <td>{{ $rec->time_out_am ?? '—' }}</td>
+                        <td>{{ $rec->time_in_pm ?? '—' }}</td>
+                        <td>{{ $rec->time_out_pm ?? '—' }}</td>
+                        <td>{{ $rec->late_minutes ?? 0 }}m</td>
+                        <td>{{ $rec->undertime_minutes ?? 0 }}m</td>
+                        <td><span class="status-chip">{{ ucfirst($rec->status) }}</span></td>
+                        <td>
+                            <div class="action-btns">
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openShowDtr({{ $rec->id }})">View</button>
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditDtr({{ $rec->id }})">Edit</button>
+                                <form method="POST" action="{{ route('payroll.attendance.destroy', $rec->id) }}" style="display:inline" id="delete-dtr-{{ $rec->id }}">
+                                    @csrf @method('DELETE')
+                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeleteDtr({{ $rec->id }})">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="10" class="text-center text-muted">No DTR records found.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

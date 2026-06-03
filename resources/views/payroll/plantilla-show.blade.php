@@ -27,7 +27,7 @@
     <section class="payroll-section">
         <h2>Employee Assignments</h2>
         @if($plantilla->assignments->count())
-            <table class="payroll-table" id="assignments-table">
+            <table class="hris-table" id="assignments-table">
                 <thead>
                     <tr>
                         <th>Employee</th>

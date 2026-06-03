@@ -12,49 +12,49 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="plantilla-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>SG</th>
-                <th>Step</th>
-                <th>Type</th>
-                <th>Assigned</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($plantillas as $p)
-                <tr id="plantilla-row-{{ $p->id }}"
-                    data-id="{{ $p->id }}"
-                    data-title="{{ $p->title }}"
-                    data-sg="{{ $p->salary_grade }}"
-                    data-step="{{ $p->step }}"
-                    data-type="{{ $p->employment_type }}"
-                    data-assigned="{{ $p->assignments->count() }}">
-                    <td>{{ $p->title }}</td>
-                    <td>{{ $p->salary_grade }}</td>
-                    <td>{{ $p->step }}</td>
-                    <td>{{ ucfirst($p->employment_type) }}</td>
-                    <td>{{ $p->assignments->count() }}</td>
-                    <td>
-                        <div class="action-btns">
-                            <a href="{{ route('payroll.plantilla.show', $p->id) }}" class="btn btn-sm btn-outline">View</a>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openEditPlantilla({{ $p->id }})">Edit</button>
-                            <form method="POST" action="{{ route('payroll.plantilla.destroy', $p->id) }}" style="display:inline" id="delete-plantilla-{{ $p->id }}">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeletePlantilla({{ $p->id }})">Del</button>
-                            </form>
-                        </div>
-                    </td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$plantillas">
+        <table class="hris-table" id="plantilla-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>SG</th>
+                    <th>Step</th>
+                    <th>Type</th>
+                    <th>Assigned</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="6" class="empty-state">No plantilla positions defined.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $plantillas->links() }}
+            </thead>
+            <tbody>
+                @forelse($plantillas as $p)
+                    <tr id="plantilla-row-{{ $p->id }}"
+                        data-id="{{ $p->id }}"
+                        data-title="{{ $p->title }}"
+                        data-sg="{{ $p->salary_grade }}"
+                        data-step="{{ $p->step }}"
+                        data-type="{{ $p->employment_type }}"
+                        data-assigned="{{ $p->assignments->count() }}">
+                        <td>{{ $p->title }}</td>
+                        <td>{{ $p->salary_grade }}</td>
+                        <td>{{ $p->step }}</td>
+                        <td>{{ ucfirst($p->employment_type) }}</td>
+                        <td>{{ $p->assignments->count() }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <a href="{{ route('payroll.plantilla.show', $p->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">View</a>
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditPlantilla({{ $p->id }})">Edit</button>
+                                <form method="POST" action="{{ route('payroll.plantilla.destroy', $p->id) }}" style="display:inline" id="delete-plantilla-{{ $p->id }}">
+                                    @csrf @method('DELETE')
+                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeletePlantilla({{ $p->id }})">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted">No plantilla positions defined.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

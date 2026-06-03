@@ -28,7 +28,7 @@
         </div>
 
         <div class="hrm-table-wrap">
-            <table class="hrm-table" id="frontdeskTable">
+            <table class="hrm-table hris-table" id="frontdeskTable">
                 <thead>
                     <tr>
                         <th>EmpNo</th>

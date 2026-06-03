@@ -12,45 +12,45 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="earnings-table">
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Recurring</th>
-                <th>Assigned To</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($earningTypes as $e)
-                <tr id="earning-row-{{ $e->id }}"
-                    data-id="{{ $e->id }}"
-                    data-type="{{ $e->type }}"
-                    data-description="{{ $e->description ?? '' }}"
-                    data-recurring="{{ $e->recurring ? '1' : '0' }}">
-                    <td>{{ $e->type }}</td>
-                    <td>{{ $e->description ?? '—' }}</td>
-                    <td>{{ $e->recurring ? 'Yes' : 'No' }}</td>
-                    <td>{{ $e->employee_earnings_count }} employees</td>
-                    <td>
-                        <div class="action-btns">
-                            <a href="{{ route('payroll.earnings.show', $e->id) }}" class="btn btn-sm btn-outline">View</a>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openEditEarning({{ $e->id }})">Edit</button>
-                            <form method="POST" action="{{ route('payroll.earnings.destroy', $e->id) }}" style="display:inline" id="delete-earning-{{ $e->id }}">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteEarning({{ $e->id }})">Del</button>
-                            </form>
-                        </div>
-                    </td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$earningTypes">
+        <table class="hris-table" id="earnings-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Recurring</th>
+                    <th>Assigned To</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="5" class="empty-state">No earning types defined.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $earningTypes->links() }}
+            </thead>
+            <tbody>
+                @forelse($earningTypes as $e)
+                    <tr id="earning-row-{{ $e->id }}"
+                        data-id="{{ $e->id }}"
+                        data-type="{{ $e->type }}"
+                        data-description="{{ $e->description ?? '' }}"
+                        data-recurring="{{ $e->recurring ? '1' : '0' }}">
+                        <td>{{ $e->type }}</td>
+                        <td>{{ $e->description ?? '—' }}</td>
+                        <td>{{ $e->recurring ? 'Yes' : 'No' }}</td>
+                        <td>{{ $e->employee_earnings_count }} employees</td>
+                        <td>
+                            <div class="action-btns">
+                                <a href="{{ route('payroll.earnings.show', $e->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">View</a>
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditEarning({{ $e->id }})">Edit</button>
+                                <form method="POST" action="{{ route('payroll.earnings.destroy', $e->id) }}" style="display:inline" id="delete-earning-{{ $e->id }}">
+                                    @csrf @method('DELETE')
+                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeleteEarning({{ $e->id }})">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="text-center text-muted">No earning types defined.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

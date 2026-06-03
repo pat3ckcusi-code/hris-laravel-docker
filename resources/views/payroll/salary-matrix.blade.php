@@ -26,7 +26,7 @@
     @endif
 
     @if($matrix->count())
-        <table class="payroll-table">
+        <table class="hris-table">
             <thead>
                 <tr>
                     <th>SG</th>

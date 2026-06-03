@@ -133,14 +133,15 @@ class LeaveManagerController extends Controller
             ->where('status', 'approved')
             ->where('cancellation_status', 'Pending Cancellation');
 
-        $month = $request->query('month');
-        if ($month && preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $start = $month . '-01';
-            $end = date('Y-m-t', strtotime($start));
-            $query->whereHas('leaveDates', function($q) use ($start, $end) {
-                $q->whereBetween('leave_date', [$start, $end]);
-            });
+        $month = $request->query('month', date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
         }
+        $start = $month . '-01';
+        $end = date('Y-m-t', strtotime($start));
+        $query->whereHas('leaveDates', function($q) use ($start, $end) {
+            $q->whereBetween('leave_date', [$start, $end]);
+        });
 
         $emp = $request->query('emp');
         if ($emp) {
@@ -149,13 +150,34 @@ class LeaveManagerController extends Controller
             });
         }
 
-        $requests = $query->orderBy('cancellation_requested_at', 'desc')->paginate(25);
-
         $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
 
+        if ($request->ajax()) {
+            $items = $query->orderBy('cancellation_requested_at', 'desc')->get();
+            $rows = $items->map(fn($item) => [
+                'id'                  => $item->id,
+                'employee'            => $item->user
+                    ? trim(($item->user->last_name ?? '') . ', ' . ($item->user->first_name ?? ''))
+                    : '-',
+                'department'          => ($item->user && isset($departments[$item->user->Dept_id]))
+                    ? $departments[$item->user->Dept_id]
+                    : '-',
+                'leave_type'          => strtoupper($item->leave_type ?? ''),
+                'cancellation_reason' => $item->cancellation_reason ?? '-',
+                'status'              => ucfirst($item->status ?? '-'),
+                'requested_at'        => $item->cancellation_requested_at
+                    ? \Carbon\Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i')
+                    : '-',
+            ]);
+            return response()->json(['rows' => $rows]);
+        }
+
+        $requests = $query->orderBy('cancellation_requested_at', 'desc')->paginate(25);
+
         return view('leave-manager.employee-cancellation-requests', [
-            'requests' => $requests,
-            'departments' => $departments,
+            'requests'     => $requests,
+            'departments'  => $departments,
+            'currentMonth' => $month,
         ]);
     }
 

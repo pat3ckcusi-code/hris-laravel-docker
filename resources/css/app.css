@@ -14,6 +14,7 @@
 /* ── Extracted layout & page CSS ─────────────────── */
 @import './layout.css';
 @import './auth.css';
+@import './hris-table.css';
 @import './pages/pds.css';
 @import './pages/leave-manager.css';
 @import './pages/department-head.css';

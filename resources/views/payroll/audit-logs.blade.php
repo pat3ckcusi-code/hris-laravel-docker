@@ -16,39 +16,43 @@
 @endsection
 
 @section('content')
-    <table class="payroll-table" id="audit-table">
-        <thead>
-            <tr>
-                <th>Action</th>
-                <th>User</th>
-                <th>Run ID</th>
-                <th>Details</th>
-                <th>Date</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($logs as $log)
-                <tr id="audit-row-{{ $log->id }}"
-                    data-action="{{ $log->action }}"
-                    data-user="{{ $log->user->name ?? '—' }}"
-                    data-run="{{ $log->payroll_run_id ? 'Run #' . $log->payroll_run_id . ' — ' . ($log->payrollRun->period ?? '') : '—' }}"
-                    data-details="{{ $log->details ?? '—' }}"
-                    data-date="{{ $log->created_at->format('M d, Y H:i:s') }}">
-                    <td><span class="status-chip">{{ $log->action }}</span></td>
-                    <td>{{ $log->user->name ?? '—' }}</td>
-                    <td>{{ $log->payroll_run_id ?? '—' }}</td>
-                    <td>{{ Str::limit($log->details, 80) }}</td>
-                    <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
-                    <td><button type="button" class="btn btn-sm btn-outline" onclick="openShowAudit({{ $log->id }})">View</button></td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$logs">
+        <table class="hris-table" id="audit-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>User</th>
+                    <th>Run ID</th>
+                    <th>Details</th>
+                    <th>Date</th>
+                    <th></th>
                 </tr>
-            @empty
-                <tr><td colspan="6" class="empty-state">No audit logs recorded.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $logs->appends(request()->query())->links() }}
+            </thead>
+            <tbody>
+                @forelse($logs as $log)
+                    <tr id="audit-row-{{ $log->id }}"
+                        data-action="{{ $log->action }}"
+                        data-user="{{ $log->user->name ?? '—' }}"
+                        data-run="{{ $log->payroll_run_id ? 'Run #' . $log->payroll_run_id . ' — ' . ($log->payrollRun->period ?? '') : '—' }}"
+                        data-details="{{ $log->details ?? '—' }}"
+                        data-date="{{ $log->created_at->format('M d, Y H:i:s') }}">
+                        <td><span class="status-chip">{{ $log->action }}</span></td>
+                        <td>{{ $log->user->name ?? '—' }}</td>
+                        <td>{{ $log->payroll_run_id ?? '—' }}</td>
+                        <td>{{ Str::limit($log->details, 80) }}</td>
+                        <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openShowAudit({{ $log->id }})">View</button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted">No audit logs recorded.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

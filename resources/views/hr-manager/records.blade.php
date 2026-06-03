@@ -27,7 +27,7 @@
         </div>
 
         <div class="hrm-table-wrap">
-            <table class="hrm-table" id="recordsTable">
+            <table class="hrm-table hris-table" id="recordsTable">
                 <thead>
                     <tr>
                         <th>EmpNo</th>

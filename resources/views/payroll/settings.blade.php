@@ -12,7 +12,7 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="settings-table">
+    <table class="hris-table" id="settings-table">
         <thead>
             <tr>
                 <th>Key</th>

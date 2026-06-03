@@ -46,7 +46,7 @@
 
         <section class="payroll-section">
             <h2>Run #{{ $selectedRun->id }} — {{ $selectedRun->period }}</h2>
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead>
                     <tr>
                         <th>Employee</th>

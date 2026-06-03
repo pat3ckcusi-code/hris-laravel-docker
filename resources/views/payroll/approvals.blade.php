@@ -11,7 +11,7 @@
     @if($pendingRuns->count())
         <section class="payroll-section">
             <h2>Pending Approval</h2>
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead>
                     <tr>
                         <th>Run ID</th>
@@ -51,7 +51,7 @@
 
     <section class="payroll-section">
         <h2>Approval History</h2>
-        <table class="payroll-table" id="approvals-table">
+        <table class="hris-table" id="approvals-table">
             <thead>
                 <tr>
                     <th>Run</th>

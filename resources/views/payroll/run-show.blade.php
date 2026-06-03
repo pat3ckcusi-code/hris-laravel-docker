@@ -50,7 +50,7 @@
     <section class="payroll-section">
         <h2>Payroll Details</h2>
         @if($run->details->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead>
                     <tr>
                         <th>Employee</th>
@@ -92,7 +92,7 @@
     <section class="payroll-section">
         <h2>Approval History</h2>
         @if($run->approvalLogs->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead><tr><th>Approver</th><th>Status</th><th>Date</th></tr></thead>
                 <tbody>
                     @foreach($run->approvalLogs as $log)

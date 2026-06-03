@@ -12,47 +12,47 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
-    <table class="payroll-table" id="deductions-table">
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Formula</th>
-                <th>Employees</th>
-                <th>Loans</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($deductionTypes as $d)
-                <tr id="deduction-row-{{ $d->id }}"
-                    data-id="{{ $d->id }}"
-                    data-type="{{ $d->type }}"
-                    data-description="{{ $d->description ?? '' }}"
-                    data-formula="{{ $d->formula ?? '' }}">
-                    <td>{{ $d->type }}</td>
-                    <td>{{ $d->description ?? '—' }}</td>
-                    <td>{{ $d->formula ?? '—' }}</td>
-                    <td>{{ $d->employee_deductions_count }}</td>
-                    <td>{{ $d->loans_count }}</td>
-                    <td>
-                        <div class="action-btns">
-                            <a href="{{ route('payroll.deductions.show', $d->id) }}" class="btn btn-sm btn-outline">View</a>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="openEditDeduction({{ $d->id }})">Edit</button>
-                            <form method="POST" action="{{ route('payroll.deductions.destroy', $d->id) }}" style="display:inline" id="delete-deduction-{{ $d->id }}">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteDeduction({{ $d->id }})">Del</button>
-                            </form>
-                        </div>
-                    </td>
+    <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$deductionTypes">
+        <table class="hris-table" id="deductions-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Formula</th>
+                    <th>Employees</th>
+                    <th>Loans</th>
+                    <th>Actions</th>
                 </tr>
-            @empty
-                <tr><td colspan="6" class="empty-state">No deduction types defined.</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{ $deductionTypes->links() }}
+            </thead>
+            <tbody>
+                @forelse($deductionTypes as $d)
+                    <tr id="deduction-row-{{ $d->id }}"
+                        data-id="{{ $d->id }}"
+                        data-type="{{ $d->type }}"
+                        data-description="{{ $d->description ?? '' }}"
+                        data-formula="{{ $d->formula ?? '' }}">
+                        <td>{{ $d->type }}</td>
+                        <td>{{ $d->description ?? '—' }}</td>
+                        <td>{{ $d->formula ?? '—' }}</td>
+                        <td>{{ $d->employee_deductions_count }}</td>
+                        <td>{{ $d->loans_count }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <a href="{{ route('payroll.deductions.show', $d->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">View</a>
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditDeduction({{ $d->id }})">Edit</button>
+                                <form method="POST" action="{{ route('payroll.deductions.destroy', $d->id) }}" style="display:inline" id="delete-deduction-{{ $d->id }}">
+                                    @csrf @method('DELETE')
+                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeleteDeduction({{ $d->id }})">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted">No deduction types defined.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </x-hris.table-layout>
 @endsection
 
 @section('modals')

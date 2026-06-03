@@ -31,7 +31,7 @@
         </div>
 
         <div class="hrm-table-wrap">
-            <table class="hrm-table" id="auditTable">
+            <table class="hrm-table hris-table" id="auditTable">
                 <thead>
                     <tr>
                         <th>User</th>

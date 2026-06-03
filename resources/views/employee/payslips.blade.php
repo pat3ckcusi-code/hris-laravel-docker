@@ -4,40 +4,36 @@
 ])
 
 @section('content')
-<div style="overflow-x:auto;">
-    <table class="payroll-table" style="width:100%; border-collapse:collapse;">
+<x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$payslips">
+    <table class="hris-table">
         <thead>
             <tr>
-                <th style="padding:10px 12px; text-align:left; border-bottom:2px solid #e2e8f0;">Period</th>
-                <th style="padding:10px 12px; text-align:right; border-bottom:2px solid #e2e8f0;">Basic Salary</th>
-                <th style="padding:10px 12px; text-align:right; border-bottom:2px solid #e2e8f0;">Earnings</th>
-                <th style="padding:10px 12px; text-align:right; border-bottom:2px solid #e2e8f0;">Deductions</th>
-                <th style="padding:10px 12px; text-align:right; border-bottom:2px solid #e2e8f0;">Net Pay</th>
-                <th style="padding:10px 12px; text-align:center; border-bottom:2px solid #e2e8f0;">Status</th>
+                <th>Period</th>
+                <th class="text-right">Basic Salary</th>
+                <th class="text-right">Earnings</th>
+                <th class="text-right">Deductions</th>
+                <th class="text-right">Net Pay</th>
+                <th class="text-center">Status</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($payslips as $payslip)
             <tr>
-                <td style="padding:10px 12px; border-bottom:1px solid #f1f5f9;">{{ $payslip->payrollRun->period ?? '—' }}</td>
-                <td style="padding:10px 12px; text-align:right; border-bottom:1px solid #f1f5f9;">₱{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
-                <td style="padding:10px 12px; text-align:right; border-bottom:1px solid #f1f5f9;">₱{{ number_format($payslip->total_earnings ?? 0, 2) }}</td>
-                <td style="padding:10px 12px; text-align:right; border-bottom:1px solid #f1f5f9;">₱{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
-                <td style="padding:10px 12px; text-align:right; border-bottom:1px solid #f1f5f9; font-weight:600;">₱{{ number_format($payslip->net_pay ?? 0, 2) }}</td>
-                <td style="padding:10px 12px; text-align:center; border-bottom:1px solid #f1f5f9;">
-                    <span class="badge-{{ $payslip->payrollRun->status ?? 'pending' }}">{{ ucfirst($payslip->payrollRun->status ?? 'pending') }}</span>
+                <td>{{ $payslip->payrollRun->period ?? '—' }}</td>
+                <td class="text-right">₱{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
+                <td class="text-right">₱{{ number_format($payslip->total_earnings ?? 0, 2) }}</td>
+                <td class="text-right">₱{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
+                <td class="text-right font-weight-bold">₱{{ number_format($payslip->net_pay ?? 0, 2) }}</td>
+                <td class="text-center">
+                    <x-hris.status-badge :status="$payslip->payrollRun->status ?? 'pending'" />
                 </td>
             </tr>
             @empty
             <tr>
-                <td colspan="6" style="padding:20px; text-align:center; color:#94a3b8;">No payslips found.</td>
+                <td colspan="6" class="text-center text-muted">No payslips found.</td>
             </tr>
             @endforelse
         </tbody>
     </table>
-</div>
-
-<div style="margin-top:16px;">
-    {{ $payslips->links() }}
-</div>
+</x-hris.table-layout>
 @endsection

@@ -52,7 +52,7 @@
         </form>
 
         <div class="table-wrap">
-            <table id="employeeTable" class="employee-table display leave-table" style="width:100%">
+            <table id="employeeTable" class="employee-table display hris-table" style="width:100%">
                 <thead>
                     <tr>
                         <th>Last Name</th>

@@ -13,7 +13,7 @@
     <section class="payroll-section">
         <h2>Employee Deductions</h2>
         @if($deduction->employeeDeductions->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead><tr><th>Employee</th><th>Amount</th><th>Recurring</th></tr></thead>
                 <tbody>
                     @foreach($deduction->employeeDeductions as $ed)
@@ -33,7 +33,7 @@
     <section class="payroll-section">
         <h2>Active Loans</h2>
         @if($deduction->loans->count())
-            <table class="payroll-table">
+            <table class="hris-table">
                 <thead><tr><th>Employee</th><th>Balance</th><th>Monthly</th><th>Status</th></tr></thead>
                 <tbody>
                     @foreach($deduction->loans as $loan)

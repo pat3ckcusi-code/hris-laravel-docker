@@ -26,7 +26,7 @@
                 <h2 style="margin: 0;">Pending Requests</h2>
             </div>
             <div class="table-wrap">
-                <table class="display request-control-table" style="width:100%">
+                <table class="display request-control-table hris-table" style="width:100%">
                     <thead>
                         <tr>
                             <th>Emp No.</th>

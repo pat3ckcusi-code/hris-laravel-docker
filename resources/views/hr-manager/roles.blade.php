@@ -40,7 +40,7 @@
         </div>
 
         <div class="hrm-table-wrap">
-            <table class="hrm-table">
+            <table class="hrm-table hris-table">
                 <thead>
                     <tr>
                         <th>User</th>
