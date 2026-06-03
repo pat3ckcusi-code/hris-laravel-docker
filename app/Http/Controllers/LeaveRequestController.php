@@ -179,6 +179,18 @@ class LeaveRequestController extends Controller
                 return redirect()->back()->withErrors(['leave_dates' => 'Vacation Leave must be filed at least 5 calendar days before these dates: ' . implode(', ', $vacationViolations)])->withInput();
             }
 
+            // Block filing if a balance-restricted leave type has zero balance
+            $user = Auth::user();
+            $lb = $user->leaveBalance;
+            if ($balanceError = $this->checkZeroBalanceTypes($selectedTypes, $lb)) {
+                return redirect()->back()->withErrors(['leave_types' => $balanceError])->withInput();
+            }
+
+            // Block filing if requested days exceed available credits for restricted types
+            if ($creditError = $this->checkInsufficientCredits($dates, $allocations, $selectedTypes, $lb)) {
+                return redirect()->back()->withErrors(['leave_types' => $creditError])->withInput();
+            }
+
             // Map selected types into a single string to store (preserve existing DB shape)
             $leaveTypeValue = implode(', ', $selectedTypes);
 
@@ -239,9 +251,6 @@ class LeaveRequestController extends Controller
             $totalDays = 0.0;
             $paidDays = 0.0;
             $lwopDays = 0.0;
-
-            $user = Auth::user();
-            $lb = $user->leaveBalance;
 
             // snapshot balances at time of filing (before deduction)
             $snap_vl = $lb->VL ?? 0.0;
@@ -454,6 +463,34 @@ class LeaveRequestController extends Controller
 
             // Determine which leave types require extra details or reason (legacy single-type form)
             $parts = array_map('trim', explode(',', $request->leave_type));
+
+            // Block filing if a balance-restricted leave type has zero balance
+            $lb = Auth::user()->leaveBalance;
+            if ($balanceError = $this->checkZeroBalanceTypes($parts, $lb)) {
+                return redirect()->back()->withErrors(['leave_type' => $balanceError])->withInput();
+            }
+
+            // Block filing if requested days exceed available credits (legacy path uses calendar-day count)
+            $legacyDays = floatval(
+                (new \DateTime($request->start_date))->diff(new \DateTime($request->end_date))->days + 1
+            );
+            $legacyRestricted = [
+                'Wellness Leave'          => ['column' => 'WLNS', 'label' => 'Wellness Leave'],
+                'Compensatory Time Off'   => ['column' => 'CTO',  'label' => 'Compensatory Time Off'],
+                'Special Privilege Leave' => ['column' => 'SPL',  'label' => 'Special Privilege Leave'],
+                'Solo Parent Leave'       => ['column' => 'SP',   'label' => 'Solo Parent Leave'],
+            ];
+            foreach ($parts as $p) {
+                if (isset($legacyRestricted[$p])) {
+                    $bal = floatval($lb->{$legacyRestricted[$p]['column']} ?? 0);
+                    if ($legacyDays > $bal) {
+                        return redirect()->back()
+                            ->withErrors(['leave_type' => "Insufficient leave credits for {$legacyRestricted[$p]['label']}. You requested {$legacyDays} day(s) but only have {$bal} available."])
+                            ->withInput();
+                    }
+                }
+            }
+
             $needsVacationSpecial = false;
             $needsStudy = false;
             $needsSick = false;
@@ -725,5 +762,66 @@ class LeaveRequestController extends Controller
         }
 
         return redirect()->back()->with('success', 'Leave request cancelled.');
+    }
+
+    /**
+     * Returns an error message if the total days requested for any balance-restricted
+     * leave type (summed across all per-date allocations) exceeds the employee's balance.
+     */
+    private function checkInsufficientCredits(array $dates, array $allocations, array $selectedTypes, $leaveBalance): ?string
+    {
+        $restricted = [
+            'Wellness Leave'          => ['column' => 'WLNS', 'label' => 'Wellness Leave'],
+            'Compensatory Time Off'   => ['column' => 'CTO',  'label' => 'Compensatory Time Off'],
+            'Special Privilege Leave' => ['column' => 'SPL',  'label' => 'Special Privilege Leave'],
+            'Solo Parent Leave'       => ['column' => 'SP',   'label' => 'Solo Parent Leave'],
+        ];
+
+        $requestedByType = [];
+        foreach ($dates as $d) {
+            $type = trim($allocations[$d]['type'] ?? ($selectedTypes[0] ?? ''));
+            $days = floatval($allocations[$d]['days'] ?? 0);
+            if ($type && isset($restricted[$type]) && $days > 0) {
+                $requestedByType[$type] = ($requestedByType[$type] ?? 0.0) + $days;
+            }
+        }
+
+        foreach ($requestedByType as $type => $totalRequested) {
+            $col     = $restricted[$type]['column'];
+            $label   = $restricted[$type]['label'];
+            $balance = floatval($leaveBalance->{$col} ?? 0);
+            if ($totalRequested > $balance) {
+                return "Insufficient leave credits for {$label}. You requested {$totalRequested} day(s) but only have {$balance} available.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns an error message if any of the supplied leave types are
+     * balance-restricted and the employee's current balance is zero.
+     */
+    private function checkZeroBalanceTypes(array $leaveTypes, $leaveBalance): ?string
+    {
+        $restricted = [
+            'Wellness Leave'          => ['column' => 'WLNS', 'label' => 'Wellness Leave'],
+            'Compensatory Time Off'   => ['column' => 'CTO',  'label' => 'Compensatory Time Off'],
+            'Special Privilege Leave' => ['column' => 'SPL',  'label' => 'Special Privilege Leave'],
+            'Solo Parent Leave'       => ['column' => 'SP',   'label' => 'Solo Parent Leave'],
+        ];
+
+        foreach ($leaveTypes as $type) {
+            $type = trim($type);
+            if (isset($restricted[$type])) {
+                $col   = $restricted[$type]['column'];
+                $label = $restricted[$type]['label'];
+                if (floatval($leaveBalance->{$col} ?? 0) <= 0) {
+                    return "You cannot file {$label} because your balance is zero.";
+                }
+            }
+        }
+
+        return null;
     }
 }
