@@ -9,10 +9,12 @@ mkdir -p storage/app storage/logs \
          bootstrap/cache
 
 # Seed bundled templates only when the host-mounted directory is empty (first run).
-if [ -d /opt/app-templates ]; then
+# Guard against an empty /opt/app-templates (no bundled templates) so the glob
+# doesn't fail under `set -e` and crash the container.
+if [ -d /opt/app-templates ] && [ -n "$(ls -A /opt/app-templates 2>/dev/null)" ]; then
   mkdir -p storage/app/templates
   if [ -z "$(ls -A storage/app/templates 2>/dev/null)" ]; then
-    cp -r /opt/app-templates/* storage/app/templates/
+    cp -r /opt/app-templates/. storage/app/templates/ 2>/dev/null || true
     echo "[entrypoint] Seeded templates into empty storage/app/templates/"
   else
     echo "[entrypoint] storage/app/templates/ already has files — skipping seed"

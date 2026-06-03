@@ -19,6 +19,8 @@ export default defineConfig({
                 'resources/css/records_manager.css',
                 'resources/js/records_manager.js',
                 'resources/css/aboutus.css',
+                'resources/css/hris-table.css',
+                'resources/js/hris-table.js',
             ],
             refresh: true,
         }),
