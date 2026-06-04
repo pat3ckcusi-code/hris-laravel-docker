@@ -6,7 +6,7 @@
 @section('content')
     <form class="pds-form" aria-label="CS Form No. 212 Revised 2025 Personal Data Sheet">
         @csrf
-        <!-- <section class="pds-head"> -->
+        <section class="pds-head">
             <div>
                 <p class="pds-kicker">Republic of the Philippines</p>
                 <h2>CS Form No. 212 - Personal Data Sheet</h2>
