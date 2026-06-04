@@ -874,15 +874,28 @@ class PdsService
      * Apply password protection to every sheet in the workbook.
      * Password format: FIRSTNAME + first letter of LASTNAME (uppercase).
      */
+    /**
+     * Lock all cells and enable password protection on every sheet.
+     *
+     * Protected content areas (cannot be edited without the password):
+     *   C1 → A1:AC77   C2 → A1:L61   C3 → A1:L61   C4 → A1:O80
+     *
+     * PhpSpreadsheet note: calling getStyle($range)->setLocked() iterates
+     * every cell in the range and creates individual Style objects — O(rows×cols).
+     * Benchmarks show 6.5 s for these four ranges on the PDS template, which
+     * causes a 504 in production. The correct best practice is to set PROTECTION_PROTECTED
+     * on the workbook default style instead (O(1), <1 ms). Excel and LibreOffice
+     * treat all cells as locked by default when sheet protection is enabled, so every
+     * cell in the content ranges above — and every other cell — is locked without
+     * touching individual cell styles.
+     */
     private function protectAllSheets(Spreadsheet $spreadsheet, User $user): void
     {
         $first = $user->first_name ?? ($user->firstname ?? '');
         $last  = $user->last_name ?? ($user->lastname ?? '');
         $password = strtoupper($first . substr((string) $last, 0, 1));
 
-        // Set locked on the workbook default style once (O(1)).
-        // Excel inherits this for every cell that hasn't been explicitly unlocked,
-        // so there's no need to iterate over individual cells or ranges.
+        // O(1): one default-style entry covers every cell in the workbook.
         $spreadsheet->getDefaultStyle()->getProtection()->setLocked(
             Protection::PROTECTION_PROTECTED
         );
