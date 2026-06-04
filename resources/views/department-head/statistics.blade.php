@@ -104,7 +104,7 @@ function renderPage(page) {
         const eta = parseInt(row.eta_count) || 0;
         const locator = parseInt(row.locator_count) || 0;
         const leave = parseInt(row.leave_count) || 0;
-        const totalUsage = parseInt(row.total_usage) || 0;
+        const totalUsage = eta + locator + leave;
 
         const tdLeave = document.createElement('td'); tdLeave.style.textAlign = 'center'; tdLeave.innerHTML = `<a href="#" class="usage-link" data-emp="${row.EmpNo || ''}" data-type="Leave" data-month="${currentMonth}" data-year="${currentYear}">${formatBadge(leave,'total')}</a>`;
         const tdEta = document.createElement('td'); tdEta.style.textAlign = 'center'; tdEta.innerHTML = `<a href="#" class="usage-link" data-emp="${row.EmpNo || ''}" data-type="ETA" data-month="${currentMonth}" data-year="${currentYear}">${formatBadge(eta,'eta')}</a>`;
@@ -123,11 +123,11 @@ function renderPagination(totalPages, currentPage) {
     if (!container) return;
     container.innerHTML = '';
     const info = document.createElement('div'); info.style.fontSize = '0.95rem'; info.style.color = '#475569'; info.textContent = `Page ${currentPage} of ${totalPages}`;
-    const btnPrev = document.createElement('button'); btnPrev.className = 'month-nav'; btnPrev.textContent = 'Prev'; btnPrev.dataset.page = Math.max(1, currentPage - 1);
-    const btnNext = document.createElement('button'); btnNext.className = 'month-nav'; btnNext.textContent = 'Next'; btnNext.dataset.page = Math.min(totalPages, currentPage + 1);
+    const btnPrev = document.createElement('button'); btnPrev.className = 'month-nav'; btnPrev.dataset.action = 'page'; btnPrev.textContent = 'Prev'; btnPrev.dataset.page = Math.max(1, currentPage - 1);
+    const btnNext = document.createElement('button'); btnNext.className = 'month-nav'; btnNext.dataset.action = 'page'; btnNext.textContent = 'Next'; btnNext.dataset.page = Math.min(totalPages, currentPage + 1);
     btnPrev.disabled = currentPage <= 1; btnNext.disabled = currentPage >= totalPages;
-    btnPrev.addEventListener('click', (e) => { renderPage(parseInt(e.currentTarget.dataset.page, 10)); });
-    btnNext.addEventListener('click', (e) => { renderPage(parseInt(e.currentTarget.dataset.page, 10)); });
+    btnPrev.addEventListener('click', (e) => { e.stopPropagation(); renderPage(parseInt(e.currentTarget.dataset.page, 10)); });
+    btnNext.addEventListener('click', (e) => { e.stopPropagation(); renderPage(parseInt(e.currentTarget.dataset.page, 10)); });
     container.appendChild(btnPrev); container.appendChild(info); container.appendChild(btnNext);
 }
 
@@ -182,9 +182,11 @@ function updateNavButtons(container, month, year) {
 document.addEventListener('click', function (e) {
     const el = e.target.closest('.month-nav');
     if (el) {
+        if (el.dataset.action === 'page') return;
         e.preventDefault();
         const month = parseInt(el.dataset.month, 10);
         const year = parseInt(el.dataset.year, 10);
+        if (isNaN(month) || isNaN(year)) return;
         // find the nearest card container that holds the nav and label
         const card = el.closest('.card') || document.querySelector('.card');
         const label = card ? card.querySelector('.font-weight-bold') : null;

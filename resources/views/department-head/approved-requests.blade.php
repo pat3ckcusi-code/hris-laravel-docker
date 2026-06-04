@@ -11,19 +11,19 @@
     <article class="tile tab-card active" data-tab="leave">
         <strong>Leave</strong>
         <div class="muted">Approved leave applications</div>
-        <div class="tile-count">{{ $requests->count() ?? 0 }}</div>
+        <div class="tile-count">{{ method_exists($requests, 'total') ? $requests->total() : ($requests->count() ?? 0) }}</div>
     </article>
 
     <article class="tile tab-card" data-tab="eta">
         <strong>ETA</strong>
         <div class="muted">Approved ETA requests</div>
-        <div class="tile-count">{{ $etaRequests->count() ?? 0 }}</div>
+        <div class="tile-count">{{ method_exists($etaRequests, 'total') ? $etaRequests->total() : ($etaRequests->count() ?? 0) }}</div>
     </article>
 
     <article class="tile tab-card" data-tab="locator">
         <strong>Locator</strong>
         <div class="muted">Approved locator requests</div>
-        <div class="tile-count">{{ $locatorRequests->count() ?? 0 }}</div>
+        <div class="tile-count">{{ method_exists($locatorRequests, 'total') ? $locatorRequests->total() : ($locatorRequests->count() ?? 0) }}</div>
     </article>
 @endsection
 
@@ -31,6 +31,20 @@
     @if (!$dept)
         <div class="muted">No department found for your account. Ensure your employee number is set in the Departments table.</div>
     @else
+        @php
+            $prevDate = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
+            $nextDate = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
+        @endphp
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="display:flex;gap:10px;align-items:center;">
+                <button class="month-nav" onclick="window.location='?month={{ $prevDate->format('n') }}&year={{ $prevDate->format('Y') }}'">&laquo; Prev</button>
+                <div class="font-weight-bold">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
+                <button class="month-nav" onclick="window.location='?month={{ $nextDate->format('n') }}&year={{ $nextDate->format('Y') }}'">Next &raquo;</button>
+            </div>
+            <div>
+                <button class="month-nav" onclick="window.location='?month={{ date('n') }}&year={{ date('Y') }}'">This Month</button>
+            </div>
+        </div>
         <div id="tab-content">
             <div class="tab-pane" data-pane="leave">
                 @if ($requests->isEmpty())
@@ -65,7 +79,7 @@
                             @endforeach
                         </tbody>
                     </table>
-                    <div class="pagination-wrap" style="margin-top:10px">{{ $requests->withQueryString()->links() }}</div>
+                    @include('partials.simple-pagination', ['paginator' => $requests])
                 @endif
             </div>
 
@@ -95,7 +109,7 @@
                         @endforeach
                         </tbody>
                     </table>
-                    <div class="pagination-wrap" style="margin-top:10px">{{ $etaRequests->withQueryString()->links('pagination::simple-default') }}</div>
+                    @include('partials.simple-pagination', ['paginator' => $etaRequests, 'pageParam' => 'eta_page'])
                 @endif
             </div>
 
@@ -125,7 +139,7 @@
                         @endforeach
                         </tbody>
                     </table>
-                    <div class="pagination-wrap" style="margin-top:10px">{{ $locatorRequests->withQueryString()->links('pagination::simple-default') }}</div>
+                    @include('partials.simple-pagination', ['paginator' => $locatorRequests, 'pageParam' => 'locator_page'])
                 @endif
             </div>
         </div>

@@ -710,6 +710,8 @@
                     $activeClass = function ($column) use ($currentSort) {
                         return $currentSort === $column ? 'text-blue-600 font-semibold' : 'text-slate-600';
                     };
+                    $_role = strtolower(str_replace(['-', '_'], ' ', trim((string)(optional(auth()->user())->access_level ?? ''))));
+                    $canPrintOnApproval = str_contains($_role, 'department head') || str_contains($_role, 'hr manager');
                 @endphp
 
                 <table class="hris-table my-requests-table">
@@ -756,12 +758,10 @@
                                     <div class="action-btns">
                                         <button type="button" class="hris-btn hris-btn-secondary" onclick="openLeaveModal({{ $leave->id }})">View</button>
                                         @if(!in_array($leave->status, ['cancelled','rejected','declined']))
-                                            @if(($leave->status === 'pending' || ($leave->cancellation_status ?? '') === 'Pending Cancellation') && empty($leave->printing_allowed))
+                                            @if(!empty($leave->printing_allowed) || ($canPrintOnApproval && $leave->status === 'approved'))
+                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
+                                            @else
                                                 <button class="hris-btn hris-btn-secondary" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}">Print</button>
-                                            @elseif($leave->status === 'approved' && !empty($leave->printing_allowed))
-                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
-                                            @elseif($leave->status === 'pending' && !empty($leave->printing_allowed))
-                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
                                             @endif
                                             @if($leave->status === 'pending')
                                                 <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
@@ -867,17 +867,7 @@ function openLeaveModal(id) {
     const actions = document.getElementById('leave-modal-actions');
     actions.innerHTML = '';
 
-    if (status === 'approved') {
-        const printBtn = document.createElement('a');
-        printBtn.className = 'btn';
-        printBtn.style.background = '#3b82f6';
-        printBtn.href = `{{ url('dashboard/employee/leave') }}/${id}/print`;
-        printBtn.target = '_blank';
-        printBtn.innerHTML = '<i class="fa fa-print"></i> Print';
-        actions.appendChild(printBtn);
-    }
-
-        if (status === 'pending') {
+    if (status === 'pending') {
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'btn';
         cancelBtn.style.background = '#ef4444';

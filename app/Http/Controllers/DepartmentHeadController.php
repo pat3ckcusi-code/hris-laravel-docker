@@ -100,26 +100,38 @@ class DepartmentHeadController extends Controller
         $requests = collect();
         $etaRequests = collect();
         $locatorRequests = collect();
+
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
         if ($dept) {
             $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
             $requests = LeaveRequest::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'pending')
                 ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10);
             $etaRequests = Eta::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'pending')
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10, ['*'], 'eta_page');
             $locatorRequests = Locator::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'pending')
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10, ['*'], 'locator_page');
         }
-        return view('department-head.pending-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests'));
+        return view('department-head.pending-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests', 'month', 'year'));
     }
 
     public function approvedRequests(Request $request)
@@ -130,29 +142,40 @@ class DepartmentHeadController extends Controller
         $etaRequests = collect();
         $locatorRequests = collect();
 
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
         if ($dept) {
             $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
             $requests = LeaveRequest::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
                 ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10);
 
             $etaRequests = Eta::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10, ['*'], 'eta_page');
 
             $locatorRequests = Locator::with('user')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->orderBy('created_at', 'desc')
                 ->paginate(10, ['*'], 'locator_page');
         }
 
-        return view('department-head.approved-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests'));
+        return view('department-head.approved-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests', 'month', 'year'));
     }
 
     public function statistics(Request $request)
@@ -237,7 +260,7 @@ class DepartmentHeadController extends Controller
                     'eta_count' => $etaCount,
                     'locator_count' => $locatorCount,
                     'leave_count' => $leaveCount,
-                    'total_usage' => ($etaCount + $locatorCount),
+                    'total_usage' => ($etaCount + $locatorCount + $leaveCount),
                 ];
             }
 

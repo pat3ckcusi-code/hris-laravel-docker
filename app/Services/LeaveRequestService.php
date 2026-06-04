@@ -43,13 +43,22 @@ class LeaveRequestService
      */
     public function canPrint(LeaveRequest $leave, User $user): bool
     {
-        // printing must be explicitly allowed before any party may print
-        if (empty($leave->printing_allowed)) {
+        // do not allow printing for declined or cancelled requests
+        if (in_array($leave->status, ['declined', 'cancelled', 'rejected'], true)) {
             return false;
         }
 
-        // do not allow printing for declined or cancelled requests
-        if (in_array($leave->status, ['declined', 'cancelled', 'rejected'], true)) {
+        // Department Heads and HR Managers may print their own approved leave without
+        // the printing_allowed flag — they have no AO in their own approval chain.
+        if ($leave->user_id === $user->id && $leave->status === 'approved') {
+            $role = strtolower(str_replace(['-', '_'], ' ', trim((string)($user->access_level ?? ''))));
+            if (str_contains($role, 'department head') || str_contains($role, 'hr manager')) {
+                return true;
+            }
+        }
+
+        // All other parties still require the printing_allowed flag.
+        if (empty($leave->printing_allowed)) {
             return false;
         }
 
