@@ -880,16 +880,14 @@ class PdsService
         $last  = $user->last_name ?? ($user->lastname ?? '');
         $password = strtoupper($first . substr((string) $last, 0, 1));
 
-        foreach ($spreadsheet->getAllSheets() as $sheet) {
-            // Lock every cell in the used range
-            $highestRow = $sheet->getHighestRow();
-            $highestCol = $sheet->getHighestColumn();
-            $range = 'A1:' . $highestCol . $highestRow;
-            $sheet->getStyle($range)->getProtection()->setLocked(
-                Protection::PROTECTION_PROTECTED
-            );
+        // Set locked on the workbook default style once (O(1)).
+        // Excel inherits this for every cell that hasn't been explicitly unlocked,
+        // so there's no need to iterate over individual cells or ranges.
+        $spreadsheet->getDefaultStyle()->getProtection()->setLocked(
+            Protection::PROTECTION_PROTECTED
+        );
 
-            // Enable sheet protection with password
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
             $protection = $sheet->getProtection();
             $protection->setSheet(true);
             $protection->setPassword($password);
