@@ -58,7 +58,7 @@
                                     <td>
                                         <div class="action-btns">
                                             <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openApprovedModal('leave', {{ $r->id }})">View</button>
-                                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="printApproved('leave', {{ $r->id }})">Print</button>
+                                            <!-- <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="printApproved('leave', {{ $r->id }})">Print</button> -->
                                         </div>
                                     </td>
                                 </tr>
