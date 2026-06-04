@@ -19,6 +19,7 @@ use Illuminate\Validation\Rule;
 use App\Models\HRAuditTrail;
 use App\Services\PdsService;
 use App\Services\RecordsService;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -208,38 +209,70 @@ class DashboardController extends Controller
         }
     }
 
-    public function exportPdsExcel(Request $request, PdsService $pdsService): StreamedResponse
+    public function exportPdsExcel(Request $request, PdsService $pdsService): StreamedResponse|JsonResponse
     {
         $this->ensureEmployee($request);
 
         $user = $request->user();
 
-        $spreadsheet = $pdsService->exportToExcel($user);
+        // Give PhpSpreadsheet enough headroom for the PDS template
+        $prevMemoryLimit = ini_set('memory_limit', '256M');
 
-        $filename = 'PDS_' . strtoupper(str_replace(' ', '_', (string) $user->name)) . '_' . now()->format('Y-m-d') . '.xlsx';
+        try {
+            $pdsRecord = Pds::where('user_id', $user->id)->first();
 
-        HRAuditTrail::create([
-            'actor_user_id' => $user->id,
-            'module' => 'PDS',
-            'action' => 'export',
-            'target_type' => 'App\\Models\\Pds',
-            'target_id' => Pds::where('user_id', $user->id)->value('id'),
-            'details' => [
-                'EmpNo' => $user->EmpNo,
-                'filename' => $filename,
-            ],
-        ]);
+            Log::info('PDS export started', [
+                'user_id'         => $user->id,
+                'EmpNo'           => $user->EmpNo,
+                'pds_id'          => $pdsRecord?->id,
+                'sections_filled' => $pdsRecord ? count(array_filter((array) $pdsRecord->section_data)) : 0,
+                'template_exists' => is_file(storage_path('app/templates/PDS.xlsx')),
+                'memory_limit'    => ini_get('memory_limit'),
+            ]);
 
-        return response()->streamDownload(
-            function () use ($spreadsheet): void {
-                $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
-                $writer->save('php://output');
-            },
-            $filename,
-            [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            ]
-        );
+            $spreadsheet = $pdsService->exportToExcel($user);
+
+            $filename = 'PDS_' . strtoupper(str_replace(' ', '_', (string) $user->name)) . '_' . now()->format('Y-m-d') . '.xlsx';
+
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'PDS',
+                'action' => 'export',
+                'target_type' => 'App\\Models\\Pds',
+                'target_id' => $pdsRecord?->id,
+                'details' => [
+                    'EmpNo'    => $user->EmpNo,
+                    'filename' => $filename,
+                ],
+            ]);
+
+            return response()->streamDownload(
+                function () use ($spreadsheet): void {
+                    $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+                    $writer->save('php://output');
+                },
+                $filename,
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ]
+            );
+        } catch (Throwable $e) {
+            Log::error('PDS export failed', [
+                'user_id' => $user->id ?? null,
+                'EmpNo'   => $user->EmpNo ?? null,
+                'error'   => $e->getMessage(),
+                'file'    => $e->getFile() . ':' . $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'PDS export failed. Please try again or contact support.',
+            ], 500);
+        } finally {
+            if ($prevMemoryLimit !== false) {
+                ini_set('memory_limit', $prevMemoryLimit);
+            }
+        }
     }
 
 

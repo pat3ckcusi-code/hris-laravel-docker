@@ -34,7 +34,15 @@ class PdsService
         clearstatcache(true);
 
         if (!is_file($templatePath)) {
-            throw new \RuntimeException('PDS template file is missing.');
+            // Fall back to the copy baked into the Docker image during build.
+            $fallback = '/opt/app-templates/PDS.xlsx';
+            if (is_file($fallback)) {
+                $templatePath = $fallback;
+            } else {
+                throw new \RuntimeException(
+                    'PDS template file is missing. Expected: ' . $templatePath
+                );
+            }
         }
 
         $templateVersion = md5_file($templatePath);
