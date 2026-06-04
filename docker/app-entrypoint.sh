@@ -4,7 +4,7 @@ set -e
 cd /var/www/html
 
 # Ensure writable dirs exist (named volumes mount empty on first run)
-mkdir -p storage/app storage/logs \
+mkdir -p storage/app storage/app/public storage/logs \
          storage/framework/cache storage/framework/sessions storage/framework/views \
          bootstrap/cache
 
@@ -23,6 +23,9 @@ fi
 
 chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
+
+# Create the public/storage → storage/app/public symlink
+php artisan storage:link --force 2>/dev/null || true
 
 # Persist APP_KEY across restarts.
 APP_KEY_FILE="storage/app/.app_key"

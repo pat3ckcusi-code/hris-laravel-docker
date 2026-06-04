@@ -177,33 +177,27 @@ class LocatorController extends Controller
     public function printSingle(Locator $locator, LocatorExportService $exportService)
     {
         $user = Auth::user();
+        $owner = $locator->user ?? User::find($locator->user_id);
 
-        // allow owner, department head for the owner, or administrative officer
+        // allow owner, department head for the owner's department, or administrative officer / hr manager
         $allowed = false;
         if ($locator->user_id === $user->id) {
             $allowed = true;
         } else {
-            $owner = $locator->user;
-            $deptHeadUser = null;
-            if ($owner && !empty($owner->Dept_id)) {
-                $department = Department::find($owner->Dept_id);
-                if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $deptHeadUser = User::where('EmpNo', $department->EmpNo)->first();
-                }
-            } elseif ($owner && !empty($owner->EmpNo)) {
-                $department = Department::where('EmpNo', $owner->EmpNo)->first();
-                if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $deptHeadUser = User::where('EmpNo', $department->EmpNo)->first();
-                }
-            }
-
-            if ($deptHeadUser && $deptHeadUser->id === $user->id) {
-                $allowed = true;
-            }
-
             $role = strtolower(trim((string)$user->access_level));
-            if ($role === 'administrative officer') {
+
+            // Administrative officers and HR managers may print any approved locator
+            if ($role === 'administrative officer' || $role === 'hr manager') {
                 $allowed = true;
+            }
+
+            // Department head: allow if this user's EmpNo is the head of the owner's department
+            if (!$allowed && !empty($user->EmpNo) && $owner && !empty($owner->Dept_id)) {
+                $ownerDept = Department::find($owner->Dept_id);
+                if ($ownerDept && !empty($ownerDept->EmpNo) && $ownerDept->EmpNo !== 'UNASSIGNED'
+                    && $ownerDept->EmpNo === $user->EmpNo) {
+                    $allowed = true;
+                }
             }
         }
 

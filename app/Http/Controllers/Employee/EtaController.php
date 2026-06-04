@@ -224,32 +224,26 @@ class EtaController extends Controller
     public function printSingle(Eta $eta)
     {
         $user = Auth::user();
+        $owner = $eta->user ?? User::find($eta->user_id);
 
         $allowed = false;
         if ($eta->user_id === $user->id) {
             $allowed = true;
         } else {
-            $owner = $eta->user;
-            $deptHeadUser = null;
-            if ($owner && !empty($owner->Dept_id)) {
-                $department = Department::find($owner->Dept_id);
-                if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $deptHeadUser = User::where('EmpNo', $department->EmpNo)->first();
-                }
-            } elseif ($owner && !empty($owner->EmpNo)) {
-                $department = Department::where('EmpNo', $owner->EmpNo)->first();
-                if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $deptHeadUser = User::where('EmpNo', $department->EmpNo)->first();
-                }
-            }
-
-            if ($deptHeadUser && $deptHeadUser->id === $user->id) {
-                $allowed = true;
-            }
-
             $role = strtolower(trim((string)$user->access_level));
-            if ($role === 'administrative officer') {
+
+            // Administrative officers and HR managers may print any approved ETA
+            if ($role === 'administrative officer' || $role === 'hr manager') {
                 $allowed = true;
+            }
+
+            // Department head: allow if this user's EmpNo is the head of the owner's department
+            if (!$allowed && !empty($user->EmpNo) && $owner && !empty($owner->Dept_id)) {
+                $ownerDept = Department::find($owner->Dept_id);
+                if ($ownerDept && !empty($ownerDept->EmpNo) && $ownerDept->EmpNo !== 'UNASSIGNED'
+                    && $ownerDept->EmpNo === $user->EmpNo) {
+                    $allowed = true;
+                }
             }
         }
 
