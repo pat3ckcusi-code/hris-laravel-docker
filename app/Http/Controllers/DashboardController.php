@@ -213,12 +213,12 @@ class DashboardController extends Controller
     {
         $this->ensureEmployee($request);
 
-        $user = $request->user();
-
-        // Give PhpSpreadsheet enough headroom for the PDS template
-        $prevMemoryLimit = ini_set('memory_limit', '256M');
+        $user    = $request->user();
+        $tmpFile = null;
 
         try {
+            ini_set('memory_limit', '256M');
+
             $pdsRecord = Pds::where('user_id', $user->id)->first();
 
             Log::info('PDS export started', [
@@ -232,46 +232,66 @@ class DashboardController extends Controller
 
             $spreadsheet = $pdsService->exportToExcel($user);
 
+            // Write to a temp file so any serialization failure is caught here,
+            // not after headers have been sent inside the streamDownload callback.
+            $tmpFile = tempnam(sys_get_temp_dir(), 'pds_');
+            $writer  = IOFactory::createWriter($spreadsheet, 'Xlsx');
+            $writer->save($tmpFile);
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
             $filename = 'PDS_' . strtoupper(str_replace(' ', '_', (string) $user->name)) . '_' . now()->format('Y-m-d') . '.xlsx';
 
             HRAuditTrail::create([
                 'actor_user_id' => $user->id,
-                'module' => 'PDS',
-                'action' => 'export',
-                'target_type' => 'App\\Models\\Pds',
-                'target_id' => $pdsRecord?->id,
-                'details' => [
+                'module'        => 'PDS',
+                'action'        => 'export',
+                'target_type'   => 'App\\Models\\Pds',
+                'target_id'     => $pdsRecord?->id,
+                'details'       => [
                     'EmpNo'    => $user->EmpNo,
                     'filename' => $filename,
                 ],
             ]);
 
+            $localTmp = $tmpFile;
             return response()->streamDownload(
-                function () use ($spreadsheet): void {
-                    $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
-                    $writer->save('php://output');
+                static function () use ($localTmp): void {
+                    $handle = fopen($localTmp, 'rb');
+                    if ($handle !== false) {
+                        while (!feof($handle)) {
+                            echo fread($handle, 65536);
+                        }
+                        fclose($handle);
+                    }
+                    @unlink($localTmp);
                 },
                 $filename,
-                [
-                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                ]
+                ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
             );
         } catch (Throwable $e) {
+            if ($tmpFile !== null && is_file($tmpFile)) {
+                @unlink($tmpFile);
+            }
+
             Log::error('PDS export failed', [
                 'user_id' => $user->id ?? null,
                 'EmpNo'   => $user->EmpNo ?? null,
                 'error'   => $e->getMessage(),
                 'file'    => $e->getFile() . ':' . $e->getLine(),
+                'trace'   => array_slice(
+                    array_map(
+                        static fn(array $f) => ($f['file'] ?? '?') . ':' . ($f['line'] ?? '?'),
+                        $e->getTrace()
+                    ),
+                    0, 8
+                ),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'PDS export failed. Please try again or contact support.',
             ], 500);
-        } finally {
-            if ($prevMemoryLimit !== false) {
-                ini_set('memory_limit', $prevMemoryLimit);
-            }
         }
     }
 

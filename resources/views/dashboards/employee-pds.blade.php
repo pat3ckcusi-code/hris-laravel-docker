@@ -1415,11 +1415,17 @@
 
                             return fetch('{{ route("dashboard.employee.pds.export") }}', {
                                 method: 'GET',
+                                credentials: 'same-origin',
+                                headers: { 'Accept': 'application/octet-stream, application/json' },
                             });
                         })
                         .then(function (response) {
                             if (!response.ok) {
-                                throw new Error('Export failed');
+                                return response.json().then(function (body) {
+                                    throw new Error(body.message || 'Export failed');
+                                }).catch(function () {
+                                    throw new Error('Export failed (HTTP ' + response.status + ')');
+                                });
                             }
                             return response.blob();
                         })
@@ -1434,8 +1440,8 @@
                             URL.revokeObjectURL(url);
                         })
                         .catch(function (error) {
-                            console.error('Error:', error);
-                            alert('Failed to export PDS. Please try again.');
+                            console.error('PDS export error:', error);
+                            alert('Failed to export PDS: ' + error.message);
                         })
                         .finally(function () {
                             printBtn.disabled = false;
