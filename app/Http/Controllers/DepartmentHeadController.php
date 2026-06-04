@@ -219,28 +219,28 @@ class DepartmentHeadController extends Controller
             $employees = User::where('Dept_id', $dept->Dept_id)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
-            // Batch aggregate queries instead of per-employee N+1
+            // Batch aggregate queries — filter by created_at so counts match the approved-requests list
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('departure_date', $month)
-                ->whereYear('departure_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
             $locatorCounts = Locator::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('travel_date', $month)
-                ->whereYear('travel_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
             $leaveCounts = LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('start_date', $month)
-                ->whereYear('start_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
@@ -290,8 +290,8 @@ class DepartmentHeadController extends Controller
         if (strtoupper($type) === 'ETA') {
             $records = Eta::where('user_id', $user->id)
                 ->where('status', 'approved')
-                ->whereMonth('departure_date', $month)
-                ->whereYear('departure_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->get()
                 ->map(function ($r) {
                     return [
@@ -308,8 +308,8 @@ class DepartmentHeadController extends Controller
         if (strtoupper($type) === 'LEAVE') {
             $records = LeaveRequest::where('user_id', $user->id)
                 ->where('status', 'approved')
-                ->whereMonth('start_date', $month)
-                ->whereYear('start_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->get()
                 ->map(function ($r) {
                     return [
@@ -327,8 +327,8 @@ class DepartmentHeadController extends Controller
         // Locator
         $records = Locator::where('user_id', $user->id)
             ->where('status', 'approved')
-            ->whereMonth('travel_date', $month)
-            ->whereYear('travel_date', $year)
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year)
             ->get()
             ->map(function ($r) {
                 return [
@@ -747,7 +747,10 @@ class DepartmentHeadController extends Controller
         $eta->approved_role = $normalizedRole;
         $eta->approved_at = now();
         $eta->save();
-        
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         // Audit log with role normalization
         Log::info('ETA approved by user', [
             'eta_id' => $eta->id,
@@ -843,7 +846,10 @@ class DepartmentHeadController extends Controller
         $eta->approved_role = $normalizedRole;
         $eta->approved_at = now();
         $eta->save();
-        
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         // Audit log with role normalization
         Log::info('ETA rejected by user', [
             'eta_id' => $eta->id,
@@ -940,7 +946,10 @@ class DepartmentHeadController extends Controller
         
         $locator->status = 'approved';
         $locator->save();
-        
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         // Audit log with role normalization
         Log::info('Locator approved by user', [
             'locator_id' => $locator->id,
@@ -1042,7 +1051,10 @@ class DepartmentHeadController extends Controller
         
         $locator->status = 'declined';
         $locator->save();
-        
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         // Audit log with role normalization
         Log::info('Locator rejected by user', [
             'locator_id' => $locator->id,

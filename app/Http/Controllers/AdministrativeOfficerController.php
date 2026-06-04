@@ -325,27 +325,28 @@ class AdministrativeOfficerController extends Controller
             $employees = User::where('Dept_id', $dept->Dept_id)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
+            // Batch aggregate queries — filter by created_at so counts match the approved-requests list
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('departure_date', $month)
-                ->whereYear('departure_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
             $locatorCounts = Locator::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('travel_date', $month)
-                ->whereYear('travel_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
             $leaveCounts = LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)
                 ->where('status', 'approved')
-                ->whereMonth('start_date', $month)
-                ->whereYear('start_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->groupBy('user_id')
                 ->pluck('cnt', 'user_id');
 
@@ -394,8 +395,8 @@ class AdministrativeOfficerController extends Controller
         if (strtoupper($type) === 'ETA') {
             $records = Eta::where('user_id', $user->id)
                 ->where('status', 'approved')
-                ->whereMonth('departure_date', $month)
-                ->whereYear('departure_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->get()
                 ->map(function ($r) {
                     return [
@@ -412,8 +413,8 @@ class AdministrativeOfficerController extends Controller
         if (strtoupper($type) === 'LEAVE') {
             $records = LeaveRequest::where('user_id', $user->id)
                 ->where('status', 'approved')
-                ->whereMonth('start_date', $month)
-                ->whereYear('start_date', $year)
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
                 ->get()
                 ->map(function ($r) {
                     return [
@@ -431,8 +432,8 @@ class AdministrativeOfficerController extends Controller
         // Locator
         $records = Locator::where('user_id', $user->id)
             ->where('status', 'approved')
-            ->whereMonth('travel_date', $month)
-            ->whereYear('travel_date', $year)
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year)
             ->get()
             ->map(function ($r) {
                 return [
@@ -648,6 +649,9 @@ class AdministrativeOfficerController extends Controller
         $eta->approved_at = now();
         $eta->save();
 
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         Log::info('ETA approved by administrative officer', [
             'eta_id' => $eta->id,
             'approver_id' => $user->id,
@@ -738,6 +742,9 @@ class AdministrativeOfficerController extends Controller
         $eta->approved_at = now();
         $eta->save();
 
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
+
         try {
             HRAuditTrail::create([
                 'actor_user_id' => $user->id,
@@ -817,6 +824,9 @@ class AdministrativeOfficerController extends Controller
 
         $locator->status = 'approved';
         $locator->save();
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
 
         try {
             HRAuditTrail::create([
@@ -900,6 +910,9 @@ class AdministrativeOfficerController extends Controller
 
         $locator->status = 'declined';
         $locator->save();
+
+        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+        Cache::forget("dh_metrics_{$dept->Dept_id}");
 
         try {
             HRAuditTrail::create([
