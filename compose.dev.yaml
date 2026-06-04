@@ -11,10 +11,10 @@
 #   - Copy .env.example → .env and populate secrets (or rely on defaults below)
 #
 # Service map:
-#   ┌──────────┐   ┌───────┐   ┌────────┐   ┌───────────┐
-#   │  nginx   │──▶│  app  │──▶│   db   │   │  mailpit  │
-#   │ :8090    │   │ :9000 │   │ :3306  │   │ :8025/1025│
-#   └──────────┘   └───┬───┘   └────────┘   └───────────┘
+#   ┌──────────┐   ┌───────┐   ┌────────┐
+#   │  nginx   │──▶│  app  │──▶│   db   │
+#   │ :8090    │   │ :9000 │   │ :3306  │
+#   └──────────┘   └───┬───┘   └────────┘
 #                      │       ┌────────────┐
 #                      └──────▶│   queue    │
 #                              └────────────┘
@@ -22,6 +22,8 @@
 #   │  vite    │   │ phpmyadmin  │
 #   │ :5173    │   │ :8091       │
 #   └──────────┘   └─────────────┘
+#
+# Mail: Sent directly via mail.lgucalapan.ph:465 (SSL)
 # =============================================================================
 
 name: hris-dev
@@ -53,12 +55,8 @@ x-php-env: &php-env
   CACHE_STORE:      database
   QUEUE_CONNECTION: database
   MAIL_MAILER:      smtp
-  MAIL_HOST:        mailpit
-  MAIL_PORT:        "1025"
-  MAIL_USERNAME:    ""
-  MAIL_PASSWORD:    ""
-  MAIL_FROM_ADDRESS: "${MAIL_FROM_ADDRESS:-noreply@hris.local}"
-  MAIL_FROM_NAME:   "${MAIL_FROM_NAME:-HRIS Dev}"
+  MAIL_FROM_ADDRESS: "${MAIL_FROM_ADDRESS:-no-reply@lgucalapan.ph}"
+  MAIL_FROM_NAME:   "${MAIL_FROM_NAME:-City Human Resource Department}"
 
 # =============================================================================
 #  SERVICES
@@ -139,10 +137,10 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "adminPa55w0rd!"
-      MYSQL_DATABASE: "hris"
-      MYSQL_USER: "hris_user"
-      MYSQL_PASSWORD: "hris_pass"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}"
+      MYSQL_DATABASE: "${DB_DATABASE:-hris}"
+      MYSQL_USER: "${DB_USERNAME:-hris-app}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:-hris_pass}"
     volumes:
       - db_data:/var/lib/mysql
     networks: [hris-dev-network]
@@ -154,7 +152,7 @@ services:
           memory: 1G
     healthcheck:
       test:
-        ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -prootpass123 || exit 1"]
+        ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -225,22 +223,6 @@ services:
           cpus: "0.5"
           memory: 512M
 
-  # ── Mail: Mailpit (local SMTP catch-all + web UI) ────────────────────────
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: hris-dev-mailpit
-    restart: unless-stopped
-    ports:
-      - "${MAILPIT_UI_PORT:-8025}:8025"    # Web UI
-      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP
-    networks: [hris-dev-network]
-    logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 64M
-
   # ── DB Admin: phpMyAdmin ──────────────────────────────────────────────────
   phpmyadmin:
     image: phpmyadmin:latest
@@ -251,7 +233,7 @@ services:
     environment:
       PMA_HOST:            db
       PMA_PORT:            "3306"
-      MYSQL_ROOT_PASSWORD: "rootpass123"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}"
     depends_on:
       db:
         condition: service_healthy
