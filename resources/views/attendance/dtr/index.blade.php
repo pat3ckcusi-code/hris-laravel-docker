@@ -107,11 +107,11 @@ table.hris-table.dataTable thead th  { box-sizing: border-box; }
 
 /* ── Late / undertime row visual cues ── */
 tr.dtr-row-late,
-tr.dtr-row-undertime        { background: #fff5f5 !important; }
-tr.dtr-row-late td:nth-child(2),
+tr.dtr-row-undertime              { background: #fff5f5 !important; }
 tr.dtr-row-late td:nth-child(6)       { color: #dc2626; font-weight: 600; }
-tr.dtr-row-undertime td:nth-child(5),
 tr.dtr-row-undertime td:nth-child(7)  { color: #dc2626; font-weight: 600; }
+/* Per-cell classes set by createdRow — only the slot that caused the penalty turns red */
+td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
 </style>
 @endsection
 
@@ -569,8 +569,11 @@ if (typeof window.__dtrViewReady === 'undefined') {
                 { data: 'status_badge',      orderable: false, className: 'text-center' },
             ],
             createdRow: function (row, data) {
-                if (data.is_late)      $(row).addClass('dtr-row-late');
-                if (data.is_undertime) $(row).addClass('dtr-row-undertime');
+                if (data.is_late)           $(row).addClass('dtr-row-late');
+                if (data.is_undertime)      $(row).addClass('dtr-row-undertime');
+                if (data.is_am_in_late)     $('td:eq(1)', row).addClass('dtr-cell-late');
+                if (data.is_pm_in_late)     $('td:eq(3)', row).addClass('dtr-cell-late');
+                if (data.is_pm_out_undertime) $('td:eq(4)', row).addClass('dtr-cell-undertime');
             },
             language: {
                 processing:  'Loading…',
