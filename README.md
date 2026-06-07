@@ -1,63 +1,104 @@
-<<<<<<< HEAD
-# hris-laravel-docker
-=======
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# HRIS — LGU Calapan
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Human Resource Information System for LGU Calapan. Manages employee records, leave requests, travel orders, document requests, payroll, and biometric attendance — built on Laravel 12 / PHP 8.4, running entirely in Docker.
 
-## About Laravel
+## Requirements
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Docker Desktop (or Docker Engine + Compose plugin)
+- No local PHP or Node installation needed
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Quick start
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+# Start the full dev stack (app, nginx, MySQL, queue worker, Vite, Mailpit, phpMyAdmin)
+docker compose -f compose.dev.yaml up --build
 
-## Learning Laravel
+# Stop (preserves database volume)
+docker compose -f compose.dev.yaml down
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+# Stop and wipe all data
+docker compose -f compose.dev.yaml down -v
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Service     | URL                      |
+|-------------|--------------------------|
+| App         | http://localhost:8090    |
+| Vite HMR    | http://localhost:5173    |
+| phpMyAdmin  | http://localhost:8091    |
+| Mailpit UI  | http://localhost:8025    |
 
-## Laravel Sponsors
+## Environment setup
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Copy `.env.example` to `.env` and set `APP_KEY`:
 
-### Premium Partners
+```bash
+cp .env.example .env
+docker exec hris-dev-app php artisan key:generate
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Database connection — inside vs outside Docker
 
-## Contributing
+The `DB_HOST` value depends on **where the code runs**, not where MySQL runs.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Inside the container
 
-## Code of Conduct
+The app container and the MySQL container share a Docker network. MySQL is reachable via its service name. `compose.dev.yaml` injects this directly into the container environment, overriding whatever `.env` says:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```dotenv
+DB_HOST=db      # injected by compose.dev.yaml — no .env change needed
+DB_PORT=3306
+```
 
-## Security Vulnerabilities
+### Outside the container (host machine)
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+When running `php artisan migrate`, Tinker, or a local DB client **directly on your host machine**, traffic must go through the port Docker exposes. `compose.dev.yaml` maps MySQL as `3306:3306`, and `.env` ships with these values already set:
 
-## License
+```dotenv
+DB_HOST=127.0.0.1
+DB_PORT=3306
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
->>>>>>> 0946812 (Initial HRIS commit)
+`.env` ships with `DB_HOST=127.0.0.1` for this reason. `compose.dev.yaml` injects `DB_HOST=db` directly into the container environment, overriding `.env` for container runs — so the file value is only ever used by host-side tools.
+
+## Running artisan commands
+
+Two workflows — pick the one that matches where your terminal is:
+
+**Option A — inside the container (recommended)**
+
+```bash
+# compose.dev.yaml sets DB_HOST=db automatically; no .env change needed.
+docker exec hris-dev-app php artisan migrate
+docker exec hris-dev-app php artisan queue:work
+docker exec hris-dev-app php artisan tinker
+```
+
+**Option B — directly on the host machine**
+
+```bash
+# .env already has DB_HOST=127.0.0.1 and DB_PORT=3306, which routes through
+# the port Docker exposes to the host (compose.dev.yaml maps 3306:3306).
+# The stack must be running first:
+docker compose -f compose.dev.yaml up -d
+php artisan migrate
+```
+
+## Running tests
+
+Tests require a `HRIS_test` database on the running `hris-dev-db` container (created automatically by the test suite seeder):
+
+```bash
+docker exec hris-dev-app php artisan test
+
+# Single file
+docker exec hris-dev-app php artisan test tests/Feature/RoleBased/LeaveManagerTest.php
+
+# Single method
+docker exec hris-dev-app php artisan test --filter=test_method_name
+```
+
+## Code style
+
+```bash
+docker exec hris-dev-app vendor/bin/pint
+```

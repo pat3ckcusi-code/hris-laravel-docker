@@ -44,7 +44,5 @@
 
     @yield('page_scripts')
     @yield('page_scripts_after')
-
-    @yield('page_scripts')
 </body>
 </html>

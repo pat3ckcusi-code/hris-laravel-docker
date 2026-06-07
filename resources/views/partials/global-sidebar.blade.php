@@ -65,6 +65,7 @@
         'payroll_view'        => 'fas fa-eye fa-fw',
         'payroll_runs'        => 'fas fa-receipt fa-fw',
         'attendance'          => 'fas fa-clock fa-fw',
+        'attendance_import'   => 'fas fa-file-import fa-fw',
         'plantilla'           => 'fas fa-building fa-fw',
         'salary_matrix'       => 'fas fa-table fa-fw',
         'earnings'            => 'fas fa-coins fa-fw',
@@ -101,7 +102,7 @@
 
             ['section' => 'Records'],
             ['label' => 'Payslips',         'icon' => 'payslips',   'route' => 'dashboard.employee.payslips',   'active' => ['dashboard.employee.payslips']],
-            ['label' => 'Attendance Logs',  'icon' => 'attendance', 'route' => 'dashboard.employee.attendance', 'active' => ['dashboard.employee.attendance']],
+            ['label' => 'My DTR',           'icon' => 'attendance', 'route' => 'attendance.dtr',                'active' => ['attendance.dtr', 'attendance.dtr.download']],
         ],
 
         // ─── Department Head ───────────────────────────────
@@ -120,6 +121,9 @@
             ['label' => 'Office Order',       'icon' => 'office_order',      'route' => 'department-head.office-orders',     'active' => ['department-head.office-orders']],
             ['label' => 'Filed T.O.s',        'icon' => 'filed_travel',      'route' => 'department-head.filed-travel-orders',  'active' => ['department-head.filed-travel-orders']],
             ['label' => 'Filed Office Order', 'icon' => 'filed_office',      'route' => 'department-head.filed-office-orders',  'active' => ['department-head.filed-office-orders']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                       'active' => ['attendance.dtr', 'attendance.dtr.download']],
         ],
 
         // ─── Administrative Officer ────────────────────────
@@ -134,6 +138,9 @@
             ['label' => 'Office Order',       'icon' => 'office_order',      'route' => 'admin-officer.office-orders',      'active' => ['admin-officer.office-orders']],
             ['label' => 'Filed T.O.s',        'icon' => 'filed_travel',      'route' => 'admin-officer.filed-travel-orders',   'active' => ['admin-officer.filed-travel-orders']],
             ['label' => 'Filed Office Order', 'icon' => 'filed_office',      'route' => 'admin-officer.filed-office-orders',   'active' => ['admin-officer.filed-office-orders']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                   'active' => ['attendance.dtr', 'attendance.dtr.download']],
         ],
 
         // ─── HR Manager ───────────────────────────────────
@@ -145,6 +152,10 @@
             ['label' => 'Records Management', 'icon' => 'records',   'route' => 'hr-manager.records',   'active' => ['hr-manager.records']],
             ['label' => 'Leave Management',   'icon' => 'leave',     'route' => 'hr-manager.leave',     'active' => ['hr-manager.leave']],
             ['label' => 'Front Desk',         'icon' => 'frontdesk', 'route' => 'hr-manager.frontdesk', 'active' => ['hr-manager.frontdesk']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Reports'],
             ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',   'active' => ['hr-manager.reports']],
@@ -179,7 +190,8 @@
 
             ['section' => 'Pay Processing'],
             ['label' => 'Payroll Runs',        'icon' => 'payroll_runs',    'route' => 'payroll.runs.index',          'active' => ['payroll.runs.*']],
-            ['label' => 'Attendance / DTR',    'icon' => 'attendance',      'route' => 'payroll.attendance.index',    'active' => ['payroll.attendance.*']],
+            ['label' => 'DTR Records',  'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Import Logs',  'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Compensation'],
             ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',      'route' => 'payroll.plantilla.index',     'active' => ['payroll.plantilla.*']],
@@ -209,6 +221,19 @@
             ['label' => 'Employee Management',   'icon' => 'employees',   'route' => 'dashboard.records-manager.employees',   'active' => ['dashboard.records-manager.employees']],
             ['label' => 'Department Management', 'icon' => 'departments', 'route' => 'dashboard.records-manager.departments', 'active' => ['dashboard.records-manager.departments']],
             ['label' => 'Access Management',     'icon' => 'access',      'route' => 'dashboard.records-manager.access',      'active' => ['dashboard.records-manager.access']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'DTR Records', 'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Import Logs', 'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
+        ],
+
+        // ─── Time Keeper ──────────────────────────────────
+        'time keeper' => [
+            ['label' => 'Dashboard',   'icon' => 'dashboard', 'route' => 'dashboard', 'active' => ['dashboard']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'DTR Records', 'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Import Logs', 'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
         ],
 
         // ─── Front Desk ───────────────────────────────────

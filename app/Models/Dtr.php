@@ -35,6 +35,7 @@ class Dtr extends Model
         'time_in_pm',
         'time_out_pm',
         'status',
+        'source',
         'late_minutes',
         'undertime_minutes',
         'is_absent',

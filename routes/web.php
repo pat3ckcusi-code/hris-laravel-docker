@@ -17,7 +17,8 @@ use App\Http\Controllers\OfficeOrderController;
 use App\Http\Controllers\RecordsManagerController;
 use App\Http\Controllers\TravelOrderController;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\Employee\EmployeeAttendanceController;
+use App\Http\Controllers\Attendance\AttendanceImportController;
+use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Employee\EmployeePayslipController;
 use App\Http\Controllers\Employee\EtaController;
 use App\Http\Controllers\Employee\LocatorController;
@@ -175,11 +176,21 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/employee/pds/export', [DashboardController::class, 'exportPdsExcel'])
         ->name('dashboard.employee.pds.export');
 
-    // Employee Self-Service: Payslips & Attendance (read-only, scoped to logged-in user)
+    // Employee Self-Service: Payslips (read-only, scoped to logged-in user)
     Route::get('/dashboard/employee/payslips', [EmployeePayslipController::class, 'index'])
         ->name('dashboard.employee.payslips');
-    Route::get('/dashboard/employee/attendance', [EmployeeAttendanceController::class, 'index'])
-        ->name('dashboard.employee.attendance');
+
+    // Attendance DTR — list view and Form 48 download (role-branching handled in controller)
+    Route::get('/attendance/dtr', [DtrController::class, 'index'])
+        ->name('attendance.dtr');
+    Route::get('/attendance/dtr/data', [DtrController::class, 'data'])
+        ->name('attendance.dtr.data');
+    Route::get('/attendance/dtr/download', [DtrController::class, 'downloadForm48'])
+        ->name('attendance.dtr.download');
+    Route::get('/attendance/dtr/download-dept-zip', [DtrController::class, 'downloadDepartmentZip'])
+        ->name('attendance.dtr.download-dept-zip');
+    Route::get('/attendance/dtr/download-dept', [DtrController::class, 'downloadDepartmentForm48'])
+        ->name('attendance.dtr.download-dept');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');
@@ -216,7 +227,13 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     Route::prefix('department-head')->name('department-head.')->group(function () {
         Route::get('/', [DepartmentHeadController::class, 'index'])->name('index');
         Route::get('/pending-requests', [DepartmentHeadController::class, 'pendingRequests'])->name('pending-requests');
+        Route::get('/pending-requests/leave/data', [DepartmentHeadController::class, 'pendingRequestsLeaveData'])->name('pending-requests.leave-data');
+        Route::get('/pending-requests/eta/data', [DepartmentHeadController::class, 'pendingRequestsEtaData'])->name('pending-requests.eta-data');
+        Route::get('/pending-requests/locator/data', [DepartmentHeadController::class, 'pendingRequestsLocatorData'])->name('pending-requests.locator-data');
         Route::get('/approved-requests', [DepartmentHeadController::class, 'approvedRequests'])->name('approved-requests');
+        Route::get('/approved-requests/leave/data', [DepartmentHeadController::class, 'approvedRequestsLeaveData'])->name('approved-requests.leave-data');
+        Route::get('/approved-requests/eta/data', [DepartmentHeadController::class, 'approvedRequestsEtaData'])->name('approved-requests.eta-data');
+        Route::get('/approved-requests/locator/data', [DepartmentHeadController::class, 'approvedRequestsLocatorData'])->name('approved-requests.locator-data');
         Route::get('/statistics', [DepartmentHeadController::class, 'statistics'])->name('statistics');
         Route::get('/statistics/data', [DepartmentHeadController::class, 'statisticsData'])->name('statistics.data');
         Route::get('/statistics/details', [DepartmentHeadController::class, 'statisticsDetails'])->name('statistics.details');
@@ -233,7 +250,13 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::prefix('admin-officer')->name('admin-officer.')->group(function () {
         Route::get('/', [AdministrativeOfficerController::class, 'index'])->name('index');
         Route::get('/pending-requests', [AdministrativeOfficerController::class, 'pendingRequests'])->name('pending-requests');
+        Route::get('/pending-requests/leave/data', [AdministrativeOfficerController::class, 'pendingRequestsLeaveData'])->name('pending-requests.leave-data');
+        Route::get('/pending-requests/eta/data', [AdministrativeOfficerController::class, 'pendingRequestsEtaData'])->name('pending-requests.eta-data');
+        Route::get('/pending-requests/locator/data', [AdministrativeOfficerController::class, 'pendingRequestsLocatorData'])->name('pending-requests.locator-data');
         Route::get('/approved-requests', [AdministrativeOfficerController::class, 'approvedRequests'])->name('approved-requests');
+        Route::get('/approved-requests/leave/data', [AdministrativeOfficerController::class, 'approvedRequestsLeaveData'])->name('approved-requests.leave-data');
+        Route::get('/approved-requests/eta/data', [AdministrativeOfficerController::class, 'approvedRequestsEtaData'])->name('approved-requests.eta-data');
+        Route::get('/approved-requests/locator/data', [AdministrativeOfficerController::class, 'approvedRequestsLocatorData'])->name('approved-requests.locator-data');
         Route::get('/statistics', [AdministrativeOfficerController::class, 'statistics'])->name('statistics');
         Route::get('/statistics/data', [AdministrativeOfficerController::class, 'statisticsData'])->name('statistics.data');
         Route::get('/statistics/details', [AdministrativeOfficerController::class, 'statisticsDetails'])->name('statistics.details');
@@ -376,6 +399,14 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.audit.data');
     Route::get('/dashboard/hr-manager/employees/filter', [HRManagerController::class, 'getEmployeesByFilter'])
         ->name('hr-manager.employees.filter');
+
+});
+
+Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {
+    Route::get('/dashboard/hr-manager/attendance/import', [AttendanceImportController::class, 'index'])
+        ->name('hr-manager.attendance.import');
+    Route::post('/dashboard/hr-manager/attendance/import', [AttendanceImportController::class, 'store'])
+        ->name('hr-manager.attendance.import.store');
 });
 
 // Mayor's Office routes

@@ -36,6 +36,7 @@ use Illuminate\Notifications\Notifiable;
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Models\LeaveBalance|null $leaveBalance
+ * @property-read string $full_name
  * @property string|null $department_name
  * @property string|null $dept_head_name
  *
@@ -45,6 +46,11 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    public function getFullNameAttribute(): string
+    {
+        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
+    }
 
     public function leaveBalance()
     {

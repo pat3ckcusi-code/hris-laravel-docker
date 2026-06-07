@@ -95,41 +95,183 @@ class AdministrativeOfficerController extends Controller
     {
         $user = $request->user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
-        $requests = collect();
-        $etaRequests = collect();
-        $locatorRequests = collect();
 
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
         if ($year < 2000 || $year > 2100) $year = (int) date('Y');
 
-        if ($dept) {
-            $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
-            $requests = LeaveRequest::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'pending')
-                ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10);
-            $etaRequests = Eta::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'pending')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10, ['*'], 'eta_page');
-            $locatorRequests = Locator::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'pending')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10, ['*'], 'locator_page');
+        $leaveDataUrl   = route('admin-officer.pending-requests.leave-data');
+        $etaDataUrl     = route('admin-officer.pending-requests.eta-data');
+        $locatorDataUrl = route('admin-officer.pending-requests.locator-data');
+        $approverPrefix = 'admin-officer';
+
+        return view('department-head.pending-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl', 'approverPrefix'));
+    }
+
+    public function pendingRequestsLeaveData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
-        return view('department-head.pending-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests', 'month', 'year'));
+
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = LeaveRequest::with('user')
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'pending')
+            ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('leave_type', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(function ($r) {
+            $leaveTypeLabel = $r->leave_type ?? '';
+            $isWellness = stripos((string) $leaveTypeLabel, 'wlns') !== false || stripos((string) $leaveTypeLabel, 'wellness') !== false;
+            $reason = $isWellness ? 'Wellness' : ($r->reason ?? '—');
+
+            return [
+                'id'               => $r->id,
+                'employee'         => $r->user->name ?? '—',
+                'leave_type'       => $r->leave_type,
+                'reason'           => $reason,
+                'period'           => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '—') . ' to ' . ($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '—'),
+                'total_days'       => $r->total_days ?? '—',
+                'filed_at'         => $r->created_at ? $r->created_at->format('M d, Y') : '—',
+                'status'           => $r->status,
+                'printing_allowed' => (bool) $r->printing_allowed,
+            ];
+        });
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
+    }
+
+    public function pendingRequestsEtaData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
+        }
+
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = Eta::with('user')
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'pending')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('destination', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(fn ($e) => [
+            'id'          => $e->id,
+            'employee'    => optional($e->user)->name ?? '—',
+            'departure'   => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '—',
+            'arrival'     => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '—',
+            'destination' => $e->destination,
+            'purpose'     => $e->purpose ?? '—',
+            'filed_at'    => $e->created_at ? $e->created_at->format('M d, Y') : '—',
+        ]);
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
+    }
+
+    public function pendingRequestsLocatorData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
+        }
+
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = Locator::with('user')
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'pending')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('application_type', 'like', "%{$search}%")
+                  ->orWhere('location', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(fn ($l) => [
+            'id'               => $l->id,
+            'employee'         => optional($l->user)->name ?? '—',
+            'application_type' => $l->application_type,
+            'travel_date'      => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '—',
+            'location'         => $l->location,
+            'detail'           => $l->detail ?? '—',
+            'filed_at'         => $l->created_at ? $l->created_at->format('M d, Y') : '—',
+        ]);
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
     }
 
     /**
@@ -245,44 +387,175 @@ class AdministrativeOfficerController extends Controller
     {
         $user = $request->user();
         $dept = $this->departmentService->resolveDepartmentForUser($user);
-        $requests = collect();
-        $etaRequests = collect();
-        $locatorRequests = collect();
 
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
         if ($year < 2000 || $year > 2100) $year = (int) date('Y');
 
-        if ($dept) {
-            $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
-            $requests = LeaveRequest::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10);
+        $leaveDataUrl   = route('admin-officer.approved-requests.leave-data');
+        $etaDataUrl     = route('admin-officer.approved-requests.eta-data');
+        $locatorDataUrl = route('admin-officer.approved-requests.locator-data');
 
-            $etaRequests = Eta::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10, ['*'], 'eta_page');
+        return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl'));
+    }
 
-            $locatorRequests = Locator::with('user')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->orderBy('created_at', 'desc')
-                ->paginate(10, ['*'], 'locator_page');
+    public function approvedRequestsLeaveData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        return view('department-head.approved-requests', compact('dept', 'requests', 'etaRequests', 'locatorRequests', 'month', 'year'));
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = LeaveRequest::with(['user', 'user.leaveBalance'])
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'approved')
+            ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('leave_type', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(fn ($r) => [
+            'id'         => $r->id,
+            'employee'   => $r->user->name ?? '—',
+            'leave_type' => $r->leave_type,
+            'period'     => Carbon::parse($r->start_date)->format('M d, Y') . ' to ' . Carbon::parse($r->end_date)->format('M d, Y'),
+            'total_days' => $r->total_days ?? '—',
+            'approved_at'=> $r->updated_at ? $r->updated_at->format('M d, Y') : '—',
+            'vl'         => optional($r->user->leaveBalance)->VL ?? '0',
+            'sl'         => optional($r->user->leaveBalance)->SL ?? '0',
+        ]);
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
+    }
+
+    public function approvedRequestsEtaData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
+        }
+
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = Eta::with('user')
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'approved')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('destination', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(fn ($e) => [
+            'id'          => $e->id,
+            'employee'    => optional($e->user)->name ?? '—',
+            'departure'   => Carbon::parse($e->departure_date)->format('M d, Y'),
+            'arrival'     => Carbon::parse($e->arrival_date)->format('M d, Y'),
+            'destination' => $e->destination,
+            'purpose'     => $e->purpose ?? '',
+            'approved_at' => $e->updated_at ? $e->updated_at->format('M d, Y') : '—',
+        ]);
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
+    }
+
+    public function approvedRequestsLocatorData(Request $request)
+    {
+        $user = $request->user();
+        $dept = $this->departmentService->resolveDepartmentForUser($user);
+
+        if (!$dept) {
+            return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
+        }
+
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+
+        $query = Locator::with('user')
+            ->whereIn('user_id', $employeeIds)
+            ->where('status', 'approved')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year);
+
+        $recordsTotal = $query->count();
+
+        $search = trim($request->input('search.value', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                  ->orWhere('application_type', 'like', "%{$search}%")
+                  ->orWhere('location', 'like', "%{$search}%")
+                  ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        $recordsFiltered = $query->count();
+        $start  = max(0, $request->integer('start', 0));
+        $length = min(100, max(1, $request->integer('length', 10)));
+
+        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+
+        $data = $records->map(fn ($l) => [
+            'id'               => $l->id,
+            'employee'         => optional($l->user)->name ?? '—',
+            'application_type' => $l->application_type,
+            'travel_date'      => Carbon::parse($l->travel_date)->format('M d, Y'),
+            'location'         => $l->location,
+            'purpose'          => $l->purpose ?? '',
+            'approved_at'      => $l->updated_at ? $l->updated_at->format('M d, Y') : '—',
+        ]);
+
+        return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
     }
 
     public function statistics(Request $request)
@@ -305,75 +578,95 @@ class AdministrativeOfficerController extends Controller
                 ->get();
         }
 
-        return view('department-head.statistics', compact('dept', 'stats'));
+        $month = (int) $request->query('month', (int) date('n'));
+        $year  = (int) $request->query('year',  (int) date('Y'));
+        if ($month < 1 || $month > 12) $month = (int) date('n');
+        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $apiUrl     = route('admin-officer.statistics.data');
+        $detailsUrl = route('admin-officer.statistics.details');
+
+        return view('department-head.statistics', compact('dept', 'stats', 'month', 'year', 'apiUrl', 'detailsUrl'));
     }
 
     public function statisticsData(Request $request)
     {
-        $user = $request->user();
-        $month = (int) $request->query('month', (int) date('n'));
-        $year = (int) $request->query('year', (int) date('Y'));
+        $user   = $request->user();
+        $month  = (int) $request->query('month', (int) date('n'));
+        $year   = (int) $request->query('year',  (int) date('Y'));
+        $draw   = (int) $request->query('draw', 1);
+        $start  = (int) $request->query('start', 0);
+        $length = (int) $request->query('length', 10);
+        $search = trim($request->input('search.value', ''));
 
         $dept = $this->departmentService->resolveDepartmentForUser($user);
 
         if (!$dept) {
-            return response()->json(['success' => true, 'data' => []]);
+            return response()->json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
         $cacheKey = "ao_stats_{$dept->Dept_id}_{$month}_{$year}";
-        $rows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($dept, $month, $year) {
+        $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($dept, $month, $year) {
             $employees = User::where('Dept_id', $dept->Dept_id)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
-            // Batch aggregate queries — filter by created_at so counts match the approved-requests list
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->groupBy('user_id')
-                ->pluck('cnt', 'user_id');
+                ->whereIn('user_id', $employeeIds)->where('status', 'approved')
+                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $locatorCounts = Locator::selectRaw('user_id, COUNT(*) as cnt')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->groupBy('user_id')
-                ->pluck('cnt', 'user_id');
+                ->whereIn('user_id', $employeeIds)->where('status', 'approved')
+                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $leaveCounts = LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
-                ->whereIn('user_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->groupBy('user_id')
-                ->pluck('cnt', 'user_id');
+                ->whereIn('user_id', $employeeIds)->where('status', 'approved')
+                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $rows = [];
             foreach ($employees as $emp) {
-                $etaCount = $etaCounts->get($emp->id, 0);
+                $etaCount     = $etaCounts->get($emp->id, 0);
                 $locatorCount = $locatorCounts->get($emp->id, 0);
-                $leaveCount = $leaveCounts->get($emp->id, 0);
-
+                $leaveCount   = $leaveCounts->get($emp->id, 0);
                 $rows[] = [
-                    'EmpNo' => $emp->EmpNo ?? '',
-                    'Lname' => $emp->last_name ?? '',
-                    'Fname' => $emp->first_name ?? '',
-                    'Mname' => $emp->middle_name ?? '',
-                    'Extension' => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
-                    'Dept' => $dept->Dept_name ?? '',
-                    'eta_count' => $etaCount,
+                    'EmpNo'         => $emp->EmpNo ?? '',
+                    'Lname'         => $emp->last_name ?? '',
+                    'Fname'         => $emp->first_name ?? '',
+                    'Mname'         => $emp->middle_name ?? '',
+                    'Extension'     => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
+                    'Dept'          => $dept->Dept_name ?? '',
+                    'eta_count'     => $etaCount,
                     'locator_count' => $locatorCount,
-                    'leave_count' => $leaveCount,
-                    'total_usage' => ($etaCount + $locatorCount + $leaveCount),
+                    'leave_count'   => $leaveCount,
+                    'total_usage'   => ($etaCount + $locatorCount + $leaveCount),
                 ];
             }
 
             return $rows;
         });
 
-        return response()->json(['success' => true, 'data' => $rows]);
+        $recordsTotal = count($allRows);
+
+        if ($search !== '') {
+            $lc = strtolower($search);
+            $allRows = array_values(array_filter($allRows, function ($row) use ($lc) {
+                $name = strtolower($row['Lname'] . ' ' . $row['Fname'] . ' ' . $row['Mname']);
+                return str_contains($name, $lc)
+                    || str_contains(strtolower($row['EmpNo']), $lc)
+                    || str_contains(strtolower($row['Dept']), $lc);
+            }));
+        }
+
+        $recordsFiltered = count($allRows);
+        $data = array_slice($allRows, $start, $length > 0 ? $length : $recordsFiltered);
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => array_values($data),
+        ]);
     }
 
     public function statisticsDetails(Request $request)
