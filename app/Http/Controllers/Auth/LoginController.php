@@ -22,8 +22,8 @@ class LoginController extends Controller
     public function login(Request $request): RedirectResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required'],
+            'email' => ['required', 'email', 'max:255'],
+            'password' => ['required', 'max:72'],
         ]);
 
         $user = User::query()
@@ -152,6 +152,7 @@ class LoginController extends Controller
                 'required',
                 'string',
                 'min:8',
+                'max:72',
                 'confirmed',
                 function (string $attribute, mixed $value, \Closure $fail) use ($user): void {
                     if (Hash::check((string) $value, (string) $user->password)) {

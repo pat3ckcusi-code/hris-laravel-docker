@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - Docker Engine >= 24 with Compose V2 plugin
-#   - Copy .env.example → .env and populate secrets (or rely on defaults below)
+#   - Copy .env.example → .env and populate ALL required secrets (see .env.example)
 #
 # Service map:
 #   ┌──────────┐   ┌───────┐   ┌────────┐
@@ -50,7 +50,7 @@ x-php-env: &php-env
   DB_PORT:          "3306"
   DB_DATABASE:      "${DB_DATABASE:-hris}"
   DB_USERNAME:      "${DB_USERNAME:-laravel_user}"
-  DB_PASSWORD:      "${DB_PASSWORD:-laravel_pass}"
+  DB_PASSWORD:      "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
   SESSION_DRIVER:   database
   CACHE_STORE:      database
   QUEUE_CONNECTION: database
@@ -89,6 +89,7 @@ services:
       - ./storage/app/templates:/var/www/html/storage/app/templates   # host-bind: templates
       - ./storage/app/pds:/var/www/html/storage/app/pds               # host-bind: PDS files
       - storage_logs:/var/www/html/storage/logs
+      - ./docker/php-upload.ini:/usr/local/etc/php/conf.d/99-upload.ini:ro
     networks: [hris-dev-network]
     logging: *default-logging
     deploy:
@@ -137,10 +138,10 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}"
       MYSQL_DATABASE: "${DB_DATABASE:-hris}"
       MYSQL_USER: "${DB_USERNAME:-hris-app}"
-      MYSQL_PASSWORD: "${DB_PASSWORD:-hris_pass}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
     volumes:
       - db_data:/var/lib/mysql
     networks: [hris-dev-network]
@@ -152,7 +153,7 @@ services:
           memory: 1G
     healthcheck:
       test:
-        ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}\" || exit 1"]
+        ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"${MYSQL_ROOT_PASSWORD}\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -189,6 +190,7 @@ services:
       - ./storage/app/templates:/var/www/html/storage/app/templates
       - ./storage/app/pds:/var/www/html/storage/app/pds
       - storage_logs:/var/www/html/storage/logs
+      - ./docker/php-upload.ini:/usr/local/etc/php/conf.d/99-upload.ini:ro
     networks: [hris-dev-network]
     logging: *default-logging
     deploy:
@@ -233,7 +235,7 @@ services:
     environment:
       PMA_HOST:            db
       PMA_PORT:            "3306"
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-adminPa55w0rd!}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}"
     depends_on:
       db:
         condition: service_healthy

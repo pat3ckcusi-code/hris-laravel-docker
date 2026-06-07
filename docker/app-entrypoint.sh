@@ -52,11 +52,16 @@ if [ "${APP_ENV:-production}" = "local" ]; then
   php artisan view:clear    >/dev/null 2>&1 || true
   php artisan migrate --force 2>&1 || true
 else
+  echo "[entrypoint] Production mode — running migrations..."
+  # Migrations must succeed before caches are built.  An exit here is intentional:
+  # a failed migration means the schema is wrong and the app must not start.
+  if ! php artisan migrate --force 2>&1; then
+    echo "[entrypoint] ERROR: Migrations failed — aborting startup." >&2
+    exit 1
+  fi
   echo "[entrypoint] Production mode — building caches..."
   php artisan config:clear  >/dev/null 2>&1 || true
-  php artisan config:cache  >/dev/null 2>&1 || true
-  php artisan route:cache   >/dev/null 2>&1 || true
-  php artisan view:cache    >/dev/null 2>&1 || true
+  php artisan optimize      >/dev/null 2>&1 || true
 fi
 
 exec "$@"

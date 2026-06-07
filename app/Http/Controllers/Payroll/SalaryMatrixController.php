@@ -12,7 +12,10 @@ class SalaryMatrixController extends Controller
 {
     public function index(Request $request): View
     {
-        $year = $request->input('year', date('Y'));
+        $validated = $request->validate([
+            'year' => ['nullable', 'integer', 'digits:4', 'between:2000,2099'],
+        ]);
+        $year = $validated['year'] ?? (int) date('Y');
 
         $matrix = SalaryMatrix::where('year', $year)
             ->orderBy('sg')

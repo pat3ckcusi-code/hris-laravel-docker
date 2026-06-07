@@ -8,10 +8,11 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="auth-page auth-page-login" style="background-image: url('{{ asset('assets/login/bg.jpg') }}');">
+    @php $__settings = \App\Models\Setting::first(); @endphp
     <main class="login-shell">
         <section class="card">
             <h2>Sign in to your account</h2>
-            <p>Use your HRIS credentials to continue.</p>
+            <p>Use your {{ $__settings?->system_name ?? 'HRIS' }} credentials to continue.</p>
 
             @if ($errors->any())
                 <div class="error">{{ $errors->first() }}</div>
@@ -73,7 +74,7 @@
             Swal.fire({
                 icon: 'warning',
                 title: 'Inactive Account',
-                text: 'Your account is inactive. Please contact the City Human Resource Department.',
+                text: 'Your account is inactive. Please contact the {{ $__settings?->org_name ?? 'City Human Resource Department' }}{{ $__settings?->support_email ? ' at ' . $__settings->support_email : '' }}.',
                 confirmButtonColor: '#ea580c',
             });
         </script>
@@ -83,7 +84,7 @@
             Swal.fire({
                 icon: 'warning',
                 title: 'Separated Account',
-                text: 'Your account is separated and can no longer access the system. Please contact the City Human Resource Department.',
+                text: 'Your account is separated and can no longer access the system. Please contact the {{ $__settings?->org_name ?? 'City Human Resource Department' }}{{ $__settings?->support_email ? ' at ' . $__settings->support_email : '' }}.',
                 confirmButtonColor: '#ea580c',
             });
         </script>

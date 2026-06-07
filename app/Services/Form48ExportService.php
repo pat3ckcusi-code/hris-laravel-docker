@@ -7,6 +7,7 @@ use App\Models\Dtr;
 use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\Locator;
+use App\Models\Setting;
 use App\Models\User;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -18,9 +19,23 @@ class Form48ExportService
         private readonly DtrPunchResolver $punchResolver,
     ) {}
 
-    // Password that freezes the exported sheet — it opens and prints normally
-    // but cannot be edited without this password.
-    private const SHEET_PASSWORD = 'securepassword';
+    private ?array $shiftConfig = null;
+
+    private function shiftConfig(): array
+    {
+        if ($this->shiftConfig !== null) {
+            return $this->shiftConfig;
+        }
+        $s = Setting::first();
+
+        return $this->shiftConfig = [
+            'work_start' => $s?->work_start ?? '08:00',
+            'morning_end' => $s?->morning_end ?? '11:00',
+            'lunch_return' => $s?->lunch_return ?? '13:00',
+            'noon_end' => $s?->noon_end ?? '14:00',
+            'work_end' => $s?->work_end ?? '17:00',
+        ];
+    }
 
     // Row where day 1 lives: 11 + 1 = 12.
     private const DATA_ROW_OFFSET = 11;
@@ -231,16 +246,17 @@ class Form48ExportService
                     'arrival' => $arr,
                 ];
 
-                if ($dep <= '08:00') {
+                $sc = $this->shiftConfig();
+                if ($dep <= $sc['work_start']) {
                     $cur['covers_am_in'] = true;
                 }
-                if ($dep <= '12:00' && $arr >= '11:00') {
+                if ($dep <= '12:00' && $arr >= $sc['morning_end']) {
                     $cur['covers_am_out'] = true;
                 }
-                if ($dep <= '13:00' && $arr >= '13:00') {
+                if ($dep <= $sc['lunch_return'] && $arr >= $sc['lunch_return']) {
                     $cur['covers_pm_in'] = true;
                 }
-                if ($arr >= '17:00') {
+                if ($arr >= $sc['work_end']) {
                     $cur['covers_pm_out'] = true;
                 }
 
@@ -357,27 +373,34 @@ class Form48ExportService
         string $pmIn,
         string $pmOut
     ): array {
+        $s = Setting::first();
+        $workStart = $s?->work_start ?? '08:00';
+        $morningEnd = $s?->morning_end ?? '11:00';
+        $lunchReturn = $s?->lunch_return ?? '13:00';
+        $noonEnd = $s?->noon_end ?? '14:00';
+        $workEnd = $s?->work_end ?? '17:00';
+
         $tardiness = 0;
         $undertime = 0;
 
         if ($amIn !== '' && $amIn !== 'LOCATOR') {
             $hm = substr($amIn, 0, 5);
-            if ($hm > '08:00' && $hm < '11:00') {
-                $tardiness += (int) Carbon::parse("$date 08:00")->diffInMinutes(Carbon::parse("$date $hm"));
+            if ($hm > $workStart && $hm < $morningEnd) {
+                $tardiness += (int) Carbon::parse("$date $workStart")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
         if ($pmIn !== '' && $pmIn !== 'LOCATOR') {
             $hm = substr($pmIn, 0, 5);
-            if ($hm > '13:00' && $hm < '14:00') {
-                $tardiness += (int) Carbon::parse("$date 13:00")->diffInMinutes(Carbon::parse("$date $hm"));
+            if ($hm > $lunchReturn && $hm < $noonEnd) {
+                $tardiness += (int) Carbon::parse("$date $lunchReturn")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
         if ($pmOut !== '' && $pmOut !== 'LOCATOR') {
             $hm = substr($pmOut, 0, 5);
-            if ($hm >= '13:00' && $hm < '17:00') {
-                $undertime += (int) Carbon::parse("$date $hm")->diffInMinutes(Carbon::parse("$date 17:00"));
+            if ($hm >= $lunchReturn && $hm < $workEnd) {
+                $undertime += (int) Carbon::parse("$date $hm")->diffInMinutes(Carbon::parse("$date $workEnd"));
             }
         }
 
@@ -452,9 +475,15 @@ class Form48ExportService
      */
     private function lockSheet(Worksheet $sheet): void
     {
+        $s = Setting::first();
+        $enabled = $s?->excel_protection_enabled ?? (bool) env('EXCEL_EXPORT_PROTECTION_ENABLED', true);
+        if (! $enabled) {
+            return;
+        }
+        $password = $s?->excel_sheet_password ?? env('EXCEL_EXPORT_SHEET_PASSWORD', '');
         $sheet->getProtection()
             ->setSheet(true)
-            ->setPassword(self::SHEET_PASSWORD);
+            ->setPassword((string) $password);
     }
 
     /**
@@ -689,9 +718,10 @@ class Form48ExportService
             $amInHm = $cellHm($amIn);
             $pmInHm = $cellHm($pmIn);
             $pmOutHm = $cellHm($pmOut);
-            $redAmIn = $amInHm !== null && $amInHm > '08:00' && $amInHm < '11:00';
-            $redPmIn = $pmInHm !== null && $pmInHm > '13:00' && $pmInHm < '14:00';
-            $redPmOut = $pmOutHm !== null && $pmOutHm >= '13:00' && $pmOutHm < '17:00';
+            $sc = $this->shiftConfig();
+            $redAmIn = $amInHm !== null && $amInHm > $sc['work_start'] && $amInHm < $sc['morning_end'];
+            $redPmIn = $pmInHm !== null && $pmInHm > $sc['lunch_return'] && $pmInHm < $sc['noon_end'];
+            $redPmOut = $pmOutHm !== null && $pmOutHm >= $sc['lunch_return'] && $pmOutHm < $sc['work_end'];
 
             foreach (range(0, 3) as $i) {
                 $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $amIn);

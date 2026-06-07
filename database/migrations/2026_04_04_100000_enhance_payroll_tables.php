@@ -9,43 +9,51 @@ return new class extends Migration
     public function up(): void
     {
         // ── DTR: replace single time_in/time_out with AM/PM pair ──
-        Schema::table('dtrs', function (Blueprint $table) {
-            $table->time('time_in_am')->nullable()->after('date');
-            $table->time('time_out_am')->nullable()->after('time_in_am');
-            $table->time('time_in_pm')->nullable()->after('time_out_am');
-            $table->time('time_out_pm')->nullable()->after('time_in_pm');
-            $table->integer('late_minutes')->default(0)->after('time_out_pm');
-            $table->integer('undertime_minutes')->default(0)->after('late_minutes');
-            $table->boolean('is_absent')->default(false)->after('undertime_minutes');
-        });
+        // Guards are required so this migration is safe to run after a backup
+        // restore, where these columns already exist in their final form.
+        if (! Schema::hasColumn('dtrs', 'time_in_am')) {
+            Schema::table('dtrs', function (Blueprint $table) {
+                $table->time('time_in_am')->nullable()->after('date');
+                $table->time('time_out_am')->nullable()->after('time_in_am');
+                $table->time('time_in_pm')->nullable()->after('time_out_am');
+                $table->time('time_out_pm')->nullable()->after('time_in_pm');
+                $table->integer('late_minutes')->default(0)->after('time_out_pm');
+                $table->integer('undertime_minutes')->default(0)->after('late_minutes');
+                $table->boolean('is_absent')->default(false)->after('undertime_minutes');
+            });
 
-        // Migrate existing data using Eloquent for portability
-        \App\Models\Dtr::whereNotNull('time_in')->orWhereNotNull('time_out')->each(function ($dtr) {
-            $dtr->update([
-                'time_in_am' => $dtr->getRawOriginal('time_in'),
-                'time_out_pm' => $dtr->getRawOriginal('time_out'),
-            ]);
-        });
+            // Migrate existing data using Eloquent for portability
+            \App\Models\Dtr::whereNotNull('time_in')->orWhereNotNull('time_out')->each(function ($dtr) {
+                $dtr->update([
+                    'time_in_am' => $dtr->getRawOriginal('time_in'),
+                    'time_out_pm' => $dtr->getRawOriginal('time_out'),
+                ]);
+            });
 
-        Schema::table('dtrs', function (Blueprint $table) {
-            $table->dropColumn(['time_in', 'time_out']);
-        });
+            Schema::table('dtrs', function (Blueprint $table) {
+                $table->dropColumn(['time_in', 'time_out']);
+            });
+        }
 
         // ── PayrollRun: add period date range for computation ──
-        Schema::table('payroll_runs', function (Blueprint $table) {
-            $table->date('period_start')->nullable()->after('period');
-            $table->date('period_end')->nullable()->after('period_start');
-        });
+        if (! Schema::hasColumn('payroll_runs', 'period_start')) {
+            Schema::table('payroll_runs', function (Blueprint $table) {
+                $table->date('period_start')->nullable()->after('period');
+                $table->date('period_end')->nullable()->after('period_start');
+            });
+        }
 
         // ── PayrollDetail: add breakdown columns ──
-        Schema::table('payroll_details', function (Blueprint $table) {
-            $table->integer('days_worked')->default(0)->after('employee_id');
-            $table->integer('late_minutes')->default(0)->after('days_worked');
-            $table->integer('undertime_minutes')->default(0)->after('late_minutes');
-            $table->integer('absent_days')->default(0)->after('undertime_minutes');
-            $table->decimal('lwop_deduction', 12, 2)->default(0)->after('deductions');
-            $table->decimal('loan_deduction', 12, 2)->default(0)->after('lwop_deduction');
-        });
+        if (! Schema::hasColumn('payroll_details', 'days_worked')) {
+            Schema::table('payroll_details', function (Blueprint $table) {
+                $table->integer('days_worked')->default(0)->after('employee_id');
+                $table->integer('late_minutes')->default(0)->after('days_worked');
+                $table->integer('undertime_minutes')->default(0)->after('late_minutes');
+                $table->integer('absent_days')->default(0)->after('undertime_minutes');
+                $table->decimal('lwop_deduction', 12, 2)->default(0)->after('deductions');
+                $table->decimal('loan_deduction', 12, 2)->default(0)->after('lwop_deduction');
+            });
+        }
 
         // ── EmployeeEarning: add recurring_flag (alias-safe) ──
         // Column 'amount' and 'recurring' already exist from original migration.
@@ -54,10 +62,12 @@ return new class extends Migration
         // ── EmployeeDeduction: same — already has amount + recurring ──
 
         // ── EmployeeAssignment: add pds_id for linkage to user_pds ──
-        Schema::table('employee_assignments', function (Blueprint $table) {
-            $table->unsignedBigInteger('pds_id')->nullable()->after('employee_id');
-            $table->foreign('pds_id')->references('id')->on('user_pds')->nullOnDelete();
-        });
+        if (! Schema::hasColumn('employee_assignments', 'pds_id')) {
+            Schema::table('employee_assignments', function (Blueprint $table) {
+                $table->unsignedBigInteger('pds_id')->nullable()->after('employee_id');
+                $table->foreign('pds_id')->references('id')->on('user_pds')->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void

@@ -201,9 +201,9 @@ class LeaveManagerController extends Controller
     public function apiCancelDate(Request $request)
     {
         $request->validate([
-            'leave_id' => 'required|integer',
-            'date' => 'required|date',
-            'reason' => 'required|string'
+            'leave_id' => 'required|integer|min:1',
+            'date'     => 'required|date',
+            'reason'   => 'required|string|max:2000',
         ]);
 
         $leaveId = $request->input('leave_id');
@@ -448,7 +448,7 @@ class LeaveManagerController extends Controller
      */
     public function apiRejectCancellation(Request $request, $leave)
     {
-        $request->validate([ 'remarks' => 'required|string' ]);
+        $request->validate(['remarks' => 'required|string|max:2000']);
         $leave = LeaveRequest::with(['user', 'leaveDates'])->find($leave);
         if (! $leave) return response()->json(['error' => 'Leave not found'], 404);
 
@@ -529,7 +529,7 @@ class LeaveManagerController extends Controller
      */
     public function employeeSearch(Request $request)
     {
-        $q = $request->query('q', '');
+        $q = substr(trim((string) $request->query('q', '')), 0, 100);
         if (strlen($q) < 2) return response()->json([]);
 
         $rows = User::query()
@@ -558,25 +558,21 @@ class LeaveManagerController extends Controller
      */
     public function applyCredits(Request $request)
     {
-        $data = $request->only(['id', 'tardiness', 'undertime', 'deduction_days', 'deduct_from']);
+        $data = $request->validate([
+            'id'             => 'required|integer|min:1',
+            'tardiness'      => 'nullable|integer|min:0|max:14400',
+            'undertime'      => 'nullable|integer|min:0|max:14400',
+            'deduction_days' => 'nullable|numeric|min:0|max:365',
+            'deduct_from'    => 'nullable|string|in:VL,SL,CTO,SPL,WLNS,SP,NONE',
+        ]);
 
-        $id = $data['id'] ?? null;
-        if (!$id) {
-            return response()->json(['message' => 'Missing id'], 422);
-        }
-
-        $balance = LeaveBalance::find($id);
+        $balance = LeaveBalance::find($data['id']);
         if (!$balance) {
             return response()->json(['message' => 'Balance not found'], 404);
         }
 
-        $deduction = isset($data['deduction_days']) ? (float) $data['deduction_days'] : 0.0;
+        $deduction = (float) ($data['deduction_days'] ?? 0);
         $deductFrom = $data['deduct_from'] ?? 'NONE';
-
-        $allowed = ['VL', 'SL', 'CTO', 'SPL', 'WLNS', 'SP'];
-        if ($deductFrom !== 'NONE' && !in_array($deductFrom, $allowed, true)) {
-            return response()->json(['message' => 'Invalid deduct_from field'], 422);
-        }
 
         if ($deduction > 0 && $deductFrom !== 'NONE') {
             // subtract deduction from chosen field, keeping nulls handled as 0

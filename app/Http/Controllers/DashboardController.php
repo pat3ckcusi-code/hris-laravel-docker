@@ -109,12 +109,17 @@ class DashboardController extends Controller
         try {
             $this->ensureEmployee($request);
 
+            $request->validate([
+                'section_key' => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/'],
+            ]);
+
             $user = $request->user();
             $sectionKey = $request->input('section_key');
             $sectionDataRaw = $request->input('section_data', []);
 
-            if (!$sectionKey) {
-                return response()->json(['error' => 'Section key is required.'], 400);
+            // Reject payloads that would serialize to more than 100 KB
+            if (strlen((string) json_encode($sectionDataRaw)) > 102400) {
+                return response()->json(['error' => 'Section data payload is too large.'], 413);
             }
 
             // Parse JSON string if necessary

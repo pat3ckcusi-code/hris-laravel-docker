@@ -37,8 +37,9 @@
 <div class="wrapper">
 
     <div class="header">
-        <div class="header-title">HRIS &mdash; {{ $requestType }}</div>
-        <div class="header-sub">Human Resource Information System &bull; LGU Calapan</div>
+        @php $s = \App\Models\Setting::first(); @endphp
+        <div class="header-title">{{ $s?->system_name ?? 'HRIS' }} &mdash; {{ $requestType }}</div>
+        <div class="header-sub">Human Resource Information System &bull; {{ $s?->org_name ?? 'LGU Calapan' }}</div>
     </div>
 
     <div class="body">
@@ -92,7 +93,7 @@
 
         <hr>
         <p style="font-size:14px;">For questions, please contact your Department Head or the HR office directly.</p>
-        <p style="font-size:14px;">Regards,<br><strong>City Human Resource Office Department</strong></p>
+        <p style="font-size:14px;">Regards,<br><strong>{{ $s?->mail_from_name ?? $s?->org_name ?? 'City Human Resource Office Department' }}</strong></p>
         <p class="footer">This is an automated notification from the HRIS system. Please do not reply to this email.</p>
     </div>
 

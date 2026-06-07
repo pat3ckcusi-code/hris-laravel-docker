@@ -126,9 +126,17 @@ class LeaveRequestController extends Controller
      
         if ($request->has('leave_dates')) {
             $request->validate([
-                'leave_types' => 'required|array|min:1',
-                'leave_dates' => 'required|string',
-                'reason' => 'nullable|string',
+                'leave_types'                => 'required|array|min:1|max:10',
+                'leave_types.*'              => 'string|max:100',
+                'leave_dates'                => 'required|string|max:2000',
+                'reason'                     => 'nullable|string|max:2000',
+                'details_location'           => 'nullable|string|max:50',
+                'details_location_specify'   => 'nullable|string|max:255',
+                'details_sick_illness'       => 'nullable|string|max:255',
+                'details_sick_treatment'     => 'nullable|string|max:50',
+                'allocation'                 => 'nullable|array|max:90',
+                'allocation.*.type'          => 'nullable|string|max:100',
+                'allocation.*.days'          => 'nullable|numeric|min:0|max:1',
             ]);
 
             $dates = array_values(array_filter(explode(',', $request->leave_dates)));
@@ -470,10 +478,14 @@ class LeaveRequestController extends Controller
             }
         } else {
             $request->validate([
-                'leave_type' => 'required|string',
-                'start_date' => 'required|date',
-                'end_date' => 'required|date|after_or_equal:start_date',
-                'reason' => 'nullable|string',
+                'leave_type'                 => 'required|string|max:100',
+                'start_date'                 => 'required|date',
+                'end_date'                   => 'required|date|after_or_equal:start_date',
+                'reason'                     => 'nullable|string|max:2000',
+                'details_location'           => 'nullable|string|max:50',
+                'details_location_specify'   => 'nullable|string|max:255',
+                'details_sick_illness'       => 'nullable|string|max:255',
+                'details_sick_treatment'     => 'nullable|string|max:50',
             ]);
 
             // Determine which leave types require extra details or reason (legacy single-type form)
@@ -678,7 +690,7 @@ class LeaveRequestController extends Controller
             return redirect()->back()->with('error', 'Only approved leaves can request cancellation.');
         }
 
-        $request->validate([ 'reason' => 'required|string' ]);
+        $request->validate(['reason' => 'required|string|max:2000']);
 
         $leave->cancellation_status = 'Pending Cancellation';
         $leave->cancellation_reason = $request->input('reason');

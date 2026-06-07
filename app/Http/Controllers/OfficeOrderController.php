@@ -93,7 +93,7 @@ class OfficeOrderController extends Controller
             'issued_date' => 'required|date',
             'effective_date' => 'nullable|date|after_or_equal:issued_date',
             'subject' => 'required|string|max:255',
-            'details' => 'required|string',
+            'details' => 'required|string|max:5000',
             'remarks' => 'nullable|string|max:255',
         ]);
 

@@ -378,6 +378,10 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.settings');
     Route::post('/dashboard/hr-manager/settings', [HRManagerController::class, 'updateSettings'])
         ->name('hr-manager.settings.update');
+    Route::get('/dashboard/hr-manager/settings/backup', [HRManagerController::class, 'backupDatabase'])
+        ->name('hr-manager.settings.backup');
+    Route::post('/dashboard/hr-manager/settings/restore', [HRManagerController::class, 'restoreDatabase'])
+        ->name('hr-manager.settings.restore');
 
     Route::get('/dashboard/hr-manager/records/data', [HRManagerController::class, 'recordsData'])
         ->name('hr-manager.records.data');

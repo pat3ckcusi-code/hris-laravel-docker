@@ -2,23 +2,25 @@
 
 namespace App\Services;
 
-use App\Models\LeaveRequest;
 use App\Models\Department;
 use App\Models\EmployeeAssignment;
+use App\Models\HRAuditTrail;
+use App\Models\LeaveRequest;
 use App\Models\Plantilla;
 use App\Models\SalaryMatrix;
 use App\Models\Setting;
 use App\Models\User;
-use setasign\Fpdi\Fpdi;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
-use App\Models\HRAuditTrail;
-use App\Mail\LeaveRequestStatusNotification;
 use App\Notifications\HrisTransactionNotification;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use setasign\Fpdi\Fpdi;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -29,17 +31,20 @@ class LeaveRequestService
 {
     protected DepartmentService $departmentService;
 
+    private ?int $cachedLeaveDecimals = null;
+
     public function __construct(DepartmentService $departmentService)
     {
         $this->departmentService = $departmentService;
     }
 
+    private function leaveDecimals(): int
+    {
+        return $this->cachedLeaveDecimals ??= (Setting::first()?->leave_balance_decimals ?? 3);
+    }
+
     /**
      * Determine if the given user may print the provided leave request.
-     *
-     * @param  \App\Models\LeaveRequest  $leave
-     * @param  \App\Models\User  $user
-     * @return bool
      */
     public function canPrint(LeaveRequest $leave, User $user): bool
     {
@@ -51,7 +56,7 @@ class LeaveRequestService
         // Department Heads and HR Managers may print their own approved leave without
         // the printing_allowed flag — they have no AO in their own approval chain.
         if ($leave->user_id === $user->id && $leave->status === 'approved') {
-            $role = strtolower(str_replace(['-', '_'], ' ', trim((string)($user->access_level ?? ''))));
+            $role = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
             if (str_contains($role, 'department head') || str_contains($role, 'hr manager')) {
                 return true;
             }
@@ -72,7 +77,7 @@ class LeaveRequestService
         }
 
         try {
-            $role = strtolower(trim((string)$user->access_level));
+            $role = strtolower(trim((string) $user->access_level));
             if ($role === 'administrative officer') {
                 return true;
             }
@@ -86,19 +91,24 @@ class LeaveRequestService
     /**
      * Generate PDF content for a leave request using the existing template mapping.
      * Returns a Symfony response containing PDF bytes on success.
-     *
-     * @param  \App\Models\LeaveRequest  $leave
-     * @return \Illuminate\Http\Response
      */
     public function generatePdfResponse(LeaveRequest $leave): Response
     {
         $employee = $leave->user;
 
         $fullNameParts = [];
-        if (!empty($employee->first_name)) $fullNameParts[] = $employee->first_name;
-        if (!empty($employee->middle_name)) $fullNameParts[] = $employee->middle_name;
-        if (!empty($employee->last_name)) $fullNameParts[] = $employee->last_name;
-        if (empty($fullNameParts) && !empty($employee->name)) $fullNameParts[] = $employee->name;
+        if (! empty($employee->first_name)) {
+            $fullNameParts[] = $employee->first_name;
+        }
+        if (! empty($employee->middle_name)) {
+            $fullNameParts[] = $employee->middle_name;
+        }
+        if (! empty($employee->last_name)) {
+            $fullNameParts[] = $employee->last_name;
+        }
+        if (empty($fullNameParts) && ! empty($employee->name)) {
+            $fullNameParts[] = $employee->name;
+        }
         $fullName = implode(' ', $fullNameParts);
 
         $start = $leave->start_date ? Carbon::parse($leave->start_date)->format('M d, Y') : '';
@@ -118,9 +128,10 @@ class LeaveRequestService
         }
 
         $templatePath = storage_path('app/templates/Leave_Form.pdf');
-        if (!file_exists($templatePath)) {
+        if (! file_exists($templatePath)) {
             // fallback: render existing blade fallback view
             $view = view('employee.leave-print', ['leaves' => collect([$leave])]);
+
             return response($view->render(), 200);
         }
 
@@ -130,7 +141,7 @@ class LeaveRequestService
             $mapping = include $mappingFile;
         }
 
-        $pdf = new Fpdi();
+        $pdf = new Fpdi;
         $pdf->setSourceFile($templatePath);
         $tplId = $pdf->importPage(1);
         $pdf->AddPage();
@@ -156,9 +167,11 @@ class LeaveRequestService
                 $size = $cfg['size'] ?? 9;
                 $pdf->SetFont($font, '', $size);
                 $pdf->SetXY($cfg['x'], $cfg['y']);
-                $pdf->Write(5, (string)$text);
+                $pdf->Write(5, (string) $text);
+
                 return true;
             }
+
             return false;
         };
 
@@ -168,14 +181,22 @@ class LeaveRequestService
         // Department head name
         $deptHeadName = '';
         try {
-            if (isset($dept) && $dept && !empty($dept->EmpNo)) {
+            if (isset($dept) && $dept && ! empty($dept->EmpNo)) {
                 $headUser = User::where('EmpNo', $dept->EmpNo)->first();
                 if ($headUser) {
                     $parts = [];
-                    if (!empty($headUser->first_name)) $parts[] = $headUser->first_name;
-                    if (!empty($headUser->middle_name)) $parts[] = $headUser->middle_name;
-                    if (!empty($headUser->last_name)) $parts[] = $headUser->last_name;
-                    if (empty($parts) && !empty($headUser->name)) $parts[] = $headUser->name;
+                    if (! empty($headUser->first_name)) {
+                        $parts[] = $headUser->first_name;
+                    }
+                    if (! empty($headUser->middle_name)) {
+                        $parts[] = $headUser->middle_name;
+                    }
+                    if (! empty($headUser->last_name)) {
+                        $parts[] = $headUser->last_name;
+                    }
+                    if (empty($parts) && ! empty($headUser->name)) {
+                        $parts[] = $headUser->name;
+                    }
                     $deptHeadName = implode(' ', $parts);
                 }
             }
@@ -186,15 +207,15 @@ class LeaveRequestService
             $write('department_head', $deptHeadName);
         }
         $write('period', ($start && $end) ? "{$start} to {$end}" : '');
-        $write('total_days', (string)($leave->total_days ?? ''));
+        $write('total_days', (string) ($leave->total_days ?? ''));
         $write('approved_at', $approvedAt, ['bold' => true]);
-        $write('vl', (string)($leave->balance_vacation_leave ?? ''));
-        $write('sl', (string)($leave->balance_sick_leave ?? ''));
+        $write('vl', (string) ($leave->balance_vacation_leave ?? ''));
+        $write('sl', (string) ($leave->balance_sick_leave ?? ''));
 
         $put('abroad_place', $leave->details_location_specify ?? '');
 
         // sick treatment handling and other mapping adjustments follow same logic
-        $sickTreatment = strtolower(trim((string)($leave->details_sick_treatment ?? '')));
+        $sickTreatment = strtolower(trim((string) ($leave->details_sick_treatment ?? '')));
         $specCoords = $mapping['specify_illness_coords'] ?? null;
         if ($sickTreatment !== '') {
             if (strpos($sickTreatment, 'in hospital') !== false || strpos($sickTreatment, 'in_hospital') !== false || strpos($sickTreatment, 'hospital') !== false) {
@@ -221,10 +242,12 @@ class LeaveRequestService
         // Compute printable reason, with Wellness override when WLNS is present in preview or leave type
         $reason = (string) ($leave->reason ?? '');
         $isWellnessPreview = false;
-        if (!empty($preview)) {
-            if (isset($preview['WLNS']) && floatval($preview['WLNS']) > 0) $isWellnessPreview = true;
+        if (! empty($preview)) {
+            if (isset($preview['WLNS']) && floatval($preview['WLNS']) > 0) {
+                $isWellnessPreview = true;
+            }
         }
-        if ($isWellnessPreview || stripos((string)($leave->leave_type ?? ''), 'wellness') !== false || stripos((string)($leave->leave_type ?? ''), 'wlns') !== false) {
+        if ($isWellnessPreview || stripos((string) ($leave->leave_type ?? ''), 'wellness') !== false || stripos((string) ($leave->leave_type ?? ''), 'wlns') !== false) {
             $reason = 'Wellness';
         }
 
@@ -238,10 +261,14 @@ class LeaveRequestService
 
         // Prefer per-type preview if available
         $preview = [];
-        if (!empty($leave->printing_deduction_details)) {
-            try { $preview = json_decode($leave->printing_deduction_details, true) ?: []; } catch (\Exception $e) { $preview = []; }
+        if (! empty($leave->printing_deduction_details)) {
+            try {
+                $preview = json_decode($leave->printing_deduction_details, true) ?: [];
+            } catch (\Exception $e) {
+                $preview = [];
+            }
         }
-        $lt = strtolower((string)($leave->leave_type ?? ''));
+        $lt = strtolower((string) ($leave->leave_type ?? ''));
         $displayRequestedVL = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? ($leave->paid_days ?? 0) : 0);
         $displayRequestedSL = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? ($leave->paid_days ?? 0) : 0);
 
@@ -282,9 +309,10 @@ class LeaveRequestService
         ]);
 
         // Attempt to write combined totals into mapping keys for Section 7.A if mapping contains them
-        $write('total_earned', number_format($combinedTotalEarned, 3, '.', ''));
-        $write('less_this_application', number_format($combinedLess, 3, '.', ''));
-        $write('balance_total', number_format($combinedBalance, 3, '.', ''));
+        $dec = $this->leaveDecimals();
+        $write('total_earned', number_format($combinedTotalEarned, $dec, '.', ''));
+        $write('less_this_application', number_format($combinedLess, $dec, '.', ''));
+        $write('balance_total', number_format($combinedBalance, $dec, '.', ''));
 
         // write reason field into PDF mapping if present
         try {
@@ -296,51 +324,68 @@ class LeaveRequestService
         $PaidDays = $leave->paid_days ?? 0;
         $LWOPDays = $leave->lwop_days ?? 0;
 
-        $formatUpTo3 = function ($val) {
-            if (!is_numeric($val)) return (string)$val;
-            $s = (string)$val;
-            $neg = false;
-            if (substr($s,0,1) === '-') { $neg = true; $s = substr($s,1); }
-            if (strpos($s, '.') === false) {
-                return $neg ? ('-' . $s) : $s;
+        $leaveDecimals = $this->leaveDecimals();
+        $formatUpTo3 = function ($val) use ($leaveDecimals) {
+            if (! is_numeric($val)) {
+                return (string) $val;
             }
-            list($int, $dec) = explode('.', $s, 2);
-            $dec = substr($dec . str_repeat('0', 3), 0, 3);
+            $s = (string) $val;
+            $neg = false;
+            if (substr($s, 0, 1) === '-') {
+                $neg = true;
+                $s = substr($s, 1);
+            }
+            if (strpos($s, '.') === false) {
+                return $neg ? ('-'.$s) : $s;
+            }
+            [$int, $dec] = explode('.', $s, 2);
+            $dec = substr($dec.str_repeat('0', $leaveDecimals), 0, $leaveDecimals);
             $dec = rtrim($dec, '0');
-            if ($dec === '') return $neg ? ('-' . $int) : $int;
-            return ($neg ? '-' : '') . $int . '.' . $dec;
+            if ($dec === '') {
+                return $neg ? ('-'.$int) : $int;
+            }
+
+            return ($neg ? '-' : '').$int.'.'.$dec;
         };
 
         $m = $mapping;
 
         if (! $put('vl_total_earned', $formatUpTo3($displayTotalEarnedVL))) {
-            $pdf->SetXY(60, 204); $pdf->Write(5, $formatUpTo3($displayTotalEarnedVL));
+            $pdf->SetXY(60, 204);
+            $pdf->Write(5, $formatUpTo3($displayTotalEarnedVL));
         }
         if (! $put('vl_requested', $formatUpTo3($displayRequestedVL))) {
-            $pdf->SetXY(60, 208); $pdf->Write(5, $formatUpTo3($displayRequestedVL));
+            $pdf->SetXY(60, 208);
+            $pdf->Write(5, $formatUpTo3($displayRequestedVL));
         }
         if (! $put('vl_balance', $formatUpTo3($displayBalanceVL))) {
-            $pdf->SetXY(60, 212); $pdf->Write(5, $formatUpTo3($displayBalanceVL));
+            $pdf->SetXY(60, 212);
+            $pdf->Write(5, $formatUpTo3($displayBalanceVL));
         }
 
         if (! $put('sl_total_earned', $formatUpTo3($displayTotalEarnedSL))) {
-            $pdf->SetXY(87, 204); $pdf->Write(5, $formatUpTo3($displayTotalEarnedSL));
+            $pdf->SetXY(87, 204);
+            $pdf->Write(5, $formatUpTo3($displayTotalEarnedSL));
         }
         if (! $put('sl_requested', $formatUpTo3($displayRequestedSL))) {
-            $pdf->SetXY(87, 208); $pdf->Write(5, $formatUpTo3($displayRequestedSL));
+            $pdf->SetXY(87, 208);
+            $pdf->Write(5, $formatUpTo3($displayRequestedSL));
         }
         if (! $put('sl_balance', $formatUpTo3($displayBalanceSL))) {
-            $pdf->SetXY(87, 212); $pdf->Write(5, $formatUpTo3($displayBalanceSL));
+            $pdf->SetXY(87, 212);
+            $pdf->Write(5, $formatUpTo3($displayBalanceSL));
         }
 
         if (! $put('paid_days', $formatUpTo3($PaidDays))) {
-            $pdf->SetXY(23, 236); $pdf->Write(5, $formatUpTo3($PaidDays));
+            $pdf->SetXY(23, 236);
+            $pdf->Write(5, $formatUpTo3($PaidDays));
         }
         if (! $put('lwop_days', $formatUpTo3($LWOPDays))) {
-            $pdf->SetXY(23, 239); $pdf->Write(5, $formatUpTo3($LWOPDays));
+            $pdf->SetXY(23, 239);
+            $pdf->Write(5, $formatUpTo3($LWOPDays));
         }
 
-        $selectedKeys = array_filter(array_map('trim', explode(',', (string)$leave->leave_type)));
+        $selectedKeys = array_filter(array_map('trim', explode(',', (string) $leave->leave_type)));
         $leaveTypeCoords = $m['leave_type_coords'] ?? [];
         $normCoords = [];
         foreach ($leaveTypeCoords as $k => $v) {
@@ -348,7 +393,9 @@ class LeaveRequestService
         }
         foreach ($selectedKeys as $key) {
             $normKey = strtolower(trim($key));
-            if (!isset($normCoords[$normKey])) continue;
+            if (! isset($normCoords[$normKey])) {
+                continue;
+            }
             [$lx, $ly] = $normCoords[$normKey];
             $pdf->SetXY($lx, $ly);
             if ($normKey === 'others') {
@@ -379,72 +426,72 @@ class LeaveRequestService
 
         $pm = $m['purpose_marks'] ?? [];
         if (strpos($purposeLower, 'within the philippines') !== false) {
-            $mark = $pm['within_the_philippines'] ?? [115,81];
+            $mark = $pm['within_the_philippines'] ?? [115, 81];
             $markX($mark[0], $mark[1]);
         }
         if (strpos($purposeLower, 'abroad') !== false) {
-            $mark = $pm['abroad'] ?? [115,86];
+            $mark = $pm['abroad'] ?? [115, 86];
             $markX($mark[0], $mark[1]);
         }
         if (strpos($purposeLower, 'in hospital') !== false) {
-            $mark = $pm['in_hospital'] ?? [115,96];
+            $mark = $pm['in_hospital'] ?? [115, 96];
             $markX($mark[0], $mark[1]);
         }
         if (strpos($purposeLower, 'out patient') !== false || strpos($purposeLower, 'outpatient') !== false) {
-            $mark = $pm['out_patient'] ?? [115,101];
+            $mark = $pm['out_patient'] ?? [115, 101];
             $markX($mark[0], $mark[1]);
         }
 
-        $treatment = strtolower(trim((string)($leave->details_sick_treatment ?? '')));
+        $treatment = strtolower(trim((string) ($leave->details_sick_treatment ?? '')));
         if ($treatment !== '') {
             if (strpos($treatment, 'hospital') !== false || $treatment === 'in_hospital' || $treatment === 'in-hospital' || $treatment === 'hospital') {
-                $coords = $pm['in_hospital'] ?? [115,96];
+                $coords = $pm['in_hospital'] ?? [115, 96];
                 $markX($coords[0], $coords[1]);
             } elseif (strpos($treatment, 'out') !== false || $treatment === 'out_patient' || $treatment === 'outpatient') {
-                $coords = $pm['out_patient'] ?? [115,101];
+                $coords = $pm['out_patient'] ?? [115, 101];
                 $markX($coords[0], $coords[1]);
             }
         }
 
         if (preg_match('/special\s+leave\s+benefits\s+for\s+women\s*:\s*([^|]+)/i', $purposeText, $wm)) {
-            $womenIllness = trim((string)$wm[1]);
+            $womenIllness = trim((string) $wm[1]);
             if ($womenIllness !== '') {
                 $pdf->SetFont('Arial', '', 9);
-                $coords = $pm['women_illness'] ?? [115,122];
+                $coords = $pm['women_illness'] ?? [115, 122];
                 $pdf->SetXY($coords[0], $coords[1]);
                 $pdf->MultiCell(80, 4, $womenIllness);
             }
         }
 
         if (strpos($purposeLower, "completion of master's degree") !== false || strpos($purposeLower, 'completion of masters degree') !== false) {
-            $coords = $pm['study_completion'] ?? [115,132];
+            $coords = $pm['study_completion'] ?? [115, 132];
             $markX($coords[0], $coords[1]);
         }
         if (strpos($purposeLower, 'bar/board examination review') !== false || strpos($purposeLower, 'bar') !== false) {
-            $coords = $pm['bar_review'] ?? [115,137];
+            $coords = $pm['bar_review'] ?? [115, 137];
             $markX($coords[0], $coords[1]);
         }
 
         if (strpos($purposeLower, 'monetization of leave credits') !== false || strpos($purposeLower, 'monetization') !== false) {
-            $coords = $pm['monetization'] ?? [115,148];
+            $coords = $pm['monetization'] ?? [115, 148];
             $markX($coords[0], $coords[1]);
         }
         if (strpos($purposeLower, 'terminal leave') !== false) {
-            $coords = $pm['terminal_leave'] ?? [115,152];
+            $coords = $pm['terminal_leave'] ?? [115, 152];
             $markX($coords[0], $coords[1]);
         }
 
-        $isExplicitOthers = stripos((string)$leave->leave_type, 'Others') !== false;
+        $isExplicitOthers = stripos((string) $leave->leave_type, 'Others') !== false;
         if ($isExplicitOthers && in_array('Others', $selectedKeys)) {
             $area = $m['others_area'] ?? null;
-            $reason = (string)($leave->reason ?? '');
-            $pdf->SetFont('Arial','',11);
+            $reason = (string) ($leave->reason ?? '');
+            $pdf->SetFont('Arial', '', 11);
             if ($area) {
                 $pdf->SetXY($area['x'], $area['y']);
                 $pdf->MultiCell($area['w'], $area['h'], $reason);
             } else {
-                $pdf->SetXY(23,152);
-                $pdf->MultiCell(120,5,$reason);
+                $pdf->SetXY(23, 152);
+                $pdf->MultiCell(120, 5, $reason);
             }
         }
 
@@ -465,10 +512,10 @@ class LeaveRequestService
             }
 
             // HR Manager is always written
-            if (!empty($siteSettings->hr_manager_name)) {
+            if (! empty($siteSettings->hr_manager_name)) {
                 $write('hr_manager_name', $siteSettings->hr_manager_name);
             }
-            if (!empty($siteSettings->hr_manager_designation)) {
+            if (! empty($siteSettings->hr_manager_designation)) {
                 $write('hr_manager_designation', $siteSettings->hr_manager_designation);
             }
         }
@@ -483,29 +530,31 @@ class LeaveRequestService
         }
 
         $pdfContent = $pdf->Output('S');
+
         return response($pdfContent, 200)
             ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="leave-'. $leave->id .'.pdf"');
+            ->header('Content-Disposition', 'inline; filename="leave-'.$leave->id.'.pdf"');
     }
 
     /**
      * Approve a leave request and perform balance deductions where applicable.
      * Keeps the same response shapes as the controller version.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  Request  $request
      * @param  int  $id
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     * @return RedirectResponse|JsonResponse
      */
     public function approveLeave($request, $id)
     {
         $leave = LeaveRequest::findOrFail($id);
         // Enforce that Department Head / Administrative Officer must allow printing first
         $actor = auth()->user();
-        $actorRole = strtolower(str_replace(['-','_'], ' ', trim((string) ($actor->access_level ?? ''))));
+        $actorRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($actor->access_level ?? ''))));
         if (in_array($actorRole, ['department head', 'administrative officer'], true) && empty($leave->printing_allowed)) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => 'Printing must be allowed before approval.'], 422);
             }
+
             return redirect()->back()->with('error', 'Printing must be allowed before approval.');
         }
 
@@ -513,37 +562,64 @@ class LeaveRequestService
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Leave already approved.']);
             }
+
             return redirect()->back()->with('success', 'Leave already approved.');
         }
 
         $user = $leave->user;
         $leaveBalance = $user->leaveBalance;
-        if (!$leaveBalance) {
+        if (! $leaveBalance) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => 'No leave balance record found for this user.'], 422);
             }
+
             return redirect()->back()->with('error', 'No leave balance record found for this user.');
         }
 
         $column = null;
         $label = strtolower($leave->leave_type ?? '');
-        if (str_contains($label, 'vacation') || str_contains($label, 'vl')) $column = 'VL';
-        elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) $column = 'SL';
-        elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) $column = 'WLNS';
-        elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) $column = 'SP';
-        elseif (str_contains($label, 'special') || str_contains($label, 'privilege') || str_contains($label, 'spl')) $column = 'SPL';
-        elseif (str_contains($label, 'cto')) $column = 'CTO';
+        if (str_contains($label, 'vacation') || str_contains($label, 'vl')) {
+            $column = 'VL';
+        } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
+            $column = 'SL';
+        } elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) {
+            $column = 'WLNS';
+        } elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) {
+            $column = 'SP';
+        } elseif (str_contains($label, 'special') || str_contains($label, 'privilege') || str_contains($label, 'spl')) {
+            $column = 'SPL';
+        } elseif (str_contains($label, 'cto')) {
+            $column = 'CTO';
+        }
 
-        if (!$column) {
+        if (! $column) {
             $parts = array_map('trim', explode(',', $leave->leave_type));
             foreach ($parts as $p) {
                 $pl = strtolower($p);
-                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl')) { $column = 'VL'; break; }
-                if (str_contains($pl, 'sick') || str_contains($pl, 'sl')) { $column = 'SL'; break; }
-                if (str_contains($pl, 'wellness') || str_contains($pl, 'wlns')) { $column = 'WLNS'; break; }
-                if (str_contains($pl, 'solo') || str_contains($pl, 'solo parent')) { $column = 'SP'; break; }
-                if (str_contains($pl, 'special') || str_contains($pl, 'privilege') || str_contains($pl, 'spl')) { $column = 'SPL'; break; }
-                if (str_contains($pl, 'cto')) { $column = 'CTO'; break; }
+                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl')) {
+                    $column = 'VL';
+                    break;
+                }
+                if (str_contains($pl, 'sick') || str_contains($pl, 'sl')) {
+                    $column = 'SL';
+                    break;
+                }
+                if (str_contains($pl, 'wellness') || str_contains($pl, 'wlns')) {
+                    $column = 'WLNS';
+                    break;
+                }
+                if (str_contains($pl, 'solo') || str_contains($pl, 'solo parent')) {
+                    $column = 'SP';
+                    break;
+                }
+                if (str_contains($pl, 'special') || str_contains($pl, 'privilege') || str_contains($pl, 'spl')) {
+                    $column = 'SPL';
+                    break;
+                }
+                if (str_contains($pl, 'cto')) {
+                    $column = 'CTO';
+                    break;
+                }
             }
         }
 
@@ -554,36 +630,38 @@ class LeaveRequestService
             // notify employee about approval
             try {
                 $employee = $leave->user;
-                if ($employee && !empty($employee->Dept_id)) {
+                if ($employee && ! empty($employee->Dept_id)) {
                     $dept = Department::find($employee->Dept_id);
-                    if ($dept) $employee->department_name = $dept->Dept_name ?? null;
+                    if ($dept) {
+                        $employee->department_name = $dept->Dept_name ?? null;
+                    }
                 }
                 $formatted = [
                     'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
                     'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                    'end'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                    'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
                 ];
                 $balances = [
-                    'VL'   => $leaveBalance->VL   ?? 0,
-                    'SL'   => $leaveBalance->SL   ?? 0,
+                    'VL' => $leaveBalance->VL ?? 0,
+                    'SL' => $leaveBalance->SL ?? 0,
                     'WLNS' => $leaveBalance->WLNS ?? 0,
-                    'SP'   => $leaveBalance->SP   ?? 0,
-                    'SPL'  => $leaveBalance->SPL  ?? 0,
-                    'CTO'  => $leaveBalance->CTO  ?? 0,
+                    'SP' => $leaveBalance->SP ?? 0,
+                    'SPL' => $leaveBalance->SPL ?? 0,
+                    'CTO' => $leaveBalance->CTO ?? 0,
                 ];
                 if ($employee) {
                     $email = $employee->email ?? null;
                     Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                    if (!empty($email)) {
+                    if (! empty($email)) {
                         $employee->notify(new HrisTransactionNotification(
                             requestType: 'Leave Request',
                             status: 'Approved',
                             details: [
                                 'Leave Type' => $leave->leave_type ?? 'N/A',
                                 'Start Date' => $formatted['start'],
-                                'End Date'   => $formatted['end'],
+                                'End Date' => $formatted['end'],
                                 'Date Filed' => $formatted['filed'],
-                                'VL Balance' => number_format($balances['VL'] ?? 0, 3),
+                                'VL Balance' => number_format($balances['VL'] ?? 0, $this->leaveDecimals()),
                                 'SL Balance' => number_format($balances['SL'] ?? 0, 0),
                             ],
                         ));
@@ -598,45 +676,48 @@ class LeaveRequestService
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Leave approved.']);
             }
+
             return redirect()->back()->with('success', 'Leave approved.');
         }
 
-        if (!$column) {
+        if (! $column) {
             $leave->status = 'approved';
             $leave->save();
             // notify employee about approval
             try {
                 $employee = $leave->user;
-                if ($employee && !empty($employee->Dept_id)) {
+                if ($employee && ! empty($employee->Dept_id)) {
                     $dept = Department::find($employee->Dept_id);
-                    if ($dept) $employee->department_name = $dept->Dept_name ?? null;
+                    if ($dept) {
+                        $employee->department_name = $dept->Dept_name ?? null;
+                    }
                 }
                 $formatted = [
                     'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
                     'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                    'end'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                    'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
                 ];
                 $balances = [
-                    'VL'   => $leaveBalance->VL   ?? 0,
-                    'SL'   => $leaveBalance->SL   ?? 0,
+                    'VL' => $leaveBalance->VL ?? 0,
+                    'SL' => $leaveBalance->SL ?? 0,
                     'WLNS' => $leaveBalance->WLNS ?? 0,
-                    'SP'   => $leaveBalance->SP   ?? 0,
-                    'SPL'  => $leaveBalance->SPL  ?? 0,
-                    'CTO'  => $leaveBalance->CTO  ?? 0,
+                    'SP' => $leaveBalance->SP ?? 0,
+                    'SPL' => $leaveBalance->SPL ?? 0,
+                    'CTO' => $leaveBalance->CTO ?? 0,
                 ];
                 if ($employee) {
                     $email = $employee->email ?? null;
                     Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                    if (!empty($email)) {
+                    if (! empty($email)) {
                         $employee->notify(new HrisTransactionNotification(
                             requestType: 'Leave Request',
                             status: 'Approved',
                             details: [
                                 'Leave Type' => $leave->leave_type ?? 'N/A',
                                 'Start Date' => $formatted['start'],
-                                'End Date'   => $formatted['end'],
+                                'End Date' => $formatted['end'],
                                 'Date Filed' => $formatted['filed'],
-                                'VL Balance' => number_format($balances['VL'] ?? 0, 3),
+                                'VL Balance' => number_format($balances['VL'] ?? 0, $this->leaveDecimals()),
                                 'SL Balance' => number_format($balances['SL'] ?? 0, 0),
                             ],
                         ));
@@ -651,6 +732,7 @@ class LeaveRequestService
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Leave approved.']);
             }
+
             return redirect()->back()->with('success', 'Leave approved.');
         }
 
@@ -667,11 +749,15 @@ class LeaveRequestService
         try {
             // If a per-type preview exists, apply those deductions exactly.
             $preview = [];
-            if (!empty($leave->printing_deduction_details)) {
-                try { $preview = json_decode($leave->printing_deduction_details, true) ?: []; } catch (\Exception $_) { $preview = []; }
+            if (! empty($leave->printing_deduction_details)) {
+                try {
+                    $preview = json_decode($leave->printing_deduction_details, true) ?: [];
+                } catch (\Exception $_) {
+                    $preview = [];
+                }
             }
 
-            if (!empty($preview)) {
+            if (! empty($preview)) {
                 // helper to resolve field name on leaveBalance
                 // tries preferred DB-style column names first (balance_*), then lowercase/uppercase short codes
                 $resolveField = function ($leaveBalance, $key) {
@@ -689,21 +775,24 @@ class LeaveRequestService
                             return $cand;
                         }
                     }
+
                     return null;
                 };
 
                 DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField) {
                     foreach ($preview as $col => $amt) {
-                        if (!is_numeric($amt) || floatval($amt) <= 0) continue;
+                        if (! is_numeric($amt) || floatval($amt) <= 0) {
+                            continue;
+                        }
                         $amt = floatval($amt);
-                        $key = strtoupper((string)$col);
+                        $key = strtoupper((string) $col);
                         $field = $resolveField($leaveBalance, $key);
-                        if (!$field) {
+                        if (! $field) {
                             // unknown or non-deductible type; skip
                             continue;
                         }
                         if (floatval($leaveBalance->{$field} ?? 0) < $amt) {
-                            throw new \Exception('Insufficient ' . $key . ' balance.');
+                            throw new \Exception('Insufficient '.$key.' balance.');
                         }
                         $leaveBalance->{$field} = floatval($leaveBalance->{$field} ?? 0) - $amt;
                         $deductionLog[$key] = $amt;
@@ -725,25 +814,29 @@ class LeaveRequestService
             } else {
                 // Fallback: previous single-column deduction behavior
                 DB::transaction(function () use ($leaveBalance, $column, $toDeduct, $leave, &$deductionLog, $resolveField) {
-                    $colKey = strtoupper((string)$column);
+                    $colKey = strtoupper((string) $column);
 
                     if ($colKey === 'SL') {
                         $slField = $resolveField($leaveBalance, 'SL');
                         $vlField = $resolveField($leaveBalance, 'VL');
                         $dedFromSL = min(floatval($leaveBalance->{$slField} ?? 0), $toDeduct);
-                        if ($slField) $leaveBalance->{$slField} = floatval($leaveBalance->{$slField} ?? 0) - $dedFromSL;
+                        if ($slField) {
+                            $leaveBalance->{$slField} = floatval($leaveBalance->{$slField} ?? 0) - $dedFromSL;
+                        }
                         $deductionLog['SL'] = $dedFromSL;
                         $remaining = $toDeduct - $dedFromSL;
                         if ($remaining > 0) {
                             $dedFromVL = min(floatval($leaveBalance->{$vlField} ?? 0), $remaining);
-                            if ($vlField) $leaveBalance->{$vlField} = floatval($leaveBalance->{$vlField} ?? 0) - $dedFromVL;
+                            if ($vlField) {
+                                $leaveBalance->{$vlField} = floatval($leaveBalance->{$vlField} ?? 0) - $dedFromVL;
+                            }
                             $deductionLog['VL'] = $dedFromVL;
                             $remaining -= $dedFromVL;
                         }
                         if (isset($remaining) && $remaining > 0) {
                             throw new \Exception('Insufficient combined SL/VL balance.');
                         }
-                    } else if ($colKey === 'WLNS') {
+                    } elseif ($colKey === 'WLNS') {
                         $fld = $resolveField($leaveBalance, 'WLNS');
                         if (floatval($leaveBalance->{$fld} ?? 0) < $toDeduct) {
                             throw new \Exception('Insufficient wellness leave (WLNS) balance.');
@@ -752,11 +845,11 @@ class LeaveRequestService
                         $deductionLog['WLNS'] = $toDeduct;
                     } else {
                         $fld = $resolveField($leaveBalance, $colKey);
-                        if (!$fld) {
-                            throw new \Exception('Unsupported leave balance column: ' . $column);
+                        if (! $fld) {
+                            throw new \Exception('Unsupported leave balance column: '.$column);
                         }
                         if (floatval($leaveBalance->{$fld} ?? 0) < $toDeduct) {
-                            throw new \Exception('Insufficient leave balance for ' . $column . '.');
+                            throw new \Exception('Insufficient leave balance for '.$column.'.');
                         }
                         $leaveBalance->{$fld} = floatval($leaveBalance->{$fld} ?? 0) - $toDeduct;
                         $deductionLog[$colKey] = $toDeduct;
@@ -782,37 +875,38 @@ class LeaveRequestService
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
             }
+
             return redirect()->back()->with('error', $e->getMessage());
         }
 
-            try {
-                HRAuditTrail::create([
-                    'actor_user_id' => auth()->id(),
-                    'module' => 'leave',
-                    'action' => 'deduct_leave_balances',
-                    'target_type' => 'leave_request',
-                    'target_id' => $leave->id,
-                    'details' => [
-                        'original_balances' => $originalBalances,
-                        'printing_preview' => (!empty($leave->printing_deduction_details) ? json_decode($leave->printing_deduction_details, true) : []),
-                        'leave_reason' => $reason,
-                        'deduction_details' => $deductionLog,
-                        'leave_status' => $leave->status,
-                        'approver_id' => auth()->id(),
-                        'timestamp' => now()->toDateTimeString(),
-                        'type_labels' => [
-                            'VL' => 'Vacation Leave',
-                            'SL' => 'Sick Leave',
-                            'WLNS' => 'Wellness Leave',
-                            'SPL' => 'Special Privilege Leave',
-                            'CTO' => 'CTO',
-                            'SP' => 'Solo Parent Leave',
-                        ],
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => auth()->id(),
+                'module' => 'leave',
+                'action' => 'deduct_leave_balances',
+                'target_type' => 'leave_request',
+                'target_id' => $leave->id,
+                'details' => [
+                    'original_balances' => $originalBalances,
+                    'printing_preview' => (! empty($leave->printing_deduction_details) ? json_decode($leave->printing_deduction_details, true) : []),
+                    'leave_reason' => $reason,
+                    'deduction_details' => $deductionLog,
+                    'leave_status' => $leave->status,
+                    'approver_id' => auth()->id(),
+                    'timestamp' => now()->toDateTimeString(),
+                    'type_labels' => [
+                        'VL' => 'Vacation Leave',
+                        'SL' => 'Sick Leave',
+                        'WLNS' => 'Wellness Leave',
+                        'SPL' => 'Special Privilege Leave',
+                        'CTO' => 'CTO',
+                        'SP' => 'Solo Parent Leave',
                     ],
-                ]);
-            } catch (\Exception $ex) {
-                Log::error('Failed to write HRAuditTrail for leave deduction', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
-            }
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            Log::error('Failed to write HRAuditTrail for leave deduction', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+        }
 
         Log::info('Leave approved and credits deducted', [
             'leave_id' => $leave->id,
@@ -825,34 +919,36 @@ class LeaveRequestService
         // notify employee about approval after transaction (runs for both Ajax and non-Ajax)
         try {
             $employee = $leave->user;
-            if ($employee && !empty($employee->Dept_id)) {
+            if ($employee && ! empty($employee->Dept_id)) {
                 $dept = Department::find($employee->Dept_id);
-                if ($dept) $employee->department_name = $dept->Dept_name ?? null;
+                if ($dept) {
+                    $employee->department_name = $dept->Dept_name ?? null;
+                }
             }
             $formatted = [
                 'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
                 'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                'end'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
             ];
             $balances = [
-                'VL'   => $leaveBalance->VL   ?? 0,
-                'SL'   => $leaveBalance->SL   ?? 0,
+                'VL' => $leaveBalance->VL ?? 0,
+                'SL' => $leaveBalance->SL ?? 0,
                 'WLNS' => $leaveBalance->WLNS ?? 0,
-                'SP'   => $leaveBalance->SP   ?? 0,
-                'SPL'  => $leaveBalance->SPL  ?? 0,
-                'CTO'  => $leaveBalance->CTO  ?? 0,
+                'SP' => $leaveBalance->SP ?? 0,
+                'SPL' => $leaveBalance->SPL ?? 0,
+                'CTO' => $leaveBalance->CTO ?? 0,
             ];
             if ($employee) {
                 $email = $employee->email ?? null;
                 Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
                         requestType: 'Leave Request',
                         status: 'Approved',
                         details: [
                             'Leave Type' => $leave->leave_type ?? 'N/A',
                             'Start Date' => $formatted['start'],
-                            'End Date'   => $formatted['end'],
+                            'End Date' => $formatted['end'],
                             'Date Filed' => $formatted['filed'],
                             'VL Balance' => number_format($balances['VL'] ?? 0, 3),
                             'SL Balance' => number_format($balances['SL'] ?? 0, 0),
@@ -869,6 +965,7 @@ class LeaveRequestService
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Leave approved and balance updated.']);
         }
+
         return redirect()->back()->with('success', 'Leave approved and balance updated.');
     }
 
@@ -879,7 +976,7 @@ class LeaveRequestService
     public function generateExcelResponse(LeaveRequest $leave): StreamedResponse
     {
         $templatePath = storage_path('app/templates/LEAVE.xlsx');
-        if (!file_exists($templatePath)) {
+        if (! file_exists($templatePath)) {
             abort(500, 'Leave Excel template not found.');
         }
 
@@ -890,7 +987,7 @@ class LeaveRequestService
         $checkMark = '✓';
 
         // --- 1. Header / Personal Info ---
-        $lastName  = $employee->last_name ?? '';
+        $lastName = $employee->last_name ?? '';
         $firstName = $employee->first_name ?? '';
         $middleName = $employee->middle_name ?? '';
         $fullName = trim("{$lastName}, {$firstName} {$middleName}");
@@ -940,33 +1037,33 @@ class LeaveRequestService
 
         // --- 2. Leave Type Checkboxes (Column B) ---
         $leaveTypeRowMap = [
-            'vacation leave'                    => 11,
-            'vl'                                => 11,
-            'mandatory/forced leave'            => 13,
-            'mandatory leave'                   => 13,
-            'forced leave'                      => 13,
-            'sick leave'                        => 15,
-            'sl'                                => 15,
-            'maternity leave'                   => 17,
-            'paternity leave'                   => 19,
-            'special privilege leave'           => 21,
-            'spl'                               => 21,
-            'solo parent leave'                 => 23,
-            'study leave'                       => 25,
-            '10-day vawc leave'                 => 27,
-            'vawc leave'                        => 27,
-            'vawc'                              => 27,
-            'rehabilitation privilege'          => 29,
-            'special leave benefits for women'  => 31,
-            'special emergency (calamity) leave'=> 33,
-            'calamity leave'                    => 33,
-            'adoption leave'                    => 35,
-            'wellness leave'                    => 39,
-            'wlns'                              => 39,
-            'others'                            => 39,
+            'vacation leave' => 11,
+            'vl' => 11,
+            'mandatory/forced leave' => 13,
+            'mandatory leave' => 13,
+            'forced leave' => 13,
+            'sick leave' => 15,
+            'sl' => 15,
+            'maternity leave' => 17,
+            'paternity leave' => 19,
+            'special privilege leave' => 21,
+            'spl' => 21,
+            'solo parent leave' => 23,
+            'study leave' => 25,
+            '10-day vawc leave' => 27,
+            'vawc leave' => 27,
+            'vawc' => 27,
+            'rehabilitation privilege' => 29,
+            'special leave benefits for women' => 31,
+            'special emergency (calamity) leave' => 33,
+            'calamity leave' => 33,
+            'adoption leave' => 35,
+            'wellness leave' => 39,
+            'wlns' => 39,
+            'others' => 39,
         ];
 
-        $selectedTypes = array_filter(array_map('trim', explode(',', (string)$leave->leave_type)));
+        $selectedTypes = array_filter(array_map('trim', explode(',', (string) $leave->leave_type)));
         $matchedOthers = false;
         foreach ($selectedTypes as $type) {
             $normalized = strtolower(trim($type));
@@ -986,7 +1083,7 @@ class LeaveRequestService
         // Do not populate D39 (description cell) as it is not part of official layout.
 
         // --- 3. Details of Leave (right side) ---
-        $location = strtolower(trim((string)($leave->details_location ?? '')));
+        $location = strtolower(trim((string) ($leave->details_location ?? '')));
         $locationSpecify = $leave->details_location_specify ?? '';
 
         if (strpos($location, 'within') !== false || $location === 'within_the_philippines') {
@@ -1003,7 +1100,7 @@ class LeaveRequestService
         }
 
         // Sick leave details
-        $sickTreatment = strtolower(trim((string)($leave->details_sick_treatment ?? '')));
+        $sickTreatment = strtolower(trim((string) ($leave->details_sick_treatment ?? '')));
         $sickIllness = $leave->details_sick_illness ?? '';
         if (strpos($sickTreatment, 'hospital') !== false || $sickTreatment === 'in_hospital') {
             $sheet->setCellValue('H19', $checkMark);
@@ -1022,7 +1119,7 @@ class LeaveRequestService
         $sheet->setCellValue('C44', $leave->total_days ?? '');
 
         $start = $leave->start_date ? Carbon::parse($leave->start_date)->format('m/d/Y') : '';
-        $end   = $leave->end_date   ? Carbon::parse($leave->end_date)->format('m/d/Y') : '';
+        $end = $leave->end_date ? Carbon::parse($leave->end_date)->format('m/d/Y') : '';
         $inclusiveDates = ($start && $end) ? "{$start} - {$end}" : ($start ?: $end);
         $sheet->setCellValue('C48', $inclusiveDates);
 
@@ -1036,7 +1133,7 @@ class LeaveRequestService
         $slCurrent = floatval($empLB ? ($empLB->SL ?? $leave->balance_sick_leave ?? 0) : ($leave->balance_sick_leave ?? 0));
         // Prefer per-type deduction preview if available (from filing or allow-print preview)
         $preview = [];
-        if (!empty($leave->printing_deduction_details)) {
+        if (! empty($leave->printing_deduction_details)) {
             try {
                 $preview = json_decode($leave->printing_deduction_details, true) ?: [];
             } catch (\Exception $e) {
@@ -1044,7 +1141,7 @@ class LeaveRequestService
             }
         }
 
-        $lt = strtolower((string)($leave->leave_type ?? ''));
+        $lt = strtolower((string) ($leave->leave_type ?? ''));
         $vlRequested = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
         $slRequested = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
         $vlBalance = $vlCurrent - $vlRequested;
@@ -1081,7 +1178,7 @@ class LeaveRequestService
 
         // HR Manager name
         $siteSettings = Setting::first();
-        if ($siteSettings && !empty($siteSettings->hr_manager_name)) {
+        if ($siteSettings && ! empty($siteSettings->hr_manager_name)) {
             $sheet->setCellValue('C60', $siteSettings->hr_manager_name);
         }
 
@@ -1115,7 +1212,7 @@ class LeaveRequestService
         $officialLabel = '';
         if (isset($dept)) {
             // Department head name for recommendation
-            if (!empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
+            if (! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
                 $headUser = User::where('EmpNo', $dept->EmpNo)->first();
                 if ($headUser && $headUser->access_level === 'department head') {
                     $headParts = array_filter([
@@ -1153,17 +1250,17 @@ class LeaveRequestService
             ]);
         }
 
-        $filename = "Leave_Form_{$leave->id}_" . now()->format('Ymd_His') . '.xlsx';
+        $filename = "Leave_Form_{$leave->id}_".now()->format('Ymd_His').'.xlsx';
 
         // Audit log
         $user = auth()->user();
         Log::info('Leave form printed (Excel)', [
             'leave_request_id' => $leave->id,
-            'printed_by'       => $user->id ?? null,
-            'role'             => $user->access_level ?? null,
-            'timestamp'        => now()->toDateTimeString(),
-            'filename'         => $filename,
-            'lock_applied'     => $lockApplied,
+            'printed_by' => $user->id ?? null,
+            'role' => $user->access_level ?? null,
+            'timestamp' => now()->toDateTimeString(),
+            'filename' => $filename,
+            'lock_applied' => $lockApplied,
             'format_preserved' => true,
             'official_included' => $officialLabel ?: null,
         ]);
@@ -1187,14 +1284,15 @@ class LeaveRequestService
      */
     private function formatBalance($val): string
     {
-        if (!is_numeric($val)) {
-            return (string)$val;
+        if (! is_numeric($val)) {
+            return (string) $val;
         }
-        $float = (float)$val;
-        if ($float == (int)$float) {
-            return (string)(int)$float;
+        $float = (float) $val;
+        if ($float == (int) $float) {
+            return (string) (int) $float;
         }
-        return rtrim(rtrim(number_format($float, 3, '.', ''), '0'), '.');
+
+        return rtrim(rtrim(number_format($float, $this->leaveDecimals(), '.', ''), '0'), '.');
     }
 
     /**
@@ -1203,7 +1301,7 @@ class LeaveRequestService
      */
     private function resolveRootDepartment(?Department $dept, int $maxDepth = 10): ?Department
     {
-        if (!$dept) {
+        if (! $dept) {
             return null;
         }
 
@@ -1216,7 +1314,7 @@ class LeaveRequestService
             }
             $visited[] = $current->Dept_id;
             $parent = Department::where('Dept_id', $current->parent_dept_id)->first();
-            if (!$parent) {
+            if (! $parent) {
                 break;
             }
             $current = $parent;
@@ -1232,7 +1330,7 @@ class LeaveRequestService
     private function isUnderViceMayor(?Department $dept): bool
     {
         $root = $this->resolveRootDepartment($dept);
-        if (!$root) {
+        if (! $root) {
             return false;
         }
 
@@ -1247,7 +1345,7 @@ class LeaveRequestService
      */
     private function resolveExecutiveSignatory(?Department $dept, ?Setting $settings): array
     {
-        if (!$settings) {
+        if (! $settings) {
             return ['', '', ''];
         }
 
@@ -1269,11 +1367,11 @@ class LeaveRequestService
     /**
      * Lock all sheets in the spreadsheet to prevent editing.
      */
-    private function protectAllSheets(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet, ?User $employee): void
+    private function protectAllSheets(Spreadsheet $spreadsheet, ?User $employee): void
     {
         $first = $employee->first_name ?? ($employee->firstname ?? '');
-        $last  = $employee->last_name ?? ($employee->lastname ?? '');
-        $password = strtoupper($first . substr((string) $last, 0, 1));
+        $last = $employee->last_name ?? ($employee->lastname ?? '');
+        $password = strtoupper($first.substr((string) $last, 0, 1));
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             // NOTE: We intentionally skip bulk getStyle($range)->setLocked() here.

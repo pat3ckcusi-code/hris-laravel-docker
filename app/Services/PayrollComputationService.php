@@ -13,6 +13,7 @@ use App\Models\PayrollDetail;
 use App\Models\PayrollException;
 use App\Models\PayrollRun;
 use App\Models\SalaryMatrix;
+use App\Models\Setting;
 use App\Models\User;
 
 class PayrollComputationService
@@ -34,7 +35,7 @@ class PayrollComputationService
             ->where('start_date', '<=', $run->period_end)
             ->where(function ($q) use ($run) {
                 $q->whereNull('end_date')
-                  ->orWhere('end_date', '>=', $run->period_start);
+                    ->orWhere('end_date', '>=', $run->period_start);
             })
             ->get();
 
@@ -53,7 +54,7 @@ class PayrollComputationService
             $employee = $assignment->employee;
             $plantilla = $assignment->plantilla;
 
-            if (!$employee || !$plantilla) {
+            if (! $employee || ! $plantilla) {
                 continue;
             }
 
@@ -91,7 +92,7 @@ class PayrollComputationService
                 PayrollException::create([
                     'payroll_run_id' => $run->id,
                     'type' => 'lwop_deduction',
-                    'description' => "{$employee->name}: ₱" . number_format($lwopDeduction, 2) . " LWOP deduction applied.",
+                    'description' => "{$employee->name}: ₱".number_format($lwopDeduction, 2).' LWOP deduction applied.',
                 ]);
             }
 
@@ -141,7 +142,7 @@ class PayrollComputationService
             ->where('year', $year)
             ->first();
 
-        if (!$entry) {
+        if (! $entry) {
             // Fallback: try latest available year
             $entry = SalaryMatrix::where('sg', $sg)
                 ->where('step', $step)
@@ -149,8 +150,9 @@ class PayrollComputationService
                 ->first();
         }
 
-        if (!$entry) {
+        if (! $entry) {
             $errors[] = "No salary matrix entry for SG-{$sg} Step {$step}.";
+
             return 0;
         }
 
@@ -194,7 +196,7 @@ class PayrollComputationService
             if ($cursor->isWeekday()) {
                 if (in_array($cursor->format('Y-m-d'), $dtrDates)) {
                     $dtr = $dtrs->first(fn ($d) => $d->date->format('Y-m-d') === $cursor->format('Y-m-d'));
-                    if ($dtr && !$dtr->is_absent && $dtr->status !== 'absent') {
+                    if ($dtr && ! $dtr->is_absent && $dtr->status !== 'absent') {
                         $daysWorked++;
                         $totalLate += $dtr->late_minutes ?? 0;
                         $totalUndertime += $dtr->undertime_minutes ?? 0;
@@ -263,7 +265,7 @@ class PayrollComputationService
             ->where('lwop_days', '>', 0)
             ->where(function ($q) use ($run) {
                 $q->whereBetween('start_date', [$run->period_start, $run->period_end])
-                  ->orWhereBetween('end_date', [$run->period_start, $run->period_end]);
+                    ->orWhereBetween('end_date', [$run->period_start, $run->period_end]);
             })
             ->sum('lwop_days');
 
@@ -271,7 +273,8 @@ class PayrollComputationService
             return 0;
         }
 
-        $dailyRate = $basicSalary / 22;
+        $workingDays = Setting::first()?->payroll_working_days_per_month ?? 22;
+        $dailyRate = $basicSalary / $workingDays;
 
         return round($dailyRate * $lwopDays, 2);
     }

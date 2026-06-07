@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -117,7 +118,7 @@ class HRManagerController extends Controller
             }
 
             // compute service bucket
-            if (!empty($row->date_hired)) {
+            if (! empty($row->date_hired)) {
                 try {
                     $yearsOfService = Carbon::parse($row->date_hired)->diffInYears(now());
                 } catch (\Throwable $e) {
@@ -137,9 +138,9 @@ class HRManagerController extends Controller
                 'gender' => $genderVal,
                 'age' => $age,
                 'age_bucket' => $ageBucket,
-                    'employee_type' => $row->employee_type ?? null,
-                    'status' => $row->Status,
-                    'date_hired' => $row->date_hired ? Carbon::parse($row->date_hired)->toDateString() : null,
+                'employee_type' => $row->employee_type ?? null,
+                'status' => $row->Status,
+                'date_hired' => $row->date_hired ? Carbon::parse($row->date_hired)->toDateString() : null,
                 'length_of_service' => $serviceBucket,
                 'department' => $row->Dept_name,
             ];
@@ -392,7 +393,7 @@ class HRManagerController extends Controller
         if ($employee && $employee->email) {
             try {
                 Mail::raw(
-                    'Your requested document (' . $documentRequest->document_type . ') is completed and ready for release.',
+                    'Your requested document ('.$documentRequest->document_type.') is completed and ready for release.',
                     static function ($message) use ($employee): void {
                         $message->to($employee->email)->subject('HRIS Document Request Update');
                     }
@@ -427,12 +428,12 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        if (!in_array($format, ['pdf', 'excel'], true)) {
+        if (! in_array($format, ['pdf', 'excel'], true)) {
             return redirect()->route('hr-manager.reports');
         }
 
         $chart = $this->buildChartData(null);
-        $filename = 'hr-workforce-report-' . now()->format('Ymd-His');
+        $filename = 'hr-workforce-report-'.now()->format('Ymd-His');
 
         return response()->streamDownload(function () use ($chart): void {
             $headers = ['Metric', 'Category', 'Value'];
@@ -448,7 +449,7 @@ class HRManagerController extends Controller
             }
 
             fclose($handle);
-        }, $filename . ($format === 'pdf' ? '.pdf' : '.csv'), [
+        }, $filename.($format === 'pdf' ? '.pdf' : '.csv'), [
             'Content-Type' => 'text/csv',
         ]);
     }
@@ -508,38 +509,187 @@ class HRManagerController extends Controller
         $this->ensureHrManager($request);
 
         $validated = $request->validate([
-            'records_enabled'         => 'nullable|boolean',
-            'leave_enabled'           => 'nullable|boolean',
-            'frontdesk_enabled'       => 'nullable|boolean',
+            // General
+            'system_name' => 'nullable|string|max:100',
+            'org_name' => 'nullable|string|max:255',
+            'support_email' => 'nullable|email|max:255',
+            'timezone' => 'nullable|string|max:100',
+            'date_format' => 'nullable|string|max:50',
+            // Module toggles
+            'records_enabled' => 'nullable|boolean',
+            'leave_enabled' => 'nullable|boolean',
+            'frontdesk_enabled' => 'nullable|boolean',
+            'payroll_enabled' => 'nullable|boolean',
+            'attendance_enabled' => 'nullable|boolean',
+            'eta_enabled' => 'nullable|boolean',
             'pending_alert_threshold' => 'nullable|integer|min:1',
-            'email_template_subject'  => 'nullable|string|max:255',
-            'email_template_body'     => 'nullable|string',
-            'mayor_name'              => 'nullable|string|max:255',
-            'mayor_designation'       => 'nullable|string|max:255',
-            'vice_mayor_name'         => 'nullable|string|max:255',
-            'vice_mayor_designation'  => 'nullable|string|max:255',
-            'hr_manager_name'         => 'nullable|string|max:255',
-            'hr_manager_designation'  => 'nullable|string|max:255',
+            // Email templates
+            'email_template_subject' => 'nullable|string|max:255',
+            'email_template_body' => 'nullable|string',
+            // Attendance / shift schedule
+            'work_start' => 'nullable|date_format:H:i',
+            'lunch_return' => 'nullable|date_format:H:i',
+            'work_end' => 'nullable|date_format:H:i',
+            'morning_end' => 'nullable|date_format:H:i',
+            'noon_end' => 'nullable|date_format:H:i',
+            // Payroll
+            'payroll_working_days_per_month' => 'nullable|integer|min:1|max:31',
+            // Leave
+            'leave_balance_decimals' => 'nullable|integer|min:0|max:5',
+            // Signatories
+            'mayor_name' => 'nullable|string|max:255',
+            'mayor_designation' => 'nullable|string|max:255',
+            'vice_mayor_name' => 'nullable|string|max:255',
+            'vice_mayor_designation' => 'nullable|string|max:255',
+            'hr_manager_name' => 'nullable|string|max:255',
+            'hr_manager_designation' => 'nullable|string|max:255',
+            // Notification / email from
+            'mail_from_address' => 'nullable|email|max:255',
+            'mail_from_name' => 'nullable|string|max:255',
+            // Export
+            'excel_sheet_password' => 'nullable|string|max:255',
+            'excel_protection_enabled' => 'nullable|boolean',
+            'pdf_font_family' => 'nullable|string|max:100',
+            'pdf_font_size' => 'nullable|integer|min:6|max:72',
+            // Dashboard
+            'dashboard_cache_ttl' => 'nullable|integer|min:1|max:120',
         ]);
 
-        $validated['records_enabled']   = $request->boolean('records_enabled');
-        $validated['leave_enabled']     = $request->boolean('leave_enabled');
+        $validated['records_enabled'] = $request->boolean('records_enabled');
+        $validated['leave_enabled'] = $request->boolean('leave_enabled');
         $validated['frontdesk_enabled'] = $request->boolean('frontdesk_enabled');
+        $validated['payroll_enabled'] = $request->boolean('payroll_enabled');
+        $validated['attendance_enabled'] = $request->boolean('attendance_enabled');
+        $validated['eta_enabled'] = $request->boolean('eta_enabled');
+        $validated['excel_protection_enabled'] = $request->boolean('excel_protection_enabled');
 
         // Ensure email template fields are never null (database columns are NOT NULL)
         $validated['email_template_subject'] = $validated['email_template_subject'] ?? '';
         $validated['email_template_body'] = $validated['email_template_body'] ?? '';
+
+        // Never overwrite the stored password with blank — only update when a new value is provided
+        if (($validated['excel_sheet_password'] ?? '') === '') {
+            unset($validated['excel_sheet_password']);
+        }
 
         $settings = Setting::first();
         if ($settings) {
             $settings->update($validated);
         } else {
             $validated['email_template_subject'] ??= '';
-            $validated['email_template_body']    ??= '';
+            $validated['email_template_body'] ??= '';
             Setting::create($validated);
         }
 
         return redirect()->route('hr-manager.settings')->with('success', 'Settings updated successfully.');
+    }
+
+    public function backupDatabase(Request $request): StreamedResponse
+    {
+        $this->ensureHrManager($request);
+
+        $dbName = config('database.connections.mysql.database');
+        $filename = 'hris-backup-'.now()->format('Y-m-d_H-i-s').'.sql';
+
+        return response()->streamDownload(function () use ($dbName) {
+            $tables = collect(DB::select('SHOW TABLES'))->map(fn ($r) => array_values((array) $r)[0]);
+
+            echo "-- HRIS Database Backup\n";
+            echo "-- Database: {$dbName}\n";
+            echo '-- Generated: '.now()->toDateTimeString()."\n\n";
+            echo "SET FOREIGN_KEY_CHECKS=0;\n";
+            echo "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n";
+
+            foreach ($tables as $table) {
+                $createResult = DB::select("SHOW CREATE TABLE `{$table}`");
+                $createSql = array_values((array) $createResult[0])[1];
+
+                echo "-- Table: `{$table}`\n";
+                echo "DROP TABLE IF EXISTS `{$table}`;\n";
+                echo $createSql.";\n\n";
+
+                $count = DB::table($table)->count();
+                if ($count > 0) {
+                    $firstRow = (array) DB::table($table)->first();
+                    $cols = implode(', ', array_map(fn ($k) => "`{$k}`", array_keys($firstRow)));
+
+                    DB::table($table)->orderByRaw('1')->chunk(500, function ($rows) use ($table, $cols) {
+                        $valueLines = $rows->map(function ($row) {
+                            $parts = array_map(function ($v) {
+                                if (is_null($v)) {
+                                    return 'NULL';
+                                }
+
+                                return "'".addslashes((string) $v)."'";
+                            }, (array) $row);
+
+                            return '('.implode(', ', $parts).')';
+                        })->implode(",\n");
+
+                        echo "INSERT INTO `{$table}` ({$cols}) VALUES\n{$valueLines};\n\n";
+                    });
+                }
+            }
+
+            echo "SET FOREIGN_KEY_CHECKS=1;\n";
+        }, $filename, [
+            'Content-Type' => 'application/octet-stream',
+        ]);
+    }
+
+    public function restoreDatabase(Request $request): RedirectResponse
+    {
+        $this->ensureHrManager($request);
+
+        $request->validate([
+            'backup_file' => 'required|file|max:102400|mimes:sql,txt',
+            'restore_confirm' => 'required|accepted',
+        ], [
+            'restore_confirm.accepted' => 'You must tick the confirmation checkbox before restoring.',
+        ]);
+
+        $file = $request->file('backup_file');
+        $sql = file_get_contents($file->getRealPath());
+
+        // Split on statement-ending semicolons (handles both LF and CRLF line endings).
+        // Each chunk may start with one or more SQL comment lines (-- ...) that our backup
+        // generator emits before DROP TABLE statements. Strip those leading comments so the
+        // actual SQL (e.g. DROP TABLE) is not silently discarded together with them.
+        $statements = array_filter(
+            array_map(function ($raw) {
+                // Remove every leading "-- comment\n" line, then trim whitespace.
+                $s = preg_replace('/\A(--[^\r\n]*\r?\n)+/', '', trim($raw));
+
+                return trim($s);
+            }, preg_split('/;\s*\r?\n/', $sql)),
+            fn ($s) => $s !== ''
+        );
+
+        set_time_limit(300);
+
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        try {
+            foreach ($statements as $stmt) {
+                if (trim($stmt) === '') {
+                    continue;
+                }
+                DB::unprepared($stmt);
+            }
+        } finally {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
+
+        HRAuditTrail::create([
+            'actor_user_id' => $request->user()->id,
+            'module' => 'settings',
+            'action' => 'database_restore',
+            'target_type' => 'database',
+            'target_id' => 0,
+            'details' => ['file' => $file->getClientOriginalName()],
+        ]);
+
+        return redirect()->route('hr-manager.settings')
+            ->with('success', 'Database restored successfully from "'.$file->getClientOriginalName().'".');
     }
 
     /**
@@ -574,9 +724,9 @@ class HRManagerController extends Controller
 
         if ($search !== '') {
             $query->where(function ($inner) use ($search): void {
-                $inner->where('users.name', 'like', '%' . $search . '%')
-                    ->orWhere('users.EmpNo', 'like', '%' . $search . '%')
-                    ->orWhere('users.designation', 'like', '%' . $search . '%');
+                $inner->where('users.name', 'like', '%'.$search.'%')
+                    ->orWhere('users.EmpNo', 'like', '%'.$search.'%')
+                    ->orWhere('users.designation', 'like', '%'.$search.'%');
             });
         }
 
@@ -629,7 +779,7 @@ class HRManagerController extends Controller
             );
 
         if ($department !== '') {
-            $query->where('users.Dept_id', $department);
+            $query->where('users.Dept_id', (int) $department);
         }
 
         if ($status !== '' && $status !== 'all') {
@@ -646,7 +796,7 @@ class HRManagerController extends Controller
                     'employee_name' => $row->employee_name,
                     'department' => $row->Dept_name,
                     'leave_type' => $row->leave_type,
-                    'period' => $row->start_date . ' to ' . $row->end_date,
+                    'period' => $row->start_date.' to '.$row->end_date,
                     'days' => $row->total_days,
                     'status' => strtolower((string) $row->status),
                 ];
@@ -766,7 +916,7 @@ class HRManagerController extends Controller
             $query->where('hr_audit_trails.action', $action);
         }
 
-        if ($date !== '') {
+        if ($date !== '' && strtotime($date) !== false) {
             $query->whereDate('hr_audit_trails.created_at', $date);
         }
 
@@ -777,7 +927,7 @@ class HRManagerController extends Controller
                 return [
                     'user' => (string) ($row->actor_name ?? 'System'),
                     'role' => ucwords($this->normalizeRole((string) ($row->access_level ?? 'hr manager'))),
-                    'action' => strtoupper((string) $row->module) . ': ' . strtoupper((string) $row->action),
+                    'action' => strtoupper((string) $row->module).': '.strtoupper((string) $row->action),
                     'timestamp' => $this->formatDateTime($row->created_at),
                 ];
             })
@@ -785,7 +935,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param LengthAwarePaginator<int, mixed> $paginator
+     * @param  LengthAwarePaginator<int, mixed>  $paginator
      * @return array<string, int>
      */
     private function paginationPayload(LengthAwarePaginator $paginator): array
@@ -799,7 +949,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      */
     private function storeAuditTrail(Request $request, string $module, string $action, string $targetType, int $targetId, array $details = []): void
     {
@@ -867,7 +1017,7 @@ class HRManagerController extends Controller
         }
 
         foreach (['document_requests', 'eta', 'locators'] as $table) {
-            if (!Schema::hasTable($table)) {
+            if (! Schema::hasTable($table)) {
                 continue;
             }
 
@@ -932,7 +1082,7 @@ class HRManagerController extends Controller
             $ageBucket = $this->extractAgeBucket($pds);
             $ageGroupCounts[$ageBucket] = ($ageGroupCounts[$ageBucket] ?? 0) + 1;
 
-            if (!empty($employee->date_hired)) {
+            if (! empty($employee->date_hired)) {
                 try {
                     $yearsOfService = Carbon::parse($employee->date_hired)->diffInYears(now());
                 } catch (\Throwable $e) {
@@ -956,7 +1106,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\User>
+     * @return Builder<User>
      */
     private function employeeQuery(?int $departmentId)
     {
@@ -998,7 +1148,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param Collection<int, int> $userIds
+     * @param  Collection<int, int>  $userIds
      * @return Collection<int, array<string, mixed>>
      */
     private function pdsByUserId(Collection $userIds): Collection
@@ -1016,7 +1166,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $pds
+     * @param  array<string, mixed>  $pds
      */
     private function extractGender(array $pds): string
     {
@@ -1035,7 +1185,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $pds
+     * @param  array<string, mixed>  $pds
      */
     private function extractAgeBucket(array $pds): string
     {
@@ -1072,7 +1222,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $pds
+     * @param  array<string, mixed>  $pds
      */
     private function extractYearsOfService(mixed $createdAt, array $pds): int
     {
@@ -1080,7 +1230,7 @@ class HRManagerController extends Controller
         $earliestWorkDate = null;
 
         foreach ($workSection as $key => $value) {
-            if (!preg_match('/^work\[\d+\]\[from\]$/', (string) $key)) {
+            if (! preg_match('/^work\[\d+\]\[from\]$/', (string) $key)) {
                 continue;
             }
 
@@ -1139,7 +1289,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param Collection<int, User> $employees
+     * @param  Collection<int, User>  $employees
      * @return array<string, int>
      */
     private function countByKey(Collection $employees, string $key, string $fallback): array
@@ -1156,7 +1306,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, int> $assoc
+     * @param  array<string, int>  $assoc
      * @return array{labels: array<int, string>, values: array<int, int>}
      */
     private function barChartFromAssoc(array $assoc): array
@@ -1168,7 +1318,7 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @param array<string, int> $assoc
+     * @param  array<string, int>  $assoc
      * @return array{labels: array<int, string>, values: array<int, int>}
      */
     private function pieChartFromAssoc(array $assoc): array

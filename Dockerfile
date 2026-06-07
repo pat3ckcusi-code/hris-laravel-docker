@@ -42,6 +42,7 @@ RUN cp .env.example .env \
     && chmod -R 775 storage bootstrap/cache \
     && cp -r storage/app/templates /opt/app-templates 2>/dev/null || true
 
+COPY docker/php-upload.ini /usr/local/etc/php/conf.d/99-upload.ini
 COPY docker/app-entrypoint.sh /usr/local/bin/app-entrypoint
 RUN chmod +x /usr/local/bin/app-entrypoint
 

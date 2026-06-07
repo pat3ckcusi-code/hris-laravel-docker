@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -29,15 +30,25 @@ use Illuminate\Support\Collection;
  */
 class DtrPunchResolver
 {
-    private const WORK_START = '08:00';
+    private string $workStart;
 
-    private const LUNCH_RETURN = '13:00';
+    private string $lunchReturn;
 
-    private const WORK_END = '17:00';
+    private string $workEnd;
 
-    private const MORNING_END = '11:00';
+    private string $morningEnd;
 
-    private const NOON_END = '14:00';
+    private string $noonEnd;
+
+    public function __construct()
+    {
+        $s = Setting::first();
+        $this->workStart = $s?->work_start ?? '08:00';
+        $this->lunchReturn = $s?->lunch_return ?? '13:00';
+        $this->workEnd = $s?->work_end ?? '17:00';
+        $this->morningEnd = $s?->morning_end ?? '11:00';
+        $this->noonEnd = $s?->noon_end ?? '14:00';
+    }
 
     /**
      * @param  iterable<int, string>  $times  punch times for ONE day (HH:MM:SS)
@@ -61,19 +72,19 @@ class DtrPunchResolver
         $late = 0;
 
         // Morning lateness — only when the arrival is genuinely a morning punch.
-        if ($amIn !== null && $hm($amIn) < self::MORNING_END) {
-            $late += $this->minutesLate($date, $amIn, self::WORK_START);
+        if ($amIn !== null && $hm($amIn) < $this->morningEnd) {
+            $late += $this->minutesLate($date, $amIn, $this->workStart);
         }
 
         // Lunch-return lateness — only when the PM arrival lands in the lunch window.
-        if ($pmIn !== null && $hm($pmIn) >= self::MORNING_END && $hm($pmIn) < self::NOON_END) {
-            $late += $this->minutesLate($date, $pmIn, self::LUNCH_RETURN);
+        if ($pmIn !== null && $hm($pmIn) >= $this->morningEnd && $hm($pmIn) < $this->noonEnd) {
+            $late += $this->minutesLate($date, $pmIn, $this->lunchReturn);
         }
 
         // Undertime — only when the departure is genuinely an afternoon punch.
         $undertime = 0;
-        if ($pmOut !== null && $hm($pmOut) >= self::LUNCH_RETURN) {
-            $undertime = $this->minutesEarly($date, $pmOut, self::WORK_END);
+        if ($pmOut !== null && $hm($pmOut) >= $this->lunchReturn) {
+            $undertime = $this->minutesEarly($date, $pmOut, $this->workEnd);
         }
 
         return [
@@ -109,8 +120,8 @@ class DtrPunchResolver
 
         $lunch = $sorted
             ->slice(1, $count - 2)                       // exclude the bookends
-            ->filter(fn ($t) => substr($t, 0, 5) >= self::MORNING_END
-                             && substr($t, 0, 5) < self::NOON_END)
+            ->filter(fn ($t) => substr($t, 0, 5) >= $this->morningEnd
+                             && substr($t, 0, 5) < $this->noonEnd)
             ->values();
 
         if ($lunch->count() >= 2) {

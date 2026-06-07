@@ -19,7 +19,7 @@ class ForgotPasswordController extends Controller
     public function sendResetLinkEmail(Request $request): RedirectResponse
     {
         $request->validate([
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email', 'max:255'],
         ]);
 
         $email = $request->input('email');

@@ -120,7 +120,7 @@ class TravelOrderController extends Controller
             'departure_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:departure_date',
             'destination' => 'required|string|max:255',
-            'purpose' => 'required|string',
+            'purpose' => 'required|string|max:2000',
             'remarks' => 'nullable|string|max:50',
         ]);
 
