@@ -41,15 +41,16 @@ class AdministrativeOfficerController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $dept = $depts->first();
 
         $pending = 0;
         $approved = 0;
         $total = 0;
         $pendingCount = 0;
 
-        if ($dept) {
-            $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        if ($depts->isNotEmpty()) {
+            $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
             // Exclude leave requests filed by Department Heads (Mayor handles those)
             $excludeDeptHead = fn ($q) => $q->whereHas('user', fn ($u) => $u->whereRaw(
@@ -75,10 +76,10 @@ class AdministrativeOfficerController extends Controller
     public function getPendingCount(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
-        if (!$dept) return response()->json(['success' => true, 'pending' => 0]);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        if ($depts->isEmpty()) return response()->json(['success' => true, 'pending' => 0]);
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
         // Exclude leave requests filed by Department Heads (Mayor handles those)
         $leavePending = LeaveRequest::whereIn('user_id', $employeeIds)->where('status', 'pending')
@@ -94,7 +95,8 @@ class AdministrativeOfficerController extends Controller
     public function pendingRequests(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $dept = $depts->first();
 
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
@@ -112,13 +114,13 @@ class AdministrativeOfficerController extends Controller
     public function pendingRequestsLeaveData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -173,13 +175,13 @@ class AdministrativeOfficerController extends Controller
     public function pendingRequestsEtaData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -225,13 +227,13 @@ class AdministrativeOfficerController extends Controller
     public function pendingRequestsLocatorData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -280,15 +282,15 @@ class AdministrativeOfficerController extends Controller
     public function allowPrinting(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $leave = LeaveRequest::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['error' => 'Department not found for your account.'], 403);
         }
 
         $employee = $leave->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return response()->json(['error' => 'You are not authorized to perform this action.'], 403);
         }
 
@@ -386,7 +388,8 @@ class AdministrativeOfficerController extends Controller
     public function approvedRequests(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $dept = $depts->first();
 
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
@@ -403,13 +406,13 @@ class AdministrativeOfficerController extends Controller
     public function approvedRequestsLeaveData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -457,13 +460,13 @@ class AdministrativeOfficerController extends Controller
     public function approvedRequestsEtaData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -509,13 +512,13 @@ class AdministrativeOfficerController extends Controller
     public function approvedRequestsLocatorData(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
         $year  = (int) $request->query('year',  (int) date('Y'));
         if ($month < 1 || $month > 12) $month = (int) date('n');
@@ -561,10 +564,11 @@ class AdministrativeOfficerController extends Controller
     public function statistics(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $dept = $depts->first();
         $stats = [];
-        if ($dept) {
-            $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        if ($depts->isNotEmpty()) {
+            $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
             $excludeDeptHead = fn ($q) => $q->whereHas('user', fn ($u) => $u->whereRaw(
                 "LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"
             ));
@@ -598,15 +602,17 @@ class AdministrativeOfficerController extends Controller
         $length = (int) $request->query('length', 10);
         $search = trim($request->input('search.value', ''));
 
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $cacheKey = "ao_stats_{$dept->Dept_id}_{$month}_{$year}";
-        $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($dept, $month, $year) {
-            $employees = User::where('Dept_id', $dept->Dept_id)->get();
+        $cacheKey = 'ao_stats_' . implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray()) . "_{$month}_{$year}";
+        $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($depts, $month, $year) {
+            $deptIds = $depts->pluck('Dept_id')->toArray();
+            $deptNames = $depts->pluck('Dept_name', 'Dept_id');
+            $employees = User::whereIn('Dept_id', $deptIds)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
@@ -635,7 +641,7 @@ class AdministrativeOfficerController extends Controller
                     'Fname'         => $emp->first_name ?? '',
                     'Mname'         => $emp->middle_name ?? '',
                     'Extension'     => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
-                    'Dept'          => $dept->Dept_name ?? '',
+                    'Dept'          => $deptNames->get($emp->Dept_id) ?? '',
                     'eta_count'     => $etaCount,
                     'locator_count' => $locatorCount,
                     'leave_count'   => $leaveCount,
@@ -759,13 +765,13 @@ class AdministrativeOfficerController extends Controller
     public function employeesOnDuty(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $employees = User::where('Dept_id', $dept->Dept_id)->get()->map(function ($u) {
+        $employees = User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get()->map(function ($u) {
             return [
                 'EmpNo' => $u->EmpNo ?? ($u->id ?? ''),
                 'name' => trim(($u->last_name ?? '') . ', ' . ($u->first_name ?? '')),
@@ -780,13 +786,13 @@ class AdministrativeOfficerController extends Controller
     public function leaveRequestsList(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
         $rows = LeaveRequest::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -812,13 +818,13 @@ class AdministrativeOfficerController extends Controller
     public function locatorRequestsList(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
         $rows = Locator::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -842,13 +848,13 @@ class AdministrativeOfficerController extends Controller
     public function etaRequestsList(Request $request)
     {
         $user = $request->user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
         $rows = Eta::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -899,15 +905,15 @@ class AdministrativeOfficerController extends Controller
     public function approve(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $leave = LeaveRequest::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $leave->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
@@ -917,15 +923,15 @@ class AdministrativeOfficerController extends Controller
     public function approveEta(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $eta = Eta::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $eta->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
@@ -942,8 +948,10 @@ class AdministrativeOfficerController extends Controller
         $eta->approved_at = now();
         $eta->save();
 
-        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
-        Cache::forget("dh_metrics_{$dept->Dept_id}");
+        foreach ($depts as $d) {
+            Cache::forget("dept_stats_{$d->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+            Cache::forget("dh_metrics_{$d->Dept_id}");
+        }
 
         Log::info('ETA approved by administrative officer', [
             'eta_id' => $eta->id,
@@ -1017,15 +1025,15 @@ class AdministrativeOfficerController extends Controller
     public function rejectEta(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $eta = Eta::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $eta->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
@@ -1035,8 +1043,10 @@ class AdministrativeOfficerController extends Controller
         $eta->approved_at = now();
         $eta->save();
 
-        Cache::forget("dept_stats_{$dept->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
-        Cache::forget("dh_metrics_{$dept->Dept_id}");
+        foreach ($depts as $d) {
+            Cache::forget("dept_stats_{$d->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+            Cache::forget("dh_metrics_{$d->Dept_id}");
+        }
 
         try {
             HRAuditTrail::create([
@@ -1099,15 +1109,15 @@ class AdministrativeOfficerController extends Controller
     public function approveLocator(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $locator = Locator::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $locator->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
@@ -1118,8 +1128,10 @@ class AdministrativeOfficerController extends Controller
         $locator->status = 'approved';
         $locator->save();
 
-        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
-        Cache::forget("dh_metrics_{$dept->Dept_id}");
+        foreach ($depts as $d) {
+            Cache::forget("dept_stats_{$d->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+            Cache::forget("dh_metrics_{$d->Dept_id}");
+        }
 
         try {
             HRAuditTrail::create([
@@ -1189,23 +1201,25 @@ class AdministrativeOfficerController extends Controller
     public function rejectLocator(Request $request, $id)
     {
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $locator = Locator::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $locator->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
         $locator->status = 'declined';
         $locator->save();
 
-        Cache::forget("dept_stats_{$dept->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
-        Cache::forget("dh_metrics_{$dept->Dept_id}");
+        foreach ($depts as $d) {
+            Cache::forget("dept_stats_{$d->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
+            Cache::forget("dh_metrics_{$d->Dept_id}");
+        }
 
         try {
             HRAuditTrail::create([
@@ -1279,10 +1293,10 @@ class AdministrativeOfficerController extends Controller
         ]);
 
         $user = Auth::user();
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         $leave = LeaveRequest::findOrFail($id);
 
-        if (!$dept) {
+        if ($depts->isEmpty()) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'swal' => ['icon' => 'error', 'title' => 'Department not found', 'text' => 'Department not found for your account.']], 422);
             }
@@ -1290,7 +1304,7 @@ class AdministrativeOfficerController extends Controller
         }
 
         $employee = $leave->user;
-        if (!$employee || $employee->Dept_id != $dept->Dept_id) {
+        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'swal' => ['icon' => 'error', 'title' => 'Unauthorized', 'text' => 'You are not authorized to reject this request.']], 403);
             }

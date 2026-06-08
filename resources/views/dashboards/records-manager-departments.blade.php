@@ -80,6 +80,18 @@
             </label>
 
             <label>
+                Administrative Officer
+                <select name="ao_emp_no">
+                    <option value="">— None —</option>
+                    @foreach ($adminOfficerUsers as $aoUser)
+                        <option value="{{ $aoUser->EmpNo }}" @selected(old('ao_emp_no') === $aoUser->EmpNo)>
+                            {{ $aoUser->EmpNo }} — {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
+                        </option>
+                    @endforeach
+                </select>
+            </label>
+
+            <label>
                 Designation
                 <input type="text" name="Designation" value="{{ old('Designation') }}" data-uppercase-input required>
             </label>
@@ -148,6 +160,18 @@
             </label>
 
             <label>
+                Administrative Officer
+                <select name="ao_emp_no" id="updateDeptAoEmpNo">
+                    <option value="">— None —</option>
+                    @foreach ($adminOfficerUsers as $aoUser)
+                        <option value="{{ $aoUser->EmpNo }}" @selected(old('ao_emp_no') === $aoUser->EmpNo)>
+                            {{ $aoUser->EmpNo }} — {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
+                        </option>
+                    @endforeach
+                </select>
+            </label>
+
+            <label>
                 Designation
                 <input type="text" name="Designation" id="updateDeptDesignation" value="{{ old('Designation') }}" data-uppercase-input required>
             </label>
@@ -198,6 +222,7 @@
                     <th>Department Code</th>
                     <th>Department Name</th>
                     <th>Reference Emp No.</th>
+                    <th>Admin Officer</th>
                     <th>Designation</th>
                     <th>Parent</th>
                     <th>Employee Count</th>
@@ -206,7 +231,7 @@
                 </tr>
             </thead>
             <tbody>
-                @forelse ($departments as $department)
+                @foreach ($departments as $department)
                     @php
                         $count = (int) ($departmentEmployeeCounts[$department->Dept_id] ?? 0);
                         $parentDepartmentName = $allDepartments->firstWhere('Dept_id', $department->parent_dept_id)?->Dept_name;
@@ -215,6 +240,7 @@
                         <td>{{ $department->DeptCode ?: '-' }}</td>
                         <td>{{ $department->Dept_name }}</td>
                         <td>{{ $department->EmpNo ?: '-' }}</td>
+                        <td>{{ $department->ao_emp_no ?: '—' }}</td>
                         <td>{{ $department->Designation ?: '-' }}</td>
                         <td>{{ $parentDepartmentName ?: 'None' }}</td>
                         <td>{{ $count }}</td>
@@ -231,6 +257,7 @@
                                 data-dept-code="{{ $department->DeptCode }}"
                                 data-dept-name="{{ $department->Dept_name }}"
                                 data-emp-no="{{ $department->EmpNo }}"
+                                data-ao-emp-no="{{ $department->ao_emp_no }}"
                                 data-designation="{{ $department->Designation }}"
                                 data-parent-dept-id="{{ $department->parent_dept_id }}"
                             >
@@ -238,11 +265,7 @@
                             </button>
                         </td>
                     </tr>
-                @empty
-                    <tr>
-                        <td colspan="8">No departments found.</td>
-                    </tr>
-                @endforelse
+                @endforeach
             </tbody>
         </table>
     </section>
@@ -271,7 +294,7 @@
                         searching: true,
                         paging: true,
                         info: true,
-                        language: { paginate: { previous: 'Prev', next: 'Next' } }
+                        language: { emptyTable: 'No departments found.', paginate: { previous: 'Prev', next: 'Next' } }
                     });
                 }
             }
@@ -288,6 +311,7 @@
             const updateDeptCode = document.getElementById('updateDeptCode');
             const updateDeptName = document.getElementById('updateDeptName');
             const updateDeptEmpNo = document.getElementById('updateDeptEmpNo');
+            const updateDeptAoEmpNo = document.getElementById('updateDeptAoEmpNo');
             const updateDeptDesignation = document.getElementById('updateDeptDesignation');
             const updateParentDeptId = document.getElementById('updateParentDeptId');
             const updateRouteTemplate = @json(route('dashboard.records-manager.departments.update', ['department' => '__DEPT_ID__']));
@@ -331,6 +355,7 @@
                     if (updateDeptCode) updateDeptCode.value = button.dataset.deptCode || '';
                     if (updateDeptName) updateDeptName.value = button.dataset.deptName || '';
                     if (updateDeptEmpNo) updateDeptEmpNo.value = button.dataset.empNo || '';
+                    if (updateDeptAoEmpNo) updateDeptAoEmpNo.value = button.dataset.aoEmpNo || '';
                     if (updateDeptDesignation) updateDeptDesignation.value = button.dataset.designation || '';
                     if (updateParentDeptId) updateParentDeptId.value = button.dataset.parentDeptId || '';
 

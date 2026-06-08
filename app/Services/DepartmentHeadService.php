@@ -27,19 +27,20 @@ class DepartmentHeadService
      */
     public function dashboardMetrics($user): array
     {
-        $dept = $this->departmentService->resolveDepartmentForUser($user);
-        if (!$dept) {
+        $depts = $this->departmentService->resolveAllDepartmentsForUser($user);
+        if ($depts->isEmpty()) {
             return ['metrics' => ['employees' => 0, 'pending' => 0, 'approved_month' => 0, 'filed' => 0], 'trend' => [], 'distribution' => [], 'recent' => []];
         }
 
-        return Cache::remember("dh_metrics_{$dept->Dept_id}", now()->addMinutes(5), function () use ($dept) {
-            return $this->computeDashboardMetrics($dept);
+        $cacheKey = 'dh_metrics_' . implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray());
+        return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($depts) {
+            return $this->computeDashboardMetrics($depts);
         });
     }
 
-    private function computeDashboardMetrics($dept): array
+    private function computeDashboardMetrics(\Illuminate\Support\Collection $depts): array
     {
-        $employeeIds = $this->departmentService->getEmployeeIdsForDepartment($dept);
+        $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
         $employeesCount = count($employeeIds);
 
@@ -134,13 +135,13 @@ class DepartmentHeadService
     }
 
     /**
-     * Return resolved department for user.
+     * Return the first resolved department for user (kept for legacy callers).
      *
      * @param  \App\Models\User  $user
      * @return \App\Models\Department|null
      */
     public function resolveDepartment($user)
     {
-        return $this->departmentService->resolveDepartmentForUser($user);
+        return $this->departmentService->resolveAllDepartmentsForUser($user)->first();
     }
 }

@@ -6,19 +6,31 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\DepartmentService;
 
 class OfficeOrderController extends Controller
 {
-    // List office orders relevant to the authenticated user's department
+    protected DepartmentService $departmentService;
+
+    public function __construct(DepartmentService $departmentService)
+    {
+        $this->departmentService = $departmentService;
+    }
+
+    // List office orders relevant to the authenticated user's department(s)
     public function index(Request $request)
     {
         $user = $request->user();
         if (!$user) return response()->json(['success' => false, 'data' => []]);
 
-        $empNos = [];
-        if (!empty($user->Dept_id)) {
-            $empNos = User::where('Dept_id', $user->Dept_id)->pluck('EmpNo')->filter()->values()->toArray();
-        }
+        $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
+        $depts = ($roleNorm === 'administrative officer')
+            ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+            : $this->departmentService->resolveAllDepartmentsForUser($user);
+        $deptIds = $depts->pluck('Dept_id')->filter()->values()->toArray();
+        $empNos = empty($deptIds)
+            ? []
+            : User::whereIn('Dept_id', $deptIds)->pluck('EmpNo')->filter()->values()->toArray();
 
         if (empty($empNos)) {
             return response()->json(['success' => true, 'data' => []]);

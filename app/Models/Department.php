@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $DeptCode
  * @property string|null $Dept_name
  * @property string|null $EmpNo
+ * @property string|null $ao_emp_no
  * @property string|null $Designation
  * @property int|null $parent_dept_id
  * @property-read \App\Models\Department|null $parent
@@ -37,6 +38,7 @@ class Department extends Model
         'DeptCode',
         'Dept_name',
         'EmpNo',
+        'ao_emp_no',
         'Designation',
         'parent_dept_id',
     ];

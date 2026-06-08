@@ -334,8 +334,15 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                                 <option value="{{ $dept->Dept_id }}">{{ $dept->Dept_name }}</option>
                             @endforeach
                         </select>
+                    @elseif ($officerDepts->count() > 1)
+                        {{-- Officer heads multiple departments — show a dropdown --}}
+                        <select id="bulk-dept" class="hris-filter-select" style="min-width:180px;">
+                            @foreach ($officerDepts as $dept)
+                                <option value="{{ $dept->Dept_id }}">{{ $dept->Dept_name }}</option>
+                            @endforeach
+                        </select>
                     @else
-                        {{-- Officer: dept is fixed to their own; JS reads this hidden input --}}
+                        {{-- Officer heads a single department — fixed display --}}
                         <input type="hidden" id="bulk-dept" value="{{ $officerDeptId }}">
                         <span style="display:inline-block;padding:.4rem .6rem;font-size:.875rem;
                                      color:#374151;background:#f1f5f9;border:1px solid #cbd5e1;

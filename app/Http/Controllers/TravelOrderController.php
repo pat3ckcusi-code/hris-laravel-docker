@@ -6,33 +6,50 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\DepartmentService;
 
 class TravelOrderController extends Controller
 {
-    // API endpoint to get employees in the same department as the authenticated user
+    protected DepartmentService $departmentService;
+
+    public function __construct(DepartmentService $departmentService)
+    {
+        $this->departmentService = $departmentService;
+    }
+
+    // API endpoint to get employees in the same department(s) as the authenticated user
     public function getDepartmentEmployees(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->Dept_id) {
-            return response()->json(['employees' => []]);
-        }
-        $employees = User::where('Dept_id', $user->Dept_id)
+        if (!$user) return response()->json(['employees' => []]);
+
+        $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
+        $depts = ($roleNorm === 'administrative officer')
+            ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+            : $this->departmentService->resolveAllDepartmentsForUser($user);
+        $deptIds = $depts->pluck('Dept_id')->filter()->values()->toArray();
+        if (empty($deptIds)) return response()->json(['employees' => []]);
+
+        $employees = User::whereIn('Dept_id', $deptIds)
             ->select('id', 'EmpNo', 'name', 'last_name', 'first_name', 'designation')
             ->get();
         return response()->json(['employees' => $employees]);
     }
 
-    // List travel orders for the authenticated user's department (JSON)
+    // List travel orders for the authenticated user's department(s) (JSON)
     public function index(Request $request)
     {
         $user = $request->user();
         if (!$user) return response()->json(['success' => false, 'data' => []]);
 
-        // collect employee EmpNo values for user's department
-        $empNos = [];
-        if (!empty($user->Dept_id)) {
-            $empNos = User::where('Dept_id', $user->Dept_id)->pluck('EmpNo')->filter()->values()->toArray();
-        }
+        $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
+        $depts = ($roleNorm === 'administrative officer')
+            ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+            : $this->departmentService->resolveAllDepartmentsForUser($user);
+        $deptIds = $depts->pluck('Dept_id')->filter()->values()->toArray();
+        $empNos = empty($deptIds)
+            ? []
+            : User::whereIn('Dept_id', $deptIds)->pluck('EmpNo')->filter()->values()->toArray();
 
         if (empty($empNos)) {
             return response()->json(['success' => true, 'data' => []]);

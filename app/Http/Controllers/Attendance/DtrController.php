@@ -9,6 +9,7 @@ use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\User;
+use App\Services\DepartmentService;
 use App\Services\Form48ExportService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
@@ -21,6 +22,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class DtrController extends Controller
 {
     private const ADMIN_ROLES = ['hr manager', 'payroll manager', 'time keeper', 'records manager'];
+
+    public function __construct(
+        private DepartmentService $departmentService,
+    ) {}
 
     // ── PERIOD HELPERS ────────────────────────────────────────────────────────
 
@@ -65,12 +70,13 @@ class DtrController extends Controller
      *
      * Returns:
      *   isAdmin   — full cross-department access (ADMIN_ROLES)
-     *   isOfficer — department head or administrative officer: admin-like UI scoped to their own department
-     *   deptId    — the officer/head's Dept_id; null for full admins and plain employees
+     *   isOfficer — department head or administrative officer: admin-like UI scoped to their department(s)
+     *   deptId    — first dept ID (for view backward compat); null for full admins and plain employees
+     *   deptIds   — all dept IDs the officer manages; empty for admins/employees
      *
      * Aborts 403 for any role outside these three tiers.
      *
-     * @return array{isAdmin: bool, isOfficer: bool, deptId: int|null}
+     * @return array{isAdmin: bool, isOfficer: bool, deptId: int|null, deptIds: int[]}
      */
     private function resolveContext(User $user): array
     {
@@ -82,10 +88,24 @@ class DtrController extends Controller
             abort(403);
         }
 
+        $deptIds = [];
+        if ($isOfficer) {
+            $roleNormalized = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
+            $deptCollection = ($roleNormalized === 'administrative officer')
+                ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+                : $this->departmentService->resolveAllDepartmentsForUser($user);
+            $deptIds = $deptCollection->pluck('Dept_id')
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->values()
+                ->toArray();
+        }
+
         return [
-            'isAdmin' => $isAdmin,
+            'isAdmin'  => $isAdmin,
             'isOfficer' => $isOfficer,
-            'deptId' => $isOfficer ? (int) $user->Dept_id : null,
+            'deptId'   => $deptIds[0] ?? null,
+            'deptIds'  => $deptIds,
         ];
     }
 
@@ -94,7 +114,7 @@ class DtrController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
-        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId] = $this->resolveContext($user);
+        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
 
         if ($isAdmin) {
             $departments = Department::orderBy('Dept_name')->get();
@@ -102,18 +122,20 @@ class DtrController extends Controller
             $officerDept = null;
         } elseif ($isOfficer) {
             $departments = collect();
-            $officerDept = Department::find($officerDeptId);
-            $employees = User::where('Dept_id', $officerDeptId)
+            $officerDepts = Department::whereIn('Dept_id', $officerDeptIds)->orderBy('Dept_name')->get();
+            $officerDept = $officerDepts->firstWhere('Dept_id', $officerDeptId);
+            $employees = User::whereIn('Dept_id', $officerDeptIds)
                 ->orderBy('last_name')->orderBy('first_name')
                 ->get(['id', 'first_name', 'last_name', 'employee_type']);
         } else {
             $departments = collect();
+            $officerDepts = collect();
             $employees = collect();
             $officerDept = null;
         }
 
         return view('attendance.dtr.index', compact(
-            'isAdmin', 'isOfficer', 'departments', 'employees', 'officerDeptId', 'officerDept'
+            'isAdmin', 'isOfficer', 'departments', 'employees', 'officerDeptId', 'officerDept', 'officerDepts'
         ));
     }
 
@@ -122,7 +144,7 @@ class DtrController extends Controller
     public function data(Request $request): JsonResponse
     {
         $user = $request->user();
-        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId] = $this->resolveContext($user);
+        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
 
         $periodRules = [
             'dtr_type' => ['required', 'in:monthly,semi-monthly'],
@@ -136,8 +158,8 @@ class DtrController extends Controller
             ]));
             $employee = User::findOrFail($request->integer('employee_id'));
 
-            // Officers are locked to their own department — reject cross-dept requests.
-            if ($isOfficer && (int) $employee->Dept_id !== $officerDeptId) {
+            // Officers are locked to their managed departments — reject cross-dept requests.
+            if ($isOfficer && ! in_array((int) $employee->Dept_id, $officerDeptIds)) {
                 abort(403, 'You may only view DTR records for employees in your own department.');
             }
         } else {
@@ -406,7 +428,7 @@ class DtrController extends Controller
     public function downloadForm48(Request $request, Form48ExportService $exportService): StreamedResponse
     {
         $user = $request->user();
-        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId] = $this->resolveContext($user);
+        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
 
         $periodRules = [
             'dtr_type' => ['required', 'in:monthly,semi-monthly'],
@@ -420,7 +442,7 @@ class DtrController extends Controller
             ]));
             $employee = User::findOrFail($request->integer('employee_id'));
 
-            if ($isOfficer && (int) $employee->Dept_id !== $officerDeptId) {
+            if ($isOfficer && ! in_array((int) $employee->Dept_id, $officerDeptIds)) {
                 abort(403, 'You may only export DTR records for employees in your own department.');
             }
         } else {
@@ -466,7 +488,7 @@ class DtrController extends Controller
     public function downloadDepartmentZip(Request $request, Form48ExportService $exportService): BinaryFileResponse
     {
         $user = $request->user();
-        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId] = $this->resolveContext($user);
+        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
         abort_unless($isAdmin || $isOfficer, 403);
 
         $request->validate([
@@ -474,16 +496,19 @@ class DtrController extends Controller
             'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'period' => ['nullable', 'in:1,2'],
             'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job order,contractual'],
-            // Officers' dept is resolved from their profile — skip validating the param.
-            ...($isAdmin ? ['dept_id' => ['required', 'integer', 'exists:departments,Dept_id']] : []),
+            'dept_id' => ['required', 'integer', 'exists:departments,Dept_id'],
         ]);
 
-        // Officers are always locked to their own department regardless of what was submitted.
-        $deptId = $isOfficer ? $officerDeptId : $request->integer('dept_id');
         $dtrType = $request->input('dtr_type');
         $month = $request->input('month');
         $period = $request->integer('period', 1);
         $employeeType = $request->input('employee_type') ?: null;
+        $deptId = $request->integer('dept_id');
+
+        // Officers can only export departments they manage.
+        if ($isOfficer) {
+            abort_unless(in_array($deptId, $officerDeptIds), 403, 'You may only export DTR records for your own department(s).');
+        }
 
         [$from, $to] = $this->resolvePeriod($month, $dtrType, $period);
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
@@ -492,6 +517,9 @@ class DtrController extends Controller
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();
+        $dept = Department::find($deptId);
+        $deptSafe = preg_replace('/[^A-Za-z0-9_]/', '_', $dept?->Dept_name ?? (string) $deptId);
+
         $templatePath = storage_path('app/templates/form48.xls');
 
         abort_if($employees->isEmpty(), 404, 'No employees found in the selected department.');
@@ -526,9 +554,6 @@ class DtrController extends Controller
         if (empty($generated)) {
             abort(404, 'No DTR records found for any employee in the selected department.');
         }
-
-        $dept = Department::find($deptId);
-        $deptSafe = preg_replace('/[^A-Za-z0-9_]/', '_', $dept?->Dept_name ?? (string) $deptId);
         $typeLabel = $employeeType ? ucwords(str_replace('-', ' ', $employeeType)) : 'All';
         $typeSafe = preg_replace('/[^A-Za-z0-9]+/', '_', $typeLabel) ?: 'All';
         $monthLabel = Carbon::parse($month.'-01')->format('FY');
@@ -561,7 +586,7 @@ class DtrController extends Controller
     public function downloadDepartmentForm48(Request $request, Form48ExportService $exportService): StreamedResponse
     {
         $user = $request->user();
-        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptId' => $officerDeptId] = $this->resolveContext($user);
+        ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
         abort_unless($isAdmin || $isOfficer, 403);
 
         $request->validate([
@@ -569,14 +594,19 @@ class DtrController extends Controller
             'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'period' => ['nullable', 'in:1,2'],
             'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job order,contractual'],
-            ...($isAdmin ? ['dept_id' => ['required', 'integer', 'exists:departments,Dept_id']] : []),
+            'dept_id' => ['required', 'integer', 'exists:departments,Dept_id'],
         ]);
 
-        $deptId = $isOfficer ? $officerDeptId : $request->integer('dept_id');
         $dtrType = $request->input('dtr_type');
         $month = $request->input('month');
         $period = $request->integer('period', 1);
         $employeeType = $request->input('employee_type') ?: null;
+        $deptId = $request->integer('dept_id');
+
+        // Officers can only export departments they manage.
+        if ($isOfficer) {
+            abort_unless(in_array($deptId, $officerDeptIds), 403, 'You may only export DTR records for your own department(s).');
+        }
 
         [$from, $to] = $this->resolvePeriod($month, $dtrType, $period);
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
@@ -585,6 +615,9 @@ class DtrController extends Controller
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();
+        $dept = Department::find($deptId);
+        $deptSafe = preg_replace('/[^A-Za-z0-9_]/', '_', $dept?->Dept_name ?? (string) $deptId);
+
         $templatePath = storage_path('app/templates/form48.xls');
 
         abort_if($employees->isEmpty(), 404, 'No employees found in the selected department.');
@@ -624,8 +657,6 @@ class DtrController extends Controller
         $workbook->removeSheetByIndex(0);
         $workbook->setActiveSheetIndex(0);
 
-        $dept = Department::find($deptId);
-        $deptSafe = preg_replace('/[^A-Za-z0-9_]/', '_', $dept?->Dept_name ?? (string) $deptId);
         $typeLabel = $employeeType ? ucwords(str_replace('-', ' ', $employeeType)) : 'All';
         $typeSafe = preg_replace('/[^A-Za-z0-9]+/', '_', $typeLabel) ?: 'All';
         $monthLabel = Carbon::parse($month.'-01')->format('FY');

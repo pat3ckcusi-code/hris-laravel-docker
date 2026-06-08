@@ -380,6 +380,13 @@ class DashboardController extends Controller
             ->orderBy('first_name')
             ->get(['id', 'EmpNo', 'last_name', 'first_name', 'middle_name']);
 
+        $adminOfficerUsers = User::query()
+            ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")
+            ->whereNotNull('EmpNo')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'EmpNo', 'last_name', 'first_name', 'middle_name']);
+
         return view('dashboards.records-manager-departments', [
             'user' => $request->user(),
             'departments' => $departments,
@@ -391,6 +398,7 @@ class DashboardController extends Controller
             'search' => $search,
             'statusFilter' => $statusFilter,
             'departmentHeadUsers' => $departmentHeadUsers,
+            'adminOfficerUsers' => $adminOfficerUsers,
         ]);
     }
 
@@ -403,12 +411,14 @@ class DashboardController extends Controller
             'DeptCode' => ['nullable', 'string', 'max:255', Rule::unique('departments', 'DeptCode')],
             'Dept_name' => ['required', 'string', 'max:255', Rule::unique('departments', 'Dept_name')],
             'EmpNo' => ['required', 'string', 'max:255', 'exists:users,EmpNo'],
+            'ao_emp_no' => ['nullable', 'string', 'max:255', 'exists:users,EmpNo'],
             'Designation' => ['required', 'string', 'max:255'],
             'parent_dept_id' => ['nullable', 'exists:departments,Dept_id'],
         ], [
             'DeptCode.unique' => 'Department code already exists. Please use a different code.',
             'Dept_name.unique' => 'Department name already exists. Please use a different name.',
             'EmpNo.exists' => 'Invalid EmpNo: no user found with this employee number.',
+            'ao_emp_no.exists' => 'Invalid Admin Officer EmpNo: no user found with this employee number.',
         ]);
 
         // Verify the selected employee has department head role
@@ -421,6 +431,24 @@ class DashboardController extends Controller
                 ]);
         }
 
+        // Verify the selected admin officer has administrative officer role
+        $aoEmpNo = $validated['ao_emp_no'] ?? null;
+        if ($aoEmpNo !== null && $aoEmpNo !== '') {
+            $aoEmpNoUpper = mb_strtoupper(trim($aoEmpNo));
+            $aoUser = User::query()->where('EmpNo', $aoEmpNoUpper)->first(['id', 'access_level']);
+            if ($aoUser) {
+                $aoRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($aoUser->access_level ?? ''))));
+                if ($aoRole !== 'administrative officer') {
+                    return back()->withInput()->withErrors([
+                        'ao_emp_no' => 'Invalid Admin Officer EmpNo: must belong to a user with administrative officer role.',
+                    ]);
+                }
+            }
+            $aoEmpNo = $aoEmpNoUpper;
+        } else {
+            $aoEmpNo = null;
+        }
+
         $validated = $this->normalizeDepartmentTextInput($validated);
 
         if (empty($validated['DeptCode'])) {
@@ -431,6 +459,7 @@ class DashboardController extends Controller
             'DeptCode' => $validated['DeptCode'],
             'Dept_name' => $validated['Dept_name'],
             'EmpNo' => $validated['EmpNo'],
+            'ao_emp_no' => $aoEmpNo,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,
         ]);
@@ -457,6 +486,7 @@ class DashboardController extends Controller
                 Rule::unique('departments', 'Dept_name')->ignore($department->Dept_id, 'Dept_id'),
             ],
             'EmpNo' => ['nullable', 'string', 'max:255'],
+            'ao_emp_no' => ['nullable', 'string', 'max:255'],
             'Designation' => ['required', 'string', 'max:255'],
             'parent_dept_id' => ['nullable', 'exists:departments,Dept_id'],
         ], [
@@ -492,6 +522,28 @@ class DashboardController extends Controller
             $empNo = $department->EmpNo;
         }
 
+        // Validate ao_emp_no against users table when provided
+        $aoEmpNo = $validated['ao_emp_no'] ?? null;
+        if ($aoEmpNo !== null && $aoEmpNo !== '') {
+            $aoEmpNoUpper = mb_strtoupper(trim($aoEmpNo));
+            $aoUser = User::query()->where('EmpNo', $aoEmpNoUpper)->first(['id', 'access_level']);
+            if (! $aoUser) {
+                return back()->withInput()->withErrors([
+                    'ao_emp_no' => 'Invalid Admin Officer EmpNo: no user found with this employee number.',
+                ]);
+            }
+            $aoRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($aoUser->access_level ?? ''))));
+            if ($aoRole !== 'administrative officer') {
+                return back()->withInput()->withErrors([
+                    'ao_emp_no' => 'Invalid Admin Officer EmpNo: must belong to a user with administrative officer role.',
+                ]);
+            }
+            $aoEmpNo = $aoEmpNoUpper;
+        } else {
+            // Keep existing value; empty string means "clear it"
+            $aoEmpNo = ($aoEmpNo === '') ? null : $department->ao_emp_no;
+        }
+
         if ((int) ($validated['parent_dept_id'] ?? 0) === (int) $department->Dept_id) {
             return back()
                 ->withInput()
@@ -522,6 +574,7 @@ class DashboardController extends Controller
             'DeptCode' => $validated['DeptCode'],
             'Dept_name' => $validated['Dept_name'],
             'EmpNo' => $empNo ? mb_strtoupper(trim($empNo)) : $oldEmpNo,
+            'ao_emp_no' => $aoEmpNo,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,
         ])->save();
