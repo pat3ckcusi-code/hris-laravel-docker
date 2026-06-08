@@ -146,16 +146,18 @@
         // ─── HR Manager ───────────────────────────────────
         'hr manager' => [
             ['section' => 'Dashboard'],
-            ['label' => 'Charts &amp; Analytics', 'icon' => 'analytics', 'route' => 'hr-manager.dashboard', 'active' => ['hr-manager.dashboard']],
+            ['label' => 'Charts &amp; Analytics', 'icon' => 'analytics', 'route' => 'hr-manager.dashboard', 'active' => ['hr-manager.dashboard'], 'badge' => 'hr_alerts'],
 
             ['section' => 'Operations'],
-            ['label' => 'Records Management', 'icon' => 'records',   'route' => 'hr-manager.records',   'active' => ['hr-manager.records']],
-            ['label' => 'Leave Management',   'icon' => 'leave',     'route' => 'hr-manager.leave',     'active' => ['hr-manager.leave']],
-            ['label' => 'Front Desk',         'icon' => 'frontdesk', 'route' => 'hr-manager.frontdesk', 'active' => ['hr-manager.frontdesk']],
+            ['label' => 'Records Management', 'icon' => 'records',      'route' => 'hr-manager.records',              'active' => ['hr-manager.records']],
+            ['label' => 'Leave Management',   'icon' => 'leave',        'route' => 'hr-manager.leave',                'active' => ['hr-manager.leave']],
+            ['label' => 'Front Desk',         'icon' => 'frontdesk',    'route' => 'hr-manager.frontdesk',            'active' => ['hr-manager.frontdesk']],
+            ['label' => 'Payroll Overview',   'icon' => 'payroll_runs', 'route' => 'hr-manager.payroll.overview',     'active' => ['hr-manager.payroll.overview*']],
 
             ['section' => 'Attendance'],
-            ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
+            ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
+            ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',   'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Reports'],
             ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',   'active' => ['hr-manager.reports']],
@@ -305,6 +307,41 @@
             ->count(),
         'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),
         'approved_document_requests' => fn () => \App\Models\DocumentRequest::whereIn('status', ['Accepted', 'Completed'])->count(),
+        'hr_alerts' => function () {
+            $staleDays = 3;
+            $count = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('leave_requests')) {
+                $count += \Illuminate\Support\Facades\DB::table('leave_requests')
+                    ->whereRaw('LOWER(status) = ?', ['pending'])
+                    ->where('created_at', '<', now()->subDays($staleDays))
+                    ->count();
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('travel_orders')) {
+                $count += \Illuminate\Support\Facades\DB::table('travel_orders')
+                    ->whereRaw('LOWER(status) = ?', ['pending'])
+                    ->where('created_at', '<', now()->subDays($staleDays))
+                    ->count();
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('document_requests')) {
+                $count += \Illuminate\Support\Facades\DB::table('document_requests')
+                    ->whereRaw('LOWER(status) = ?', ['requested'])
+                    ->where('requested_on', '<', now()->subDays($staleDays))
+                    ->count();
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('payroll_exceptions')) {
+                $count += \Illuminate\Support\Facades\DB::table('payroll_exceptions')
+                    ->where('resolved_flag', false)
+                    ->count();
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('payroll_runs')) {
+                $openRun = \Illuminate\Support\Facades\DB::table('payroll_runs')
+                    ->where('status', 'draft')
+                    ->whereNull('locked_at')
+                    ->exists();
+                if ($openRun) $count++;
+            }
+            return $count;
+        },
     ];
 
     // ── Resolve items for current role ──

@@ -341,3 +341,65 @@
         min-width: 0;
     }
 }
+
+/* ── Alert Strip (Enhancement 1) ─────────────────────────────── */
+.hrm-alert-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.hrm-alert-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.9rem;
+    border-left: 4px solid #17a2b8;
+    background: #f8fafc;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: #1e293b;
+    text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: background 0.15s;
+}
+
+.hrm-alert-chip:hover {
+    background: #f1f5f9;
+}
+
+/* ── Holiday-Leave Alert Banners (Enhancement 6) ─────────────── */
+.hrm-holiday-alerts {
+    margin-bottom: 1rem;
+}
+
+.hrm-holiday-alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border-left: 4px solid #ffc107;
+    background: #fffbeb;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #78350f;
+    margin-bottom: 0.5rem;
+}
+
+.hrm-holiday-alert-banner i {
+    color: #f59e0b;
+    flex-shrink: 0;
+}
+
+/* ── Milestone Badges (Enhancement 5) ────────────────────────── */
+.hrm-milestone-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.hrm-milestone-10 { background: #dbeafe; color: #1e40af; }
+.hrm-milestone-20 { background: #fef3c7; color: #92400e; }
+.hrm-milestone-30 { background: #fce7f3; color: #9d174d; }

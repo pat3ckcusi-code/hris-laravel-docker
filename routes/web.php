@@ -404,6 +404,34 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     Route::get('/dashboard/hr-manager/employees/filter', [HRManagerController::class, 'getEmployeesByFilter'])
         ->name('hr-manager.employees.filter');
 
+    // Enhancement 1: Alerts
+    Route::get('/dashboard/hr-manager/alerts', [HRManagerController::class, 'getAlerts'])
+        ->name('hr-manager.alerts');
+
+    // Enhancement 2: Attendance Overview
+    Route::get('/dashboard/hr-manager/attendance-overview', [HRManagerController::class, 'attendanceOverview'])
+        ->name('hr-manager.attendance.overview');
+    Route::get('/dashboard/hr-manager/attendance-overview/data', [HRManagerController::class, 'attendanceOverviewData'])
+        ->name('hr-manager.attendance.overview.data');
+
+    // Enhancement 3: Leave Analytics
+    Route::get('/dashboard/hr-manager/leave/analytics', [HRManagerController::class, 'getLeaveAnalytics'])
+        ->name('hr-manager.leave.analytics');
+    Route::post('/dashboard/hr-manager/leave/notify-manager', [HRManagerController::class, 'notifyDeptManager'])
+        ->name('hr-manager.leave.notify-manager');
+
+    // Enhancement 4: Payroll Overview
+    Route::get('/dashboard/hr-manager/payroll-overview', [HRManagerController::class, 'payrollOverview'])
+        ->name('hr-manager.payroll.overview');
+    Route::get('/dashboard/hr-manager/payroll-overview/data', [HRManagerController::class, 'payrollOverviewData'])
+        ->name('hr-manager.payroll.overview.data');
+    Route::post('/dashboard/hr-manager/payroll-exceptions/{exception}/resolve', [HRManagerController::class, 'resolvePayrollException'])
+        ->name('hr-manager.payroll.exception.resolve');
+
+    // Enhancement 5: Workforce Planning
+    Route::get('/dashboard/hr-manager/records/planning-data', [HRManagerController::class, 'recordsPlanningData'])
+        ->name('hr-manager.records.planning-data');
+
 });
 
 Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {

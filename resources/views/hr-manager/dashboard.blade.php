@@ -8,7 +8,11 @@
 @endsection
 
 @section('content')
-    <section class="hrm-dashboard" data-chart-url="{{ $chartDataUrl }}">
+    <section class="hrm-dashboard" data-chart-url="{{ $chartDataUrl }}" data-alerts-url="{{ route('hr-manager.alerts') }}">
+
+        {{-- Alerts Panel --}}
+        <div id="hrmAlertStrip" class="hrm-alert-strip" style="display:none;"></div>
+
         <div class="hrm-summary-grid">
             <article class="hrm-summary-card">
                 <p>Total Requests</p>

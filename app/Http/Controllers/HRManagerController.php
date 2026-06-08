@@ -4,11 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\DocumentRequest;
+use App\Models\Dtr;
 use App\Models\HRAuditTrail;
+use App\Models\Holiday;
+use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
+use App\Models\PayrollException;
+use App\Models\PayrollRun;
 use App\Models\Pds;
 use App\Models\Setting;
 use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
+use App\Services\DepartmentService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -227,7 +234,12 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $leavePage = $this->leaveRows($request);
+        $month = trim((string) $request->query('month', now()->format('Y-m')));
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = now()->format('Y-m');
+        }
+
+        $leavePage = $this->leaveRows($request, $month);
 
         return view('hr-manager.leave', [
             'departments' => $this->departmentOptions(),
@@ -235,11 +247,16 @@ class HRManagerController extends Controller
             'leavePagination' => $this->paginationPayload($leavePage),
             'leaveDataUrl' => route('hr-manager.leave.data'),
             'leaveActionBaseUrl' => route('hr-manager.leave.action', ['leaveRequest' => '__ID__']),
+            'leaveAnalyticsUrl' => route('hr-manager.leave.analytics'),
+            'leaveNotifyManagerUrl' => route('hr-manager.leave.notify-manager'),
             'leaveFilters' => [
                 'department' => trim((string) $request->query('department', '')),
                 'status' => trim((string) $request->query('status', 'pending')),
+                'month' => $month,
             ],
-            'leaveChart' => $this->leaveUsageChart((int) $request->query('department', 0)),
+            'leaveChart' => $this->leaveUsageChart((int) $request->query('department', 0), $month),
+            'holidayAlerts' => $this->buildHolidayLeaveAlerts(),
+            'selectedMonth' => $month,
         ]);
     }
 
@@ -247,12 +264,17 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $leavePage = $this->leaveRows($request);
+        $month = trim((string) $request->query('month', now()->format('Y-m')));
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = now()->format('Y-m');
+        }
+
+        $leavePage = $this->leaveRows($request, $month);
 
         return response()->json([
             'rows' => $leavePage->items(),
             'pagination' => $this->paginationPayload($leavePage),
-            'chart' => $this->leaveUsageChart((int) $request->query('department', 0)),
+            'chart' => $this->leaveUsageChart((int) $request->query('department', 0), $month),
         ]);
     }
 
@@ -492,6 +514,176 @@ class HRManagerController extends Controller
             'availableRoles' => ['Records Manager', 'Leave Manager', 'Front Desk', 'HR Manager'],
         ]);
     }
+
+    // ── Enhancement 1: Alerts ──────────────────────────────────────────────
+
+    public function getAlerts(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $data = Cache::remember('hr_alerts', now()->addMinutes(5), fn () => $this->buildAlerts());
+
+        return response()->json($data);
+    }
+
+    // ── Enhancement 3: Leave Analytics ────────────────────────────────────
+
+    public function getLeaveAnalytics(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $departmentId = $request->integer('department');
+        $deptKey = $departmentId > 0 ? $departmentId : 'all';
+
+        $month = trim((string) $request->query('month', now()->format('Y-m')));
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = now()->format('Y-m');
+        }
+
+        $data = Cache::remember("hr_leave_analytics_{$deptKey}_{$month}", now()->addMinutes(5),
+            fn () => $this->buildLeaveAnalytics($departmentId > 0 ? $departmentId : null, $month)
+        );
+
+        return response()->json($data);
+    }
+
+    public function notifyDeptManager(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $payload = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        $employee = User::findOrFail($payload['user_id']);
+        $deptService = app(DepartmentService::class);
+        $dept = $deptService->resolveDepartmentForUser($employee);
+
+        // Find department head
+        $deptHead = null;
+        if ($dept) {
+            $deptHead = User::query()
+                ->where('Dept_id', $dept->Dept_id)
+                ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'department head'")
+                ->first();
+        }
+
+        if (! $deptHead || ! $deptHead->email) {
+            return response()->json(['success' => false, 'message' => 'No department head email found.'], 422);
+        }
+
+        $balance = LeaveBalance::query()->where('user_id', $employee->id)->first();
+        $vl = $balance ? round((float) $balance->VL, 1) : 0;
+        $sl = $balance ? round((float) $balance->SL, 1) : 0;
+
+        try {
+            $deptHead->notify(new HrisTransactionNotification(
+                'Leave Balance Alert',
+                'Low Balance',
+                [
+                    'Employee' => $employee->name,
+                    'Vacation Leave (VL)' => $vl.' days',
+                    'Sick Leave (SL)' => $sl.' days',
+                    'Department' => $dept?->Dept_name ?? 'N/A',
+                ],
+                $request->user()->name,
+                'This employee may be at risk of filing Leave Without Pay (LWOP) if leave balances are not replenished soon.'
+            ));
+        } catch (\Throwable) {
+            return response()->json(['success' => false, 'message' => 'Notification could not be sent.'], 500);
+        }
+
+        $this->storeAuditTrail($request, 'leave', 'notify_dept_manager', User::class, (int) $employee->id, [
+            'employee' => $employee->name,
+            'dept_head' => $deptHead->name,
+            'vl' => $vl,
+            'sl' => $sl,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Department head notified successfully.']);
+    }
+
+    // ── Enhancement 5: Workforce Planning ─────────────────────────────────
+
+    public function recordsPlanningData(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $data = Cache::remember('hr_workforce_planning', now()->addMinutes(15), fn () => $this->buildWorkforcePlanning());
+
+        return response()->json($data);
+    }
+
+    // ── Enhancement 2: Attendance Overview ────────────────────────────────
+
+    public function attendanceOverview(Request $request): View
+    {
+        $this->ensureHrManager($request);
+
+        return view('hr-manager.attendance-overview', [
+            'departments' => $this->departmentOptions(),
+            'attendanceDataUrl' => route('hr-manager.attendance.overview.data'),
+        ]);
+    }
+
+    public function attendanceOverviewData(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $month = trim((string) $request->query('month', now()->format('Y-m')));
+        $departmentId = $request->integer('department');
+
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = now()->format('Y-m');
+        }
+
+        $deptKey = $departmentId > 0 ? $departmentId : 'all';
+        $data = Cache::remember("hr_attendance_overview_{$month}_{$deptKey}", now()->addMinutes(10),
+            fn () => $this->buildAttendanceOverview($month, $departmentId > 0 ? $departmentId : null)
+        );
+
+        return response()->json($data);
+    }
+
+    // ── Enhancement 4: Payroll Overview ───────────────────────────────────
+
+    public function payrollOverview(Request $request): View
+    {
+        $this->ensureHrManager($request);
+
+        return view('hr-manager.payroll-overview', [
+            'payrollDataUrl' => route('hr-manager.payroll.overview.data'),
+            'resolveBaseUrl' => route('hr-manager.payroll.exception.resolve', ['exception' => '__ID__']),
+        ]);
+    }
+
+    public function payrollOverviewData(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $data = Cache::remember('hr_payroll_overview', now()->addMinutes(5), fn () => $this->buildPayrollOverview());
+
+        return response()->json($data);
+    }
+
+    public function resolvePayrollException(Request $request, PayrollException $exception): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $exception->resolved_flag = true;
+        $exception->save();
+
+        Cache::forget('hr_payroll_overview');
+
+        $this->storeAuditTrail($request, 'payroll', 'resolve_exception', PayrollException::class, (int) $exception->id, [
+            'type' => $exception->type,
+            'description' => $exception->description,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Exception marked as resolved.']);
+    }
+
+    // ── System Settings ────────────────────────────────────────────────────
 
     public function settings(Request $request): View
     {
@@ -759,7 +951,7 @@ class HRManagerController extends Controller
     /**
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
-    private function leaveRows(Request $request): LengthAwarePaginator
+    private function leaveRows(Request $request, ?string $month = null): LengthAwarePaginator
     {
         $department = trim((string) $request->query('department', ''));
         $status = strtolower(trim((string) $request->query('status', 'pending')));
@@ -786,6 +978,18 @@ class HRManagerController extends Controller
             $query->whereRaw('LOWER(leave_requests.status) = ?', [$status]);
         }
 
+        if ($month !== null) {
+            try {
+                $start = Carbon::parse($month)->startOfMonth()->toDateString();
+                $end = Carbon::parse($month)->endOfMonth()->toDateString();
+                $query->where(function ($q) use ($start, $end): void {
+                    $q->whereBetween('leave_requests.start_date', [$start, $end])
+                        ->orWhereBetween('leave_requests.end_date', [$start, $end]);
+                });
+            } catch (\Throwable) {
+            }
+        }
+
         return $query
             ->orderByDesc('leave_requests.id')
             ->paginate(10)
@@ -806,7 +1010,7 @@ class HRManagerController extends Controller
     /**
      * @return array{labels: array<int, string>, values: array<int, int>}
      */
-    private function leaveUsageChart(int $departmentId = 0): array
+    private function leaveUsageChart(int $departmentId = 0, ?string $month = null): array
     {
         $query = LeaveRequest::query()
             ->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
@@ -816,6 +1020,18 @@ class HRManagerController extends Controller
 
         if ($departmentId > 0) {
             $query->where('users.Dept_id', $departmentId);
+        }
+
+        if ($month !== null) {
+            try {
+                $start = Carbon::parse($month)->startOfMonth()->toDateString();
+                $end = Carbon::parse($month)->endOfMonth()->toDateString();
+                $query->where(function ($q) use ($start, $end): void {
+                    $q->whereBetween('leave_requests.start_date', [$start, $end])
+                        ->orWhereBetween('leave_requests.end_date', [$start, $end]);
+                });
+            } catch (\Throwable) {
+            }
         }
 
         $rows = $query->get();
@@ -1326,6 +1542,544 @@ class HRManagerController extends Controller
         return [
             'labels' => array_keys($assoc),
             'values' => array_values($assoc),
+        ];
+    }
+
+    // ── Enhancement 6: Holiday-Leave Overlap Alerts ───────────────────────
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildHolidayLeaveAlerts(): array
+    {
+        if (! Schema::hasTable('holidays') || ! Schema::hasTable('leave_requests')) {
+            return [];
+        }
+
+        $holidays = Holiday::query()
+            ->whereBetween('holiday_date', [today(), today()->addDays(30)])
+            ->orderBy('holiday_date')
+            ->get(['title', 'holiday_date', 'type']);
+
+        $alerts = [];
+        foreach ($holidays as $holiday) {
+            $date = $holiday->holiday_date->toDateString();
+            $count = (int) DB::table('leave_requests')
+                ->whereRaw('LOWER(status) = ?', ['pending'])
+                ->where('start_date', '<=', $date)
+                ->where('end_date', '>=', $date)
+                ->count();
+
+            if ($count > 0) {
+                $alerts[] = [
+                    'title' => $holiday->title,
+                    'date' => $date,
+                    'type' => $holiday->type,
+                    'count' => $count,
+                ];
+            }
+        }
+
+        return $alerts;
+    }
+
+    // ── Enhancement 1: Actionable Alerts ─────────────────────────────────
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildAlerts(): array
+    {
+        $staleDays = 3;
+
+        $staleLeave = Schema::hasTable('leave_requests')
+            ? (int) DB::table('leave_requests')
+                ->whereRaw('LOWER(status) = ?', ['pending'])
+                ->where('created_at', '<', now()->subDays($staleDays))
+                ->count()
+            : 0;
+
+        $openPayroll = null;
+        if (Schema::hasTable('payroll_runs')) {
+            $run = DB::table('payroll_runs')
+                ->where('status', 'draft')
+                ->whereNull('locked_at')
+                ->orderByDesc('id')
+                ->first(['id', 'period']);
+            if ($run) {
+                $openPayroll = ['period' => $run->period, 'run_id' => $run->id];
+            }
+        }
+
+        $unresolvedExceptions = Schema::hasTable('payroll_exceptions')
+            ? (int) DB::table('payroll_exceptions')->where('resolved_flag', false)->count()
+            : 0;
+
+        $upcomingHolidays = [];
+        if (Schema::hasTable('holidays')) {
+            $upcomingHolidays = DB::table('holidays')
+                ->whereBetween('holiday_date', [today(), today()->addDays(14)])
+                ->orderBy('holiday_date')
+                ->get(['title', 'holiday_date', 'type'])
+                ->map(fn ($h) => [
+                    'title' => $h->title,
+                    'date' => $h->holiday_date,
+                    'type' => $h->type,
+                    'days_away' => (int) today()->diffInDays($h->holiday_date),
+                ])
+                ->all();
+        }
+
+        $staleTravelOrders = Schema::hasTable('travel_orders')
+            ? (int) DB::table('travel_orders')
+                ->whereRaw('LOWER(status) = ?', ['pending'])
+                ->where('created_at', '<', now()->subDays($staleDays))
+                ->count()
+            : 0;
+
+        $staleDocuments = Schema::hasTable('document_requests')
+            ? (int) DB::table('document_requests')
+                ->whereRaw('LOWER(status) = ?', ['requested'])
+                ->where('requested_on', '<', now()->subDays($staleDays))
+                ->count()
+            : 0;
+
+        return [
+            'stale_leave' => ['count' => $staleLeave, 'days' => $staleDays],
+            'open_payroll' => $openPayroll,
+            'unresolved_exceptions' => $unresolvedExceptions,
+            'upcoming_holidays' => $upcomingHolidays,
+            'stale_travel' => $staleTravelOrders,
+            'stale_documents' => $staleDocuments,
+            'total_alerts' => $staleLeave + $staleTravelOrders + $staleDocuments + $unresolvedExceptions + ($openPayroll ? 1 : 0),
+        ];
+    }
+
+    // ── Enhancement 3: Leave Analytics ────────────────────────────────────
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildLeaveAnalytics(?int $departmentId, string $month = ''): array
+    {
+        $types = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
+        $balanceSummary = [];
+
+        if (Schema::hasTable('leave_balances')) {
+            $query = DB::table('leave_balances')
+                ->leftJoin('users', 'users.id', '=', 'leave_balances.user_id');
+
+            if ($departmentId !== null) {
+                $query->where('users.Dept_id', $departmentId);
+            }
+
+            $rows = $query->select('leave_balances.*')->get();
+
+            // Consumption reference: use selected month end, fallback to now
+            $now = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month))
+                ? Carbon::parse($month)->endOfMonth()
+                : now();
+            $prevMonth = $now->copy()->subMonth();
+
+            $consumptionQuery = fn (int $year, int $month) => DB::table('leave_dates')
+                ->join('leave_requests', 'leave_requests.id', '=', 'leave_dates.leave_request_id')
+                ->when($departmentId !== null, function ($q) use ($departmentId) {
+                    $q->join('users', 'users.id', '=', 'leave_requests.user_id')
+                        ->where('users.Dept_id', $departmentId);
+                })
+                ->whereYear('leave_dates.leave_date', $year)
+                ->whereMonth('leave_dates.leave_date', $month)
+                ->where('leave_dates.is_cancelled', false)
+                ->select('leave_requests.leave_type', DB::raw('COUNT(*) as cnt'))
+                ->groupBy('leave_requests.leave_type')
+                ->get()
+                ->pluck('cnt', 'leave_type');
+
+            $thisMonthConsumption = Schema::hasTable('leave_dates')
+                ? $consumptionQuery($now->year, $now->month)
+                : collect();
+            $lastMonthConsumption = Schema::hasTable('leave_dates')
+                ? $consumptionQuery($prevMonth->year, $prevMonth->month)
+                : collect();
+
+            $typeMap = ['VL' => 'Vacation Leave', 'SL' => 'Sick Leave', 'WLNS' => 'Wellness', 'SPL' => 'Solo Parent', 'CTO' => 'CTO', 'SP' => 'Special Privilege'];
+
+            foreach ($types as $type) {
+                $col = $rows->pluck($type)->filter(fn ($v) => $v !== null);
+                $avg = $col->count() > 0 ? round($col->avg(), 1) : 0;
+                $lowCount = $col->filter(fn ($v) => (float) $v < 2)->count();
+                $zeroCount = $col->filter(fn ($v) => (float) $v <= 0)->count();
+
+                $thisMonth = (int) ($thisMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
+                $lastMonth = (int) ($lastMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
+                $trend = $thisMonth > $lastMonth ? 'down' : ($thisMonth < $lastMonth ? 'up' : 'stable');
+
+                $balanceSummary[$type] = [
+                    'avg' => $avg,
+                    'low_count' => $lowCount,
+                    'zero_count' => $zeroCount,
+                    'trend' => $trend,
+                ];
+            }
+        }
+
+        // Critical employees: VL < 2 OR SL < 2
+        $criticalEmployees = [];
+        if (Schema::hasTable('leave_balances')) {
+            $query = DB::table('leave_balances')
+                ->leftJoin('users', 'users.id', '=', 'leave_balances.user_id')
+                ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+                ->select(
+                    'users.id',
+                    'users.name',
+                    'departments.Dept_name',
+                    'leave_balances.VL',
+                    'leave_balances.SL'
+                )
+                ->where(function ($q) {
+                    $q->where('leave_balances.VL', '<', 2)
+                        ->orWhere('leave_balances.SL', '<', 2);
+                });
+
+            if ($departmentId !== null) {
+                $query->where('users.Dept_id', $departmentId);
+            }
+
+            $criticalEmployees = $query->orderBy('users.name')->limit(50)->get()
+                ->map(fn ($r) => [
+                    'user_id' => $r->id,
+                    'name' => $r->name,
+                    'department' => $r->Dept_name,
+                    'vl' => round((float) $r->VL, 1),
+                    'sl' => round((float) $r->SL, 1),
+                ])
+                ->all();
+        }
+
+        // 6-month org-wide submitted vs approved trend anchored to the selected month
+        $refDate = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month))
+            ? Carbon::parse($month)->endOfMonth()
+            : now();
+        $sixMonthsAgo = $refDate->copy()->subMonths(5)->startOfMonth();
+        $trendLabels = [];
+        $trendSubmitted = [];
+        $trendApproved = [];
+
+        $submittedTrend = LeaveRequest::selectRaw('MONTH(created_at) as m, YEAR(created_at) as y, COUNT(*) as cnt')
+            ->when($departmentId !== null, function ($q) use ($departmentId) {
+                $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
+                    ->where('users.Dept_id', $departmentId);
+            })
+            ->where('created_at', '>=', $sixMonthsAgo)
+            ->groupByRaw('YEAR(created_at), MONTH(created_at)')
+            ->get()
+            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
+
+        $approvedTrend = LeaveRequest::selectRaw('MONTH(updated_at) as m, YEAR(updated_at) as y, COUNT(*) as cnt')
+            ->when($departmentId !== null, function ($q) use ($departmentId) {
+                $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
+                    ->where('users.Dept_id', $departmentId);
+            })
+            ->where('status', 'approved')
+            ->where('updated_at', '>=', $sixMonthsAgo)
+            ->groupByRaw('YEAR(updated_at), MONTH(updated_at)')
+            ->get()
+            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
+
+        for ($i = 5; $i >= 0; $i--) {
+            $dt = $refDate->copy()->subMonths($i);
+            $trendLabels[] = $dt->format('M');
+            $key = $dt->year.'-'.$dt->month;
+            $trendSubmitted[] = (int) ($submittedTrend->get($key)?->cnt ?? 0);
+            $trendApproved[] = (int) ($approvedTrend->get($key)?->cnt ?? 0);
+        }
+
+        return [
+            'balance_summary' => $balanceSummary,
+            'critical_employees' => $criticalEmployees,
+            'trend' => [
+                'labels' => $trendLabels,
+                'submitted' => $trendSubmitted,
+                'approved' => $trendApproved,
+            ],
+        ];
+    }
+
+    // ── Enhancement 5: Workforce Planning ─────────────────────────────────
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildWorkforcePlanning(): array
+    {
+        $milestoneYears = [10, 15, 20, 25, 30];
+        $milestones = [];
+
+        $activeEmployees = User::query()
+            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+            ->select('users.id', 'users.name', 'users.date_hired', 'departments.Dept_name')
+            ->where('users.Status', 'Active')
+            ->whereNotNull('users.date_hired')
+            ->get();
+
+        foreach ($activeEmployees as $emp) {
+            try {
+                $hired = Carbon::parse($emp->date_hired);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            foreach ($milestoneYears as $milestone) {
+                $anniversary = $hired->copy()->addYears($milestone);
+                $daysUntil = (int) now()->diffInDays($anniversary, false);
+
+                if ($daysUntil >= 0 && $daysUntil <= 90) {
+                    $milestones[] = [
+                        'name' => $emp->name,
+                        'department' => $emp->Dept_name ?? 'N/A',
+                        'years' => $milestone,
+                        'anniversary' => $anniversary->toDateString(),
+                        'days_away' => $daysUntil,
+                    ];
+                }
+            }
+        }
+
+        usort($milestones, fn ($a, $b) => $a['days_away'] <=> $b['days_away']);
+
+        $now30Start = now()->subDays(30)->startOfDay();
+        $prev30Start = now()->subDays(60)->startOfDay();
+        $prev30End = now()->subDays(30)->startOfDay();
+
+        $hiredLast30 = (int) User::query()
+            ->where('date_hired', '>=', $now30Start)
+            ->count();
+
+        $hiredPrev30 = (int) User::query()
+            ->where('date_hired', '>=', $prev30Start)
+            ->where('date_hired', '<', $prev30End)
+            ->count();
+
+        $separatedLast30 = (int) User::query()
+            ->whereIn('Status', ['Separated', 'Inactive'])
+            ->where('updated_at', '>=', $now30Start)
+            ->count();
+
+        $separatedPrev30 = (int) User::query()
+            ->whereIn('Status', ['Separated', 'Inactive'])
+            ->where('updated_at', '>=', $prev30Start)
+            ->where('updated_at', '<', $prev30End)
+            ->count();
+
+        $hiredPctChange = $hiredPrev30 > 0
+            ? round((($hiredLast30 - $hiredPrev30) / $hiredPrev30) * 100, 1)
+            : ($hiredLast30 > 0 ? 100.0 : 0.0);
+
+        $separatedPctChange = $separatedPrev30 > 0
+            ? round((($separatedLast30 - $separatedPrev30) / $separatedPrev30) * 100, 1)
+            : ($separatedLast30 > 0 ? 100.0 : 0.0);
+
+        // 12-month hiring trend
+        $trendLabels = [];
+        $trendValues = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $dt = now()->subMonths($i);
+            $trendLabels[] = $dt->format('M');
+            $count = (int) User::query()
+                ->whereYear('date_hired', $dt->year)
+                ->whereMonth('date_hired', $dt->month)
+                ->count();
+            $trendValues[] = $count;
+        }
+
+        return [
+            'milestones' => $milestones,
+            'headcount' => [
+                'hired_30d' => $hiredLast30,
+                'hired_pct_change' => $hiredPctChange,
+                'separated_30d' => $separatedLast30,
+                'separated_pct_change' => $separatedPctChange,
+                'net' => $hiredLast30 - $separatedLast30,
+            ],
+            'trend' => [
+                'labels' => $trendLabels,
+                'values' => $trendValues,
+            ],
+        ];
+    }
+
+    // ── Enhancement 2: Attendance Overview ────────────────────────────────
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildAttendanceOverview(string $month, ?int $departmentId): array
+    {
+        if (! Schema::hasTable('dtrs')) {
+            return ['summary' => [], 'daily_absences' => [], 'dept_late' => [], 'top_employees' => []];
+        }
+
+        [$year, $mon] = explode('-', $month);
+        $year = (int) $year;
+        $mon = (int) $mon;
+
+        $baseQuery = fn () => DB::table('dtrs')
+            ->join('users', 'users.id', '=', 'dtrs.employee_id')
+            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+            ->whereYear('dtrs.date', $year)
+            ->whereMonth('dtrs.date', $mon)
+            ->when($departmentId !== null, fn ($q) => $q->where('users.Dept_id', $departmentId));
+
+        $summary = $baseQuery()->selectRaw('
+            SUM(dtrs.is_absent) as total_absences,
+            SUM(dtrs.late_minutes) as total_late,
+            SUM(dtrs.undertime_minutes) as total_undertime
+        ')->first();
+
+        $totalDays = Carbon::createFromDate($year, $mon, 1)->daysInMonth;
+        $daysWithAbsences = (int) $baseQuery()
+            ->where('dtrs.is_absent', true)
+            ->distinct()
+            ->count(DB::raw('DATE(dtrs.date)'));
+
+        $summaryCards = [
+            'total_absences' => (int) ($summary->total_absences ?? 0),
+            'total_late_minutes' => (int) ($summary->total_late ?? 0),
+            'total_undertime_minutes' => (int) ($summary->total_undertime ?? 0),
+            'clean_days' => $totalDays - $daysWithAbsences,
+        ];
+
+        // Daily absent count (last 30 days of the selected month)
+        $dailyAbsences = $baseQuery()
+            ->selectRaw('DATE(dtrs.date) as day, SUM(dtrs.is_absent) as absent_count')
+            ->groupBy(DB::raw('DATE(dtrs.date)'))
+            ->orderBy('day')
+            ->get()
+            ->map(fn ($r) => ['day' => $r->day, 'count' => (int) $r->absent_count])
+            ->all();
+
+        // Late minutes by department
+        $deptLate = $baseQuery()
+            ->selectRaw('departments.Dept_name, SUM(dtrs.late_minutes) as total_late')
+            ->groupBy('departments.Dept_id', 'departments.Dept_name')
+            ->orderByDesc('total_late')
+            ->get()
+            ->map(fn ($r) => ['department' => $r->Dept_name ?? 'Unknown', 'late_minutes' => (int) $r->total_late])
+            ->all();
+
+        // Top 15 employees by total tardiness
+        $hasSource = Schema::hasColumn('dtrs', 'source');
+        $topEmployees = $baseQuery()
+            ->selectRaw('
+                users.id,
+                users.name,
+                departments.Dept_name,
+                SUM(dtrs.late_minutes) as late_min,
+                SUM(dtrs.undertime_minutes) as undertime_min,
+                SUM(dtrs.is_absent) as absences'
+                .($hasSource ? ', GROUP_CONCAT(DISTINCT dtrs.source) as sources' : ''))
+            ->groupBy('users.id', 'users.name', 'departments.Dept_name')
+            ->orderByDesc(DB::raw('SUM(dtrs.late_minutes) + SUM(dtrs.undertime_minutes) + SUM(dtrs.is_absent) * 60'))
+            ->limit(15)
+            ->get()
+            ->map(fn ($r) => [
+                'user_id' => $r->id,
+                'name' => $r->name,
+                'department' => $r->Dept_name ?? 'Unknown',
+                'late_minutes' => (int) $r->late_min,
+                'undertime_minutes' => (int) $r->undertime_min,
+                'absences' => (int) $r->absences,
+                'source' => $hasSource ? ($r->sources ?? 'N/A') : 'N/A',
+            ])
+            ->all();
+
+        return [
+            'summary' => $summaryCards,
+            'daily_absences' => $dailyAbsences,
+            'dept_late' => $deptLate,
+            'top_employees' => $topEmployees,
+        ];
+    }
+
+    // ── Enhancement 4: Payroll Overview ───────────────────────────────────
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildPayrollOverview(): array
+    {
+        if (! Schema::hasTable('payroll_runs')) {
+            return ['runs' => [], 'exceptions' => [], 'dept_net_pay' => ['labels' => [], 'values' => []]];
+        }
+
+        $runs = PayrollRun::query()
+            ->withCount(['exceptions as unresolved_count' => fn ($q) => $q->where('resolved_flag', false)])
+            ->withCount('details as employee_count')
+            ->orderByDesc('id')
+            ->limit(6)
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'period' => $r->period,
+                'period_start' => $r->period_start?->toDateString(),
+                'period_end' => $r->period_end?->toDateString(),
+                'status' => $r->status,
+                'locked_at' => $r->locked_at?->toDateTimeString(),
+                'employee_count' => $r->employee_count,
+                'unresolved_exceptions' => $r->unresolved_count,
+            ])
+            ->all();
+
+        $exceptions = [];
+        if (Schema::hasTable('payroll_exceptions')) {
+            $latestRunId = PayrollRun::query()->orderByDesc('id')->value('id');
+            if ($latestRunId) {
+                $exceptions = PayrollException::query()
+                    ->with('payrollRun:id,period')
+                    ->where('payroll_run_id', $latestRunId)
+                    ->where('resolved_flag', false)
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get()
+                    ->map(fn ($e) => [
+                        'id' => $e->id,
+                        'period' => $e->payrollRun?->period ?? 'N/A',
+                        'type' => $e->type,
+                        'description' => $e->description,
+                    ])
+                    ->all();
+            }
+        }
+
+        // Net pay by department for the latest locked run
+        $deptNetPay = ['labels' => [], 'values' => []];
+        if (Schema::hasTable('payroll_details')) {
+            $lockedRun = PayrollRun::query()
+                ->whereNotNull('locked_at')
+                ->orderByDesc('id')
+                ->first(['id']);
+
+            if ($lockedRun) {
+                $rows = DB::table('payroll_details')
+                    ->join('users', 'users.id', '=', 'payroll_details.employee_id')
+                    ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+                    ->where('payroll_details.payroll_run_id', $lockedRun->id)
+                    ->selectRaw('departments.Dept_name, SUM(payroll_details.net_pay) as total_net')
+                    ->groupBy('departments.Dept_id', 'departments.Dept_name')
+                    ->orderByDesc('total_net')
+                    ->get();
+
+                $deptNetPay = [
+                    'labels' => $rows->pluck('Dept_name')->map(fn ($n) => $n ?? 'Unknown')->all(),
+                    'values' => $rows->pluck('total_net')->map(fn ($v) => round((float) $v, 2))->all(),
+                ];
+            }
+        }
+
+        return [
+            'runs' => $runs,
+            'exceptions' => $exceptions,
+            'dept_net_pay' => $deptNetPay,
         ];
     }
 

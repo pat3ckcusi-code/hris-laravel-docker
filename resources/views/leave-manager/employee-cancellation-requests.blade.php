@@ -164,9 +164,7 @@
                 var tbody = $('#employee-requests-table tbody');
                 tbody.empty();
 
-                if (!resp.rows || !resp.rows.length) {
-                    tbody.append('<tr><td colspan="8" class="text-center" style="padding:1rem;color:#6b7280;">No employee cancellation requests found.</td></tr>');
-                } else {
+                if (resp.rows && resp.rows.length) {
                     resp.rows.forEach(function(row) {
                         tbody.append(
                             '<tr>' +

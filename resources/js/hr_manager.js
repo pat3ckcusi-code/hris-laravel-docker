@@ -413,45 +413,19 @@ const bindRecordsModule = (root) => {
 const bindLeaveModule = (root) => {
     if (!root || root.dataset.module !== 'leave') return;
 
-    const tableBody = document.querySelector('#leaveTable tbody');
-    const table = document.getElementById('leaveTable');
     const department = document.getElementById('leaveDepartment');
     const status = document.getElementById('leaveStatus');
     const filterBtn = document.getElementById('leaveFilterBtn');
-    const paginationRoot = document.getElementById('leavePagination');
-    const csrf = root.dataset.csrf || '';
+    const monthPicker = document.getElementById('leaveMonthPicker');
 
-    const initialChart = JSON.parse(table?.dataset.initialChart || '{"labels":[],"values":[]}');
+    const initialChart = JSON.parse(root.dataset.initialChart || '{"labels":[],"values":[]}');
     const leaveChart = createBarChart('leaveUsageChart', 'Leave Requests', initialChart, colorSet.orange);
 
-    const renderRows = (rows) => {
-        if (!tableBody) return;
-
-        tableBody.innerHTML = rows
-            .map(
-                (row) => `
-                    <tr data-id="${row.id}">
-                        <td>${row.employee_name ?? ''}</td>
-                        <td>${row.department ?? ''}</td>
-                        <td>${row.leave_type ?? ''}</td>
-                        <td>${row.period ?? ''}</td>
-                        <td>${row.days ?? ''}</td>
-                        <td><span class="status-chip status-${row.status}">${(row.status || '').toUpperCase()}</span></td>
-                        <td>
-                            <button class="hrm-btn-secondary hrm-leave-approve" type="button">Approve</button>
-                            <button class="hrm-btn-secondary hrm-leave-reject" type="button">Reject</button>
-                        </td>
-                    </tr>
-                `
-            )
-            .join('');
-    };
-
-    const fetchRows = async (page = 1) => {
+    const fetchChart = async () => {
         const params = new URLSearchParams({
             department: department?.value || '',
             status: status?.value || 'pending',
-            page: String(page),
+            month: monthPicker?.value || '',
         });
 
         try {
@@ -459,77 +433,22 @@ const bindLeaveModule = (root) => {
             if (!response.ok) throw new Error('Leave data load failed.');
 
             const data = await response.json();
-            renderRows(data.rows || []);
-            renderPagination(paginationRoot, data.pagination, fetchRows);
             updateChart(leaveChart, data.chart || { labels: [], values: [] });
         } catch (error) {
-            await Swal.fire('Error', 'Failed to load leave requests.', 'error');
+            await Swal.fire('Error', 'Failed to load leave chart data.', 'error');
         }
     };
 
-    const submitAction = async (id, action) => {
-        const actionUrl = (root.dataset.actionUrl || '').replace('__ID__', id);
-        const confirm = await Swal.fire({
-            title: `${action === 'approve' ? 'Approve' : 'Reject'} leave request?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Confirm',
-        });
+    filterBtn?.addEventListener('click', fetchChart);
 
-        if (!confirm.isConfirmed) return;
-
-        const payload = { action };
-        if (action === 'reject') {
-            const notes = await Swal.fire({
-                title: 'Rejection Remarks',
-                input: 'text',
-                inputPlaceholder: 'Optional remarks',
-                showCancelButton: true,
-            });
-            if (notes.isDismissed) return;
-            payload.remarks = notes.value || '';
+    monthPicker?.addEventListener('change', () => {
+        const url = new URL(window.location.href);
+        if (monthPicker.value) {
+            url.searchParams.set('month', monthPicker.value);
+        } else {
+            url.searchParams.delete('month');
         }
-
-        try {
-            const response = await fetch(actionUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': csrf,
-                },
-                body: JSON.stringify(payload),
-            });
-
-            if (!response.ok) throw new Error('Action failed.');
-
-            await Swal.fire('Success', 'Leave request updated.', 'success');
-            fetchRows();
-        } catch (error) {
-            await Swal.fire('Error', 'Failed to update leave request.', 'error');
-        }
-    };
-
-    filterBtn?.addEventListener('click', () => fetchRows(1));
-
-    const initialPagination = JSON.parse(root.dataset.pagination || '{"current_page":1,"last_page":1}');
-    renderPagination(paginationRoot, initialPagination, fetchRows);
-
-    tableBody?.addEventListener('click', (event) => {
-        const button = event.target.closest('button');
-        const row = event.target.closest('tr');
-        if (!button || !row) return;
-
-        const id = row.dataset.id;
-        if (!id) return;
-
-        if (button.classList.contains('hrm-leave-approve')) {
-            submitAction(id, 'approve');
-        }
-
-        if (button.classList.contains('hrm-leave-reject')) {
-            submitAction(id, 'reject');
-        }
+        window.location.href = url.toString();
     });
 };
 
@@ -733,8 +652,493 @@ const bindSimpleSuccessButtons = () => {
     });
 };
 
+// ── Enhancement 1: Alert Strip ────────────────────────────────────────────
+
+const bindAlertPanel = (root) => {
+    const strip = document.getElementById('hrmAlertStrip');
+    const alertsUrl = root?.dataset?.alertsUrl;
+    if (!strip || !alertsUrl) return;
+
+    const chipColor = (type) => {
+        if (type === 'red') return '#dc3545';
+        if (type === 'orange') return '#fd7e14';
+        return '#17a2b8';
+    };
+
+    const makeChip = (text, link, type) => {
+        const a = link ? `href="${link}"` : '';
+        return `<a ${a} class="hrm-alert-chip" style="border-left-color:${chipColor(type)}">${text}</a>`;
+    };
+
+    fetch(alertsUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => r.json())
+        .then((data) => {
+            const chips = [];
+
+            if (data.stale_leave?.count > 0) {
+                chips.push(makeChip(
+                    `&#x26a0; ${data.stale_leave.count} leave ${data.stale_leave.count === 1 ? 'request' : 'requests'} pending ${data.stale_leave.days}+ days`,
+                    null, 'red'
+                ));
+            }
+
+            if (data.open_payroll) {
+                chips.push(makeChip(
+                    `&#x26a0; Payroll run "${data.open_payroll.period}" is still in Draft`,
+                    null, 'orange'
+                ));
+            }
+
+            if (data.unresolved_exceptions > 0) {
+                chips.push(makeChip(
+                    `&#x26a0; ${data.unresolved_exceptions} unresolved payroll ${data.unresolved_exceptions === 1 ? 'exception' : 'exceptions'}`,
+                    null, 'orange'
+                ));
+            }
+
+            (data.upcoming_holidays || []).forEach((h) => {
+                chips.push(makeChip(
+                    `&#x1F4C5; ${h.title} on ${h.date} (in ${h.days_away} ${h.days_away === 1 ? 'day' : 'days'})`,
+                    null, 'blue'
+                ));
+            });
+
+            if (data.stale_travel > 0) {
+                chips.push(makeChip(
+                    `&#x26a0; ${data.stale_travel} stale travel ${data.stale_travel === 1 ? 'order' : 'orders'}`,
+                    null, 'orange'
+                ));
+            }
+
+            if (data.stale_documents > 0) {
+                chips.push(makeChip(
+                    `&#x26a0; ${data.stale_documents} stale document ${data.stale_documents === 1 ? 'request' : 'requests'}`,
+                    null, 'orange'
+                ));
+            }
+
+            if (chips.length === 0) {
+                strip.innerHTML = `<span class="hrm-alert-chip" style="border-left-color:#28a745">&#x2713; All clear &mdash; no urgent items</span>`;
+            } else {
+                strip.innerHTML = chips.join('');
+            }
+
+            strip.style.display = 'flex';
+        })
+        .catch(() => { /* Silently ignore alert fetch failures */ });
+};
+
+// ── Enhancement 3: Leave Analytics ───────────────────────────────────────
+
+const bindLeaveAnalytics = (root) => {
+    const analyticsUrl = root?.dataset?.analyticsUrl;
+    const notifyUrl = root?.dataset?.notifyUrl;
+    const csrf = root?.dataset?.csrf || '';
+    if (!analyticsUrl) return;
+
+    const trendArrow = (trend) => {
+        if (trend === 'down') return `<span style="color:#dc3545;font-weight:700;">&#x2193;</span>`;
+        if (trend === 'up') return `<span style="color:#28a745;font-weight:700;">&#x2191;</span>`;
+        return `<span style="color:#64748b;">&#x2013;</span>`;
+    };
+
+    let trendChart = null;
+
+    fetch(analyticsUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => r.json())
+        .then((data) => {
+            // Balance summary table
+            const balanceEl = document.getElementById('leaveBalanceTable');
+            if (balanceEl && data.balance_summary) {
+                const types = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
+                const rows = types.map((t) => {
+                    const b = data.balance_summary[t];
+                    if (!b) return '';
+                    return `<tr>
+                        <td><strong>${t}</strong></td>
+                        <td>${b.avg} days ${trendArrow(b.trend)}</td>
+                        <td><span style="color:#fd7e14;">${b.low_count}</span></td>
+                        <td><span style="color:#dc3545;">${b.zero_count}</span></td>
+                    </tr>`;
+                }).join('');
+
+                balanceEl.innerHTML = `<table class="hrm-table">
+                    <thead><tr><th>Type</th><th>Avg Balance (Trend)</th><th>Low (&lt;2d)</th><th>Exhausted</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;">No data</td></tr>'}</tbody>
+                </table>`;
+            }
+
+            // Critical employees table
+            const criticalEl = document.getElementById('criticalBalanceTable');
+            if (criticalEl) {
+                const emps = data.critical_employees || [];
+                if (emps.length === 0) {
+                    criticalEl.innerHTML = `<p style="color:#28a745;padding:0.5rem 0;">&#x2713; No employees with critically low balances.</p>`;
+                } else {
+                    const empRows = emps.map((e) => `<tr>
+                        <td>${e.name ?? ''}</td>
+                        <td>${e.department ?? ''}</td>
+                        <td style="color:${e.vl < 2 ? '#dc3545' : 'inherit'}">${e.vl}</td>
+                        <td style="color:${e.sl < 2 ? '#dc3545' : 'inherit'}">${e.sl}</td>
+                        <td><button class="hrm-btn-secondary hrm-notify-mgr" type="button" data-uid="${e.user_id}" data-name="${e.name}">Notify Manager</button></td>
+                    </tr>`).join('');
+
+                    criticalEl.innerHTML = `<table class="hrm-table">
+                        <thead><tr><th>Name</th><th>Department</th><th>VL</th><th>SL</th><th>Action</th></tr></thead>
+                        <tbody>${empRows}</tbody>
+                    </table>`;
+
+                    criticalEl.addEventListener('click', async (evt) => {
+                        const btn = evt.target.closest('.hrm-notify-mgr');
+                        if (!btn) return;
+                        const uid = btn.dataset.uid;
+                        const name = btn.dataset.name;
+
+                        const confirm = await Swal.fire({
+                            title: `Notify department head?`,
+                            html: `Send a low-balance alert to <strong>${name}</strong>'s department head.`,
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'Send',
+                        });
+                        if (!confirm.isConfirmed) return;
+
+                        btn.disabled = true;
+                        try {
+                            const res = await fetch(notifyUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'X-CSRF-TOKEN': csrf,
+                                },
+                                body: JSON.stringify({ user_id: uid }),
+                            });
+                            const json = await res.json();
+                            if (json.success) {
+                                await Swal.fire('Sent', json.message, 'success');
+                            } else {
+                                await Swal.fire('Error', json.message || 'Could not send notification.', 'error');
+                                btn.disabled = false;
+                            }
+                        } catch {
+                            await Swal.fire('Error', 'Network error — notification not sent.', 'error');
+                            btn.disabled = false;
+                        }
+                    });
+                }
+            }
+
+            // 6-month trend chart
+            if (data.trend) {
+                trendChart = new Chart(document.getElementById('leaveTrendChart')?.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: data.trend.labels,
+                        datasets: [
+                            { label: 'Submitted', data: data.trend.submitted, borderColor: colorSet.blue, backgroundColor: 'rgba(0,123,255,0.1)', tension: 0.3 },
+                            { label: 'Approved', data: data.trend.approved, borderColor: colorSet.green, backgroundColor: 'rgba(40,167,69,0.1)', tension: 0.3 },
+                        ],
+                    },
+                    options: { responsive: true, maintainAspectRatio: false },
+                });
+            }
+        })
+        .catch(() => { /* Silently ignore analytics load failure */ });
+};
+
+// ── Enhancement 5: Workforce Planning ────────────────────────────────────
+
+const bindWorkforcePlanning = (root) => {
+    const toggleBtn = document.getElementById('togglePlanningBtn');
+    const panel = document.getElementById('workforcePlanningPanel');
+    const planningUrl = root?.dataset?.planningUrl;
+    if (!toggleBtn || !panel || !planningUrl) return;
+
+    let loaded = false;
+    let hiringChart = null;
+
+    const milestoneLabel = (years) => {
+        if (years >= 30) return `<span class="hrm-milestone-badge hrm-milestone-30">&#9733;&#9733;&#9733; ${years} YRS</span>`;
+        if (years >= 20) return `<span class="hrm-milestone-badge hrm-milestone-20">&#9733;&#9733; ${years} YRS</span>`;
+        return `<span class="hrm-milestone-badge hrm-milestone-10">&#9733; ${years} YRS</span>`;
+    };
+
+    const loadPlanningData = () => {
+        fetch(planningUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then((r) => r.json())
+            .then((data) => {
+                // Headcount cards
+                const hc = data.headcount || {};
+                const pctSign = (v) => v >= 0 ? `+${v}` : `${v}`;
+
+                const hiredEl = document.getElementById('planHired');
+                if (hiredEl) {
+                    hiredEl.querySelector('h3').textContent = hc.hired_30d ?? '—';
+                    hiredEl.querySelector('small').textContent = `${pctSign(hc.hired_pct_change ?? 0)}% vs last month`;
+                    hiredEl.querySelector('small').style.color = (hc.hired_pct_change ?? 0) >= 0 ? '#28a745' : '#dc3545';
+                }
+
+                const sepEl = document.getElementById('planSeparated');
+                if (sepEl) {
+                    sepEl.querySelector('h3').textContent = hc.separated_30d ?? '—';
+                    sepEl.querySelector('small').textContent = `${pctSign(hc.separated_pct_change ?? 0)}% vs last month`;
+                    sepEl.querySelector('small').style.color = (hc.separated_pct_change ?? 0) > 0 ? '#dc3545' : '#28a745';
+                }
+
+                const netEl = document.getElementById('planNet');
+                if (netEl) {
+                    const net = hc.net ?? 0;
+                    netEl.querySelector('h3').textContent = `${net >= 0 ? '+' : ''}${net}`;
+                    netEl.querySelector('h3').style.color = net >= 0 ? '#28a745' : '#dc3545';
+                }
+
+                // Milestones table
+                const milEl = document.getElementById('milestonesTable');
+                if (milEl) {
+                    const ms = data.milestones || [];
+                    if (ms.length === 0) {
+                        milEl.innerHTML = `<p style="color:#94a3b8;padding:0.5rem 0;">No service milestones in the next 90 days.</p>`;
+                    } else {
+                        const rows = ms.map((m) => `<tr>
+                            <td>${m.name ?? ''}</td>
+                            <td>${m.department ?? ''}</td>
+                            <td>${milestoneLabel(m.years)}</td>
+                            <td>${m.anniversary ?? ''}</td>
+                            <td>${m.days_away === 0 ? 'Today!' : `In ${m.days_away} days`}</td>
+                        </tr>`).join('');
+
+                        milEl.innerHTML = `<table class="hrm-table">
+                            <thead><tr><th>Name</th><th>Department</th><th>Milestone</th><th>Anniversary</th><th>Days Away</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>`;
+                    }
+                }
+
+                // Hiring trend chart
+                if (data.trend && !hiringChart) {
+                    hiringChart = createBarChart('hiringTrendChart', 'New Hires', data.trend, colorSet.cyan);
+                }
+            })
+            .catch(() => { /* Silently ignore */ });
+    };
+
+    toggleBtn.addEventListener('click', () => {
+        const isHidden = panel.style.display === 'none';
+        panel.style.display = isHidden ? 'block' : 'none';
+        toggleBtn.innerHTML = isHidden
+            ? '<i class="fas fa-chart-line"></i> Hide Workforce Insights'
+            : '<i class="fas fa-chart-line"></i> Show Workforce Insights';
+
+        if (isHidden && !loaded) {
+            loaded = true;
+            loadPlanningData();
+        }
+    });
+};
+
+// ── Enhancement 2: Attendance Overview ───────────────────────────────────
+
+const bindAttendanceOverview = () => {
+    const root = document.querySelector('.hrm-module');
+    if (!root || !root.dataset.url?.includes('attendance-overview')) return;
+
+    const monthInput = document.getElementById('attendanceMonth');
+    const deptSelect = document.getElementById('attendanceDepartment');
+    const filterBtn = document.getElementById('attendanceFilterBtn');
+
+    let dailyChart = null;
+    let deptChart = null;
+
+    const render = (data) => {
+        // Summary cards
+        document.getElementById('attAbsentDays').querySelector('h3').textContent = data.summary?.total_absences ?? '—';
+        document.getElementById('attTotalLate').querySelector('h3').textContent = data.summary?.total_late_minutes ?? '—';
+        document.getElementById('attTotalUndertime').querySelector('h3').textContent = data.summary?.total_undertime_minutes ?? '—';
+        document.getElementById('attCleanDays').querySelector('h3').textContent = data.summary?.clean_days ?? '—';
+
+        // Daily absences line chart
+        const daily = data.daily_absences || [];
+        const dailyPayload = { labels: daily.map((d) => d.day), values: daily.map((d) => d.count) };
+        if (!dailyChart) {
+            dailyChart = new Chart(document.getElementById('dailyAbsencesChart')?.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: dailyPayload.labels,
+                    datasets: [{ label: 'Absent Employees', data: dailyPayload.values, borderColor: colorSet.red, backgroundColor: 'rgba(220,53,69,0.1)', tension: 0.3 }],
+                },
+                options: { responsive: true, maintainAspectRatio: false },
+            });
+        } else {
+            dailyChart.data.labels = dailyPayload.labels;
+            dailyChart.data.datasets[0].data = dailyPayload.values;
+            dailyChart.update();
+        }
+
+        // Dept late bar chart (horizontal)
+        const deptLate = data.dept_late || [];
+        const deptPayload = { labels: deptLate.map((d) => d.department), values: deptLate.map((d) => d.late_minutes) };
+        if (!deptChart) {
+            deptChart = new Chart(document.getElementById('deptLateChart')?.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: deptPayload.labels,
+                    datasets: [{ label: 'Late Minutes', data: deptPayload.values, backgroundColor: colorSet.orange, borderRadius: 4 }],
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+            });
+        } else {
+            deptChart.data.labels = deptPayload.labels;
+            deptChart.data.datasets[0].data = deptPayload.values;
+            deptChart.update();
+        }
+
+        // Top employees drilldown table
+        const tbody = document.querySelector('#attTopTable tbody');
+        if (tbody) {
+            const emps = data.top_employees || [];
+            if (emps.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#94a3b8;">No data for this period.</td></tr>`;
+            } else {
+                const month = monthInput?.value || '';
+                tbody.innerHTML = emps.map((e) => {
+                    const dtrLink = `/attendance/dtr?employee=${e.user_id}&month=${month}`;
+                    const srcBadge = e.source ? `<span class="status-chip" style="font-size:0.75rem;">${e.source}</span>` : '—';
+                    return `<tr>
+                        <td>${e.name ?? ''}</td>
+                        <td>${e.department ?? ''}</td>
+                        <td>${e.late_minutes}</td>
+                        <td>${e.undertime_minutes}</td>
+                        <td>${e.absences}</td>
+                        <td>${srcBadge}</td>
+                        <td><a href="${dtrLink}" class="hrm-btn-secondary" style="font-size:0.8rem;padding:2px 8px;">View DTR</a></td>
+                    </tr>`;
+                }).join('');
+            }
+        }
+    };
+
+    const load = () => {
+        const month = monthInput?.value || '';
+        const dept = deptSelect?.value || '';
+        const params = new URLSearchParams({ month, department: dept });
+
+        fetch(`${root.dataset.url}?${params.toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then((r) => r.json())
+            .then(render)
+            .catch(() => Swal.fire('Error', 'Failed to load attendance data.', 'error'));
+    };
+
+    filterBtn?.addEventListener('click', load);
+    load();
+};
+
+// ── Enhancement 4: Payroll Overview ──────────────────────────────────────
+
+const bindPayrollOverview = () => {
+    const root = document.querySelector('.hrm-module');
+    if (!root || !root.dataset.url?.includes('payroll-overview')) return;
+
+    const csrf = root.dataset.csrf || '';
+    const resolveBase = root.dataset.resolveUrl || '';
+    let netPayChart = null;
+
+    const statusColor = { draft: '#ffc107', computed: '#17a2b8', approved: '#28a745', locked: '#6610f2' };
+
+    const render = (data) => {
+        // Run status cards
+        const runsEl = document.getElementById('payrollRunCards');
+        if (runsEl) {
+            if (!data.runs || data.runs.length === 0) {
+                runsEl.innerHTML = `<p style="color:#94a3b8;font-style:italic;">No payroll runs found.</p>`;
+            } else {
+                runsEl.innerHTML = data.runs.map((r) => {
+                    const color = statusColor[r.status] || '#6c757d';
+                    return `<article class="hrm-summary-card" style="border-left:4px solid ${color}">
+                        <p>${r.period ?? 'N/A'}</p>
+                        <span class="status-chip" style="background:${color};color:#fff;font-size:0.75rem;">${(r.status || '').toUpperCase()}</span>
+                        <br><small>${r.employee_count ?? 0} employees</small>
+                        ${r.unresolved_exceptions > 0 ? `<br><small style="color:#dc3545;">&#x26a0; ${r.unresolved_exceptions} exception(s)</small>` : ''}
+                        ${r.locked_at ? `<br><small style="color:#64748b;">Locked: ${r.locked_at}</small>` : ''}
+                    </article>`;
+                }).join('');
+            }
+        }
+
+        // Exceptions table
+        const tbody = document.querySelector('#payrollExceptionsTable tbody');
+        if (tbody) {
+            const excs = data.exceptions || [];
+            if (excs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#28a745;">&#x2713; No unresolved exceptions.</td></tr>`;
+            } else {
+                tbody.innerHTML = excs.map((e) => `<tr data-id="${e.id}">
+                    <td>${e.period ?? ''}</td>
+                    <td>${e.type ?? ''}</td>
+                    <td>${e.description ?? ''}</td>
+                    <td><button class="hrm-btn-secondary hrm-resolve-exception" type="button" data-id="${e.id}">Mark Resolved</button></td>
+                </tr>`).join('');
+            }
+        }
+
+        // Net pay chart
+        if (data.dept_net_pay) {
+            if (!netPayChart) {
+                netPayChart = createBarChart('deptNetPayChart', 'Net Pay (PHP)', data.dept_net_pay, colorSet.green);
+            } else {
+                updateChart(netPayChart, data.dept_net_pay);
+            }
+        }
+    };
+
+    const load = () => {
+        fetch(root.dataset.url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then((r) => r.json())
+            .then(render)
+            .catch(() => Swal.fire('Error', 'Failed to load payroll overview.', 'error'));
+    };
+
+    document.addEventListener('click', async (evt) => {
+        const btn = evt.target.closest('.hrm-resolve-exception');
+        if (!btn) return;
+
+        const id = btn.dataset.id;
+        const confirm = await Swal.fire({
+            title: 'Mark exception as resolved?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Resolve',
+        });
+        if (!confirm.isConfirmed) return;
+
+        btn.disabled = true;
+        try {
+            const url = resolveBase.replace('__ID__', id);
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify({}),
+            });
+            const json = await res.json();
+            if (json.success) {
+                await Swal.fire('Resolved', json.message, 'success');
+                load();
+            } else {
+                await Swal.fire('Error', json.message || 'Could not resolve exception.', 'error');
+                btn.disabled = false;
+            }
+        } catch {
+            await Swal.fire('Error', 'Network error.', 'error');
+            btn.disabled = false;
+        }
+    });
+
+    load();
+};
+
 if (dashboardRoot) {
     initializeWorkforceCharts(dashboardRoot, window.hrManagerInitialData || {});
+    bindAlertPanel(dashboardRoot);
 }
 
 if (moduleRoot && moduleRoot.dataset.module === 'reports' && moduleRoot !== dashboardRoot) {
@@ -743,6 +1147,14 @@ if (moduleRoot && moduleRoot.dataset.module === 'reports' && moduleRoot !== dash
 
 bindRecordsModule(moduleRoot);
 bindLeaveModule(moduleRoot);
+if (moduleRoot?.dataset?.module === 'leave') {
+    bindLeaveAnalytics(moduleRoot);
+}
+if (moduleRoot?.dataset?.module === 'records') {
+    bindWorkforcePlanning(moduleRoot);
+}
 bindFrontdeskModule(moduleRoot);
 bindAuditModule(moduleRoot);
 bindSimpleSuccessButtons();
+bindAttendanceOverview();
+bindPayrollOverview();

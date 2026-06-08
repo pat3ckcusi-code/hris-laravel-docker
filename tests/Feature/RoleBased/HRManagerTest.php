@@ -393,4 +393,51 @@ class HRManagerTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    // ──────────────────────────────────────────────
+    // 9. Leave Monthly Filtering
+    // ──────────────────────────────────────────────
+
+    public function test_leave_page_month_filter(): void
+    {
+        $hr = $this->createHRManager();
+        $emp = $this->createEmployee();
+
+        LeaveRequest::create([
+            'user_id'    => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => '2026-06-10',
+            'end_date'   => '2026-06-10',
+            'reason'     => 'June leave test',
+            'status'     => 'pending',
+        ]);
+
+        LeaveRequest::create([
+            'user_id'    => $emp->id,
+            'leave_type' => 'SL',
+            'start_date' => '2026-05-10',
+            'end_date'   => '2026-05-10',
+            'reason'     => 'May leave test',
+            'status'     => 'pending',
+        ]);
+
+        $response = $this->actingAs($hr)->get(route('hr-manager.leave') . '?month=2026-06&status=all');
+
+        $response->assertStatus(200);
+        $response->assertSee('2026-06');
+    }
+
+    public function test_leave_analytics_month_filter(): void
+    {
+        $hr = $this->createHRManager();
+
+        $response = $this->actingAs($hr)->get(route('hr-manager.leave.analytics') . '?month=2026-06&department=0');
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'balance_summary',
+            'critical_employees',
+            'trend' => ['labels', 'submitted', 'approved'],
+        ]);
+    }
 }

@@ -41,13 +41,10 @@
         </header>
 
         <form
+            id="addEmployeeForm"
             method="POST"
             action="{{ route('dashboard.records-manager.users.store') }}"
             class="record-form"
-            data-processing-submit
-            data-processing-title="Creating employee account"
-            data-processing-text="Saving the employee record and sending the default password email. Please wait."
-            data-processing-button-text="Creating..."
         >
             @csrf
             <input type="hidden" name="create_form" value="1">
@@ -185,7 +182,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($employees as $employee)
+                    @foreach ($employees as $employee)
                         @php
                             $departmentName = optional($departments->firstWhere('Dept_id', $employee->Dept_id))->Dept_name ?? 'Not assigned';
                         @endphp
@@ -235,13 +232,7 @@
                                 <button type="button" class="btn-sm" style="margin-left:8px; background:#6366f1; color:#fff;" onclick="confirmResetPassword({{ $employee->id }}, '{{ route('records-manager.employees.reset-password', $employee->id) }}', '{{ e($employee->email) }}')">Reset Password</button>
                             </td>
                         </tr>
-                    @empty
-                        <tr>
-                                    <td colspan="10">
-                                <p class="empty-state">No employee records found.</p>
-                            </td>
-                        </tr>
-                    @endforelse
+                    @endforeach
                 </tbody>
             </table>
         </div>
@@ -363,10 +354,6 @@
 
 @section('page_scripts')
     @vite('resources/js/records_manager.js')
-    <!-- DataTables (kept via CDN here) -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script>
         (function () {
             const addModal = document.getElementById('addEmployeeModal');
@@ -439,16 +426,7 @@
                 });
             });
 
-            @if (old('create_form') === '1' && $errors->any())
-            Swal.fire({
-                icon: 'error',
-                title: 'Unable to save changes',
-                text: @json(implode("\n", $errors->all())),
-                confirmButtonColor: '#ea580c',
-            }).then(function () {
-                openCreateModal();
-            });
-            @elseif (old('update_form') === '1' && $errors->any())
+            @if (old('update_form') === '1' && $errors->any())
             @php
                 $updateEmployee = $employees->getCollection()->firstWhere('id', (int) old('update_employee_id'));
             @endphp
@@ -465,10 +443,66 @@
             }).then(function () {
                 openUpdateModal();
             });
-            @elseif (old('create_form') === '1')
-            openCreateModal();
             @endif
         })();
+
+        // Add New Employee — confirmation + AJAX submit
+        (function ($) {
+            var form = document.getElementById('addEmployeeForm');
+            if (!form) return;
+
+            $(form).on('submit', function (e) {
+                e.preventDefault();
+                var $form = $(this);
+
+                Swal.fire({
+                    title: 'Are you sure?',
+                    text: 'Are you sure you want to add this employee?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, add',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#f06c00',
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    Swal.fire({
+                        title: 'Creating employee account',
+                        text: 'Saving the record and sending the default password email. Please wait.',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showConfirmButton: false,
+                        didOpen: function () { Swal.showLoading(); },
+                    });
+
+                    $.ajax({
+                        url: form.action,
+                        type: 'POST',
+                        data: $form.serialize(),
+                        headers: { 'Accept': 'application/json' },
+                        success: function (res) {
+                            Swal.fire('Success', res.message || 'Employee account created.', 'success')
+                                .then(function () {
+                                    var modal = document.getElementById('addEmployeeModal');
+                                    if (modal && modal.open) modal.close();
+                                    window.location.reload();
+                                });
+                        },
+                        error: function (xhr) {
+                            var msg = 'An unexpected error occurred.';
+                            if (xhr.responseJSON) {
+                                if (xhr.responseJSON.errors) {
+                                    msg = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                                } else if (xhr.responseJSON.message) {
+                                    msg = xhr.responseJSON.message;
+                                }
+                            }
+                            Swal.fire('Error', msg, 'error');
+                        },
+                    });
+                });
+            });
+        })(jQuery);
 
         // Initialize DataTables (guard to avoid reinitialization)
         document.addEventListener('DOMContentLoaded', function () {
@@ -481,8 +515,10 @@
                         lengthMenu: [10, 25, 50, 100],
                         searching: true,
                         info: true,
+                        autoWidth: false,
                         language: {
-                            paginate: { previous: 'Prev', next: 'Next' }
+                            paginate: { previous: 'Prev', next: 'Next' },
+                            emptyTable: 'No employee records found.'
                         }
                     });
                 }

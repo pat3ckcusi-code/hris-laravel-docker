@@ -8,7 +8,30 @@
 @endsection
 
 @section('content')
-    <section class="hrm-module" data-module="leave" data-url="{{ $leaveDataUrl }}" data-action-url="{{ $leaveActionBaseUrl }}" data-csrf="{{ csrf_token() }}" data-pagination='@json($leavePagination)'>
+    <section class="hrm-module" data-module="leave" data-url="{{ $leaveDataUrl }}" data-action-url="{{ $leaveActionBaseUrl }}" data-analytics-url="{{ $leaveAnalyticsUrl }}" data-notify-url="{{ $leaveNotifyManagerUrl }}" data-csrf="{{ csrf_token() }}" data-pagination='@json($leavePagination)' data-initial-chart='@json($leaveChart)'>
+
+        {{-- Holiday-Leave Overlap Alerts (Enhancement 6) --}}
+        @if(!empty($holidayAlerts))
+            <div class="hrm-holiday-alerts">
+                @foreach($holidayAlerts as $alert)
+                    <div class="hrm-holiday-alert-banner">
+                        <i class="fas fa-calendar-exclamation"></i>
+                        <strong>{{ $alert['count'] }} pending {{ Str::plural('request', $alert['count']) }}</strong>
+                        overlap with <strong>{{ $alert['title'] }}</strong>
+                        ({{ \Carbon\Carbon::parse($alert['date'])->format('M d, Y') }}{{ $alert['type'] ? ' &mdash; '.ucfirst($alert['type']) : '' }}).
+                        Review before approving.
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
+        {{-- Month filter --}}
+        <div class="hrm-month-filter" style="margin-bottom:1rem;display:flex;align-items:center;gap:0.75rem;">
+            <label for="leaveMonthPicker" style="font-size:0.85rem;color:#64748b;font-weight:500;">Month:</label>
+            <input type="month" id="leaveMonthPicker" value="{{ $selectedMonth }}"
+                style="border:1px solid #e2e8f0;border-radius:6px;padding:0.4rem 0.7rem;font-size:0.9rem;cursor:pointer;">
+        </div>
+
         <div class="hrm-toolbar">
             <select id="leaveDepartment">
                 <option value="">All Departments</option>
@@ -25,44 +48,25 @@
             <button class="hrm-btn" id="leaveFilterBtn" type="button">Apply Filter</button>
         </div>
 
-        <div class="hrm-chart-card">
+        <div class="hrm-chart-card" style="width:100%;">
             <h4>Leave Balances and Usage</h4>
             <div class="hrm-chart-wrap hrm-chart-wrap-sm"><canvas id="leaveUsageChart"></canvas></div>
         </div>
 
-        <div class="hrm-table-wrap">
-            <table class="hrm-table hris-table" id="leaveTable" data-initial-chart='@json($leaveChart)'>
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Department</th>
-                        <th>Leave Type</th>
-                        <th>Period</th>
-                        <th>Days</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($requests as $requestItem)
-                        <tr data-id="{{ $requestItem['id'] }}">
-                            <td>{{ $requestItem['employee_name'] }}</td>
-                            <td>{{ $requestItem['department'] }}</td>
-                            <td>{{ $requestItem['leave_type'] }}</td>
-                            <td>{{ $requestItem['period'] }}</td>
-                            <td>{{ $requestItem['days'] }}</td>
-                            <td><span class="status-chip status-{{ $requestItem['status'] }}">{{ strtoupper($requestItem['status']) }}</span></td>
-                            <td>
-                                <button class="hrm-btn-secondary hrm-leave-approve" type="button">Approve</button>
-                                <button class="hrm-btn-secondary hrm-leave-reject" type="button">Reject</button>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
+        {{-- Leave Analytics Panels (Enhancement 3) --}}
+        <div id="leaveAnalyticsPanel" class="hrm-analytics-panels" style="margin-top:2rem;">
+            <div class="hrm-chart-card" style="margin-bottom:1.5rem;">
+                <h4>Employees with Critical Balances <span style="font-size:0.8rem;font-weight:400;color:#64748b;">(VL &lt; 2 days or SL &lt; 2 days)</span></h4>
+                <div id="criticalBalanceTable">
+                    <p style="color:#94a3b8;font-style:italic;padding:1rem 0;">Loading&hellip;</p>
+                </div>
+            </div>
 
-        <div id="leavePagination" class="hrm-pagination"></div>
+            <div class="hrm-chart-card">
+                <h4>6-Month Leave Trend (Org-Wide)</h4>
+                <div class="hrm-chart-wrap hrm-chart-wrap-sm"><canvas id="leaveTrendChart"></canvas></div>
+            </div>
+        </div>
     </section>
 @endsection
 

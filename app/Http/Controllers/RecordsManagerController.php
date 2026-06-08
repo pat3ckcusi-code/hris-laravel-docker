@@ -153,7 +153,16 @@ class RecordsManagerController extends Controller
             return response()->json(['success' => false, 'message' => 'Could not send credentials email. Account not created.'], 500);
         }
 
-        $newUser->save();
+        try {
+            $newUser->save();
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => 'A duplicate email or employee number was detected.'], 422);
+            }
+            return redirect()->back()
+                ->withErrors(['email' => 'This email or employee number is already in use by another account.'])
+                ->withInput();
+        }
 
         if ($request->expectsJson()) {
             return response()->json(['status' => 'success', 'message' => 'New employee account created. Default password sent.']);

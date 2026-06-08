@@ -46,7 +46,55 @@ table.employee-table th {
 }
 
 .table-wrap {
-    overflow-x: auto;
+    width: 100%;
+}
+
+table.employee-table {
+    table-layout: fixed;
+    width: 100% !important;
+}
+
+table.employee-table th,
+table.employee-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+}
+
+/* Column widths — action col gets more room for 3 stacked buttons */
+table.employee-table th:nth-child(1),
+table.employee-table td:nth-child(1),
+table.employee-table th:nth-child(2),
+table.employee-table td:nth-child(2) { width: 9%; }
+
+table.employee-table th:nth-child(3),
+table.employee-table td:nth-child(3) { width: 13%; }
+
+table.employee-table th:nth-child(4),
+table.employee-table td:nth-child(4) { width: 11%; }
+
+table.employee-table th:nth-child(5),
+table.employee-table td:nth-child(5) { width: 8%; }
+
+table.employee-table th:nth-child(6),
+table.employee-table td:nth-child(6) { width: 13%; }
+
+table.employee-table th:nth-child(7),
+table.employee-table td:nth-child(7),
+table.employee-table th:nth-child(8),
+table.employee-table td:nth-child(8),
+table.employee-table th:nth-child(9),
+table.employee-table td:nth-child(9) { width: 8%; }
+
+table.employee-table th:nth-child(10),
+table.employee-table td:nth-child(10) { width: 13%; }
+
+/* Stack action buttons vertically so the column stays narrow */
+table.employee-table td:nth-child(10) .btn-sm {
+    display: block;
+    width: 100%;
+    margin: 2px 0 !important;
+    box-sizing: border-box;
 }
 
 .table-pagination, .pagination-controls {

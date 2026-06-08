@@ -94,13 +94,7 @@
                                 </span>
                             </td>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="9">
-                                <p class="empty-state">No employee records found.</p>
-                            </td>
-                        </tr>
-                    @endforelse
+                    @endforeach
                 </tbody>
             </table>
         </div>
@@ -124,7 +118,8 @@
                         info: false,
                         ordering: true,
                         language: {
-                            paginate: { previous: 'Prev', next: 'Next' }
+                            paginate: { previous: 'Prev', next: 'Next' },
+                            emptyTable: 'No employee records found.'
                         }
                     });
                 }
