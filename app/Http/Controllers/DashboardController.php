@@ -570,8 +570,7 @@ class DashboardController extends Controller
                     ]);
             }
         } else {
-            // Null-safe: keep the existing EmpNo when none is provided
-            $empNo = $department->EmpNo;
+            $empNo = null;
         }
 
         // Validate ao_emp_no against users table when provided
@@ -592,8 +591,7 @@ class DashboardController extends Controller
             }
             $aoEmpNo = $aoEmpNoUpper;
         } else {
-            // Keep existing value; empty string means "clear it"
-            $aoEmpNo = ($aoEmpNo === '') ? null : $department->ao_emp_no;
+            $aoEmpNo = null;
         }
 
         if ((int) ($validated['parent_dept_id'] ?? 0) === (int) $department->Dept_id) {
@@ -625,7 +623,7 @@ class DashboardController extends Controller
         $department->forceFill([
             'DeptCode' => $validated['DeptCode'],
             'Dept_name' => $validated['Dept_name'],
-            'EmpNo' => $empNo ? mb_strtoupper(trim($empNo)) : $oldEmpNo,
+            'EmpNo' => $empNo !== null ? mb_strtoupper(trim($empNo)) : null,
             'ao_emp_no' => $aoEmpNo,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,

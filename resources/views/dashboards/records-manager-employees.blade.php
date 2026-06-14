@@ -255,10 +255,8 @@
             method="POST"
             action=""
             class="record-form"
-            data-processing-submit
             data-processing-title="Updating employee record"
             data-processing-text="Saving the selected employee changes. Please wait."
-            data-processing-button-text="Updating..."
         >
             @csrf
             @method('PUT')
