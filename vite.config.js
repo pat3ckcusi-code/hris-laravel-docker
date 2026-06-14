@@ -35,22 +35,26 @@ export default defineConfig({
                  * CSS-entry loaders (tiny wrappers Vite creates for
                  * each CSS entry-point) go into a separate folder so
                  * they never collide with JS entries of the same name.
+                 * [hash] is appended for content-based cache-busting —
+                 * the @vite() manifest resolves the hashed names, so
+                 * browsers/CDN always fetch fresh assets after a deploy.
                  */
                 entryFileNames(chunkInfo) {
                     const id = (chunkInfo.facadeModuleId || '').replace(/\\/g, '/');
                     if (id.includes('/resources/css/')) {
                         const name = id.split('/').pop().replace('.css', '');
-                        return `assets/css-loaders/${name}.js`;
+                        return `assets/css-loaders/${name}-[hash].js`;
                     }
                     const name = id.split('/').pop().replace('.js', '');
-                    return `assets/js/${name}.js`;
+                    return `assets/js/${name}-[hash].js`;
                 },
-                chunkFileNames: 'assets/js/[name].js',
+                chunkFileNames: 'assets/js/[name]-[hash].js',
                 /**
                  * Non-JS assets (CSS, fonts, images…): CSS that comes
-                 * straight from resources/css/ keeps its original name;
+                 * straight from resources/css/ keeps its folder path;
                  * CSS extracted from JS bundles (vendor libs like
-                 * flatpickr) falls back to a generic name.
+                 * flatpickr) falls back to a generic name. Both carry a
+                 * content [hash] for cache-busting.
                  */
                 assetFileNames(assetInfo) {
                     const originals = (assetInfo.originalFileNames || [])
@@ -60,9 +64,10 @@ export default defineConfig({
                     );
                     if (fromResources) {
                         const relPath = fromResources.split('/resources/css/').pop();
-                        return `assets/css/${relPath}`;
+                        const noExt = relPath.replace(/\.[^.]+$/, '');
+                        return `assets/css/${noExt}-[hash].[ext]`;
                     }
-                    return `assets/css/[name].[ext]`;
+                    return `assets/css/[name]-[hash].[ext]`;
                 },
             },
         },
