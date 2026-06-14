@@ -273,11 +273,10 @@
                         <input type="number" class="hrm-input" id="auto_import_interval_minutes"
                                name="auto_import_interval_minutes"
                                value="{{ old('auto_import_interval_minutes', $settings->auto_import_interval_minutes ?? 30) }}"
-                               min="15" max="1440">
-                        <span class="settings-hint" style="color:#b45309;">
-                            <i class="fa-solid fa-triangle-exclamation" style="font-size:0.72rem;"></i>
-                            Minimum 15 minutes — each import job can run up to 10 minutes.
-                            Setting this lower risks jobs stacking up in the queue.
+                               min="1" max="1440">
+                        <span class="settings-hint">
+                            Minutes to wait after a full sweep completes before starting the next one.
+                            Each sweep processes 100 logs per minute — set to 1 for near-continuous import.
                         </span>
                         @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
