@@ -1,10 +1,10 @@
 {
-  "_sweetalert2.esm.all.js": {
-    "file": "assets/js/sweetalert2.esm.all.js",
+  "_sweetalert2.esm.all-DE6NlnlT.js": {
+    "file": "assets/js/sweetalert2.esm.all-DE6NlnlT.js",
     "name": "sweetalert2.esm.all"
   },
   "resources/css/aboutus.css": {
-    "file": "assets/css/aboutus.css",
+    "file": "assets/css/aboutus-tn0RQdqM.css",
     "src": "resources/css/aboutus.css",
     "isEntry": true,
     "name": "aboutus",
@@ -13,7 +13,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/css/app.css",
+    "file": "assets/css/app-B5H5Vg1F.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -22,7 +22,7 @@
     ]
   },
   "resources/css/front_desk.css": {
-    "file": "assets/css/front_desk.css",
+    "file": "assets/css/front_desk-CJAi_ymX.css",
     "src": "resources/css/front_desk.css",
     "isEntry": true,
     "name": "front_desk",
@@ -31,7 +31,7 @@
     ]
   },
   "resources/css/hr_manager.css": {
-    "file": "assets/css/hr_manager.css",
+    "file": "assets/css/hr_manager-fFXqJTij.css",
     "src": "resources/css/hr_manager.css",
     "isEntry": true,
     "name": "hr_manager",
@@ -39,8 +39,17 @@
       "hr_manager.css"
     ]
   },
+  "resources/css/hris-table.css": {
+    "file": "assets/css/hris-table-BKpVGs32.css",
+    "src": "resources/css/hris-table.css",
+    "isEntry": true,
+    "name": "hris-table",
+    "names": [
+      "hris-table.css"
+    ]
+  },
   "resources/css/records_manager.css": {
-    "file": "assets/css/records_manager.css",
+    "file": "assets/css/records_manager-BcOS6159.css",
     "src": "resources/css/records_manager.css",
     "isEntry": true,
     "name": "records_manager",
@@ -49,7 +58,7 @@
     ]
   },
   "resources/css/request_document.css": {
-    "file": "assets/css/request_document.css",
+    "file": "assets/css/request_document-DQoMFy9v.css",
     "src": "resources/css/request_document.css",
     "isEntry": true,
     "name": "request_document",
@@ -58,7 +67,7 @@
     ]
   },
   "resources/css/request_documents.css": {
-    "file": "assets/css/request_documents.css",
+    "file": "assets/css/request_documents-_chOohU1.css",
     "src": "resources/css/request_documents.css",
     "isEntry": true,
     "name": "request_documents",
@@ -67,46 +76,61 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/js/app.js",
+    "file": "assets/js/app-C2Pxw07v.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
     "imports": [
-      "_sweetalert2.esm.all.js"
+      "_sweetalert2.esm.all-DE6NlnlT.js"
     ],
     "css": [
-      "assets/css/app2.css"
+      "assets/css/app-CksuuEqD.css"
+    ]
+  },
+  "resources/js/export-job.js": {
+    "file": "assets/js/export-job-DY-xt04i.js",
+    "name": "export-job",
+    "src": "resources/js/export-job.js",
+    "isEntry": true,
+    "imports": [
+      "_sweetalert2.esm.all-DE6NlnlT.js"
     ]
   },
   "resources/js/front_desk.js": {
-    "file": "assets/js/front_desk.js",
+    "file": "assets/js/front_desk-pfyKUwWb.js",
     "name": "front_desk",
     "src": "resources/js/front_desk.js",
     "isEntry": true
   },
   "resources/js/hr_manager.js": {
-    "file": "assets/js/hr_manager.js",
+    "file": "assets/js/hr_manager-C355I3bI.js",
     "name": "hr_manager",
     "src": "resources/js/hr_manager.js",
     "isEntry": true,
     "imports": [
-      "_sweetalert2.esm.all.js"
+      "_sweetalert2.esm.all-DE6NlnlT.js"
     ]
   },
+  "resources/js/hris-table.js": {
+    "file": "assets/js/hris-table-CJIa-vCB.js",
+    "name": "hris-table",
+    "src": "resources/js/hris-table.js",
+    "isEntry": true
+  },
   "resources/js/records_manager.js": {
-    "file": "assets/js/records_manager.js",
+    "file": "assets/js/records_manager-Bw5suHz_.js",
     "name": "records_manager",
     "src": "resources/js/records_manager.js",
     "isEntry": true
   },
   "resources/js/request_document.js": {
-    "file": "assets/js/request_document.js",
+    "file": "assets/js/request_document-Dd0fd4aJ.js",
     "name": "request_document",
     "src": "resources/js/request_document.js",
     "isEntry": true
   },
   "resources/js/request_documents.js": {
-    "file": "assets/js/request_documents.js",
+    "file": "assets/js/request_documents-B5QNhm7B.js",
     "name": "request_documents",
     "src": "resources/js/request_documents.js",
     "isEntry": true

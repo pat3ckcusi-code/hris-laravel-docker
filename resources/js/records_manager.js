@@ -24,6 +24,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 fd.set('_method', method);
             }
 
+            // Close any parent <dialog> before opening SweetAlert — otherwise
+            // Swal renders behind the dialog's top-layer stacking context.
+            const dialog = form.closest('dialog');
+            if (dialog && dialog.open) dialog.close();
+
             Swal.fire({ title: form.dataset.processingTitle || 'Processing', text: form.dataset.processingText || '', didOpen: () => { Swal.showLoading(); } });
 
             try {
@@ -37,7 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 Swal.close();
 
                 if (!res.ok) {
-                    Swal.fire({ icon: 'error', title: 'Error', text: payload.message || payload.error || 'Failed to save.' });
+                    Swal.fire({ icon: 'error', title: 'Error', text: payload.message || payload.error || 'Failed to save.' })
+                        .then(() => { if (dialog && typeof dialog.showModal === 'function') dialog.showModal(); });
                     return;
                 }
 
@@ -46,7 +52,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             } catch (err) {
                 Swal.close();
-                Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed.' });
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed.' })
+                    .then(() => { if (dialog && typeof dialog.showModal === 'function') dialog.showModal(); });
             }
         });
     });
