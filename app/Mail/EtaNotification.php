@@ -11,6 +11,7 @@ class EtaNotification extends Mailable
     use Queueable, SerializesModels;
 
     public $employee;
+
     public $eta;
 
     public function __construct($employee, $eta)
@@ -22,10 +23,10 @@ class EtaNotification extends Mailable
     public function build()
     {
         return $this->subject('New Employee Travel Authorization Application')
-                    ->view('emails.eta_notification')
-                    ->with([
-                        'employee' => $this->employee,
-                        'eta' => $this->eta,
-                    ]);
+            ->view('emails.eta_notification')
+            ->with([
+                'employee' => $this->employee,
+                'eta' => $this->eta,
+            ]);
     }
 }

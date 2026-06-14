@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\Earning;
-use App\Models\EmployeeEarning;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +13,7 @@ class EarningsController extends Controller
     public function index(): View
     {
         $earningTypes = Earning::withCount('employeeEarnings')->paginate(20);
+
         return view('payroll.earnings', compact('earningTypes'));
     }
 
@@ -39,6 +39,7 @@ class EarningsController extends Controller
     public function show(int $id): View
     {
         $earning = Earning::with('employeeEarnings.employee')->findOrFail($id);
+
         return view('payroll.earning-show', compact('earning'));
     }
 
@@ -64,6 +65,7 @@ class EarningsController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         Earning::findOrFail($id)->delete();
+
         return redirect()->route('payroll.earnings.index')
             ->with('status', 'Earning type deleted.');
     }

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
-use App\Models\PayrollRun;
 use App\Models\PayrollAuditLog;
+use App\Models\PayrollRun;
 use App\Services\PayrollComputationService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -70,15 +70,15 @@ class PayrollRunController extends Controller
             return back()->with('error', 'Cannot compute a locked payroll run.');
         }
 
-        if (!$run->period_start || !$run->period_end) {
+        if (! $run->period_start || ! $run->period_end) {
             return back()->with('error', 'Period start and end dates are required for computation.');
         }
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $result = $service->compute($run, $request->user());
 
         if ($result['errors']) {
-            return back()->with('error', 'Computation completed with exceptions: ' . implode('; ', $result['errors']));
+            return back()->with('error', 'Computation completed with exceptions: '.implode('; ', $result['errors']));
         }
 
         return back()->with('status', "Payroll computed: {$result['employee_count']} employees processed.");

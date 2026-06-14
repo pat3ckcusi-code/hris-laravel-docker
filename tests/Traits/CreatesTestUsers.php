@@ -103,19 +103,18 @@ trait CreatesTestUsers
     protected function createLeaveBalance(User $user, array $overrides = []): LeaveBalance
     {
         $defaults = [
-            'EmpNo' => $user->EmpNo,
-            'VL'    => 15.000,
-            'SL'    => 15.000,
-            'WLNS'  => 0.000,
-            'SPL'   => 3.000,
-            'CTO'   => 0.000,
-            'SP'    => 0.000,
+            'VL'   => 15.000,
+            'SL'   => 15.000,
+            'WLNS' => 0.000,
+            'SPL'  => 3.000,
+            'CTO'  => 0.000,
+            'SP'   => 0.000,
         ];
 
         // UserObserver auto-creates a leave balance on user creation,
         // so update the existing record instead of inserting a duplicate.
         return LeaveBalance::updateOrCreate(
-            ['EmpNo' => $user->EmpNo],
+            ['user_id' => $user->id],
             array_merge($defaults, $overrides)
         );
     }

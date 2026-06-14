@@ -23,21 +23,6 @@
 @endsection
 
 @section('content')
-    @if(session('success'))
-        <div class="hrm-alert hrm-alert-success" style="margin-bottom:1rem;">
-            {{ session('success') }}
-        </div>
-    @endif
-    @if($errors->any())
-        <div class="hrm-alert" style="margin-bottom:1rem;background:#fef2f2;border:1px solid #fca5a5;padding:.75rem 1rem;border-radius:.375rem;">
-            <strong>Please fix the following errors:</strong>
-            <ul style="margin:.5rem 0 0 1.25rem;">
-                @foreach($errors->all() as $error)
-                    <li style="font-size:.875rem;">{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
 
     <section class="hrm-module" data-module="settings">
         <form class="hrm-form-card" method="POST" action="{{ route('hr-manager.settings.update') }}">
@@ -269,6 +254,47 @@
                     <span class="settings-hint">Precision for VL/SL balance values on leave forms and exports.</span>
                     @error('leave_balance_decimals')<span class="hrm-error">{{ $message }}</span>@enderror
                 </div>
+
+                <div class="settings-section-title" style="margin-top:1.5rem;">Automatic Import</div>
+                <p class="settings-hint" style="margin-bottom:1rem;">
+                    When enabled, a background scheduler pulls biometric punch logs automatically
+                    for yesterday and today on the configured interval. Results are written to the audit log.
+                </p>
+
+                <div class="toggle-row">
+                    <input type="checkbox" id="auto_import_enabled" name="auto_import_enabled" value="1"
+                           {{ old('auto_import_enabled', $settings->auto_import_enabled ?? false) ? 'checked' : '' }}>
+                    <label for="auto_import_enabled">Enable automatic biometric import</label>
+                </div>
+
+                <div class="settings-grid" style="margin-top:1rem;">
+                    <div class="form-group">
+                        <label for="auto_import_interval_minutes">Interval (minutes)</label>
+                        <input type="number" class="hrm-input" id="auto_import_interval_minutes"
+                               name="auto_import_interval_minutes"
+                               value="{{ old('auto_import_interval_minutes', $settings->auto_import_interval_minutes ?? 30) }}"
+                               min="15" max="1440">
+                        <span class="settings-hint" style="color:#b45309;">
+                            <i class="fa-solid fa-triangle-exclamation" style="font-size:0.72rem;"></i>
+                            Minimum 15 minutes — each import job can run up to 10 minutes.
+                            Setting this lower risks jobs stacking up in the queue.
+                        </span>
+                        @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label for="auto_import_dept_id">Department <span style="font-weight:400;color:#94a3b8;">— optional, blank = all</span></label>
+                        <select class="hrm-input" id="auto_import_dept_id" name="auto_import_dept_id">
+                            <option value="">All Departments</option>
+                            @foreach($departments as $dept)
+                                <option value="{{ $dept->Dept_id }}"
+                                    {{ old('auto_import_dept_id', $settings->auto_import_dept_id ?? '') == $dept->Dept_id ? 'selected' : '' }}>
+                                    {{ $dept->Dept_name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('auto_import_dept_id')<span class="hrm-error">{{ $message }}</span>@enderror
+                    </div>
+                </div>
             </div>
 
             {{-- ── NOTIFICATIONS ── --}}
@@ -401,7 +427,7 @@
                 <form method="POST"
                       action="{{ route('hr-manager.settings.restore') }}"
                       enctype="multipart/form-data"
-                      onsubmit="return confirm('This will overwrite ALL data in the database. Are you absolutely sure?');">
+                      id="restoreForm">
                     @csrf
                     <div class="form-group" style="max-width:420px;margin-bottom:1rem;">
                         <label for="backup_file">SQL Backup File</label>
@@ -438,16 +464,71 @@
             function activate(id) {
                 tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === id));
                 panels.forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
-                // Hide the Save button when the Database tab is active (nothing to save there)
                 if (saveRow) saveRow.style.display = id === 'database' ? 'none' : '';
                 try { sessionStorage.setItem('hris_settings_tab', id); } catch (_) {}
             }
 
             tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
 
-            // Restore tab on page reload (e.g. after save)
+            const hash = window.location.hash.replace('#tab-', '');
             const saved = sessionStorage.getItem('hris_settings_tab');
-            if (saved && document.getElementById('tab-' + saved)) activate(saved);
+            if (hash && document.getElementById('tab-' + hash)) {
+                activate(hash);
+            } else if (saved && document.getElementById('tab-' + saved)) {
+                activate(saved);
+            }
+
+            @if(session('success'))
+                window.addEventListener('load', function () {
+                    if (window.Swal) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Saved',
+                            text: @json(session('success')),
+                            timer: 3000,
+                            timerProgressBar: true,
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                        });
+                    }
+                });
+            @endif
+
+            @if($errors->any())
+                window.addEventListener('load', function () {
+                    if (window.Swal) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Please fix the following errors',
+                            html: '<ul style="text-align:left;margin:.5rem 0 0 1.25rem;">'
+                                + @json(collect($errors->all())->map(fn($e) => '<li>'.$e.'</li>')->join(''))
+                                + '</ul>',
+                        });
+                    }
+                });
+            @endif
+
+            const restoreForm = document.getElementById('restoreForm');
+            if (restoreForm) {
+                restoreForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    if (!window.Swal) { this.submit(); return; }
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Restore database?',
+                        html: 'This will <strong>drop and recreate all tables</strong> and overwrite every row with the contents of the uploaded file.<br><br>This action <strong>cannot be undone</strong>.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, restore',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#dc2626',
+                        cancelButtonColor: '#6b7280',
+                        focusCancel: true,
+                    }).then(function (result) {
+                        if (result.isConfirmed) restoreForm.submit();
+                    });
+                });
+            }
         })();
     </script>
 @endsection

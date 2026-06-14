@@ -428,7 +428,7 @@
 
             @if (old('update_form') === '1' && $errors->any())
             @php
-                $updateEmployee = $employees->getCollection()->firstWhere('id', (int) old('update_employee_id'));
+                $updateEmployee = $employees->firstWhere('id', (int) old('update_employee_id'));
             @endphp
             @if ($updateEmployee)
             if (updateForm) {
@@ -454,6 +454,11 @@
             $(form).on('submit', function (e) {
                 e.preventDefault();
                 var $form = $(this);
+                var modal = document.getElementById('addEmployeeModal');
+
+                // Close the native dialog before opening SweetAlert so it doesn't
+                // render behind the dialog's top-layer stacking context.
+                if (modal && modal.open) modal.close();
 
                 Swal.fire({
                     title: 'Are you sure?',
@@ -464,7 +469,10 @@
                     cancelButtonText: 'Cancel',
                     confirmButtonColor: '#f06c00',
                 }).then(function (result) {
-                    if (!result.isConfirmed) return;
+                    if (!result.isConfirmed) {
+                        if (modal && typeof modal.showModal === 'function') modal.showModal();
+                        return;
+                    }
 
                     Swal.fire({
                         title: 'Creating employee account',
@@ -482,11 +490,7 @@
                         headers: { 'Accept': 'application/json' },
                         success: function (res) {
                             Swal.fire('Success', res.message || 'Employee account created.', 'success')
-                                .then(function () {
-                                    var modal = document.getElementById('addEmployeeModal');
-                                    if (modal && modal.open) modal.close();
-                                    window.location.reload();
-                                });
+                                .then(function () { window.location.reload(); });
                         },
                         error: function (xhr) {
                             var msg = 'An unexpected error occurred.';
@@ -497,7 +501,10 @@
                                     msg = xhr.responseJSON.message;
                                 }
                             }
-                            Swal.fire('Error', msg, 'error');
+                            Swal.fire('Error', msg, 'error')
+                                .then(function () {
+                                    if (modal && typeof modal.showModal === 'function') modal.showModal();
+                                });
                         },
                     });
                 });
@@ -510,9 +517,9 @@
                 if (!$.fn.dataTable.isDataTable('#employeeTable')) {
                     $('#employeeTable').DataTable({
                         paging: true,
-                        pageLength: 10,
+                        pageLength: 25,
                         lengthChange: true,
-                        lengthMenu: [10, 25, 50, 100],
+                        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
                         searching: true,
                         info: true,
                         autoWidth: false,

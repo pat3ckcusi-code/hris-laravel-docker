@@ -14,6 +14,7 @@ use App\Services\Form48ExportService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -102,10 +103,10 @@ class DtrController extends Controller
         }
 
         return [
-            'isAdmin'  => $isAdmin,
+            'isAdmin' => $isAdmin,
             'isOfficer' => $isOfficer,
-            'deptId'   => $deptIds[0] ?? null,
-            'deptIds'  => $deptIds,
+            'deptId' => $deptIds[0] ?? null,
+            'deptIds' => $deptIds,
         ];
     }
 
@@ -119,6 +120,7 @@ class DtrController extends Controller
         if ($isAdmin) {
             $departments = Department::orderBy('Dept_name')->get();
             $employees = User::orderBy('last_name')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_type']);
+            $officerDepts = collect();
             $officerDept = null;
         } elseif ($isOfficer) {
             $departments = collect();
@@ -485,7 +487,7 @@ class DtrController extends Controller
 
     // ── DEPARTMENT BULK — ZIP (one xlsx per employee) ─────────────────────────
 
-    public function downloadDepartmentZip(Request $request, Form48ExportService $exportService): BinaryFileResponse
+    public function downloadDepartmentZip(Request $request, Form48ExportService $exportService): BinaryFileResponse|RedirectResponse
     {
         $user = $request->user();
         ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
@@ -522,7 +524,9 @@ class DtrController extends Controller
 
         $templatePath = storage_path('app/templates/form48.xls');
 
-        abort_if($employees->isEmpty(), 404, 'No employees found in the selected department.');
+        if ($employees->isEmpty()) {
+            return redirect()->back()->with('dtr_error', 'No employees found in the selected department.');
+        }
         abort_unless(file_exists($templatePath), 500, 'Form 48 template not found.');
 
         $generated = [];    // zip entry name → tmp file path
@@ -552,7 +556,7 @@ class DtrController extends Controller
         }
 
         if (empty($generated)) {
-            abort(404, 'No DTR records found for any employee in the selected department.');
+            return redirect()->back()->with('dtr_error', 'No time records found for any employee in the selected department and period.');
         }
         $typeLabel = $employeeType ? ucwords(str_replace('-', ' ', $employeeType)) : 'All';
         $typeSafe = preg_replace('/[^A-Za-z0-9]+/', '_', $typeLabel) ?: 'All';
@@ -583,7 +587,7 @@ class DtrController extends Controller
 
     // ── DEPARTMENT BULK — MULTI-SHEET WORKBOOK ────────────────────────────────
 
-    public function downloadDepartmentForm48(Request $request, Form48ExportService $exportService): StreamedResponse
+    public function downloadDepartmentForm48(Request $request, Form48ExportService $exportService): StreamedResponse|JsonResponse
     {
         $user = $request->user();
         ['isAdmin' => $isAdmin, 'isOfficer' => $isOfficer, 'deptIds' => $officerDeptIds] = $this->resolveContext($user);
@@ -620,7 +624,9 @@ class DtrController extends Controller
 
         $templatePath = storage_path('app/templates/form48.xls');
 
-        abort_if($employees->isEmpty(), 404, 'No employees found in the selected department.');
+        if ($employees->isEmpty()) {
+            return response()->json(['error' => 'No employees found in the selected department.'], 422);
+        }
         abort_unless(file_exists($templatePath), 500, 'Form 48 template not found.');
 
         $workbook = IOFactory::load($templatePath);
@@ -650,7 +656,7 @@ class DtrController extends Controller
         }
 
         if ($filled === 0) {
-            abort(404, 'No DTR records found for any employee in the selected department.');
+            return response()->json(['error' => 'No time records found for any employee in the selected department and period.'], 422);
         }
 
         // Drop the blank template sheet (index 0) and activate the first filled sheet.

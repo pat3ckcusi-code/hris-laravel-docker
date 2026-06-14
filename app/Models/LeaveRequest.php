@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -30,15 +33,15 @@ use Illuminate\Database\Eloquent\Model;
  * @property float|null $balance_special_leave_privilege
  * @property int|null $approved_by
  * @property string|null $approved_role
- * @property \Illuminate\Support\Carbon|null $approved_at
+ * @property Carbon|null $approved_at
  * @property string|null $remarks
  * @property string|null $action_remarks
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\User|null $user
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\LeaveDate> $leaveDates
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read User|null $user
+ * @property-read Collection<int, LeaveDate> $leaveDates
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class LeaveRequest extends Model
 {
@@ -66,7 +69,7 @@ class LeaveRequest extends Model
         'cancellation_requested_by',
         'cancellation_reviewed_by',
         'reason',
-        'status', 
+        'status',
         'detailed_status',
         'rejection_notes',
         'total_days',
@@ -90,7 +93,9 @@ class LeaveRequest extends Model
         // printing deduction tracking
         'printing_deduction_applied',
         'printing_deduction_details',
-        
+        // reschedule tracking
+        'reschedule_status',
+        'rescheduled_from_id',
     ];
 
     public function user()
@@ -100,7 +105,17 @@ class LeaveRequest extends Model
 
     public function leaveDates()
     {
-        return $this->hasMany(\App\Models\LeaveDate::class);
+        return $this->hasMany(LeaveDate::class);
+    }
+
+    public function rescheduledFrom()
+    {
+        return $this->belongsTo(LeaveRequest::class, 'rescheduled_from_id');
+    }
+
+    public function rescheduledLeaves()
+    {
+        return $this->hasMany(LeaveRequest::class, 'rescheduled_from_id');
     }
 
     public function approver()
@@ -112,9 +127,9 @@ class LeaveRequest extends Model
     {
         static::saving(function (LeaveRequest $model) {
             if ($model->isDirty('detailed_status') && $model->detailed_status !== null) {
-                if (!in_array($model->detailed_status, self::VALID_DETAILED_STATUSES, true)) {
+                if (! in_array($model->detailed_status, self::VALID_DETAILED_STATUSES, true)) {
                     throw new \InvalidArgumentException(
-                        "Invalid detailed_status '{$model->detailed_status}'. Allowed: " . implode(', ', self::VALID_DETAILED_STATUSES)
+                        "Invalid detailed_status '{$model->detailed_status}'. Allowed: ".implode(', ', self::VALID_DETAILED_STATUSES)
                     );
                 }
             }
@@ -129,7 +144,7 @@ class LeaveRequest extends Model
         return $query->where('status', 'approved')
             ->whereHas('leaveDates', function ($q) use ($date) {
                 $q->whereDate('leave_date', $date)
-                  ->where('is_cancelled', false);
+                    ->where('is_cancelled', false);
             });
     }
 }

@@ -2,11 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\Department;
 use App\Models\Eta;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\TravelOrder;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -22,8 +25,7 @@ class DepartmentHeadService
     /**
      * Return basic KPI metrics and data used by the department head dashboard.
      *
-     * @param  \App\Models\User  $user
-     * @return array
+     * @param  User  $user
      */
     public function dashboardMetrics($user): array
     {
@@ -32,13 +34,14 @@ class DepartmentHeadService
             return ['metrics' => ['employees' => 0, 'pending' => 0, 'approved_month' => 0, 'filed' => 0], 'trend' => [], 'distribution' => [], 'recent' => []];
         }
 
-        $cacheKey = 'dh_metrics_' . implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray());
+        $cacheKey = 'dh_metrics_'.implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray());
+
         return Cache::remember($cacheKey, now()->addMinutes(5), function () use ($depts) {
             return $this->computeDashboardMetrics($depts);
         });
     }
 
-    private function computeDashboardMetrics(\Illuminate\Support\Collection $depts): array
+    private function computeDashboardMetrics(Collection $depts): array
     {
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
@@ -72,7 +75,7 @@ class DepartmentHeadService
             ->where('created_at', '>=', $sixMonthsAgo)
             ->groupByRaw('YEAR(created_at), MONTH(created_at)')
             ->get()
-            ->keyBy(fn ($row) => $row->y . '-' . $row->m);
+            ->keyBy(fn ($row) => $row->y.'-'.$row->m);
 
         $approvedTrend = LeaveRequest::selectRaw('MONTH(updated_at) as m, YEAR(updated_at) as y, COUNT(*) as cnt')
             ->whereIn('user_id', $employeeIds)
@@ -80,12 +83,12 @@ class DepartmentHeadService
             ->where('updated_at', '>=', $sixMonthsAgo)
             ->groupByRaw('YEAR(updated_at), MONTH(updated_at)')
             ->get()
-            ->keyBy(fn ($row) => $row->y . '-' . $row->m);
+            ->keyBy(fn ($row) => $row->y.'-'.$row->m);
 
         for ($i = 5; $i >= 0; $i--) {
             $dt = $now->copy()->subMonths($i);
             $labels[] = $dt->format('M');
-            $key = $dt->year . '-' . $dt->month;
+            $key = $dt->year.'-'.$dt->month;
             $submitted[] = (int) ($submittedTrend->get($key)?->cnt ?? 0);
             $approved[] = (int) ($approvedTrend->get($key)?->cnt ?? 0);
         }
@@ -105,11 +108,11 @@ class DepartmentHeadService
             ->map(function ($r) {
                 return [
                     'id' => $r->id,
-                    'travel_order_num' => 'LR#' . $r->id,
+                    'travel_order_num' => 'LR#'.$r->id,
                     'destination' => $r->leave_type,
                     'status' => ucfirst($r->status),
                     'created_at' => $r->created_at->toDateString(),
-                    'user' => $r->user ? ($r->user->first_name . ' ' . $r->user->last_name) : '',
+                    'user' => $r->user ? ($r->user->first_name.' '.$r->user->last_name) : '',
                 ];
             })->values();
 
@@ -137,8 +140,8 @@ class DepartmentHeadService
     /**
      * Return the first resolved department for user (kept for legacy callers).
      *
-     * @param  \App\Models\User  $user
-     * @return \App\Models\Department|null
+     * @param  User  $user
+     * @return Department|null
      */
     public function resolveDepartment($user)
     {

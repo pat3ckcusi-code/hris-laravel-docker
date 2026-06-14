@@ -5,17 +5,18 @@ namespace App\Exports;
 use App\Models\Pds;
 use App\Models\User;
 use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
-use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Events\AfterSheet;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
+class PdsExport implements FromArray, WithEvents, WithHeadings, WithStyles
 {
     protected User $user;
+
     protected Pds $pds;
 
     public function __construct(User $user, Pds $pds)
@@ -91,12 +92,11 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
             $license = $row['license_no'] ?? $eligibility["eligibility[exam_{$i}_license]"] ?? '';
             $validity = $row['validity'] ?? $eligibility["eligibility[exam_{$i}_validity]"] ?? '';
 
-           
             if ($type === '') {
-                $type = $eligibility["eligibility[exam_" . ($i+1) . "]"] ?? $type;
+                $type = $eligibility['eligibility[exam_'.($i + 1).']'] ?? $type;
             }
             if ($date === '') {
-                $date = $eligibility["eligibility[exam_" . ($i+1) . "_date]"] ?? $date;
+                $date = $eligibility['eligibility[exam_'.($i + 1).'_date]'] ?? $date;
             }
 
             $data[] = [
@@ -127,12 +127,12 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
         // Normalize to_present flags so only one row is treated as PRESENT (choose most recent by 'from' date)
         $presentCandidates = [];
         foreach ($workRows as $idx => $r) {
-            $tp = $r['to_present'] ?? ($workExp["work[to_present_{$idx}]"] ?? ($workExp["work[to_present_" . ($idx+1) . "]"] ?? ($workExp["work[to_present]"] ?? false)));
-            $toField = $r['to'] ?? ($workExp["work[to_{$idx}]"] ?? ($workExp["work[to_" . ($idx+1) . "]"] ?? ''));
+            $tp = $r['to_present'] ?? ($workExp["work[to_present_{$idx}]"] ?? ($workExp['work[to_present_'.($idx + 1).']'] ?? ($workExp['work[to_present]'] ?? false)));
+            $toField = $r['to'] ?? ($workExp["work[to_{$idx}]"] ?? ($workExp['work[to_'.($idx + 1).']'] ?? ''));
             $tpLower = is_string($tp) ? strtolower($tp) : $tp;
-            $isPresentRaw = !empty($tp) && ($tp === '1' || $tp === 'true' || $tp === true || $tpLower === 'present' || $toField === 'PRESENT');
+            $isPresentRaw = ! empty($tp) && ($tp === '1' || $tp === 'true' || $tp === true || $tpLower === 'present' || $toField === 'PRESENT');
             if ($isPresentRaw) {
-                $from = $r['from'] ?? ($workExp["work[from_{$idx}]"] ?? ($workExp["work[from_" . ($idx+1) . "]"] ?? ''));
+                $from = $r['from'] ?? ($workExp["work[from_{$idx}]"] ?? ($workExp['work[from_'.($idx + 1).']'] ?? ''));
                 $ts = strtotime($from);
                 if ($ts === false) {
                     $ts = 0;
@@ -154,18 +154,18 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
             $row = $workRows[$i] ?? [];
 
             // Fallback candidates for common key patterns
-            $position = $row['position'] ?? ($workExp["work[position_{$i}]"] ?? ($workExp["work[position_" . ($i+1) . "]"] ?? ''));
-            $agency = $row['agency'] ?? ($workExp["work[company_{$i}]"] ?? ($workExp["work[agency_" . ($i+1) . "]"] ?? ($workExp["work[company_" . ($i+1) . "]"] ?? '')));
-            $from = $row['from'] ?? ($workExp["work[from_{$i}]"] ?? ($workExp["work[from_" . ($i+1) . "]"] ?? ''));
-            $toRaw = $row['to'] ?? ($workExp["work[to_{$i}]"] ?? ($workExp["work[to_" . ($i+1) . "]"] ?? ''));
-            $status = $row['status'] ?? ($workExp["work[status_{$i}]"] ?? ($workExp["work[status_" . ($i+1) . "]"] ?? ''));
-            $isGov = $row['is_government'] ?? ($workExp["work[is_government_{$i}]"] ?? ($workExp["work[is_government_" . ($i+1) . "]"] ?? ($workExp["work[is_government]"] ?? '')));
+            $position = $row['position'] ?? ($workExp["work[position_{$i}]"] ?? ($workExp['work[position_'.($i + 1).']'] ?? ''));
+            $agency = $row['agency'] ?? ($workExp["work[company_{$i}]"] ?? ($workExp['work[agency_'.($i + 1).']'] ?? ($workExp['work[company_'.($i + 1).']'] ?? '')));
+            $from = $row['from'] ?? ($workExp["work[from_{$i}]"] ?? ($workExp['work[from_'.($i + 1).']'] ?? ''));
+            $toRaw = $row['to'] ?? ($workExp["work[to_{$i}]"] ?? ($workExp['work[to_'.($i + 1).']'] ?? ''));
+            $status = $row['status'] ?? ($workExp["work[status_{$i}]"] ?? ($workExp['work[status_'.($i + 1).']'] ?? ''));
+            $isGov = $row['is_government'] ?? ($workExp["work[is_government_{$i}]"] ?? ($workExp['work[is_government_'.($i + 1).']'] ?? ($workExp['work[is_government]'] ?? '')));
 
             // Only skip if ALL of position, from, agency, status, is_government are empty
             $fields = [$position, $from, $agency, $status, $isGov];
             $allEmpty = true;
             foreach ($fields as $f) {
-                if (trim((string)$f) !== '') {
+                if (trim((string) $f) !== '') {
                     $allEmpty = false;
                     break;
                 }
@@ -179,8 +179,8 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
             if ($selectedPresentIndex !== null && $selectedPresentIndex === $i) {
                 $toVal = 'PRESENT';
             } else {
-                $toPresent = $row['to_present'] ?? ($workExp["work[to_present_{$i}]"] ?? ($workExp["work[to_present_" . ($i+1) . "]"] ?? ($workExp["work[to_present]"] ?? false)));
-                if (!empty($toPresent) && ($toPresent === '1' || $toPresent === 'true' || $toPresent === true || (is_string($toPresent) && strtolower($toPresent) === 'present'))) {
+                $toPresent = $row['to_present'] ?? ($workExp["work[to_present_{$i}]"] ?? ($workExp['work[to_present_'.($i + 1).']'] ?? ($workExp['work[to_present]'] ?? false)));
+                if (! empty($toPresent) && ($toPresent === '1' || $toPresent === 'true' || $toPresent === true || (is_string($toPresent) && strtolower($toPresent) === 'present'))) {
                     $toVal = 'PRESENT';
                 } else {
                     $toVal = $toRaw;
@@ -235,11 +235,12 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
         $implodeSeries = function (array $bucket, string $prefix): string {
             $items = [];
             for ($j = 0; $j < 7; $j++) {
-                $value = trim((string) ($bucket[$prefix . '[' . $j . ']'] ?? ''));
+                $value = trim((string) ($bucket[$prefix.'['.$j.']'] ?? ''));
                 if ($value !== '') {
                     $items[] = $value;
                 }
             }
+
             return implode("\n", $items);
         };
 
@@ -342,19 +343,19 @@ class PdsExport implements FromArray, WithHeadings, WithStyles, WithEvents
                 // Build password from user (employee) data
                 $first = property_exists($this->user, 'firstname') ? $this->user->firstname : ($this->user->first_name ?? '');
                 $last = property_exists($this->user, 'lastname') ? $this->user->lastname : ($this->user->last_name ?? '');
-                $password = strtoupper($first . substr((string) $last, 0, 1));
+                $password = strtoupper($first.substr((string) $last, 0, 1));
 
                 // Determine used range and explicitly lock all cells
                 $highestRow = (int) $sheet->getHighestRow();
                 $highestColumn = $sheet->getHighestColumn();
-                $range = 'A1:' . $highestColumn . $highestRow;
+                $range = 'A1:'.$highestColumn.$highestRow;
                 $sheet->getStyle($range)->getProtection()->setLocked(true);
 
                 // Also set cell-level locked flag for each cell in the used range to ensure no cells remain unlocked
                 $colCount = Coordinate::columnIndexFromString($highestColumn);
                 for ($r = 1; $r <= $highestRow; $r++) {
                     for ($c = 1; $c <= $colCount; $c++) {
-                        $cellAddr = Coordinate::stringFromColumnIndex($c) . $r;
+                        $cellAddr = Coordinate::stringFromColumnIndex($c).$r;
                         $sheet->getStyle($cellAddr)->getProtection()->setLocked(true);
                     }
                 }

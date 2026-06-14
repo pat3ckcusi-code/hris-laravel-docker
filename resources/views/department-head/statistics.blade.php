@@ -228,6 +228,22 @@ document.addEventListener('DOMContentLoaded', function () {
         language: { emptyTable: 'No ETA / Locator usage records found.' },
     });
 
+    function showDetailError(type, message) {
+        var msg = message || 'No data available. Please try again later.';
+        var errorHtml = '<tr><td colspan="10" class="text-center" style="color:#dc2626;padding:20px 12px;">' +
+            '<span style="display:inline-flex;align-items:center;gap:6px;font-size:0.95rem;">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/></svg>' +
+            msg + '</span></td></tr>';
+        var dlgId, bodyId;
+        if (type === 'ETA')         { dlgId = 'etaUsageModal';     bodyId = 'etaModalBody';     }
+        else if (type === 'Locator') { dlgId = 'locatorUsageModal'; bodyId = 'locatorModalBody'; }
+        else                         { dlgId = 'leaveUsageModal';   bodyId = 'leaveModalBody';   }
+        var body = document.getElementById(bodyId);
+        if (body) body.innerHTML = errorHtml;
+        var dlg = document.getElementById(dlgId);
+        if (dlg && dlg.showModal) dlg.showModal();
+    }
+
     // ── Usage detail modal (event delegation) ───────────────────────────
     document.addEventListener('click', function (e) {
         var usage = e.target.closest('.usage-link');
@@ -248,7 +264,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return r.json();
             })
             .then(function (resp) {
-                if (!resp || !resp.success) { alert('Failed to load details'); return; }
+                if (!resp || !resp.success) { showDetailError(type, resp && resp.message ? resp.message : null); return; }
                 if (type === 'ETA') {
                     var body = document.getElementById('etaModalBody');
                     body.innerHTML = '';
@@ -293,7 +309,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (dlg && dlg.showModal) dlg.showModal();
                 }
             })
-            .catch(function (err) { console.error('Details fetch failed', err); alert('Failed to load details'); });
+            .catch(function (err) { console.error('Details fetch failed', err); showDetailError(type, 'No data available. Please try again later.'); });
     });
 });
 </script>

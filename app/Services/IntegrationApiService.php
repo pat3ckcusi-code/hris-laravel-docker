@@ -10,7 +10,7 @@ class IntegrationApiService
 {
     public function getToken(): string
     {
-        $baseUrl  = config('integration.base_url');
+        $baseUrl = config('integration.base_url');
         $username = config('integration.username');
         $password = config('integration.password');
 
@@ -21,7 +21,7 @@ class IntegrationApiService
         }
 
         $response = Http::timeout(config('integration.timeout_token'))
-            ->get($baseUrl . config('integration.token_path'), [
+            ->get($baseUrl.config('integration.token_path'), [
                 'username' => $username,
                 'password' => $password,
             ]);
@@ -30,7 +30,7 @@ class IntegrationApiService
             Log::error('Integration API token retrieval failed', ['status' => $response->status()]);
 
             throw new RuntimeException(
-                'Failed to retrieve authentication token (HTTP ' . $response->status() . ').'
+                'Failed to retrieve authentication token (HTTP '.$response->status().').'
             );
         }
 
@@ -87,26 +87,26 @@ class IntegrationApiService
         int $max
     ): array {
         $response = Http::timeout(config('integration.timeout_logs'))
-            ->withHeaders(['Authorization' => 'Bearer ' . $token])
-            ->post(config('integration.base_url') . config('integration.logs_path'), [
+            ->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->post(config('integration.base_url').config('integration.logs_path'), [
                 'PersonnelNo' => $personnelNo,
-                'StartDate'   => $from,
-                'EndDate'     => $to,
-                'start'       => $start,
-                'max'         => $max,
+                'StartDate' => $from,
+                'EndDate' => $to,
+                'start' => $start,
+                'max' => $max,
             ]);
 
         if (! $response->successful()) {
             Log::warning('Integration API log fetch failed', [
                 'personnel_no' => $personnelNo ?: '(all)',
-                'start'        => $start,
-                'status'       => $response->status(),
+                'start' => $start,
+                'status' => $response->status(),
             ]);
 
             return [[], $response->status()];
         }
 
-        $payload  = $response->json();
+        $payload = $response->json();
         $logsData = $payload['data'] ?? (is_array($payload) ? $payload : []);
 
         return [is_array($logsData) ? $logsData : [], $response->status()];

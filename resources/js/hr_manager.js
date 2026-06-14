@@ -768,67 +768,6 @@ const bindLeaveAnalytics = (root) => {
                 </table>`;
             }
 
-            // Critical employees table
-            const criticalEl = document.getElementById('criticalBalanceTable');
-            if (criticalEl) {
-                const emps = data.critical_employees || [];
-                if (emps.length === 0) {
-                    criticalEl.innerHTML = `<p style="color:#28a745;padding:0.5rem 0;">&#x2713; No employees with critically low balances.</p>`;
-                } else {
-                    const empRows = emps.map((e) => `<tr>
-                        <td>${e.name ?? ''}</td>
-                        <td>${e.department ?? ''}</td>
-                        <td style="color:${e.vl < 2 ? '#dc3545' : 'inherit'}">${e.vl}</td>
-                        <td style="color:${e.sl < 2 ? '#dc3545' : 'inherit'}">${e.sl}</td>
-                        <td><button class="hrm-btn-secondary hrm-notify-mgr" type="button" data-uid="${e.user_id}" data-name="${e.name}">Notify Manager</button></td>
-                    </tr>`).join('');
-
-                    criticalEl.innerHTML = `<table class="hrm-table">
-                        <thead><tr><th>Name</th><th>Department</th><th>VL</th><th>SL</th><th>Action</th></tr></thead>
-                        <tbody>${empRows}</tbody>
-                    </table>`;
-
-                    criticalEl.addEventListener('click', async (evt) => {
-                        const btn = evt.target.closest('.hrm-notify-mgr');
-                        if (!btn) return;
-                        const uid = btn.dataset.uid;
-                        const name = btn.dataset.name;
-
-                        const confirm = await Swal.fire({
-                            title: `Notify department head?`,
-                            html: `Send a low-balance alert to <strong>${name}</strong>'s department head.`,
-                            icon: 'question',
-                            showCancelButton: true,
-                            confirmButtonText: 'Send',
-                        });
-                        if (!confirm.isConfirmed) return;
-
-                        btn.disabled = true;
-                        try {
-                            const res = await fetch(notifyUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                    'X-CSRF-TOKEN': csrf,
-                                },
-                                body: JSON.stringify({ user_id: uid }),
-                            });
-                            const json = await res.json();
-                            if (json.success) {
-                                await Swal.fire('Sent', json.message, 'success');
-                            } else {
-                                await Swal.fire('Error', json.message || 'Could not send notification.', 'error');
-                                btn.disabled = false;
-                            }
-                        } catch {
-                            await Swal.fire('Error', 'Network error — notification not sent.', 'error');
-                            btn.disabled = false;
-                        }
-                    });
-                }
-            }
-
             // 6-month trend chart
             if (data.trend) {
                 trendChart = new Chart(document.getElementById('leaveTrendChart')?.getContext('2d'), {
@@ -947,32 +886,37 @@ const bindAttendanceOverview = () => {
     const deptSelect = document.getElementById('attendanceDepartment');
     const filterBtn = document.getElementById('attendanceFilterBtn');
 
-    let dailyChart = null;
+    let trendChart = null;
     let deptChart = null;
+
+    const badge = (val, cls) =>
+        `<span class="att-badge att-badge-${cls}">${val}</span>`;
 
     const render = (data) => {
         // Summary cards
-        document.getElementById('attAbsentDays').querySelector('h3').textContent = data.summary?.total_absences ?? '—';
-        document.getElementById('attTotalLate').querySelector('h3').textContent = data.summary?.total_late_minutes ?? '—';
-        document.getElementById('attTotalUndertime').querySelector('h3').textContent = data.summary?.total_undertime_minutes ?? '—';
-        document.getElementById('attCleanDays').querySelector('h3').textContent = data.summary?.clean_days ?? '—';
+        document.getElementById('attTotalEmployees').querySelector('h3').textContent = data.summary?.total_employees ?? '—';
+        document.getElementById('attAvgTardiness').querySelector('h3').textContent = data.summary?.avg_tardiness_minutes ?? '—';
+        document.getElementById('attAvgUndertime').querySelector('h3').textContent = data.summary?.avg_undertime_minutes ?? '—';
+        document.getElementById('attTotalAbsences').querySelector('h3').textContent = data.summary?.total_absences ?? '—';
 
-        // Daily absences line chart
-        const daily = data.daily_absences || [];
-        const dailyPayload = { labels: daily.map((d) => d.day), values: daily.map((d) => d.count) };
-        if (!dailyChart) {
-            dailyChart = new Chart(document.getElementById('dailyAbsencesChart')?.getContext('2d'), {
+        // 3-month trend multi-line chart
+        const trend = data.trend || [];
+        const trendLabels = trend.map((t) => t.month);
+        const trendDatasets = [
+            { label: 'Tardiness Days', data: trend.map((t) => t.tardiness_days), borderColor: colorSet.red, backgroundColor: 'rgba(220,53,69,0.08)', tension: 0.3, fill: true },
+            { label: 'Undertime Days', data: trend.map((t) => t.undertime_days), borderColor: colorSet.orange, backgroundColor: 'rgba(255,165,0,0.08)', tension: 0.3, fill: true },
+            { label: 'Absent Days', data: trend.map((t) => t.absent_days), borderColor: colorSet.blue, backgroundColor: 'rgba(0,123,255,0.08)', tension: 0.3, fill: true },
+        ];
+        if (!trendChart) {
+            trendChart = new Chart(document.getElementById('monthlyTrendChart')?.getContext('2d'), {
                 type: 'line',
-                data: {
-                    labels: dailyPayload.labels,
-                    datasets: [{ label: 'Absent Employees', data: dailyPayload.values, borderColor: colorSet.red, backgroundColor: 'rgba(220,53,69,0.1)', tension: 0.3 }],
-                },
+                data: { labels: trendLabels, datasets: trendDatasets },
                 options: { responsive: true, maintainAspectRatio: false },
             });
         } else {
-            dailyChart.data.labels = dailyPayload.labels;
-            dailyChart.data.datasets[0].data = dailyPayload.values;
-            dailyChart.update();
+            trendChart.data.labels = trendLabels;
+            trendChart.data.datasets.forEach((ds, i) => { ds.data = trendDatasets[i].data; });
+            trendChart.update();
         }
 
         // Dept late bar chart (horizontal)
@@ -993,25 +937,27 @@ const bindAttendanceOverview = () => {
             deptChart.update();
         }
 
-        // Top employees drilldown table
-        const tbody = document.querySelector('#attTopTable tbody');
+        // Drilldown table — employees with >10 tardiness or undertime days
+        const tbody = document.querySelector('#attDrillTable tbody');
         if (tbody) {
-            const emps = data.top_employees || [];
-            if (emps.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#94a3b8;">No data for this period.</td></tr>`;
+            const rows = data.drilldown || [];
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#94a3b8;">No employees exceed the threshold this period.</td></tr>`;
             } else {
-                const month = monthInput?.value || '';
-                tbody.innerHTML = emps.map((e) => {
-                    const dtrLink = `/attendance/dtr?employee=${e.user_id}&month=${month}`;
-                    const srcBadge = e.source ? `<span class="status-chip" style="font-size:0.75rem;">${e.source}</span>` : '—';
+                tbody.innerHTML = rows.map((e) => {
+                    const tarBadge = e.tardiness_count > 10 ? badge(e.tardiness_count, 'danger') : e.tardiness_count;
+                    const utBadge = e.undertime_count > 10 ? badge(e.undertime_count, 'warning') : e.undertime_count;
                     return `<tr>
+                        <td>${e.emp_no ?? '—'}</td>
                         <td>${e.name ?? ''}</td>
                         <td>${e.department ?? ''}</td>
-                        <td>${e.late_minutes}</td>
-                        <td>${e.undertime_minutes}</td>
-                        <td>${e.absences}</td>
-                        <td>${srcBadge}</td>
-                        <td><a href="${dtrLink}" class="hrm-btn-secondary" style="font-size:0.8rem;padding:2px 8px;">View DTR</a></td>
+                        <td>${tarBadge}</td>
+                        <td>${utBadge}</td>
+                        <td><button class="hrm-btn att-notify-btn" style="font-size:0.8rem;padding:3px 10px;"
+                                data-uid="${e.user_id}"
+                                data-name="${e.name ?? ''}"
+                                data-tardiness="${e.tardiness_count}"
+                                data-undertime="${e.undertime_count}">Notify Dept Head</button></td>
                     </tr>`;
                 }).join('');
             }
@@ -1028,6 +974,33 @@ const bindAttendanceOverview = () => {
             .then(render)
             .catch(() => Swal.fire('Error', 'Failed to load attendance data.', 'error'));
     };
+
+    // Delegated click handler for Notify buttons
+    root.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.att-notify-btn');
+        if (!btn) return;
+        btn.disabled = true;
+        fetch(root.dataset.notifyUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': root.dataset.csrf,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                user_id: btn.dataset.uid,
+                tardiness_count: btn.dataset.tardiness,
+                undertime_count: btn.dataset.undertime,
+            }),
+        })
+            .then((r) => r.json())
+            .then((res) => {
+                if (res.success) Swal.fire('Sent', res.message, 'success');
+                else Swal.fire('Error', res.message, 'error');
+            })
+            .catch(() => Swal.fire('Error', 'Request failed.', 'error'))
+            .finally(() => { btn.disabled = false; });
+    });
 
     filterBtn?.addEventListener('click', load);
     load();

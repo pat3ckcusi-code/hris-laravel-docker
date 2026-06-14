@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
+use App\Services\DepartmentService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Services\DepartmentService;
 
 class TravelOrderController extends Controller
 {
@@ -21,18 +21,23 @@ class TravelOrderController extends Controller
     public function getDepartmentEmployees(Request $request)
     {
         $user = Auth::user();
-        if (!$user) return response()->json(['employees' => []]);
+        if (! $user) {
+            return response()->json(['employees' => []]);
+        }
 
         $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
         $depts = ($roleNorm === 'administrative officer')
             ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
             : $this->departmentService->resolveAllDepartmentsForUser($user);
         $deptIds = $depts->pluck('Dept_id')->filter()->values()->toArray();
-        if (empty($deptIds)) return response()->json(['employees' => []]);
+        if (empty($deptIds)) {
+            return response()->json(['employees' => []]);
+        }
 
         $employees = User::whereIn('Dept_id', $deptIds)
             ->select('id', 'EmpNo', 'name', 'last_name', 'first_name', 'designation')
             ->get();
+
         return response()->json(['employees' => $employees]);
     }
 
@@ -40,7 +45,9 @@ class TravelOrderController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!$user) return response()->json(['success' => false, 'data' => []]);
+        if (! $user) {
+            return response()->json(['success' => false, 'data' => []]);
+        }
 
         $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
         $depts = ($roleNorm === 'administrative officer')
@@ -71,7 +78,8 @@ class TravelOrderController extends Controller
                 ->pluck('emp_no')
                 ->map(function ($eno) {
                     $u = User::where('EmpNo', $eno)->first();
-                    return $u ? ($u->last_name . ', ' . $u->first_name) : $eno;
+
+                    return $u ? ($u->last_name.', '.$u->first_name) : $eno;
                 })->values();
 
             return [
@@ -93,22 +101,26 @@ class TravelOrderController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user) return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
 
         $order = DB::table('travel_orders')->where('id', $id)->first();
-        if (!$order) return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
 
         $empNos = DB::table('travel_order_employees')->where('travel_order_id', $order->id)->pluck('emp_no')->toArray();
         $employees = User::whereIn('EmpNo', $empNos)->get()->map(function ($u) {
-            return ['EmpNo' => $u->EmpNo, 'name' => ($u->last_name . ', ' . $u->first_name), 'designation' => $u->designation ?? ''];
+            return ['EmpNo' => $u->EmpNo, 'name' => ($u->last_name.', '.$u->first_name), 'designation' => $u->designation ?? ''];
         })->values();
 
         // Resolve creator and recommender names
         $creator = $order->created_by ? User::find($order->created_by) : null;
         $recommender = $order->recommender ? User::find($order->recommender) : null;
 
-        $creatorName = $creator ? trim(($creator->last_name ?? '') . ', ' . ($creator->first_name ?? '')) : 'N/A';
-        $recommenderName = $recommender ? trim(($recommender->last_name ?? '') . ', ' . ($recommender->first_name ?? '')) : 'N/A';
+        $creatorName = $creator ? trim(($creator->last_name ?? '').', '.($creator->first_name ?? '')) : 'N/A';
+        $recommenderName = $recommender ? trim(($recommender->last_name ?? '').', '.($recommender->first_name ?? '')) : 'N/A';
 
         return response()->json(['success' => true, 'data' => [
             'id' => $order->id,
@@ -142,12 +154,12 @@ class TravelOrderController extends Controller
         ]);
 
         $user = Auth::user();
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
         // Generate travel order number
-        $travelOrderNum = 'TO-' . now()->format('YmdHis') . '-' . $user->id;
+        $travelOrderNum = 'TO-'.now()->format('YmdHis').'-'.$user->id;
 
         // Create travel order
         $travelOrderId = DB::table('travel_orders')->insertGetId([

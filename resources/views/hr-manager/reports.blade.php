@@ -16,8 +16,10 @@
                     <option value="{{ $department->Dept_id }}">{{ $department->Dept_name }}</option>
                 @endforeach
             </select>
-            <a href="{{ $exportPdfUrl }}" class="hrm-btn" target="_blank" rel="noopener">Export PDF</a>
-            <a href="{{ $exportExcelUrl }}" class="hrm-btn" target="_blank" rel="noopener">Export Excel</a>
+            <button type="button" class="hrm-btn"
+                    onclick="startExport('{{ route('export-jobs.create') }}', { type: 'hr_reports', params: { format: 'csv' } }, 'Building workforce report&hellip;')">
+                Export CSV
+            </button>
         </div>
 
         <div class="hrm-chart-grid">

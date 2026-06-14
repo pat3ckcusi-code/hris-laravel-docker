@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentRequest;
 use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use App\Notifications\HrisTransactionNotification;
 
 class FrontDeskController extends Controller
 {
@@ -212,7 +212,7 @@ class FrontDeskController extends Controller
             ->findOrFail($id);
 
         $template = $documentRequest->documentType->parts ?? [];
-        
+
         $employee = $documentRequest->employee;
 
         return view('frontdesk.print', [
@@ -281,7 +281,7 @@ class FrontDeskController extends Controller
 
         $query = $this->filteredRequests($validated);
 
-        if (!empty($validated['request_id'])) {
+        if (! empty($validated['request_id'])) {
             $query->where('document_requests.id', $validated['request_id']);
         }
 
@@ -323,22 +323,22 @@ class FrontDeskController extends Controller
                 'departments.Dept_name as department_name',
             ]);
 
-        if (!empty($filters['date'])) {
+        if (! empty($filters['date'])) {
             $query->whereDate('document_requests.requested_on', $filters['date']);
         }
 
-        if (!empty($filters['month'])) {
+        if (! empty($filters['month'])) {
             $month = Carbon::createFromFormat('Y-m', $filters['month']);
             $query
                 ->whereYear('document_requests.requested_on', $month->year)
                 ->whereMonth('document_requests.requested_on', $month->month);
         }
 
-        if (!empty($filters['document_type'])) {
+        if (! empty($filters['document_type'])) {
             $query->where('document_requests.document_type', $filters['document_type']);
         }
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('document_requests.status', $filters['status']);
         }
 
@@ -411,8 +411,8 @@ class FrontDeskController extends Controller
                 status: $statusLabel,
                 details: [
                     'Document Type' => $documentRequest->document_type ?? 'N/A',
-                    'Purpose'       => $documentRequest->purpose ?? 'N/A',
-                    'Requested On'  => $documentRequest->requested_on
+                    'Purpose' => $documentRequest->purpose ?? 'N/A',
+                    'Requested On' => $documentRequest->requested_on
                         ? Carbon::parse($documentRequest->requested_on)->format('l, F j, Y')
                         : 'N/A',
                 ],

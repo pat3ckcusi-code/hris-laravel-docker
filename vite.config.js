@@ -21,6 +21,7 @@ export default defineConfig({
                 'resources/css/aboutus.css',
                 'resources/css/hris-table.css',
                 'resources/js/hris-table.js',
+                'resources/js/export-job.js',
             ],
             refresh: true,
         }),

@@ -34,6 +34,7 @@ class ForgotPasswordController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return back()
                 ->withInput($request->only('email'))
                 ->withErrors(['email' => 'A mail error occurred. Please contact the HR office.']);
@@ -41,6 +42,7 @@ class ForgotPasswordController extends Controller
 
         if ($status === Password::RESET_LINK_SENT) {
             Log::info('[ForgotPassword] Reset link sent successfully', ['email' => $email]);
+
             return back()->with('status', __($status));
         }
 

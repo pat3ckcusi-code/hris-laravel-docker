@@ -1,7 +1,120 @@
 /* =========================================================================
-   Leave Manager — shared styles for cancel-leaves, manage-balance,
-   manage-credits pages
+   Leave Manager — shared styles for dashboard, manage-balance,
+   manage-credits, approved-leaves, employee-cancellation-requests pages
    ========================================================================= */
+
+/* ── Dashboard ──────────────────────────────── */
+
+.lm-dashboard { display: flex; flex-direction: column; gap: 22px; margin-top: 4px; }
+
+.lm-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.lm-chart-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+.lm-chart-card h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.lm-chart-canvas-wrap {
+    position: relative;
+    height: 210px;
+}
+
+.lm-section {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+.lm-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lm-section-header h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.lm-alert-banner {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-left: 4px solid #d97706;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #92400e;
+    font-size: 0.88rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.5;
+}
+
+.lm-alert-banner i { color: #d97706; font-size: 1rem; flex-shrink: 0; }
+.lm-alert-banner strong { color: #78350f; }
+
+/* Tile accents */
+.tile--warning  { border-left: 4px solid #f59e0b !important; }
+.tile--green    { border-left: 4px solid #16a34a !important; }
+.tile--blue     { border-left: 4px solid #3b82f6 !important; }
+
+.tile-count--green  { color: #16a34a; }
+.tile-count--blue   { color: #3b82f6; }
+
+@media (max-width: 768px) {
+    .lm-charts-row { grid-template-columns: 1fr; }
+    .lm-chart-canvas-wrap { height: 180px; }
+}
+
+/* ── DataTables top/bottom control bars ─────────── */
+.dt-top-bar,
+.dt-bottom-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 2px;
+}
+.dt-top-bar  { border-bottom: 1px solid #e5e7eb; margin-bottom: 6px; }
+.dt-bottom-bar { border-top:    1px solid #e5e7eb; margin-top:    6px; }
+
+/* ── Laravel paginator summary bar ──────────────── */
+.paginate-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 2px;
+    font-size: 0.875rem;
+}
+.paginate-bar--top    { border-bottom: 1px solid #e5e7eb; margin-bottom: 10px; padding-bottom: 10px; }
+.paginate-bar--bottom { border-top:    1px solid #e5e7eb; margin-top:    10px; padding-top:    10px; }
+.paginate-summary { color: #6b7280; white-space: nowrap; }
 
 /* ── Toolbar ────────────────────────────────────── */
 
@@ -40,10 +153,10 @@
 .leave-table thead th {
     text-align: left;
     padding: 10px 12px;
-    background: #fff7ed;
-    color: #9a3412;
+    background: #f1f5f9;
+    color: #334155;
     font-weight: 700;
-    border-bottom: 1px solid #f1e7dd;
+    border-bottom: 1px solid #e2e8f0;
     font-size: 13px;
 }
 
@@ -117,67 +230,39 @@
     100% { background: transparent; }
 }
 
-/* ── Cancel-leaves specifics ────────────────────── */
+/* ── Buttons ────────────────────────────────────── */
 
-.dates-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+.hris-btn-success {
+    background-color: #16a34a;
+    color: #ffffff;
+    display: inline-flex;
     align-items: center;
-}
-
-.cancel-date-btn {
-    min-width: 0;
-    padding: 0.35rem 0.5rem;
-}
-
-.print-cancelled-btn {
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    transition: all 0.2s;
     white-space: nowrap;
 }
 
-.btn.cancelled-date {
-    background-image: none !important;
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
-    cursor: default !important;
-    box-shadow: none !important;
+.hris-btn-success:hover {
+    background-color: #15803d;
+    box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);
 }
 
-.btn.cancelled-date:disabled,
-.btn.cancelled-date[disabled] {
-    opacity: 1 !important;
+.filter-emp-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    width: 100%;
 }
 
-.btn.cancelled-date:hover,
-.btn.cancelled-date:focus {
-    background-image: none !important;
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
-}
-
-.disabled-print-btn,
-.btn-disabled-print {
-    background: #d3d3d3 !important;
-    background-image: none !important;
-    color: #808080 !important;
-    border-color: #d3d3d3 !important;
-    cursor: not-allowed !important;
-    opacity: 1 !important;
-}
-
-.btn-disabled-print:hover,
-.btn-disabled-print:focus,
-.disabled-print-btn:hover,
-.disabled-print-btn:focus {
-    background: #d3d3d3 !important;
-    background-image: none !important;
-    color: #808080 !important;
-    border-color: #d3d3d3 !important;
-}
-
-/* ── Filter bar (cancel-leaves) ─────────────────── */
+/* ── Filter bar ─────────────────────────────────── */
 
 .filter-bar {
     display: flex;
@@ -265,11 +350,11 @@
 .credits-table thead th {
     text-align: center;
     padding: 10px 12px;
-    background: #f8fafc;
-    color: #111827;
+    background: #f1f5f9;
+    color: #334155;
     font-weight: 700;
-    border-right: 1px solid #e6e9ee;
-    border-bottom: 1px solid #e6e9ee;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
     font-size: 13px;
 }
 
@@ -292,14 +377,15 @@
 .deduct-from { width: 100%; max-width: 140px; }
 
 /* Narrow columns */
-.credits-table th.col-small { width: 52px; max-width: 64px; padding: 6px; }
+.credits-table th {
+    white-space: normal;
+    word-wrap: break-word;
+    text-align: center;
+}
+.credits-table th.col-small { width: 80px; padding: 6px; }
 .credits-table td.current-vl,
-.credits-table td.current-sl,
-.credits-table td.current-wlns,
-.credits-table td.current-spl,
-.credits-table td.current-cto {
-    width: 52px; max-width: 64px; padding: 6px; text-align: center;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.credits-table td.current-sl {
+    width: 80px; padding: 6px; text-align: center; white-space: nowrap;
 }
 
 .credits-table th.col-tiny { width: 96px; max-width: 120px; padding: 6px; }
@@ -311,8 +397,6 @@
 .credits-table th.col-emp { width: 110px; max-width: 140px; padding: 8px; text-align: left; }
 .credits-table td.emp-number { width: 110px; max-width: 140px; padding: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.btn-primary { background: #0ea5a3; color: #ffffff; border: 1px solid rgba(14, 165, 163, 0.9); }
-.btn-secondary { background: #eef2ff; color: #3730a3; border: 1px solid #e0e7ff; }
 
 .dept-small { display: block; font-size: 0.78rem; color: #6b7280; margin-top: 4px; }
 .employee-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -340,7 +424,7 @@
     }
     .form-control, .input-small { width: 100% !important; box-sizing: border-box; }
     .col-action .btn { width: 100%; display: block; }
-    .deduction-days, .current-vl, .current-sl, .current-wlns, .current-spl, .current-cto { text-align: right; }
+    .deduction-days, .current-vl, .current-sl { text-align: right; }
     .employee-name { white-space: normal; }
     .dept-italic { display: block; margin-top: 6px; font-style: italic; text-transform: uppercase; font-size: 0.75rem; color: #6b7280; }
     .leave-credits-toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }

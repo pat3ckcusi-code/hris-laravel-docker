@@ -16,7 +16,7 @@
 
                 <div class="leave-balance-controls">
                     <input id="leave-balance-search" class="leave-balance-search" placeholder="Search employees, dept or EmpNo">
-                    <button id="export-csv" class="btn" type="button">Export CSV</button>
+                    <button id="export-csv" class="hris-btn hris-btn-secondary" type="button">Export CSV</button>
                 </div>
             </div>
 
@@ -76,7 +76,7 @@
             ],
             // disable the built-in filter input UI (we use the external search box)
             searching: true,
-            dom: 'rt<"bottom"ip>',
+            dom: '<"dt-top-bar"ip>rt<"dt-bottom-bar"lip>',
             language: {
                 emptyTable: 'No leave balances found.'
             }

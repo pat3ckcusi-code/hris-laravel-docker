@@ -2,29 +2,32 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
  * @property string $period
- * @property \Illuminate\Support\Carbon|null $period_start
- * @property \Illuminate\Support\Carbon|null $period_end
+ * @property Carbon|null $period_start
+ * @property Carbon|null $period_end
  * @property string $status
- * @property \Illuminate\Support\Carbon|null $locked_at
+ * @property Carbon|null $locked_at
  * @property int|null $created_by
  * @property int|null $approved_by
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\User|null $creator
- * @property-read \App\Models\User|null $approver
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PayrollDetail> $details
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PayrollException> $exceptions
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ApprovalLog> $approvalLogs
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payslip> $payslips
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PayrollAuditLog> $auditLogs
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read User|null $creator
+ * @property-read User|null $approver
+ * @property-read Collection<int, PayrollDetail> $details
+ * @property-read Collection<int, PayrollException> $exceptions
+ * @property-read Collection<int, ApprovalLog> $approvalLogs
+ * @property-read Collection<int, Payslip> $payslips
+ * @property-read Collection<int, PayrollAuditLog> $auditLogs
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class PayrollRun extends Model
 {

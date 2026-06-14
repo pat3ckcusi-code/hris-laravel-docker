@@ -3,19 +3,22 @@
 namespace App\Http\Controllers\Employee;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Eta;
 use App\Models\HRAuditTrail;
+use App\Models\OicAssignment;
 use App\Models\Setting;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Department;
 use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
+use App\Services\DepartmentService;
+use App\Support\RoleNormalizer;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\EtaNotification;
-use App\Notifications\HrisTransactionNotification;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use Illuminate\Support\Carbon;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 class EtaController extends Controller
 {
@@ -36,10 +39,10 @@ class EtaController extends Controller
         // Search functionality
         $search = $request->query('search');
         if ($search) {
-            $query->where(function($q) use ($search) {
-                $q->where('destination', 'like', '%' . $search . '%')
-                  ->orWhere('purpose', 'like', '%' . $search . '%')
-                  ->orWhere('purpose_details', 'like', '%' . $search . '%');
+            $query->where(function ($q) use ($search) {
+                $q->where('destination', 'like', '%'.$search.'%')
+                    ->orWhere('purpose', 'like', '%'.$search.'%')
+                    ->orWhere('purpose_details', 'like', '%'.$search.'%');
             });
         }
 
@@ -57,7 +60,7 @@ class EtaController extends Controller
 
         // Resolve the approved-by name for each ETA
         foreach ($etas as $eta) {
-            if (!empty($eta->approved_by)) {
+            if (! empty($eta->approved_by)) {
                 $approverUser = User::find($eta->approved_by);
                 if ($approverUser) {
                     $parts = array_filter([
@@ -65,14 +68,14 @@ class EtaController extends Controller
                         $approverUser->middle_name ?? '',
                         $approverUser->last_name ?? '',
                     ]);
-                    $eta->dept_head = !empty($parts) ? implode(' ', $parts) : ($approverUser->name ?? 'Unknown');
+                    $eta->dept_head = ! empty($parts) ? implode(' ', $parts) : ($approverUser->name ?? 'Unknown');
                 } else {
                     $eta->dept_head = 'Unknown';
                 }
             } else {
                 // Fallback: show department head name from department
                 $dept = $user->Dept_id ? Department::find($user->Dept_id) : null;
-                if ($dept && !empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
+                if ($dept && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
                     $deptHead = User::where('EmpNo', $dept->EmpNo)->first();
                     if ($deptHead) {
                         $parts = array_filter([
@@ -80,7 +83,7 @@ class EtaController extends Controller
                             $deptHead->middle_name ?? '',
                             $deptHead->last_name ?? '',
                         ]);
-                        $eta->dept_head = !empty($parts) ? implode(' ', $parts) : ($deptHead->name ?? 'Not assigned');
+                        $eta->dept_head = ! empty($parts) ? implode(' ', $parts) : ($deptHead->name ?? 'Not assigned');
                     } else {
                         $eta->dept_head = 'Not assigned';
                     }
@@ -110,11 +113,11 @@ class EtaController extends Controller
         $employee = User::find($eta->user_id);
         $departmentName = null;
         $departmentHead = null;
-        if ($employee && !empty($employee->Dept_id)) {
+        if ($employee && ! empty($employee->Dept_id)) {
             $department = Department::find($employee->Dept_id);
             if ($department) {
                 $departmentName = $department->Dept_name ?? null;
-                if (!empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+                if (! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                     $departmentHead = User::where('EmpNo', $department->EmpNo)->first();
                 }
             }
@@ -125,10 +128,18 @@ class EtaController extends Controller
             $employee->department_name = $departmentName;
             if ($departmentHead) {
                 $parts = [];
-                if (!empty($departmentHead->first_name)) $parts[] = $departmentHead->first_name;
-                if (!empty($departmentHead->middle_name)) $parts[] = $departmentHead->middle_name;
-                if (!empty($departmentHead->last_name)) $parts[] = $departmentHead->last_name;
-                if (empty($parts) && !empty($departmentHead->name)) $parts[] = $departmentHead->name;
+                if (! empty($departmentHead->first_name)) {
+                    $parts[] = $departmentHead->first_name;
+                }
+                if (! empty($departmentHead->middle_name)) {
+                    $parts[] = $departmentHead->middle_name;
+                }
+                if (! empty($departmentHead->last_name)) {
+                    $parts[] = $departmentHead->last_name;
+                }
+                if (empty($parts) && ! empty($departmentHead->name)) {
+                    $parts[] = $departmentHead->name;
+                }
                 $employee->dept_head_name = implode(' ', $parts);
             }
         }
@@ -140,12 +151,12 @@ class EtaController extends Controller
                     requestType: 'ETA',
                     status: 'Filed',
                     details: [
-                        'Employee'       => $empName,
-                        'Department'     => $employee->department_name ?? 'N/A',
-                        'Destination'    => $eta->destination ?? 'N/A',
+                        'Employee' => $empName,
+                        'Department' => $employee->department_name ?? 'N/A',
+                        'Destination' => $eta->destination ?? 'N/A',
                         'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
-                        'Arrival Date'   => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
-                        'Purpose'        => $eta->purpose ?? 'N/A',
+                        'Arrival Date' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+                        'Purpose' => $eta->purpose ?? 'N/A',
                     ],
                     actor: $empName,
                 ));
@@ -158,7 +169,7 @@ class EtaController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'ETA filed successfully.',
-                'redirect' => route('dashboard.employee.eta')
+                'redirect' => route('dashboard.employee.eta'),
             ]);
         }
 
@@ -171,16 +182,24 @@ class EtaController extends Controller
 
         $deptHeadName = null;
         $owner = User::find($eta->user_id);
-        if ($owner && !empty($owner->Dept_id)) {
+        if ($owner && ! empty($owner->Dept_id)) {
             $department = Department::find($owner->Dept_id);
-            if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+            if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                 $head = User::where('EmpNo', $department->EmpNo)->first();
                 if ($head) {
                     $parts = [];
-                    if (!empty($head->first_name)) $parts[] = $head->first_name;
-                    if (!empty($head->middle_name)) $parts[] = $head->middle_name;
-                    if (!empty($head->last_name)) $parts[] = $head->last_name;
-                    if (empty($parts) && !empty($head->name)) $parts[] = $head->name;
+                    if (! empty($head->first_name)) {
+                        $parts[] = $head->first_name;
+                    }
+                    if (! empty($head->middle_name)) {
+                        $parts[] = $head->middle_name;
+                    }
+                    if (! empty($head->last_name)) {
+                        $parts[] = $head->last_name;
+                    }
+                    if (empty($parts) && ! empty($head->name)) {
+                        $parts[] = $head->name;
+                    }
                     $deptHeadName = implode(' ', $parts);
                 }
             }
@@ -203,16 +222,24 @@ class EtaController extends Controller
         $etas = $query->get();
 
         $deptHeadName = null;
-        if ($user && !empty($user->Dept_id)) {
+        if ($user && ! empty($user->Dept_id)) {
             $department = Department::find($user->Dept_id);
-            if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+            if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                 $head = User::where('EmpNo', $department->EmpNo)->first();
                 if ($head) {
                     $parts = [];
-                    if (!empty($head->first_name)) $parts[] = $head->first_name;
-                    if (!empty($head->middle_name)) $parts[] = $head->middle_name;
-                    if (!empty($head->last_name)) $parts[] = $head->last_name;
-                    if (empty($parts) && !empty($head->name)) $parts[] = $head->name;
+                    if (! empty($head->first_name)) {
+                        $parts[] = $head->first_name;
+                    }
+                    if (! empty($head->middle_name)) {
+                        $parts[] = $head->middle_name;
+                    }
+                    if (! empty($head->last_name)) {
+                        $parts[] = $head->last_name;
+                    }
+                    if (empty($parts) && ! empty($head->name)) {
+                        $parts[] = $head->name;
+                    }
                     $deptHeadName = implode(' ', $parts);
                 }
             }
@@ -230,18 +257,28 @@ class EtaController extends Controller
         if ($eta->user_id === $user->id) {
             $allowed = true;
         } else {
-            $role = strtolower(trim((string)$user->access_level));
+            $role = RoleNormalizer::normalize((string) ($user->access_level ?? ''));
 
             // Administrative officers and HR managers may print any approved ETA
             if ($role === 'administrative officer' || $role === 'hr manager') {
                 $allowed = true;
             }
 
-            // Department head: allow if this user's EmpNo is the head of the owner's department
-            if (!$allowed && !empty($user->EmpNo) && $owner && !empty($owner->Dept_id)) {
-                $ownerDept = Department::find($owner->Dept_id);
-                if ($ownerDept && !empty($ownerDept->EmpNo) && $ownerDept->EmpNo !== 'UNASSIGNED'
-                    && $ownerDept->EmpNo === $user->EmpNo) {
+            // Also allow OIC users acting as administrative officer or hr manager
+            if (! $allowed) {
+                $today = now()->toDateString();
+                $allowed = OicAssignment::where('user_id', $user->id)
+                    ->whereDate('start_date', '<=', $today)
+                    ->whereDate('end_date', '>=', $today)
+                    ->whereIn('role', ['administrative officer', 'hr manager'])
+                    ->exists();
+            }
+
+            // Department head (including OIC-as-DH): allow if the owner's department is in the user's dept list
+            if (! $allowed && $owner && ! empty($owner->Dept_id)) {
+                $deptService = app(DepartmentService::class);
+                $dhDeptIds = $deptService->resolveAllDepartmentsForUser($user)->pluck('Dept_id')->all();
+                if (in_array($owner->Dept_id, $dhDeptIds, true)) {
                     $allowed = true;
                 }
             }
@@ -260,10 +297,18 @@ class EtaController extends Controller
 
         $fullNameParts = [];
         if ($owner) {
-            if (!empty($owner->first_name)) $fullNameParts[] = $owner->first_name;
-            if (!empty($owner->middle_name)) $fullNameParts[] = $owner->middle_name;
-            if (!empty($owner->last_name)) $fullNameParts[] = $owner->last_name;
-            if (empty($fullNameParts) && !empty($owner->name)) $fullNameParts[] = $owner->name;
+            if (! empty($owner->first_name)) {
+                $fullNameParts[] = $owner->first_name;
+            }
+            if (! empty($owner->middle_name)) {
+                $fullNameParts[] = $owner->middle_name;
+            }
+            if (! empty($owner->last_name)) {
+                $fullNameParts[] = $owner->last_name;
+            }
+            if (empty($fullNameParts) && ! empty($owner->name)) {
+                $fullNameParts[] = $owner->name;
+            }
         }
         $fullName = implode(' ', $fullNameParts);
 
@@ -271,7 +316,7 @@ class EtaController extends Controller
         $arrival = $eta->arrival_date ? Carbon::parse($eta->arrival_date)->toFormattedDateString() : '';
 
         $dept = '';
-        if ($owner && !empty($owner->Dept_id)) {
+        if ($owner && ! empty($owner->Dept_id)) {
             $department = Department::find($owner->Dept_id);
             $dept = $department ? ($department->Dept_name ?? '') : '';
         }
@@ -286,16 +331,24 @@ class EtaController extends Controller
         // Resolve department head name and designation
         $deptHeadName = '';
         $department = null;
-        if ($owner && !empty($owner->Dept_id)) {
+        if ($owner && ! empty($owner->Dept_id)) {
             $department = Department::find($owner->Dept_id);
-            if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+            if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                 $head = User::where('EmpNo', $department->EmpNo)->first();
                 if ($head) {
                     $parts = [];
-                    if (!empty($head->first_name)) $parts[] = $head->first_name;
-                    if (!empty($head->middle_name)) $parts[] = $head->middle_name;
-                    if (!empty($head->last_name)) $parts[] = $head->last_name;
-                    if (empty($parts) && !empty($head->name)) $parts[] = $head->name;
+                    if (! empty($head->first_name)) {
+                        $parts[] = $head->first_name;
+                    }
+                    if (! empty($head->middle_name)) {
+                        $parts[] = $head->middle_name;
+                    }
+                    if (! empty($head->last_name)) {
+                        $parts[] = $head->last_name;
+                    }
+                    if (empty($parts) && ! empty($head->name)) {
+                        $parts[] = $head->name;
+                    }
                     $deptHeadName = implode(' ', $parts);
                 }
             }
@@ -307,8 +360,9 @@ class EtaController extends Controller
 
         // Load Excel template
         $templatePath = storage_path('app/templates/ETA.xlsx');
-        if (!file_exists($templatePath)) {
+        if (! file_exists($templatePath)) {
             $etas = collect([$eta]);
+
             return view('employee.eta-print', compact('etas'))->with('filter', 'single');
         }
 
@@ -317,17 +371,17 @@ class EtaController extends Controller
 
         // Purpose checkbox mapping: purpose => [checkboxCell for copy1, checkboxCell for copy2]
         $purposeCheckboxes = [
-            'Audit-Inspection-Licensing'      => ['F10', 'F40'],
-            'Client Support'                  => ['K10', 'K40'],
-            'Conference'                      => ['M10', 'M40'],
+            'Audit-Inspection-Licensing' => ['F10', 'F40'],
+            'Client Support' => ['K10', 'K40'],
+            'Conference' => ['M10', 'M40'],
             'Construction Repair Maintenance' => ['B11', 'B41'],
-            'Economic Development'            => ['G11', 'G41'],
-            'General Expense/Other'           => ['K11', 'K41'],
-            'Legal-Law Enforcement'           => ['B12', 'B42'],
-            'Legislator'                      => ['F12', 'F42'],
-            'Meeting'                         => ['I12', 'I42'],
-            'Training'                        => ['K12', 'K42'],
-            'Seminar'                         => ['M12', 'M42'],
+            'Economic Development' => ['G11', 'G41'],
+            'General Expense/Other' => ['K11', 'K41'],
+            'Legal-Law Enforcement' => ['B12', 'B42'],
+            'Legislator' => ['F12', 'F42'],
+            'Meeting' => ['I12', 'I42'],
+            'Training' => ['K12', 'K42'],
+            'Seminar' => ['M12', 'M42'],
         ];
 
         // Fill both copies of the form (rows 1-30 and rows 31-60)
@@ -384,7 +438,7 @@ class EtaController extends Controller
         }
 
         // Audit log
-        $filename = 'ETA-' . $eta->id . '-' . now()->format('Ymd-His') . '.xlsx';
+        $filename = 'ETA-'.$eta->id.'-'.now()->format('Ymd-His').'.xlsx';
 
         Log::info('ETA print action (excel)', [
             'eta_id' => $eta->id,
@@ -443,16 +497,24 @@ class EtaController extends Controller
 
         // resolve department head once for this user
         $deptHeadName = null;
-        if ($user && !empty($user->Dept_id)) {
+        if ($user && ! empty($user->Dept_id)) {
             $department = Department::find($user->Dept_id);
-            if ($department && !empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+            if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
                 $head = User::where('EmpNo', $department->EmpNo)->first();
                 if ($head) {
                     $parts = [];
-                    if (!empty($head->first_name)) $parts[] = $head->first_name;
-                    if (!empty($head->middle_name)) $parts[] = $head->middle_name;
-                    if (!empty($head->last_name)) $parts[] = $head->last_name;
-                    if (empty($parts) && !empty($head->name)) $parts[] = $head->name;
+                    if (! empty($head->first_name)) {
+                        $parts[] = $head->first_name;
+                    }
+                    if (! empty($head->middle_name)) {
+                        $parts[] = $head->middle_name;
+                    }
+                    if (! empty($head->last_name)) {
+                        $parts[] = $head->last_name;
+                    }
+                    if (empty($parts) && ! empty($head->name)) {
+                        $parts[] = $head->name;
+                    }
                     $deptHeadName = implode(' ', $parts);
                 }
             }
@@ -477,7 +539,7 @@ class EtaController extends Controller
         return response()->json(['data' => $etas]);
     }
 
-//    This is cancel
+    //    This is cancel
     public function cancel(Request $request, Eta $eta)
     {
         $user = Auth::user();
@@ -489,6 +551,7 @@ class EtaController extends Controller
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json(['success' => false, 'message' => 'Only pending ETAs can be cancelled.'], 400);
             }
+
             return redirect()->back()->with('error', 'Only pending ETAs can be cancelled.');
         }
 
@@ -507,7 +570,7 @@ class EtaController extends Controller
      */
     private function resolveRootDepartment(?Department $dept, int $maxDepth = 10): ?Department
     {
-        if (!$dept) {
+        if (! $dept) {
             return null;
         }
 
@@ -520,7 +583,7 @@ class EtaController extends Controller
             }
             $visited[] = $current->Dept_id;
             $parent = Department::where('Dept_id', $current->parent_dept_id)->first();
-            if (!$parent) {
+            if (! $parent) {
                 break;
             }
             $current = $parent;
@@ -535,7 +598,7 @@ class EtaController extends Controller
     private function isUnderViceMayor(?Department $dept): bool
     {
         $root = $this->resolveRootDepartment($dept);
-        if (!$root) {
+        if (! $root) {
             return false;
         }
 
@@ -551,7 +614,7 @@ class EtaController extends Controller
      */
     private function resolveExecutiveSignatory(?Department $dept, ?Setting $settings): array
     {
-        if (!$settings) {
+        if (! $settings) {
             return ['', ''];
         }
 
@@ -571,11 +634,11 @@ class EtaController extends Controller
     /**
      * Lock all sheets in the spreadsheet to prevent editing.
      */
-    private function protectAllSheets(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet, ?User $owner): void
+    private function protectAllSheets(Spreadsheet $spreadsheet, ?User $owner): void
     {
         $first = $owner->first_name ?? ($owner->firstname ?? '');
-        $last  = $owner->last_name ?? ($owner->lastname ?? '');
-        $password = strtoupper($first . substr((string) $last, 0, 1));
+        $last = $owner->last_name ?? ($owner->lastname ?? '');
+        $password = strtoupper($first.substr((string) $last, 0, 1));
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             // NOTE: We intentionally skip bulk getStyle($range)->setLocked() here.

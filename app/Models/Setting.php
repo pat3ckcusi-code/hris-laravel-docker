@@ -42,6 +42,9 @@ use Illuminate\Support\Carbon;
  * @property string $pdf_font_family
  * @property int $pdf_font_size
  * @property int $dashboard_cache_ttl
+ * @property bool $auto_import_enabled
+ * @property int $auto_import_interval_minutes
+ * @property int|null $auto_import_dept_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -86,6 +89,9 @@ class Setting extends Model
         'pdf_font_family',
         'pdf_font_size',
         'dashboard_cache_ttl',
+        'auto_import_enabled',
+        'auto_import_interval_minutes',
+        'auto_import_dept_id',
     ];
 
     protected $casts = [
@@ -96,5 +102,6 @@ class Setting extends Model
         'attendance_enabled' => 'boolean',
         'eta_enabled' => 'boolean',
         'excel_protection_enabled' => 'boolean',
+        'auto_import_enabled' => 'boolean',
     ];
 }

@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalLog;
-use App\Models\PayrollRun;
 use App\Models\PayrollAuditLog;
+use App\Models\PayrollRun;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;

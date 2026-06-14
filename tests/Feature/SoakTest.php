@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\TestCase;
 
 /**
  * Soak Test Suite — simulates sustained mixed traffic patterns
@@ -24,6 +24,7 @@ class SoakTest extends TestCase
         return User::factory()->create([
             'access_level' => $role,
             'Status' => 'Active',
+            'force_password_change' => false,
         ]);
     }
 
@@ -34,11 +35,11 @@ class SoakTest extends TestCase
         $responseTimes = [];
         for ($i = 0; $i < self::ITERATIONS; $i++) {
             $start = microtime(true);
-            $response = $this->actingAs($user)->get(route('dashboard'));
+            $response = $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
             $elapsed = (microtime(true) - $start) * 1000;
             $responseTimes[] = $elapsed;
 
-            $response->assertStatus(200);
+            $response->assertSuccessful();
         }
 
         $avg = array_sum($responseTimes) / count($responseTimes);
@@ -56,7 +57,7 @@ class SoakTest extends TestCase
         $responseTimes = [];
         for ($i = 0; $i < self::ITERATIONS; $i++) {
             $start = microtime(true);
-            $response = $this->actingAs($user)->get(route('dashboard'));
+            $response = $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
             $elapsed = (microtime(true) - $start) * 1000;
             $responseTimes[] = $elapsed;
 
@@ -80,12 +81,12 @@ class SoakTest extends TestCase
         $user = $this->createAuthenticatedUser('employee');
 
         for ($i = 0; $i < 20; $i++) {
-            // Visit login page
-            $response = $this->get(route('login'));
-            $response->assertStatus(200);
+            // Login page returns 200 when unauthenticated, 302 when already authenticated
+            $response = $this->followingRedirects()->get(route('login'));
+            $response->assertSuccessful();
 
             // Authenticated dashboard access
-            $response = $this->actingAs($user)->get(route('dashboard'));
+            $response = $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
             $response->assertSuccessful();
         }
 
@@ -99,11 +100,11 @@ class SoakTest extends TestCase
         $user = $this->createAuthenticatedUser('HR Manager');
 
         // Warm cache
-        $this->actingAs($user)->get(route('dashboard'));
+        $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
 
         // Repeated cached hits
         for ($i = 0; $i < self::ITERATIONS; $i++) {
-            $response = $this->actingAs($user)->get(route('dashboard'));
+            $response = $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
             $response->assertSuccessful();
         }
 
@@ -121,7 +122,7 @@ class SoakTest extends TestCase
         // Simulate rapid role-based access
         for ($i = 0; $i < 30; $i++) {
             foreach ($users as $role => $user) {
-                $response = $this->actingAs($user)->get(route('dashboard'));
+                $response = $this->actingAs($user)->followingRedirects()->get(route('dashboard'));
                 $response->assertSuccessful();
             }
         }

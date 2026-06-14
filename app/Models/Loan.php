@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -12,12 +14,12 @@ use Illuminate\Database\Eloquent\Model;
  * @property float $balance
  * @property float $monthly_payment
  * @property string $status
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\User|null $employee
- * @property-read \App\Models\Deduction|null $deduction
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read User|null $employee
+ * @property-read Deduction|null $deduction
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class Loan extends Model
 {
@@ -30,6 +32,14 @@ class Loan extends Model
         'monthly_payment',
         'status',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'balance' => 'float',
+            'monthly_payment' => 'float',
+        ];
+    }
 
     public function employee()
     {

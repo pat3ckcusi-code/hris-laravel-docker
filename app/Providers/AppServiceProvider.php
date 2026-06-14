@@ -4,12 +4,14 @@ namespace App\Providers;
 
 use App\Events\HolidayCreated;
 use App\Listeners\CancelLeavesOnHoliday;
+use App\Models\Setting;
 use App\Models\User;
 use App\Observers\UserObserver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -30,6 +32,11 @@ class AppServiceProvider extends ServiceProvider
         User::observe(UserObserver::class);
 
         Event::listen(HolidayCreated::class, CancelLeavesOnHoliday::class);
+
+        // Share app settings to views that need them without inline DB queries.
+        View::composer(['auth.login', 'emails.hris_transaction'], function ($view) {
+            $view->with('settings', cache()->remember('app_settings', 300, fn () => Setting::first()));
+        });
 
         // Rate limiting: login attempts
         RateLimiter::for('login', function (Request $request) {

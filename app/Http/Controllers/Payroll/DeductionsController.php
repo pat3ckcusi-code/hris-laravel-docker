@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\Deduction;
-use App\Models\EmployeeDeduction;
-use App\Models\Loan;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +13,7 @@ class DeductionsController extends Controller
     public function index(): View
     {
         $deductionTypes = Deduction::withCount('employeeDeductions', 'loans')->paginate(20);
+
         return view('payroll.deductions', compact('deductionTypes'));
     }
 
@@ -40,6 +39,7 @@ class DeductionsController extends Controller
     public function show(int $id): View
     {
         $deduction = Deduction::with('employeeDeductions.employee', 'loans.employee')->findOrFail($id);
+
         return view('payroll.deduction-show', compact('deduction'));
     }
 
@@ -65,6 +65,7 @@ class DeductionsController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         Deduction::findOrFail($id)->delete();
+
         return redirect()->route('payroll.deductions.index')
             ->with('status', 'Deduction type deleted.');
     }

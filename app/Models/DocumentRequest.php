@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -11,16 +13,16 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $document_type
  * @property string|null $purpose
  * @property string $status
- * @property \Illuminate\Support\Carbon|null $requested_on
- * @property \Illuminate\Support\Carbon|null $processed_on
- * @property \Illuminate\Support\Carbon|null $released_on
+ * @property Carbon|null $requested_on
+ * @property Carbon|null $processed_on
+ * @property Carbon|null $released_on
  * @property int|null $processed_by
  * @property int|null $released_by
  * @property string|null $hr_notes
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class DocumentRequest extends Model
 {

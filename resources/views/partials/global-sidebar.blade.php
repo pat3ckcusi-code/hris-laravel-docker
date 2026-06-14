@@ -47,6 +47,8 @@
         'office_order'        => 'fas fa-file-signature fa-fw',
         'filed_travel'        => 'fas fa-folder-open fa-fw',
         'filed_office'        => 'fas fa-archive fa-fw',
+        'oic'                 => 'fas fa-user-clock fa-fw',
+        'monitoring_matrix'   => 'fas fa-table-list fa-fw',
 
         // Records & HR
         'records'             => 'fas fa-database fa-fw',
@@ -121,6 +123,7 @@
             ['label' => 'Office Order',       'icon' => 'office_order',      'route' => 'department-head.office-orders',     'active' => ['department-head.office-orders']],
             ['label' => 'Filed T.O.s',        'icon' => 'filed_travel',      'route' => 'department-head.filed-travel-orders',  'active' => ['department-head.filed-travel-orders']],
             ['label' => 'Filed Office Order', 'icon' => 'filed_office',      'route' => 'department-head.filed-office-orders',  'active' => ['department-head.filed-office-orders']],
+            ['label' => 'OIC Assignments',    'icon' => 'oic',               'route' => 'department-head.oic-assignments.index', 'active' => ['department-head.oic-assignments.index']],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                       'active' => ['attendance.dtr', 'attendance.dtr.download']],
@@ -130,6 +133,14 @@
         'administrative officer' => [
             ['label' => 'Dashboard',          'icon' => 'dashboard',          'route' => 'admin-officer.index',              'active' => ['admin-officer.index']],
 
+            ['section' => 'Self-Service'],
+            ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',               'active' => ['dashboard.employee.pds']],
+            ['label' => 'ETA',               'icon' => 'eta',       'route' => 'dashboard.employee.eta',               'active' => ['dashboard.employee.eta']],
+            ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
+            ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+
             ['section' => 'Department Management'],
             ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'admin-officer.pending-requests',   'active' => ['admin-officer.pending-requests'], 'badge' => 'pending_requests_dept'],
             ['label' => 'Approved Requests',  'icon' => 'approved_requests', 'route' => 'admin-officer.approved-requests',  'active' => ['admin-officer.approved-requests']],
@@ -137,7 +148,9 @@
             ['label' => 'Travel Order',       'icon' => 'travel_order',      'route' => 'admin-officer.travel-orders',      'active' => ['admin-officer.travel-orders']],
             ['label' => 'Office Order',       'icon' => 'office_order',      'route' => 'admin-officer.office-orders',      'active' => ['admin-officer.office-orders']],
             ['label' => 'Filed T.O.s',        'icon' => 'filed_travel',      'route' => 'admin-officer.filed-travel-orders',   'active' => ['admin-officer.filed-travel-orders']],
-            ['label' => 'Filed Office Order', 'icon' => 'filed_office',      'route' => 'admin-officer.filed-office-orders',   'active' => ['admin-officer.filed-office-orders']],
+            ['label' => 'Filed Office Order', 'icon' => 'filed_office',        'route' => 'admin-officer.filed-office-orders',   'active' => ['admin-officer.filed-office-orders']],
+            ['label' => 'OIC Assignments',    'icon' => 'oic',               'route' => 'department-head.oic-assignments.index', 'active' => ['department-head.oic-assignments.index']],
+            ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'admin-officer.monitoring-matrix',      'active' => ['admin-officer.monitoring-matrix']],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                   'active' => ['attendance.dtr', 'attendance.dtr.download']],
@@ -160,8 +173,9 @@
             ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',   'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Reports'],
-            ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',   'active' => ['hr-manager.reports']],
-            ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',     'active' => ['hr-manager.audit']],
+            ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',     'active' => ['hr-manager.reports']],
+            ['label' => 'Leave Ledger',       'icon' => 'audit',     'route' => 'hr-manager.leave-ledger','active' => ['hr-manager.leave-ledger']],
+            ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],
 
             ['section' => 'Administration'],
             ['label' => 'User Roles &amp; Access', 'icon' => 'roles',    'route' => 'hr-manager.roles',    'active' => ['hr-manager.roles']],
@@ -177,8 +191,8 @@
             ['label' => 'Leave Manager',       'icon' => 'dashboard',       'route' => 'dashboard',                       'active' => ['dashboard']],
             ['label' => 'Manage Leave Balance','icon' => 'leave_balance',   'route' => 'leave-manager.manage-balance',    'active' => ['leave-manager.manage-balance']],
             ['label' => 'Manage Leave Credits','icon' => 'leave_credits',   'route' => 'leave-manager.manage-credits',    'active' => ['leave-manager.manage-credits']],
+            ['label' => 'Leave Ledger',        'icon' => 'audit',           'route' => 'leave-manager.leave-ledger',      'active' => ['leave-manager.leave-ledger']],
             ['label' => 'Approved Leaves',    'icon' => 'approved_leaves',  'route' => 'leave-manager.approved-leaves',   'active' => ['leave-manager.approved-leaves']],
-            ['label' => 'Cancel Leave',       'icon' => 'cancel_leave',     'route' => 'leave-manager.cancel-leaves',     'active' => ['leave-manager.cancel-leaves']],
             ['label' => 'Employee Cancellation Requests', 'icon' => 'leave', 'route' => 'leave-manager.employee-cancellation-requests', 'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
         ],
 
@@ -344,8 +358,54 @@
         },
     ];
 
+    // ── OIC: merge Self-Service (employee) + Department Management (OIC role) ──
+    $oicRole = null;
+    if (!in_array($activeRole, ['department head', 'administrative officer'])) {
+        $today = now()->toDateString();
+        $oicAssignment = \App\Models\OicAssignment::where('user_id', auth()->id())
+            ->whereDate('start_date', '<=', $today)
+            ->whereDate('end_date', '>=', $today)
+            ->first();
+        if ($oicAssignment) {
+            $oicRole = $oicAssignment->role; // 'department head' | 'administrative officer'
+        }
+    }
+
     // ── Resolve items for current role ──
-    $items = $menus[$activeRole] ?? [];
+    if ($oicRole) {
+        $oicRoleMenu  = $menus[$oicRole] ?? [];
+        $employeeMenu = $menus[$activeRole] ?? [];
+
+        // Dashboard from the OIC role (first non-section item)
+        $oicDashboard = [];
+        foreach ($oicRoleMenu as $_item) {
+            if (!isset($_item['section'])) { $oicDashboard[] = $_item; break; }
+        }
+
+        // All employee menu items except the first link (their own employee dashboard)
+        $employeeBody = [];
+        $_skipped = false;
+        foreach ($employeeMenu as $_item) {
+            if (!$_skipped && !isset($_item['section'])) { $_skipped = true; continue; }
+            $employeeBody[] = $_item;
+        }
+
+        // Only the "Department Management" section from the OIC role menu
+        // Stop before the next section (Attendance) to avoid DTR duplication
+        $deptMgmtItems = [];
+        $_inDeptMgmt = false;
+        foreach ($oicRoleMenu as $_item) {
+            if (isset($_item['section'])) {
+                if ($_item['section'] === 'Department Management') { $_inDeptMgmt = true; }
+                elseif ($_inDeptMgmt) { break; }
+            }
+            if ($_inDeptMgmt) { $deptMgmtItems[] = $_item; }
+        }
+
+        $items = array_merge($oicDashboard, $employeeBody, $deptMgmtItems);
+    } else {
+        $items = $menus[$activeRole] ?? [];
+    }
 
     // ── Only resolve badges actually used by the current role's items ──
     $neededBadgeKeys = collect($items)->pluck('badge')->filter()->unique();

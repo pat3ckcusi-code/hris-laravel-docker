@@ -28,32 +28,125 @@
 
         {{-- Leave Balances Section --}}
         <div class="bg-white p-6 rounded-xl shadow-md">
-            <h2 class="text-xl font-bold text-slate-900 mb-4">Leave Balances</h2>
-            <div class="flex gap-2 overflow-x-auto">
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Vacation Leave (VL)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->VL ?? 0)) }}</p>
+            <h2 class="text-xl font-bold text-slate-900 mb-5">Leave Balances</h2>
+            <div class="flex gap-3">
+
+                {{-- Vacation Leave --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/vl">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/vl:visible opacity-0 group-hover/vl:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            Accrued at 1.25 days/month (15 days/year). File at least 5 calendar days in advance. For rest, recreation, or personal travel.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-xl">🌴</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wider leading-none">VL</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Vacation Leave</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->VL ?? 0)) }}</p>
                 </div>
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Sick Leave (SL)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SL ?? 0)) }}</p>
+
+                {{-- Sick Leave --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-rose-50 to-white border border-rose-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/sl">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/sl:visible opacity-0 group-hover/sl:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            Accrued at 1.25 days/month (15 days/year). Used for personal illness, medical consultations, or caring for sick family members.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-rose-100 flex items-center justify-center text-xl">🏥</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-rose-600 uppercase tracking-wider leading-none">SL</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Sick Leave</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SL ?? 0)) }}</p>
+                    <p class="text-[10px] font-medium text-slate-400 mt-1 uppercase tracking-wide"></p>
                 </div>
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Wellness Leave (WLNS)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->WLNS ?? 0)) }}</p>
+
+                {{-- Wellness Leave --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/wlns">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/wlns:visible opacity-0 group-hover/wlns:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            Wellness Leave credit per LGU policy. Granted for health and wellness activities, mental health rest days, and preventive care.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-xl">💆</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider leading-none">WLNS</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Wellness Leave</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->WLNS ?? 0)) }}</p>
+                    <p class="text-[10px] font-medium text-slate-400 mt-1 uppercase tracking-wide"></p>
                 </div>
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Compensatory Time Off (CTO)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->CTO ?? 0)) }}</p>
+
+                {{-- Compensatory Time Off --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/cto">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/cto:visible opacity-0 group-hover/cto:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            Earned for work rendered on special non-working holidays or approved overtime. Subject to supervisor approval and scheduling.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-xl">⏱️</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-amber-600 uppercase tracking-wider leading-none">CTO</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Comp. Time Off</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->CTO ?? 0)) }}</p>
                 </div>
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Special Privilege Leave (SPL)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SPL ?? 0)) }}</p>
+
+                {{-- Special Privilege Leave --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-violet-50 to-white border border-violet-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/spl">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/spl:visible opacity-0 group-hover/spl:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            3 days per year for personal milestones: graduation, wedding anniversary, or birthdays of immediate family members. Non-cumulative.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center text-xl">⭐</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-violet-600 uppercase tracking-wider leading-none">SPL</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Special Privilege</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SPL ?? 0)) }}</p>
                 </div>
-                <div class="border border-slate-200 rounded-lg p-2 min-w-fit">
-                    <p class="text-xs text-slate-600 font-medium">Solo Parent Leave (SP)</p>
-                    <p class="text-base font-bold text-slate-900 mt-0.5">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SP ?? 0)) }}</p>
+
+                {{-- Solo Parent Leave --}}
+                <div class="relative flex-1 min-w-0 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="absolute top-2.5 right-2.5 group/sp">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                        <div class="pointer-events-none invisible group-hover/sp:visible opacity-0 group-hover/sp:opacity-100 transition-opacity duration-150 absolute bottom-full right-0 mb-2 w-56 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2 z-50 shadow-xl">
+                            7 working days per year under RA 8972 (Solo Parents' Welfare Act). Requires a valid Solo Parent ID from the DSWD.
+                            <span class="absolute top-full right-3 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-slate-800"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-xl">👩‍👧</div>
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider leading-none">SP</p>
+                            <p class="text-[11px] font-medium text-slate-500 leading-tight">Solo Parent</p>
+                        </div>
+                    </div>
+                    <p class="text-2xl font-extrabold text-slate-900 tabular-nums">{{ preg_replace('/\.(\d{3})\d*/', '.$1', sprintf('%.10f', optional($user->leaveBalance)->SP ?? 0)) }}</p>
                 </div>
+
             </div>
         </div>
                     <script>
@@ -87,7 +180,8 @@
             <form method="POST" action="{{ route('employee.leave.apply') }}" class="space-y-6">
                 @csrf
                 <div class="space-y-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p class="text-sm text-blue-700 font-medium">Select up to 3 leave types in one application. Maternity, Paternity, and Adoption must be filed separately.</p>
+                    <p class="text-sm text-blue-700 font-medium">Select up to 3 leave types in one application. The following must be filed as a separate application: Maternity, Paternity, Adoption, VAWC, Special Leave (Gynecological), Rehabilitation Privilege, Study / Examination Leave, and Mandatory/Forced Leave.</p>
+                    <div id="exclusiveNotice" style="display:none;" class="text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-3 py-2"></div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
                             <input type="checkbox" name="leave_types[]" value="Vacation Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
@@ -151,7 +245,7 @@
                         </label>
                     </div>
                 </div>
-                <div class="border-t pt-6">
+                <div id="individualDateSection" class="border-t pt-6">
                     <h3 class="text-lg font-semibold text-slate-900 mb-4">Select Dates & Allocate Days</h3>
                     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                         <div class="lg:col-span-1 space-y-4">
@@ -177,6 +271,24 @@
                         </div>
                     </div>
                 </div>
+
+                {{-- Range-based date section for extended leave types --}}
+                <div id="rangeSection" style="display:none;" class="border-t pt-6">
+                    <h3 class="text-lg font-semibold text-slate-900 mb-4">Leave Duration</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+                            <input type="date" id="rangeStart" name="range_start" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+                            <input type="date" id="rangeEnd" name="range_end" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <p class="mt-3 text-sm text-slate-600">Estimated working days (Mon–Fri): <span id="rangeDaysCount" class="font-semibold text-blue-700">—</span></p>
+                    <input type="hidden" name="extended_leave_mode" id="extendedLeaveModeInput" value="0">
+                </div>
+
                 <script>
                 document.addEventListener('DOMContentLoaded', function () {
                     const datePicker = document.getElementById('datePicker');
@@ -314,11 +426,20 @@
 
                             const reasonEl = document.querySelector('textarea[name="reason"]');
                             const reasonVal = reasonEl ? (reasonEl.value || '').trim() : '';
-                            const needsDetailFor = checked.filter(v => /vacation|special leave|special|spl/i.test(v));
+                            const isRangeMode = (document.getElementById('extendedLeaveModeInput') || {}).value === '1';
+                            const needsDetailFor = isRangeMode ? [] : checked.filter(v => /vacation|special leave|special|spl/i.test(v));
                             const needsStudy = checked.filter(v => /study/i.test(v));
                             const needsStudyReason = needsStudy.slice();
-                            const needsSick = checked.filter(v => /sick/i.test(v));
+                            const needsSick = isRangeMode ? [] : checked.filter(v => /sick/i.test(v));
                             const msgs = [];
+
+                            if (isRangeMode) {
+                                // Range mode: require start and end dates
+                                const rs = document.getElementById('rangeStart');
+                                const re = document.getElementById('rangeEnd');
+                                if (!rs || !rs.value) { msgs.push('Please select a start date for your leave.'); }
+                                if (!re || !re.value) { msgs.push('Please select an end date for your leave.'); }
+                            }
 
                             if (needsDetailFor.length) {
                                 // require 6.B details: either radio selected (details_location) or location specify filled
@@ -651,21 +772,95 @@
                         updateDatePickerState();
                     };
 
+                    const EXCLUSIVE_TYPES = [
+                        'Maternity Leave', 'Paternity Leave', 'Adoption Leave',
+                        'VAWC Leave', 'Special Leave (Gynecological)',
+                        'Rehabilitation Privilege', 'Study / Examination Leave',
+                        'Mandatory/Forced Leave',
+                    ];
+                    const RANGE_TYPES = [
+                        'Maternity Leave', 'VAWC Leave', 'Special Leave (Gynecological)',
+                        'Rehabilitation Privilege', 'Study / Examination Leave',
+                    ];
+
+                    function updateLeaveTypeMode() {
+                        const checkedVals = Array.from(leaveTypeCheckboxes).filter(c => c.checked).map(c => c.value);
+                        const isRange = checkedVals.some(v => RANGE_TYPES.includes(v));
+                        const individualSec = document.getElementById('individualDateSection');
+                        const rangeSec = document.getElementById('rangeSection');
+                        const extInput = document.getElementById('extendedLeaveModeInput');
+                        if (isRange) {
+                            if (individualSec) individualSec.style.display = 'none';
+                            if (rangeSec) rangeSec.style.display = '';
+                            if (extInput) extInput.value = '1';
+                        } else {
+                            if (individualSec) individualSec.style.display = '';
+                            if (rangeSec) rangeSec.style.display = 'none';
+                            if (extInput) extInput.value = '0';
+                        }
+                    }
+
                     leaveTypeCheckboxes.forEach(cb => {
                         cb.addEventListener('change', function () {
-                            const checked = Array.from(leaveTypeCheckboxes).filter(c => c.checked);
-                            if (checked.length >= 3) {
+                            const isExclusive = EXCLUSIVE_TYPES.includes(this.value);
+                            const checkedAll = Array.from(leaveTypeCheckboxes).filter(c => c.checked);
+                            const exclusiveNotice = document.getElementById('exclusiveNotice');
+
+                            if (isExclusive && this.checked) {
+                                // Uncheck and disable every other checkbox
                                 leaveTypeCheckboxes.forEach(c => {
-                                    if (!c.checked) c.disabled = true;
+                                    if (c !== this) { c.checked = false; c.disabled = true; }
                                 });
-                            } else {
+                                if (exclusiveNotice) {
+                                    exclusiveNotice.textContent = this.value + ' must be filed as a separate application. Uncheck it to select other types.';
+                                    exclusiveNotice.style.display = '';
+                                }
+                            } else if (isExclusive && !this.checked) {
+                                // Re-enable all
                                 leaveTypeCheckboxes.forEach(c => c.disabled = false);
+                                if (exclusiveNotice) exclusiveNotice.style.display = 'none';
+                            } else {
+                                // Regular type: enforce 3-type max
+                                const regularChecked = Array.from(leaveTypeCheckboxes).filter(c => c.checked && !EXCLUSIVE_TYPES.includes(c.value));
+                                if (regularChecked.length >= 3) {
+                                    leaveTypeCheckboxes.forEach(c => {
+                                        if (!c.checked) c.disabled = true;
+                                    });
+                                } else {
+                                    leaveTypeCheckboxes.forEach(c => { if (!EXCLUSIVE_TYPES.includes(c.value) || !Array.from(leaveTypeCheckboxes).some(x => x.checked && EXCLUSIVE_TYPES.includes(x.value))) c.disabled = false; });
+                                }
+                                if (exclusiveNotice) exclusiveNotice.style.display = 'none';
                             }
+
+                            updateLeaveTypeMode();
                             renderAllocationSection();
                         });
                     });
 
+                    // Range date pickers — compute weekday count live
+                    const rangeStart = document.getElementById('rangeStart');
+                    const rangeEnd = document.getElementById('rangeEnd');
+                    const rangeDaysCount = document.getElementById('rangeDaysCount');
+
+                    function computeRangeDays() {
+                        if (!rangeStart || !rangeEnd || !rangeStart.value || !rangeEnd.value) {
+                            if (rangeDaysCount) rangeDaysCount.textContent = '—';
+                            return;
+                        }
+                        let s = new Date(rangeStart.value); s.setHours(0,0,0,0);
+                        let e = new Date(rangeEnd.value); e.setHours(0,0,0,0);
+                        if (e < s) { if (rangeDaysCount) rangeDaysCount.textContent = 'End date must be after start date'; return; }
+                        let count = 0;
+                        let cur = new Date(s);
+                        while (cur <= e) { if (cur.getDay() !== 0 && cur.getDay() !== 6) count++; cur.setDate(cur.getDate() + 1); }
+                        if (rangeDaysCount) rangeDaysCount.textContent = count + (count === 1 ? ' day' : ' days');
+                    }
+
+                    if (rangeStart) rangeStart.addEventListener('change', computeRangeDays);
+                    if (rangeEnd) rangeEnd.addEventListener('change', computeRangeDays);
+
                     renderDates();
+                    updateLeaveTypeMode();
                 });
             </script>
             <script>
@@ -769,6 +964,13 @@
                                             @if($leave->status === 'approved')
                                                 <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
                                             @endif
+                                            @if($leave->status === 'approved' && in_array($leave->leave_type, ['Vacation Leave', 'Sick Leave', 'Wellness Leave']) && !$leave->rescheduled_from_id)
+                                                @if($leave->reschedule_status === 'Pending Reschedule')
+                                                    <span class="hris-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:4px 8px;border-radius:4px;font-size:0.75rem;white-space:nowrap">Reschedule Pending</span>
+                                                @else
+                                                    <button type="button" class="hris-btn hris-btn-secondary" onclick="openRescheduleModal({{ $leave->id }}, {{ json_encode($leave->leave_type) }})">Reschedule</button>
+                                                @endif
+                                            @endif
                                         @endif
                                     </div>
                                 </td>
@@ -804,9 +1006,14 @@
     <form id="cancellationRequestForm" method="POST" class="modal-body" style="min-width:320px;">
         @csrf
         <h3 style="margin-top:0">Request Leave Cancellation</h3>
-        <p class="muted">Provide a reason for cancelling your approved leave. This request will be reviewed by your department head.</p>
+        <p class="muted">Provide a reason for cancelling your approved leave. This request will be reviewed by the leave manager.</p>
         <div style="margin-top:8px">
-            <label style="font-weight:600; display:block; margin-bottom:6px">Reason for Cancellation</label>
+            <label style="font-weight:600; display:block; margin-bottom:8px">Reason for Cancellation</label>
+            <div id="cancelReasonChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                <button type="button" class="cancel-reason-chip" data-reason="Reported to work" style="border:1px solid #cbd5e1;border-radius:20px;padding:4px 14px;font-size:0.82rem;background:#fff;cursor:pointer">Reported to work</button>
+                <button type="button" class="cancel-reason-chip" data-reason="Personal reasons" style="border:1px solid #cbd5e1;border-radius:20px;padding:4px 14px;font-size:0.82rem;background:#fff;cursor:pointer">Personal reasons</button>
+                <button type="button" class="cancel-reason-chip" data-reason="" style="border:1px solid #cbd5e1;border-radius:20px;padding:4px 14px;font-size:0.82rem;background:#fff;cursor:pointer">Other</button>
+            </div>
             <textarea name="reason" id="cancellationReasonInput" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid #ddd" required></textarea>
         </div>
         <div class="modal-actions" style="margin-top:12px; text-align:right">
@@ -828,6 +1035,62 @@
         <div class="modal-actions" style="margin-top:12px; text-align:right">
             <button type="button" class="btn" onclick="closePendingCancelModal()">Close</button>
             <button type="submit" class="btn" style="background:#ef4444; color:#fff">Confirm Cancel</button>
+        </div>
+    </form>
+</dialog>
+
+{{-- Reschedule Request Modal --}}
+<dialog id="rescheduleModal" class="employee-modal" style="max-width:600px;width:95%">
+    <form id="rescheduleForm" method="POST" class="modal-body">
+        @csrf
+        <input type="hidden" id="rsLeaveName" name="leave_types[]" value="">
+        <input type="hidden" id="rsDatesInput" name="leave_dates" value="">
+
+        <h3 style="margin-top:0">Reschedule Leave</h3>
+        <p class="muted">Select new dates for your <strong id="rsLeaveTypeLabel"></strong> leave. Your request will go through the approval process again.</p>
+
+        <div style="margin-top:16px">
+            <label style="font-weight:600;display:block;margin-bottom:6px">Select New Date(s)</label>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input type="date" id="rsDatePicker" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none" style="flex:1">
+                <button type="button" class="btn" onclick="rsAddDate()" style="white-space:nowrap">Add Date</button>
+            </div>
+            <div id="rsDateList" style="margin-top:12px"></div>
+            <p id="rsNoDateMsg" style="color:#6b7280;font-size:0.875rem;margin-top:8px">No dates selected yet.</p>
+        </div>
+
+        {{-- Allocation table (rendered by JS) --}}
+        <div id="rsAllocationSection" style="margin-top:16px;display:none">
+            <label style="font-weight:600;display:block;margin-bottom:6px">Day Allocation per Date</label>
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:0.875rem" id="rsAllocTable">
+                    <thead>
+                        <tr style="background:#f8fafc">
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left">Date</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center">Days</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center">Remove</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rsAllocBody"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td style="padding:8px;border:1px solid #e2e8f0;font-weight:600">Total</td>
+                            <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;font-weight:600" id="rsTotalDays">0</td>
+                            <td style="border:1px solid #e2e8f0"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div style="margin-top:16px">
+            <label style="font-weight:600;display:block;margin-bottom:6px">Reason <span style="font-weight:400;color:#6b7280">(optional)</span></label>
+            <textarea name="reason" id="rsReason" rows="3" style="width:100%;padding:10px;border-radius:6px;border:1px solid #ddd;box-sizing:border-box" placeholder="State your reason for rescheduling..."></textarea>
+        </div>
+
+        <div class="modal-actions" style="margin-top:16px;text-align:right">
+            <button type="button" class="btn" onclick="closeRescheduleModal()">Cancel</button>
+            <button type="submit" id="rsSubmitBtn" class="btn" style="background:#3b82f6;color:#fff" disabled>Submit Reschedule</button>
         </div>
     </form>
 </dialog>
@@ -925,9 +1188,129 @@ function openCancellationRequestModal(id) {
     if (!dlg || !form) return alert('Cancellation dialog not available');
     form.action = `/employee/leave-management/${id}/request-cancellation`;
     reason.value = '';
+    document.querySelectorAll('#cancelReasonChips .cancel-reason-chip').forEach(function (chip) {
+        chip.style.borderColor = '#cbd5e1';
+        chip.style.background = '#fff';
+        chip.style.color = '';
+        chip.style.fontWeight = '';
+    });
     if (typeof dlg.showModal === 'function') dlg.showModal();
 }
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('#cancelReasonChips .cancel-reason-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            document.querySelectorAll('#cancelReasonChips .cancel-reason-chip').forEach(function (c) {
+                c.style.borderColor = '#cbd5e1';
+                c.style.background = '#fff';
+                c.style.color = '';
+                c.style.fontWeight = '';
+            });
+            chip.style.borderColor = '#3b82f6';
+            chip.style.background = '#eff6ff';
+            chip.style.color = '#1d4ed8';
+            chip.style.fontWeight = '600';
+            const ta = document.getElementById('cancellationReasonInput');
+            ta.value = chip.dataset.reason || '';
+            if (!chip.dataset.reason) ta.focus();
+        });
+    });
+});
 function closeCancellationModal() { const dlg = document.getElementById('cancellationRequestModal'); if (dlg && typeof dlg.close === 'function') dlg.close(); }
+
+// ---- Reschedule Modal ----
+let _rsLeaveType = '';
+let _rsDates = [];
+
+function openRescheduleModal(id, leaveType) {
+    const dlg = document.getElementById('rescheduleModal');
+    const form = document.getElementById('rescheduleForm');
+    if (!dlg || !form) return alert('Reschedule dialog not available');
+    form.action = `/employee/leave-management/${id}/reschedule`;
+    _rsLeaveType = leaveType;
+    _rsDates = [];
+    document.getElementById('rsLeaveName').value = leaveType;
+    document.getElementById('rsLeaveTypeLabel').textContent = leaveType;
+    const rsMinDate = new Date();
+    rsMinDate.setDate(rsMinDate.getDate() + 5);
+    document.getElementById('rsDatePicker').min = rsMinDate.toISOString().split('T')[0];
+    document.getElementById('rsDatePicker').value = '';
+    document.getElementById('rsReason').value = '';
+    rsRenderDates();
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+}
+
+function closeRescheduleModal() {
+    const dlg = document.getElementById('rescheduleModal');
+    if (dlg && typeof dlg.close === 'function') dlg.close();
+}
+
+function rsAddDate() {
+    const picker = document.getElementById('rsDatePicker');
+    const val = picker.value;
+    if (!val) return;
+    if (_rsDates.includes(val)) { alert('Date already added.'); return; }
+    _rsDates.push(val);
+    _rsDates.sort();
+    picker.value = '';
+    rsRenderDates();
+}
+
+function rsRemoveDate(d) {
+    _rsDates = _rsDates.filter(x => x !== d);
+    rsRenderDates();
+}
+
+function rsRenderDates() {
+    const noMsg = document.getElementById('rsNoDateMsg');
+    const allocSec = document.getElementById('rsAllocationSection');
+    const body = document.getElementById('rsAllocBody');
+    const datesInput = document.getElementById('rsDatesInput');
+    const submitBtn = document.getElementById('rsSubmitBtn');
+
+    if (_rsDates.length === 0) {
+        noMsg.style.display = '';
+        allocSec.style.display = 'none';
+        datesInput.value = '';
+        submitBtn.disabled = true;
+        return;
+    }
+
+    noMsg.style.display = 'none';
+    allocSec.style.display = '';
+    submitBtn.disabled = false;
+    datesInput.value = _rsDates.join(',');
+
+    body.innerHTML = '';
+    let total = 0;
+    _rsDates.forEach(d => {
+        const tr = document.createElement('tr');
+        const dateObj = new Date(d + 'T00:00:00');
+        const label = dateObj.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+        tr.innerHTML = `
+            <td style="padding:8px;border:1px solid #e2e8f0">${label}</td>
+            <td style="padding:8px;border:1px solid #e2e8f0;text-align:center">
+                <select name="allocation[${d}][days]" style="width:80px" onchange="rsUpdateTotal()">
+                    <option value="1">1 day</option>
+                    <option value="0.5">½ day</option>
+                </select>
+                <input type="hidden" name="allocation[${d}][type]" value="${_rsLeaveType}">
+            </td>
+            <td style="padding:8px;border:1px solid #e2e8f0;text-align:center">
+                <button type="button" style="color:#ef4444;background:none;border:none;cursor:pointer;font-weight:700" onclick="rsRemoveDate('${d}')">✕</button>
+            </td>`;
+        body.appendChild(tr);
+        total += 1;
+    });
+
+    rsUpdateTotal();
+}
+
+function rsUpdateTotal() {
+    const selects = document.querySelectorAll('#rsAllocBody select[name$="[days]"]');
+    let t = 0;
+    selects.forEach(s => { t += parseFloat(s.value || 1); });
+    document.getElementById('rsTotalDays').textContent = t % 1 === 0 ? t : t.toFixed(1);
+}
 </script>
 @endsection
 

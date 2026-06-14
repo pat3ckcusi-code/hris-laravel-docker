@@ -8,21 +8,36 @@
 @endsection
 
 @section('tiles')
-    <article class="tile tab-card active" data-tab="leave">
-        <strong>Leave</strong>
-        <div class="muted">Approved leave applications</div>
+    <article class="kpi-card accent-leave tab-card active" data-tab="leave">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></div>
+                <div class="kpi-title">Leave</div>
+            </div>
+            <div class="kpi-meta">Approved leave applications</div>
+        </div>
         <div class="tile-count" id="leave-total">—</div>
     </article>
 
-    <article class="tile tab-card" data-tab="eta">
-        <strong>ETA</strong>
-        <div class="muted">Approved ETA requests</div>
+    <article class="kpi-card accent-eta tab-card" data-tab="eta">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-plane-departure"></i></div>
+                <div class="kpi-title">ETA</div>
+            </div>
+            <div class="kpi-meta">Approved ETA requests</div>
+        </div>
         <div class="tile-count" id="eta-total">—</div>
     </article>
 
-    <article class="tile tab-card" data-tab="locator">
-        <strong>Locator</strong>
-        <div class="muted">Approved locator requests</div>
+    <article class="kpi-card accent-locator tab-card" data-tab="locator">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-location-dot"></i></div>
+                <div class="kpi-title">Locator</div>
+            </div>
+            <div class="kpi-meta">Approved locator requests</div>
+        </div>
         <div class="tile-count" id="locator-total">—</div>
     </article>
 @endsection
@@ -35,8 +50,8 @@
             $prevDate = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
             $nextDate = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
         @endphp
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <div style="display:flex;gap:10px;align-items:center;">
+        <div class="hris-table-filters" style="margin-bottom:14px;">
+            <div class="hris-filter-left" style="align-items:center;">
                 <button class="month-nav" onclick="window.location='?month={{ $prevDate->format('n') }}&year={{ $prevDate->format('Y') }}'">&laquo; Prev</button>
                 <div class="font-weight-bold">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
                 <button class="month-nav" onclick="window.location='?month={{ $nextDate->format('n') }}&year={{ $nextDate->format('Y') }}'">Next &raquo;</button>
@@ -48,51 +63,63 @@
 
         <div id="tab-content">
             <div class="tab-pane" data-pane="leave">
-                <table id="leave-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Leave Type</th>
-                            <th>Period</th>
-                            <th>Total Days</th>
-                            <th>Approved At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="leave-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Leave Type</th>
+                                    <th>Period</th>
+                                    <th>Total Days</th>
+                                    <th>Approved At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="tab-pane" data-pane="eta" style="display:none">
-                <table id="eta-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Departure</th>
-                            <th>Arrival</th>
-                            <th>Destination</th>
-                            <th>Approved At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="eta-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Departure</th>
+                                    <th>Arrival</th>
+                                    <th>Destination</th>
+                                    <th>Approved At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="tab-pane" data-pane="locator" style="display:none">
-                <table id="locator-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Type</th>
-                            <th>Travel Date</th>
-                            <th>Location</th>
-                            <th>Approved At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="locator-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Type</th>
+                                    <th>Travel Date</th>
+                                    <th>Location</th>
+                                    <th>Approved At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     @endif
@@ -100,14 +127,20 @@
 
 @section('modals')
 <dialog id="approvedModal" class="employee-modal">
-    <header>
-        <h3 id="approved-modal-title">Details</h3>
-        <span class="record-email">View details for the approved application</span>
-    </header>
-    <div id="approved-modal-body" style="margin-top:8px;"></div>
-    <form method="dialog" class="modal-actions" style="margin-top:12px; text-align:right">
-        <button class="btn" type="submit">Close</button>
-        <button class="btn" type="button" id="approved-modal-print">Print</button>
+    <div class="dialog-header">
+        <h3 class="dialog-title" id="approved-modal-title">Details</h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body">
+        <div id="approved-modal-body"></div>
+    </div>
+    <form method="dialog" class="modal-actions">
+        <button class="hris-btn hris-btn-secondary" type="submit">Close</button>
+        <button class="hris-btn hris-btn-primary" type="button" id="approved-modal-print">
+            <i class="fa fa-print"></i> Print
+        </button>
     </form>
 </dialog>
 @endsection
@@ -164,8 +197,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLeaveModal(' + row.id + ')">View</button>'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="printLeave(' + row.id + ')">Print</button>'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLeaveModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
+                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>'
                         + '</div>';
                 },
             },
@@ -203,8 +236,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEtaModal(' + row.id + ')">View</button>'
-                        + '<a class="hris-btn hris-btn-secondary hris-btn-sm" href="{{ url('dashboard/employee/eta-locator') }}/' + row.id + '/print" target="_blank">Print</a>'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEtaModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
+                        + '<a class="hris-btn hris-btn-primary hris-btn-sm" href="{{ url('dashboard/employee/eta-locator') }}/' + row.id + '/print" target="_blank"><i class="fa fa-print"></i> Print</a>'
                         + '</div>';
                 },
             },
@@ -242,8 +275,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLocatorModal(' + row.id + ')">View</button>'
-                        + '<a class="hris-btn hris-btn-secondary hris-btn-sm" href="{{ url('dashboard/employee/locator') }}/' + row.id + '/print" target="_blank">Print</a>'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLocatorModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
+                        + '<a class="hris-btn hris-btn-primary hris-btn-sm" href="{{ url('dashboard/employee/locator') }}/' + row.id + '/print" target="_blank"><i class="fa fa-print"></i> Print</a>'
                         + '</div>';
                 },
             },

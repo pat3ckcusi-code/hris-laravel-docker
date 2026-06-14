@@ -13,7 +13,7 @@ abstract class TestCase extends BaseTestCase
         // The dotenv ServerConstAdapter reads $_SERVER first, which still has the Docker
         // env value ("hris"). We must sync $_SERVER here before the Application bootstraps
         // so that Env::get("DB_DATABASE") returns "HRIS_test" as phpunit.xml intends.
-        foreach (['DB_HOST', 'DB_PORT', 'DB_DATABASE'] as $key) {
+        foreach (['APP_ENV', 'DB_HOST', 'DB_PORT', 'DB_DATABASE'] as $key) {
             $val = getenv($key);
             if ($val !== false) {
                 $_SERVER[$key] = $val;

@@ -4,14 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
-use Throwable;
 use App\Notifications\EmployeeDefaultPasswordNotification;
 use App\Notifications\PasswordResetByAdminNotification;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class RecordsManagerController extends Controller
 {
@@ -53,12 +54,12 @@ class RecordsManagerController extends Controller
         if ($search !== '') {
             $employeesQuery->where(function ($query) use ($search): void {
                 $query
-                    ->where('last_name', 'like', '%' . $search . '%')
-                    ->orWhere('first_name', 'like', '%' . $search . '%')
-                    ->orWhere('middle_name', 'like', '%' . $search . '%')
-                    ->orWhere('name', 'like', '%' . $search . '%')
-                    ->orWhere('email', 'like', '%' . $search . '%')
-                    ->orWhere('EmpNo', 'like', '%' . $search . '%');
+                    ->where('last_name', 'like', '%'.$search.'%')
+                    ->orWhere('first_name', 'like', '%'.$search.'%')
+                    ->orWhere('middle_name', 'like', '%'.$search.'%')
+                    ->orWhere('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('EmpNo', 'like', '%'.$search.'%');
             });
         }
 
@@ -70,9 +71,12 @@ class RecordsManagerController extends Controller
             $employeesQuery->where('Dept_id', $departmentFilter);
         }
 
-        $employees = $employeesQuery->paginate(10)->withQueryString();
+        $employees = $employeesQuery->get(['id', 'last_name', 'first_name', 'middle_name', 'email', 'EmpNo', 'designation', 'Dept_id', 'Status', 'employee_type', 'access_level', 'date_hired']);
 
         $departments = Department::query()->orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+
+        $totalEmployees = User::count();
+        $activeEmployees = User::where('Status', 'Active')->count();
 
         return view('dashboards.records-manager-employees', [
             'user' => $request->user(),
@@ -81,9 +85,9 @@ class RecordsManagerController extends Controller
             'accessLevels' => array_keys(self::ROLE_VIEW_MAP),
             'employeeTypes' => self::EMPLOYEE_TYPES,
             'statusSummary' => [
-                'total' => $employees->total(),
-                'active' => $employees->where('Status', 'Active')->count(),
-                'inactive' => $employees->where('Status', '!=', 'Active')->count(),
+                'total' => $totalEmployees,
+                'active' => $activeEmployees,
+                'inactive' => $totalEmployees - $activeEmployees,
             ],
             'search' => $search,
             'statusFilter' => $statusFilter,
@@ -95,7 +99,7 @@ class RecordsManagerController extends Controller
     {
         $this->ensureRecordsManager($request);
 
-        $employees = User::query()->orderBy('last_name')->get(['id','last_name','first_name','middle_name','email','EmpNo','designation','Dept_id','Status','employee_type','access_level','date_hired']);
+        $employees = User::query()->orderBy('last_name')->get(['id', 'last_name', 'first_name', 'middle_name', 'email', 'EmpNo', 'designation', 'Dept_id', 'Status', 'employee_type', 'access_level', 'date_hired']);
 
         return response()->json(['employees' => $employees]);
     }
@@ -109,14 +113,14 @@ class RecordsManagerController extends Controller
             'last_name' => ['required', 'string', 'max:255'],
             'first_name' => ['required', 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users','email')],
-            'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users','EmpNo')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users', 'EmpNo')],
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
             'Status' => ['nullable', 'in:Active,Inactive,Separated'],
             'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
-            'date_hired' => ['required','date'],
+            'date_hired' => ['required', 'date'],
         ]);
 
         if ($this->hasDuplicateEmployeeName($validated['last_name'], $validated['first_name'])) {
@@ -125,9 +129,9 @@ class RecordsManagerController extends Controller
 
         $fullName = $this->buildEmployeeName($validated['last_name'], $validated['first_name'], $validated['middle_name'] ?? null);
         $emailName = (string) strstr($validated['email'], '@', true);
-        $defaultPassword = 'HRIS-' . Str::upper(Str::random(8));
+        $defaultPassword = 'HRIS-'.Str::upper(Str::random(8));
 
-        $newUser = new User();
+        $newUser = new User;
         $newUser->forceFill([
             'name' => $fullName,
             'email' => $validated['email'],
@@ -155,10 +159,11 @@ class RecordsManagerController extends Controller
 
         try {
             $newUser->save();
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        } catch (UniqueConstraintViolationException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => 'A duplicate email or employee number was detected.'], 422);
             }
+
             return redirect()->back()
                 ->withErrors(['email' => 'This email or employee number is already in use by another account.'])
                 ->withInput();
@@ -180,14 +185,14 @@ class RecordsManagerController extends Controller
             'last_name' => ['required', 'string', 'max:255'],
             'first_name' => ['required', 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users','email')->ignore($user->id)],
-            'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users','EmpNo')->ignore($user->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users', 'EmpNo')->ignore($user->id)],
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
             'Status' => ['nullable', 'in:Active,Inactive,Separated'],
             'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
-            'date_hired' => ['required','date'],
+            'date_hired' => ['required', 'date'],
         ]);
 
         if ($this->hasDuplicateEmployeeName($validated['last_name'], $validated['first_name'], $user->id)) {
@@ -237,7 +242,7 @@ class RecordsManagerController extends Controller
         $this->ensureRecordsManager($request);
 
         $employee = User::findOrFail($id);
-        $temporaryPassword = 'HRIS-' . Str::upper(Str::random(8));
+        $temporaryPassword = 'HRIS-'.Str::upper(Str::random(8));
 
         $employee->forceFill([
             'password' => Hash::make($temporaryPassword),
@@ -255,10 +260,10 @@ class RecordsManagerController extends Controller
         }
 
         if ($request->expectsJson()) {
-            return response()->json(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to ' . $employee->email . '.']);
+            return response()->json(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to '.$employee->email.'.']);
         }
 
-        return redirect()->back()->with(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to ' . $employee->email . '.']);
+        return redirect()->back()->with(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to '.$employee->email.'.']);
     }
 
     private function ensureRecordsManager(Request $request): void
@@ -281,9 +286,9 @@ class RecordsManagerController extends Controller
         $firstName = trim($firstName);
         $middleName = trim((string) $middleName);
 
-        $givenName = trim($firstName . ' ' . $middleName);
+        $givenName = trim($firstName.' '.$middleName);
 
-        return trim($lastName . ', ' . $givenName, ', ');
+        return trim($lastName.', '.$givenName, ', ');
     }
 
     private function hasDuplicateEmployeeName(string $lastName, string $firstName, ?int $ignoreUserId = null): bool

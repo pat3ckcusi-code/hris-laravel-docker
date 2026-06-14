@@ -24,7 +24,7 @@ class ImportAttendanceLogsJob implements ShouldQueue
     public function __construct(
         public readonly string $from,
         public readonly string $to,
-        public readonly int $actorUserId,
+        public readonly ?int $actorUserId = null,
         public readonly ?int $deptId = null,
     ) {}
 
@@ -34,7 +34,7 @@ class ImportAttendanceLogsJob implements ShouldQueue
 
         $failed = ! empty($result['error']);
 
-        $deptName  = $this->deptId
+        $deptName = $this->deptId
             ? (Department::find($this->deptId)?->Dept_name ?? "Department #{$this->deptId}")
             : null;
 
@@ -42,32 +42,32 @@ class ImportAttendanceLogsJob implements ShouldQueue
 
         HRAuditTrail::create([
             'actor_user_id' => $this->actorUserId,
-            'module'        => 'attendance',
-            'action'        => 'attendance_import',
-            'target_type'   => 'attendance_logs',
-            'target_id'     => $this->deptId,
-            'details'       => [
+            'module' => 'attendance',
+            'action' => 'attendance_import',
+            'target_type' => 'attendance_logs',
+            'target_id' => $this->deptId,
+            'details' => [
                 'description' => "Imported {$result['imported']} punches for date range [{$this->from} to {$this->to}] department=[{$deptLabel}]",
-                'from'        => $this->from,
-                'to'          => $this->to,
-                'dept_id'     => $this->deptId,
-                'dept_name'   => $deptLabel,
-                'imported'    => $result['imported'],
-                'skipped'     => $result['skipped'],
-                'status'      => $failed ? 'failed' : 'success',
-                'error'       => $result['error'],
+                'from' => $this->from,
+                'to' => $this->to,
+                'dept_id' => $this->deptId,
+                'dept_name' => $deptLabel,
+                'imported' => $result['imported'],
+                'skipped' => $result['skipped'],
+                'status' => $failed ? 'failed' : 'success',
+                'error' => $result['error'],
                 // Cap stored messages to avoid bloating the audit row.
-                'messages'    => array_slice($result['messages'], 0, 100),
+                'messages' => array_slice($result['messages'], 0, 100),
             ],
         ]);
 
         if ($failed) {
             Log::error('Attendance import failed', [
                 'actor_user_id' => $this->actorUserId,
-                'from'          => $this->from,
-                'to'            => $this->to,
-                'dept_id'       => $this->deptId,
-                'error'         => $result['error'],
+                'from' => $this->from,
+                'to' => $this->to,
+                'dept_id' => $this->deptId,
+                'error' => $result['error'],
             ]);
         }
     }

@@ -403,3 +403,14 @@
 .hrm-milestone-10 { background: #dbeafe; color: #1e40af; }
 .hrm-milestone-20 { background: #fef3c7; color: #92400e; }
 .hrm-milestone-30 { background: #fce7f3; color: #9d174d; }
+
+/* ── Attendance Drilldown Badges (Attendance Overview) ────────── */
+.att-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.att-badge-danger  { background: #fee2e2; color: #b91c1c; }
+.att-badge-warning { background: #fff3cd; color: #92400e; }

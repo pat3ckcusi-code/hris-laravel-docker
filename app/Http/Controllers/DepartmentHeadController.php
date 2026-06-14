@@ -2,42 +2,49 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Department;
-use App\Models\User;
-use App\Models\LeaveRequest;
 use App\Models\Eta;
+use App\Models\HRAuditTrail;
+use App\Models\LeaveDate;
+use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\TravelOrder;
-use App\Models\LeaveDate;
+use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
+use App\Services\ApprovalNotificationService;
+use App\Services\DepartmentHeadService;
+use App\Services\DepartmentService;
+use App\Services\LeaveRequestService;
+use App\Support\LeaveTypeResolver;
+use App\Support\RoleNormalizer;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Http\RedirectResponse;
-use Carbon\Carbon;
-use App\Services\DepartmentService;
-use App\Services\DepartmentHeadService;
-use App\Services\LeaveRequestService;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-use App\Models\HRAuditTrail;
-use App\Mail\LeaveRequestStatusNotification;
-use App\Mail\ApplicationStatusNotification;
-use App\Notifications\HrisTransactionNotification;
-
+use Illuminate\Support\Facades\Schema;
 
 class DepartmentHeadController extends Controller
 {
     private DepartmentService $departmentService;
+
     private DepartmentHeadService $departmentHeadService;
+
     private LeaveRequestService $leaveRequestService;
 
-    public function __construct(DepartmentService $departmentService, DepartmentHeadService $departmentHeadService, LeaveRequestService $leaveRequestService)
-    {
+    private ApprovalNotificationService $approvalNotificationService;
+
+    public function __construct(
+        DepartmentService $departmentService,
+        DepartmentHeadService $departmentHeadService,
+        LeaveRequestService $leaveRequestService,
+        ApprovalNotificationService $approvalNotificationService,
+    ) {
         $this->departmentService = $departmentService;
         $this->departmentHeadService = $departmentHeadService;
         $this->leaveRequestService = $leaveRequestService;
+        $this->approvalNotificationService = $approvalNotificationService;
     }
 
     public function index(Request $request)
@@ -79,7 +86,9 @@ class DepartmentHeadController extends Controller
     {
         $user = $request->user();
         $depts = $this->departmentService->resolveAllDepartmentsForUser($user);
-        if ($depts->isEmpty()) return response()->json(['success' => true, 'pending' => 0]);
+        if ($depts->isEmpty()) {
+            return response()->json(['success' => true, 'pending' => 0]);
+        }
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
 
@@ -91,6 +100,7 @@ class DepartmentHeadController extends Controller
         $locatorPending = Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
 
         $total = $leavePending + $etaPending + $locatorPending;
+
         return response()->json(['success' => true, 'pending' => (int) $total]);
     }
 
@@ -100,12 +110,16 @@ class DepartmentHeadController extends Controller
         $dept = $this->departmentService->resolveAllDepartmentsForUser($user)->first();
 
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
-        $leaveDataUrl   = route('department-head.pending-requests.leave-data');
-        $etaDataUrl     = route('department-head.pending-requests.eta-data');
+        $leaveDataUrl = route('department-head.pending-requests.leave-data');
+        $etaDataUrl = route('department-head.pending-requests.eta-data');
         $locatorDataUrl = route('department-head.pending-requests.locator-data');
         $approverPrefix = 'department-head';
 
@@ -123,9 +137,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = LeaveRequest::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -140,14 +158,14 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('leave_type', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
-                  ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('leave_type', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
@@ -158,15 +176,16 @@ class DepartmentHeadController extends Controller
             $reason = $isWellness ? 'Wellness' : ($r->reason ?? '—');
 
             return [
-                'id'               => $r->id,
-                'employee'         => $r->user->name ?? '—',
-                'leave_type'       => $r->leave_type,
-                'reason'           => $reason,
-                'period'           => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '—') . ' to ' . ($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '—'),
-                'total_days'       => $r->total_days ?? '—',
-                'filed_at'         => $r->created_at ? $r->created_at->format('M d, Y') : '—',
-                'status'           => $r->status,
+                'id' => $r->id,
+                'employee' => $r->user->name ?? '—',
+                'leave_type' => $r->leave_type,
+                'reason' => $reason,
+                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '—').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '—'),
+                'total_days' => $r->total_days ?? '—',
+                'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '—',
+                'status' => $r->status,
                 'printing_allowed' => (bool) $r->printing_allowed,
+                'rescheduled_from_id' => $r->rescheduled_from_id,
             ];
         });
 
@@ -184,9 +203,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = Eta::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -200,26 +223,26 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('destination', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
-                  ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('destination', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($e) => [
-            'id'          => $e->id,
-            'employee'    => optional($e->user)->name ?? '—',
-            'departure'   => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '—',
-            'arrival'     => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '—',
+            'id' => $e->id,
+            'employee' => optional($e->user)->name ?? '—',
+            'departure' => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '—',
+            'arrival' => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '—',
             'destination' => $e->destination,
-            'purpose'     => $e->purpose ?? '—',
-            'filed_at'    => $e->created_at ? $e->created_at->format('M d, Y') : '—',
+            'purpose' => $e->purpose ?? '—',
+            'filed_at' => $e->created_at ? $e->created_at->format('M d, Y') : '—',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -236,9 +259,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = Locator::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -252,26 +279,26 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('application_type', 'like', "%{$search}%")
-                  ->orWhere('location', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('application_type', 'like', "%{$search}%")
+                    ->orWhere('location', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($l) => [
-            'id'               => $l->id,
-            'employee'         => optional($l->user)->name ?? '—',
+            'id' => $l->id,
+            'employee' => optional($l->user)->name ?? '—',
             'application_type' => $l->application_type,
-            'travel_date'      => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '—',
-            'location'         => $l->location,
-            'detail'           => $l->detail ?? '—',
-            'filed_at'         => $l->created_at ? $l->created_at->format('M d, Y') : '—',
+            'travel_date' => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '—',
+            'location' => $l->location,
+            'detail' => $l->detail ?? '—',
+            'filed_at' => $l->created_at ? $l->created_at->format('M d, Y') : '—',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -283,12 +310,16 @@ class DepartmentHeadController extends Controller
         $dept = $this->departmentService->resolveAllDepartmentsForUser($user)->first();
 
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
-        $leaveDataUrl   = route('department-head.approved-requests.leave-data');
-        $etaDataUrl     = route('department-head.approved-requests.eta-data');
+        $leaveDataUrl = route('department-head.approved-requests.leave-data');
+        $etaDataUrl = route('department-head.approved-requests.eta-data');
         $locatorDataUrl = route('department-head.approved-requests.locator-data');
 
         return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl'));
@@ -305,9 +336,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = LeaveRequest::with(['user', 'user.leaveBalance'])
             ->whereIn('user_id', $employeeIds)
@@ -322,27 +357,27 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('leave_type', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
-                  ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('leave_type', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(start_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("DATE_FORMAT(end_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($r) => [
-            'id'         => $r->id,
-            'employee'   => $r->user->name ?? '—',
+            'id' => $r->id,
+            'employee' => $r->user->name ?? '—',
             'leave_type' => $r->leave_type,
-            'period'     => Carbon::parse($r->start_date)->format('M d, Y') . ' to ' . Carbon::parse($r->end_date)->format('M d, Y'),
+            'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
             'total_days' => $r->total_days ?? '—',
-            'approved_at'=> $r->updated_at ? $r->updated_at->format('M d, Y') : '—',
-            'vl'         => optional($r->user->leaveBalance)->VL ?? '0',
-            'sl'         => optional($r->user->leaveBalance)->SL ?? '0',
+            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '—',
+            'vl' => optional($r->user->leaveBalance)->VL ?? '0',
+            'sl' => optional($r->user->leaveBalance)->SL ?? '0',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -359,9 +394,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = Eta::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -375,25 +414,25 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('destination', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
-                  ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('destination', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(departure_date, '%b %d, %Y') LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("DATE_FORMAT(arrival_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($e) => [
-            'id'          => $e->id,
-            'employee'    => optional($e->user)->name ?? '—',
-            'departure'   => Carbon::parse($e->departure_date)->format('M d, Y'),
-            'arrival'     => Carbon::parse($e->arrival_date)->format('M d, Y'),
+            'id' => $e->id,
+            'employee' => optional($e->user)->name ?? '—',
+            'departure' => Carbon::parse($e->departure_date)->format('M d, Y'),
+            'arrival' => Carbon::parse($e->arrival_date)->format('M d, Y'),
             'destination' => $e->destination,
-            'purpose'     => $e->purpose ?? '',
+            'purpose' => $e->purpose ?? '',
             'approved_at' => $e->updated_at ? $e->updated_at->format('M d, Y') : '—',
         ]);
 
@@ -411,9 +450,13 @@ class DepartmentHeadController extends Controller
 
         $employeeIds = $this->departmentService->getEmployeeIdsForDepartments($depts);
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
 
         $query = Locator::with('user')
             ->whereIn('user_id', $employeeIds)
@@ -427,26 +470,26 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                  ->orWhere('application_type', 'like', "%{$search}%")
-                  ->orWhere('location', 'like', "%{$search}%")
-                  ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
+                    ->orWhere('application_type', 'like', "%{$search}%")
+                    ->orWhere('location', 'like', "%{$search}%")
+                    ->orWhereRaw("DATE_FORMAT(travel_date, '%b %d, %Y') LIKE ?", ["%{$search}%"]);
             });
         }
 
         $recordsFiltered = $query->count();
-        $start  = max(0, $request->integer('start', 0));
+        $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($l) => [
-            'id'               => $l->id,
-            'employee'         => optional($l->user)->name ?? '—',
+            'id' => $l->id,
+            'employee' => optional($l->user)->name ?? '—',
             'application_type' => $l->application_type,
-            'travel_date'      => Carbon::parse($l->travel_date)->format('M d, Y'),
-            'location'         => $l->location,
-            'purpose'          => $l->purpose ?? '',
-            'approved_at'      => $l->updated_at ? $l->updated_at->format('M d, Y') : '—',
+            'travel_date' => Carbon::parse($l->travel_date)->format('M d, Y'),
+            'location' => $l->location,
+            'purpose' => $l->purpose ?? '',
+            'approved_at' => $l->updated_at ? $l->updated_at->format('M d, Y') : '—',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -474,10 +517,14 @@ class DepartmentHeadController extends Controller
         }
 
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year',  (int) date('Y'));
-        if ($month < 1 || $month > 12) $month = (int) date('n');
-        if ($year < 2000 || $year > 2100) $year = (int) date('Y');
-        $apiUrl     = route('department-head.statistics.data');
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
+        $apiUrl = route('department-head.statistics.data');
         $detailsUrl = route('department-head.statistics.details');
 
         return view('department-head.statistics', compact('dept', 'stats', 'month', 'year', 'apiUrl', 'detailsUrl'));
@@ -485,11 +532,11 @@ class DepartmentHeadController extends Controller
 
     public function statisticsData(Request $request)
     {
-        $user   = $request->user();
-        $month  = (int) $request->query('month', (int) date('n'));
-        $year   = (int) $request->query('year',  (int) date('Y'));
-        $draw   = (int) $request->query('draw', 1);
-        $start  = (int) $request->query('start', 0);
+        $user = $request->user();
+        $month = (int) $request->query('month', (int) date('n'));
+        $year = (int) $request->query('year', (int) date('Y'));
+        $draw = (int) $request->query('draw', 1);
+        $start = (int) $request->query('start', 0);
         $length = (int) $request->query('length', 10);
         $search = trim($request->input('search.value', ''));
 
@@ -500,7 +547,7 @@ class DepartmentHeadController extends Controller
         }
 
         $deptIds = $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray();
-        $cacheKey = 'dh_stats_' . implode('_', $deptIds) . "_{$month}_{$year}";
+        $cacheKey = 'dh_stats_'.implode('_', $deptIds)."_{$month}_{$year}";
         $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($depts, $month, $year) {
             $employees = User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get();
             $employeeIds = $employees->pluck('id')->toArray();
@@ -508,35 +555,35 @@ class DepartmentHeadController extends Controller
 
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)->where('status', 'approved')
-                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->whereMonth('departure_date', $month)->whereYear('departure_date', $year)
                 ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $locatorCounts = Locator::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)->where('status', 'approved')
-                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->whereMonth('travel_date', $month)->whereYear('travel_date', $year)
                 ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $leaveCounts = LeaveRequest::selectRaw('user_id, COUNT(*) as cnt')
                 ->whereIn('user_id', $employeeIds)->where('status', 'approved')
-                ->whereMonth('created_at', $month)->whereYear('created_at', $year)
+                ->whereMonth('start_date', $month)->whereYear('start_date', $year)
                 ->groupBy('user_id')->pluck('cnt', 'user_id');
 
             $rows = [];
             foreach ($employees as $emp) {
-                $etaCount     = $etaCounts->get($emp->id, 0);
+                $etaCount = $etaCounts->get($emp->id, 0);
                 $locatorCount = $locatorCounts->get($emp->id, 0);
-                $leaveCount   = $leaveCounts->get($emp->id, 0);
+                $leaveCount = $leaveCounts->get($emp->id, 0);
                 $rows[] = [
-                    'EmpNo'       => $emp->EmpNo ?? '',
-                    'Lname'       => $emp->last_name ?? '',
-                    'Fname'       => $emp->first_name ?? '',
-                    'Mname'       => $emp->middle_name ?? '',
-                    'Extension'   => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
-                    'Dept'        => $deptNames->get($emp->Dept_id) ?? '',
-                    'eta_count'     => $etaCount,
+                    'EmpNo' => $emp->EmpNo ?? '',
+                    'Lname' => $emp->last_name ?? '',
+                    'Fname' => $emp->first_name ?? '',
+                    'Mname' => $emp->middle_name ?? '',
+                    'Extension' => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
+                    'Dept' => $deptNames->get($emp->Dept_id) ?? '',
+                    'eta_count' => $etaCount,
                     'locator_count' => $locatorCount,
-                    'leave_count'   => $leaveCount,
-                    'total_usage'   => ($etaCount + $locatorCount + $leaveCount),
+                    'leave_count' => $leaveCount,
+                    'total_usage' => ($etaCount + $locatorCount + $leaveCount),
                 ];
             }
 
@@ -548,7 +595,8 @@ class DepartmentHeadController extends Controller
         if ($search !== '') {
             $lc = strtolower($search);
             $allRows = array_values(array_filter($allRows, function ($row) use ($lc) {
-                $name = strtolower($row['Lname'] . ' ' . $row['Fname'] . ' ' . $row['Mname']);
+                $name = strtolower($row['Lname'].' '.$row['Fname'].' '.$row['Mname']);
+
                 return str_contains($name, $lc)
                     || str_contains(strtolower($row['EmpNo']), $lc)
                     || str_contains(strtolower($row['Dept']), $lc);
@@ -559,14 +607,13 @@ class DepartmentHeadController extends Controller
         $data = array_slice($allRows, $start, $length > 0 ? $length : $recordsFiltered);
 
         return response()->json([
-            'draw'            => $draw,
-            'recordsTotal'    => $recordsTotal,
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
-            'data'            => array_values($data),
+            'data' => array_values($data),
         ]);
     }
 
-   
     public function statisticsDetails(Request $request)
     {
         $empNo = $request->query('empNo');
@@ -574,71 +621,81 @@ class DepartmentHeadController extends Controller
         $month = (int) $request->query('month', (int) date('n'));
         $year = (int) $request->query('year', (int) date('Y'));
 
-        if (!$empNo || !$type) {
-            return response()->json(['success' => false, 'data' => []]);
+        if (! $type) {
+            return response()->json(['success' => false, 'message' => 'Missing required parameters.', 'data' => []]);
         }
 
-        $user = User::where('EmpNo', $empNo)->first();
-        if (!$user) {
+        if (! $empNo) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        if (strtoupper($type) === 'ETA') {
-            $records = Eta::where('user_id', $user->id)
+        try {
+            $user = User::where('EmpNo', $empNo)->first();
+            if (! $user) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            if (strtoupper($type) === 'ETA') {
+                $records = Eta::where('user_id', $user->id)
+                    ->where('status', 'approved')
+                    ->whereMonth('departure_date', $month)
+                    ->whereYear('departure_date', $year)
+                    ->get()
+                    ->map(function ($r) {
+                        return [
+                            'travel_date' => $r->departure_date,
+                            'business_type' => $r->purpose ?? '',
+                            'destination' => $r->destination ?? '',
+                            'travel_detail' => $r->purpose_details ?? '',
+                        ];
+                    })->values();
+
+                return response()->json(['success' => true, 'data' => $records]);
+            }
+
+            if (strtoupper($type) === 'LEAVE') {
+                $records = LeaveRequest::where('user_id', $user->id)
+                    ->where('status', 'approved')
+                    ->whereMonth('start_date', $month)
+                    ->whereYear('start_date', $year)
+                    ->get()
+                    ->map(function ($r) {
+                        return [
+                            'start_date' => $r->start_date,
+                            'end_date' => $r->end_date ?? '',
+                            'leave_type' => $r->leave_type ?? '',
+                            'total_days' => $r->total_days ?? '',
+                            'reason' => $r->reason ?? '',
+                        ];
+                    })->values();
+
+                return response()->json(['success' => true, 'data' => $records]);
+            }
+
+            // Locator
+            $records = Locator::where('user_id', $user->id)
                 ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
+                ->whereMonth('travel_date', $month)
+                ->whereYear('travel_date', $year)
                 ->get()
                 ->map(function ($r) {
                     return [
-                        'travel_date' => $r->departure_date,
-                        'business_type' => $r->purpose ?? '',
-                        'destination' => $r->destination ?? '',
-                        'travel_detail' => $r->purpose_details ?? '',
+                        'travel_date' => $r->travel_date,
+                        'intended_departure' => $r->intended_departure_time ?? '',
+                        'intended_arrival' => $r->intended_arrival_time ?? '',
+                        'destination' => $r->location ?? '',
+                        'business_type' => $r->application_type ?? '',
+                        'travel_detail' => $r->detail ?? '',
+                        'Arrival_Time' => $r->actual_arrival_time ?? '',
                     ];
                 })->values();
 
             return response()->json(['success' => true, 'data' => $records]);
+        } catch (\Throwable $e) {
+            Log::error('statisticsDetails error', ['empNo' => $empNo, 'type' => $type, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Unable to load details. Please try again.', 'data' => []], 500);
         }
-
-        if (strtoupper($type) === 'LEAVE') {
-            $records = LeaveRequest::where('user_id', $user->id)
-                ->where('status', 'approved')
-                ->whereMonth('created_at', $month)
-                ->whereYear('created_at', $year)
-                ->get()
-                ->map(function ($r) {
-                    return [
-                        'start_date' => $r->start_date,
-                        'end_date' => $r->end_date ?? '',
-                        'leave_type' => $r->leave_type ?? '',
-                        'total_days' => $r->total_days ?? '',
-                        'reason' => $r->reason ?? '',
-                    ];
-                })->values();
-
-            return response()->json(['success' => true, 'data' => $records]);
-        }
-
-        // Locator
-        $records = Locator::where('user_id', $user->id)
-            ->where('status', 'approved')
-            ->whereMonth('created_at', $month)
-            ->whereYear('created_at', $year)
-            ->get()
-            ->map(function ($r) {
-                return [
-                    'travel_date' => $r->travel_date,
-                    'intended_departure' => $r->intended_departure_time ?? '',
-                    'intended_arrival' => $r->intended_arrival_time ?? '',
-                    'destination' => $r->location ?? '',
-                    'business_type' => $r->application_type ?? '',
-                    'travel_detail' => $r->detail ?? '',
-                    'Arrival_Time' => $r->actual_arrival_time ?? '',
-                ];
-            })->values();
-
-        return response()->json(['success' => true, 'data' => $records]);
     }
 
     public function travelOrders(Request $request)
@@ -646,7 +703,6 @@ class DepartmentHeadController extends Controller
         return view('department-head.travel-orders');
     }
 
-    
     public function dashboardMetrics(Request $request)
     {
         $user = $request->user();
@@ -655,7 +711,6 @@ class DepartmentHeadController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
-    
     public function employeesOnDuty(Request $request)
     {
         $user = $request->user();
@@ -694,7 +749,7 @@ class DepartmentHeadController extends Controller
             ->where('departure_date', '<=', $today)
             ->where(function ($q) use ($today) {
                 $q->where('arrival_date', '>=', $today)
-                  ->orWhereNull('arrival_date');
+                    ->orWhereNull('arrival_date');
             })
             ->whereIn('user_id', $employeeIds)
             ->pluck('user_id')
@@ -728,17 +783,16 @@ class DepartmentHeadController extends Controller
             }
 
             return [
-                'EmpNo'    => $u->EmpNo ?? ($u->id ?? ''),
-                'name'     => trim(($u->last_name ?? '') . ', ' . ($u->first_name ?? '')),
+                'EmpNo' => $u->EmpNo ?? ($u->id ?? ''),
+                'name' => trim(($u->last_name ?? '').', '.($u->first_name ?? '')),
                 'position' => $u->position ?? '',
-                'status'   => $status,
+                'status' => $status,
             ];
         })->values();
 
         return response()->json(['success' => true, 'data' => $data]);
     }
 
-    
     public function leaveRequestsList(Request $request)
     {
         $user = $request->user();
@@ -759,7 +813,7 @@ class DepartmentHeadController extends Controller
             ->map(function ($r) {
                 return [
                     'id' => $r->id,
-                    'emp' => $r->user ? ($r->user->last_name . ', ' . $r->user->first_name) : '',
+                    'emp' => $r->user ? ($r->user->last_name.', '.$r->user->first_name) : '',
                     'type' => $r->leave_type ?? '',
                     'start' => $r->start_date ?? '',
                     'end' => $r->end_date ?? '',
@@ -771,7 +825,6 @@ class DepartmentHeadController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
-    
     public function locatorRequestsList(Request $request)
     {
         $user = $request->user();
@@ -791,7 +844,7 @@ class DepartmentHeadController extends Controller
             ->map(function ($r) {
                 return [
                     'id' => $r->id,
-                    'emp' => $r->user ? ($r->user->last_name . ', ' . $r->user->first_name) : '',
+                    'emp' => $r->user ? ($r->user->last_name.', '.$r->user->first_name) : '',
                     'date' => $r->travel_date ?? '',
                     'location' => $r->location ?? '',
                     'status' => $r->status ?? '',
@@ -802,7 +855,6 @@ class DepartmentHeadController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
-    
     public function etaRequestsList(Request $request)
     {
         $user = $request->user();
@@ -822,7 +874,7 @@ class DepartmentHeadController extends Controller
             ->map(function ($r) {
                 return [
                     'id' => $r->id,
-                    'emp' => $r->user ? ($r->user->last_name . ', ' . $r->user->first_name) : '',
+                    'emp' => $r->user ? ($r->user->last_name.', '.$r->user->first_name) : '',
                     'departure' => $r->departure_date ?? '',
                     'destination' => $r->destination ?? '',
                     'status' => $r->status ?? '',
@@ -847,7 +899,9 @@ class DepartmentHeadController extends Controller
     {
         $user = $request->user();
         $order = TravelOrder::find($id);
-        if (!$order) return redirect()->back()->with('error', 'Travel order not found.');
+        if (! $order) {
+            return redirect()->back()->with('error', 'Travel order not found.');
+        }
 
         // collect employees for this order
         $empNos = DB::table('travel_order_employees')->where('travel_order_id', $order->id)->pluck('emp_no')->toArray();
@@ -872,19 +926,19 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $leave->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
-        
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
+
         // Capture audit information before approval
         $leaveId = $leave->id;
         $approverId = $user->id;
         $approverName = $user->name;
         $approverAccessLevel = $user->access_level;
-        
+
         Log::info('Leave request approved by user', [
             'leave_id' => $leaveId,
             'approver_id' => $approverId,
@@ -912,7 +966,7 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $leave->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return response()->json(['error' => 'You are not authorized to perform this action.'], 403);
         }
 
@@ -942,7 +996,7 @@ class DepartmentHeadController extends Controller
 
         // Prefer existing preview and sanitize to VL/SL only
         $deductionPreview = [];
-        if (!empty($leave->printing_deduction_details)) {
+        if (! empty($leave->printing_deduction_details)) {
             try {
                 $existing = json_decode($leave->printing_deduction_details, true) ?: [];
             } catch (\Exception $e) {
@@ -957,19 +1011,9 @@ class DepartmentHeadController extends Controller
         if (empty($deductionPreview)) {
             $toDeduct = floatval($leave->paid_days ?? 0);
             if ($toDeduct > 0) {
-                $label = strtolower($leave->leave_type ?? '');
-                if (str_contains($label, 'vacation') || str_contains($label, 'vl')) {
-                    $deductionPreview = ['VL' => $toDeduct];
-                } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
-                    $deductionPreview = ['SL' => $toDeduct];
-                } elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) {
-                    $deductionPreview = ['WLNS' => $toDeduct];
-                } elseif (str_contains($label, 'special') || str_contains($label, 'spl') || str_contains($label, 'privilege')) {
-                    $deductionPreview = ['SPL' => $toDeduct];
-                } elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) {
-                    $deductionPreview = ['SP' => $toDeduct];
-                } elseif (str_contains($label, 'cto')) {
-                    $deductionPreview = ['CTO' => $toDeduct];
+                $code = LeaveTypeResolver::fromLabel($leave->leave_type ?? '');
+                if ($code) {
+                    $deductionPreview = [$code => $toDeduct];
                 }
             }
         }
@@ -985,7 +1029,7 @@ class DepartmentHeadController extends Controller
         ]);
 
         // Persist a non-destructive deduction preview for printing (no balances are changed here)
-        if (!empty($deductionPreview) && Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
+        if (! empty($deductionPreview) && Schema::hasColumn('leave_requests', 'printing_deduction_details')) {
             try {
                 $leave->printing_deduction_details = json_encode($deductionPreview);
                 if (Schema::hasColumn('leave_requests', 'printing_deduction_applied')) {
@@ -1011,7 +1055,8 @@ class DepartmentHeadController extends Controller
                     actor: Auth::user()->name,
                 ));
             }
-        } catch (\Exception $ex) {}
+        } catch (\Exception $ex) {
+        }
 
         return response()->json(['success' => true]);
     }
@@ -1027,7 +1072,7 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $eta->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
@@ -1036,7 +1081,7 @@ class DepartmentHeadController extends Controller
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
 
         $eta->status = 'approved';
         $eta->approved_by = $user->id;
@@ -1057,61 +1102,37 @@ class DepartmentHeadController extends Controller
             'employee_id' => $employee->id,
             'employee_dept_id' => $employee->Dept_id,
         ]);
-        try {
-            HRAuditTrail::create([
-                'actor_user_id' => $user->id,
-                'module' => 'eta',
-                'action' => 'approve',
-                'target_type' => 'eta',
-                'target_id' => $eta->id,
-                'details' => [
-                    'purpose' => $eta->purpose ?? '',
-                    'purpose_details' => $eta->purpose_details ?? '',
-                    'approver_normalized_role' => $normalizedRole,
-                    'approver_id' => $user->id,
-                    'employee_id' => $employee->id ?? null,
-                    'timestamp' => now()->toDateTimeString(),
+        $this->approvalNotificationService->writeAuditTrail([
+            'actor_user_id' => $user->id,
+            'module' => 'eta',
+            'action' => 'approve',
+            'target_type' => 'eta',
+            'target_id' => $eta->id,
+            'details' => [
+                'purpose' => $eta->purpose ?? '',
+                'purpose_details' => $eta->purpose_details ?? '',
+                'approver_normalized_role' => $normalizedRole,
+                'approver_id' => $user->id,
+                'employee_id' => $employee->id ?? null,
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        if ($employee) {
+            $this->approvalNotificationService->notifyEmployee(
+                employee: $employee,
+                requestType: 'ETA',
+                status: 'Approved',
+                details: [
+                    'Destination' => $eta->destination ?? 'N/A',
+                    'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
+                    'Arrival Date' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+                    'Purpose' => $eta->purpose ?? 'N/A',
                 ],
-            ]);
-        } catch (\Exception $ex) {
-            Log::error('Failed to write HRAuditTrail for ETA approval', ['eta_id' => $eta->id, 'error' => $ex->getMessage()]);
+                actor: Auth::user()->name,
+            );
         }
 
-        // notify employee about ETA approval
-        try {
-            $employee = $eta->user;
-            if ($employee) {
-                $department = null;
-                if (!empty($employee->Dept_id)) {
-                    $department = Department::find($employee->Dept_id);
-                    $employee->department_name = $department->Dept_name ?? null;
-                }
-                $formatted = [
-                    'departure' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
-                    'arrival' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
-                ];
-                $email = $employee->email ?? null;
-                Log::info('ETA approval email attempt', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
-                    $employee->notify(new HrisTransactionNotification(
-                        requestType: 'ETA',
-                        status: 'Approved',
-                        details: [
-                            'Destination'    => $eta->destination ?? 'N/A',
-                            'Departure Date' => $formatted['departure'],
-                            'Arrival Date'   => $formatted['arrival'],
-                            'Purpose'        => $eta->purpose ?? 'N/A',
-                        ],
-                        actor: Auth::user()->name,
-                    ));
-                    Log::info('ETA approval email queued', ['eta_id' => $eta->id, 'email' => $email]);
-                } else {
-                    Log::warning('ETA approval email not sent: employee has no email', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null]);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('Error sending ETA approval email', ['eta_id' => $eta->id, 'error' => $e->getMessage()]);
-        }
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'ETA approved.']);
         }
@@ -1130,12 +1151,12 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $eta->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
 
         $eta->status = 'declined';
         $eta->approved_by = $user->id;
@@ -1181,7 +1202,7 @@ class DepartmentHeadController extends Controller
             $employee = $eta->user;
             if ($employee) {
                 $department = null;
-                if (!empty($employee->Dept_id)) {
+                if (! empty($employee->Dept_id)) {
                     $department = Department::find($employee->Dept_id);
                     $employee->department_name = $department->Dept_name ?? null;
                 }
@@ -1191,15 +1212,15 @@ class DepartmentHeadController extends Controller
                 ];
                 $email = $employee->email ?? null;
                 Log::info('ETA rejection email attempt', ['eta_id' => $eta->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
                         requestType: 'ETA',
                         status: 'Rejected',
                         details: [
-                            'Destination'    => $eta->destination ?? 'N/A',
+                            'Destination' => $eta->destination ?? 'N/A',
                             'Departure Date' => $formatted['departure'],
-                            'Arrival Date'   => $formatted['arrival'],
-                            'Purpose'        => $eta->purpose ?? 'N/A',
+                            'Arrival Date' => $formatted['arrival'],
+                            'Purpose' => $eta->purpose ?? 'N/A',
                         ],
                         actor: Auth::user()->name,
                     ));
@@ -1229,7 +1250,7 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $locator->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to approve this request.');
         }
 
@@ -1238,7 +1259,7 @@ class DepartmentHeadController extends Controller
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
 
         $locator->status = 'approved';
         $locator->save();
@@ -1282,13 +1303,13 @@ class DepartmentHeadController extends Controller
             $employee = $locator->user;
             if ($employee) {
                 $department = null;
-                if (!empty($employee->Dept_id)) {
+                if (! empty($employee->Dept_id)) {
                     $department = Department::find($employee->Dept_id);
                     $employee->department_name = $department->Dept_name ?? null;
                 }
                 $appType = 'Locator';
-                if (!empty($locator->application_type)) {
-                    $appType = 'Locator - ' . ucfirst($locator->application_type);
+                if (! empty($locator->application_type)) {
+                    $appType = 'Locator - '.ucfirst($locator->application_type);
                 }
                 $formatted = [
                     'travel' => Carbon::parse($locator->travel_date)->format('l, F j, Y'),
@@ -1299,16 +1320,16 @@ class DepartmentHeadController extends Controller
                 ];
                 $email = $employee->email ?? null;
                 Log::info('Locator approval email attempt', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
                         requestType: $appType,
                         status: 'Approved',
                         details: [
-                            'Location'       => $locator->location ?? 'N/A',
-                            'Travel Date'    => $formatted['travel'],
+                            'Location' => $locator->location ?? 'N/A',
+                            'Travel Date' => $formatted['travel'],
                             'Departure Time' => $formatted['departure_time_ampm'],
-                            'Arrival Time'   => $formatted['arrival_time_ampm'],
-                            'Detail'         => $locator->detail ?? 'N/A',
+                            'Arrival Time' => $formatted['arrival_time_ampm'],
+                            'Detail' => $locator->detail ?? 'N/A',
                         ],
                         actor: Auth::user()->name,
                     ));
@@ -1338,12 +1359,12 @@ class DepartmentHeadController extends Controller
         }
 
         $employee = $locator->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
 
         $locator->status = 'declined';
         $locator->save();
@@ -1387,13 +1408,13 @@ class DepartmentHeadController extends Controller
             $employee = $locator->user;
             if ($employee) {
                 $department = null;
-                if (!empty($employee->Dept_id)) {
+                if (! empty($employee->Dept_id)) {
                     $department = Department::find($employee->Dept_id);
                     $employee->department_name = $department->Dept_name ?? null;
                 }
                 $appType = 'Locator';
-                if (!empty($locator->application_type)) {
-                    $appType = 'Locator - ' . ucfirst($locator->application_type);
+                if (! empty($locator->application_type)) {
+                    $appType = 'Locator - '.ucfirst($locator->application_type);
                 }
                 $formatted = [
                     'travel' => Carbon::parse($locator->travel_date)->format('l, F j, Y'),
@@ -1404,16 +1425,16 @@ class DepartmentHeadController extends Controller
                 ];
                 $email = $employee->email ?? null;
                 Log::info('Locator rejection email attempt', ['locator_id' => $locator->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
                         requestType: $appType,
                         status: 'Rejected',
                         details: [
-                            'Location'       => $locator->location ?? 'N/A',
-                            'Travel Date'    => $formatted['travel'],
+                            'Location' => $locator->location ?? 'N/A',
+                            'Travel Date' => $formatted['travel'],
                             'Departure Time' => $formatted['departure_time_ampm'],
-                            'Arrival Time'   => $formatted['arrival_time_ampm'],
-                            'Detail'         => $locator->detail ?? 'N/A',
+                            'Arrival Time' => $formatted['arrival_time_ampm'],
+                            'Detail' => $locator->detail ?? 'N/A',
                         ],
                         actor: Auth::user()->name,
                     ));
@@ -1446,20 +1467,22 @@ class DepartmentHeadController extends Controller
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'swal' => ['icon' => 'error', 'title' => 'Department not found', 'text' => 'Department not found for your account.']], 422);
             }
+
             return redirect()->back()->with('error', 'Department not found for your account.');
         }
 
         $employee = $leave->user;
-        if (!$employee || !in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'swal' => ['icon' => 'error', 'title' => 'Unauthorized', 'text' => 'You are not authorized to reject this request.']], 403);
             }
+
             return redirect()->back()->with('error', 'You are not authorized to reject this request.');
         }
 
         // Get normalized role for audit logging
-        $normalizedRole = $this->normalizeRole((string) ($user->access_level ?? ''));
-        
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
+
         Log::info('Leave request rejected by user', [
             'leave_id' => $leave->id,
             'approver_id' => $user->id,
@@ -1471,29 +1494,36 @@ class DepartmentHeadController extends Controller
         ]);
 
         // If printing deduction was applied earlier, restore credits
-        if (!empty($leave->printing_deduction_applied) && !empty($leave->printing_deduction_details)) {
+        if (! empty($leave->printing_deduction_applied) && ! empty($leave->printing_deduction_details)) {
             try {
                 $details = json_decode($leave->printing_deduction_details, true) ?: [];
                 DB::transaction(function () use ($details, $leave) {
                     $employee = $leave->user;
-                    if (!$employee) return;
+                    if (! $employee) {
+                        return;
+                    }
                     $leaveBalance = $employee->leaveBalance;
-                    if (!$leaveBalance) return;
+                    if (! $leaveBalance) {
+                        return;
+                    }
                     foreach ($details as $col => $amt) {
-                        if (!is_numeric($amt) || $amt <= 0) continue;
-                        $key = strtoupper((string)$col);
+                        if (! is_numeric($amt) || $amt <= 0) {
+                            continue;
+                        }
+                        $key = strtoupper((string) $col);
                         $candidates = [
-                            'VL' => ['balance_vacation_leave','vl','VL'],
-                            'SL' => ['balance_sick_leave','sl','SL'],
-                            'WLNS' => ['balance_wellness_leave','wlns','WLNS'],
-                            'SPL' => ['balance_special_leave_privilege','spl','SPL'],
-                            'CTO' => ['balance_cto','cto','CTO'],
-                            'SP' => ['balance_solo_parent_leave','sp','SP'],
+                            'VL' => ['balance_vacation_leave', 'vl', 'VL'],
+                            'SL' => ['balance_sick_leave', 'sl', 'SL'],
+                            'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
+                            'SPL' => ['balance_special_leave_privilege', 'spl', 'SPL'],
+                            'CTO' => ['balance_cto', 'cto', 'CTO'],
+                            'SP' => ['balance_solo_parent_leave', 'sp', 'SP'],
                         ];
                         $found = null;
                         foreach ($candidates[$key] ?? [strtolower($key), strtoupper($key)] as $cand) {
                             if (array_key_exists($cand, $leaveBalance->getAttributes()) || isset($leaveBalance->{$cand})) {
-                                $found = $cand; break;
+                                $found = $cand;
+                                break;
                             }
                         }
                         if ($found) {
@@ -1527,38 +1557,48 @@ class DepartmentHeadController extends Controller
         $leave->rejection_notes = $request->input('rejection_notes');
         $leave->save();
 
+        // If this is a reschedule request, unfreeze the original leave
+        $isReschedule = ! empty($leave->rescheduled_from_id);
+        if ($isReschedule) {
+            LeaveRequest::where('id', $leave->rescheduled_from_id)
+                ->update(['reschedule_status' => null]);
+        }
+
         // notify employee about rejection
         try {
             $employee = $leave->user;
-            if ($employee && !empty($employee->Dept_id)) {
+            if ($employee && ! empty($employee->Dept_id)) {
                 $empDept = Department::find($employee->Dept_id);
-                if ($empDept) $employee->department_name = $empDept->Dept_name ?? null;
+                if ($empDept) {
+                    $employee->department_name = $empDept->Dept_name ?? null;
+                }
             }
             $formatted = [
                 'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
                 'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                'end'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
             ];
             $lb = $employee ? $employee->leaveBalance : null;
             $balances = [
-                'VL'   => $lb->VL   ?? 0,
-                'SL'   => $lb->SL   ?? 0,
+                'VL' => $lb->VL ?? 0,
+                'SL' => $lb->SL ?? 0,
                 'WLNS' => $lb->WLNS ?? 0,
-                'SP'   => $lb->SP   ?? 0,
-                'SPL'  => $lb->SPL  ?? 0,
-                'CTO'  => $lb->CTO  ?? 0,
+                'SP' => $lb->SP ?? 0,
+                'SPL' => $lb->SPL ?? 0,
+                'CTO' => $lb->CTO ?? 0,
             ];
             if ($employee) {
                 $email = $employee->email ?? null;
                 Log::info('Leave rejection email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                $requestType = $isReschedule ? 'Leave Reschedule' : 'Leave Request';
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
-                        requestType: 'Leave Request',
+                        requestType: $requestType,
                         status: 'Rejected',
                         details: [
                             'Leave Type' => $leave->leave_type ?? 'N/A',
                             'Start Date' => $formatted['start'],
-                            'End Date'   => $formatted['end'],
+                            'End Date' => $formatted['end'],
                         ],
                         actor: Auth::user()->name,
                         notes: $leave->rejection_notes ?? null,
@@ -1566,6 +1606,29 @@ class DepartmentHeadController extends Controller
                     Log::info('Leave rejection email queued', ['leave_id' => $leave->id, 'email' => $email]);
                 } else {
                     Log::warning('Leave rejection email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
+                }
+            }
+
+            // For reschedule rejections, also notify AO and Leave Manager
+            if ($isReschedule) {
+                $rejDetails = [
+                    'Employee'   => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',
+                    'Leave Type' => $leave->leave_type ?? 'N/A',
+                    'Start Date' => $formatted['start'],
+                    'End Date'   => $formatted['end'],
+                ];
+                $ao = \App\Models\User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
+                $lm = \App\Models\User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
+                foreach (array_filter([$ao, $lm]) as $recipient) {
+                    try {
+                        $recipient->notify(new HrisTransactionNotification(
+                            requestType: 'Leave Reschedule',
+                            status: 'Rejected',
+                            details: $rejDetails,
+                            actor: Auth::user()->name,
+                            notes: $leave->rejection_notes ?? null,
+                        ));
+                    } catch (\Exception $ex) { /* swallow */ }
                 }
             }
         } catch (\Exception $e) {
@@ -1578,23 +1641,16 @@ class DepartmentHeadController extends Controller
                 'swal' => [
                     'icon' => 'success',
                     'title' => 'Leave request rejected',
-                    'text' => 'Leave request rejected.'
-                ]
+                    'text' => 'Leave request rejected.',
+                ],
             ]);
         }
 
         return redirect()->back()->with('success', 'Leave request rejected.');
     }
 
-    /**
-     * Normalize a role string for consistent comparison.
-     * Converts hyphens/underscores to spaces and lowercases.
-     */
     private function normalizeRole(string $role): string
     {
-        $normalized = strtolower(trim($role));
-        $normalized = str_replace(['_', '-'], ' ', $normalized);
-
-        return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+        return RoleNormalizer::normalize($role);
     }
 }

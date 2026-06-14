@@ -76,6 +76,7 @@ class SalaryMatrixController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         SalaryMatrix::findOrFail($id)->delete();
+
         return redirect()->route('payroll.salary-matrix.index')
             ->with('status', 'Salary matrix entry deleted.');
     }

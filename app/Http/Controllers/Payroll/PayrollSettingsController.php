@@ -13,6 +13,7 @@ class PayrollSettingsController extends Controller
     public function index(): View
     {
         $settings = PayrollSetting::orderBy('key')->get()->keyBy('key');
+
         return view('payroll.settings', compact('settings'));
     }
 
@@ -59,6 +60,7 @@ class PayrollSettingsController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         PayrollSetting::findOrFail($id)->delete();
+
         return redirect()->route('payroll.settings.index')
             ->with('status', 'Setting deleted.');
     }

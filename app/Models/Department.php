@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,10 +17,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $ao_emp_no
  * @property string|null $Designation
  * @property int|null $parent_dept_id
- * @property-read \App\Models\Department|null $parent
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Department> $children
+ * @property-read Department|null $parent
+ * @property-read Collection<int, Department> $children
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class Department extends Model
 {

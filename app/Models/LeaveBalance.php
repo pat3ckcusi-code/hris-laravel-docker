@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -14,11 +16,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property float|null $SPL
  * @property float|null $CTO
  * @property float|null $SP
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\User|null $user
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read User|null $user
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class LeaveBalance extends Model
 {
@@ -35,6 +37,18 @@ class LeaveBalance extends Model
         'CTO',
         'SP',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'VL' => 'float',
+            'SL' => 'float',
+            'WLNS' => 'float',
+            'SPL' => 'float',
+            'CTO' => 'float',
+            'SP' => 'float',
+        ];
+    }
 
     public function user()
     {

@@ -12,9 +12,9 @@ class HrisTransactionNotification extends Notification implements ShouldQueue
     use Queueable;
 
     public function __construct(
-        private readonly string  $requestType,
-        private readonly string  $status,
-        private readonly array   $details,
+        private readonly string $requestType,
+        private readonly string $status,
+        private readonly array $details,
         private readonly ?string $actor = null,
         private readonly ?string $notes = null,
     ) {}
@@ -29,13 +29,13 @@ class HrisTransactionNotification extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject("[HRIS] {$this->requestType} – {$this->status}")
             ->view('emails.hris_transaction', [
-                'notifiable'  => $notifiable,
+                'notifiable' => $notifiable,
                 'requestType' => $this->requestType,
-                'status'      => $this->status,
-                'details'     => $this->details,
-                'actor'       => $this->actor,
-                'notes'       => $this->notes,
-                'sentAt'      => now()->format('l, F j, Y g:i A'),
+                'status' => $this->status,
+                'details' => $this->details,
+                'actor' => $this->actor,
+                'notes' => $this->notes,
+                'sentAt' => now()->format('l, F j, Y g:i A'),
             ]);
     }
 }

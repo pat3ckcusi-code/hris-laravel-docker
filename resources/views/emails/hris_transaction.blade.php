@@ -37,9 +37,8 @@
 <div class="wrapper">
 
     <div class="header">
-        @php $s = \App\Models\Setting::first(); @endphp
-        <div class="header-title">{{ $s?->system_name ?? 'HRIS' }} &mdash; {{ $requestType }}</div>
-        <div class="header-sub">Human Resource Information System &bull; {{ $s?->org_name ?? 'LGU Calapan' }}</div>
+        <div class="header-title">{{ $settings?->system_name ?? 'HRIS' }} &mdash; {{ $requestType }}</div>
+        <div class="header-sub">Human Resource Information System &bull; {{ $settings?->org_name ?? 'LGU Calapan' }}</div>
     </div>
 
     <div class="body">

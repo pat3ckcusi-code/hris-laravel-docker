@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -11,10 +13,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $step
  * @property int $year
  * @property float $amount
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class SalaryMatrix extends Model
 {
@@ -28,4 +30,14 @@ class SalaryMatrix extends Model
         'year',
         'amount',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'sg' => 'integer',
+            'step' => 'integer',
+            'year' => 'integer',
+            'amount' => 'float',
+        ];
+    }
 }

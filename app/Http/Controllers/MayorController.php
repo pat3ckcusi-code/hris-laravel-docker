@@ -2,20 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Department;
-use App\Models\User;
-use App\Models\Pds;
 use App\Models\LeaveRequest;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
-use App\Mail\LeaveRequestStatusNotification;
+use App\Models\Pds;
+use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\LeaveRequestService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MayorController extends Controller
 {
@@ -106,7 +105,7 @@ class MayorController extends Controller
                 }
             }
 
-            if (!empty($row->date_hired)) {
+            if (! empty($row->date_hired)) {
                 try {
                     $yearsOfService = Carbon::parse($row->date_hired)->diffInYears(now());
                 } catch (\Throwable $e) {
@@ -187,27 +186,30 @@ class MayorController extends Controller
 
         // Verify the applicant is a Department Head or HR Manager
         $applicant = $leave->user;
-        if (!$applicant) {
+        if (! $applicant) {
             Log::warning('Mayor approveLeave: applicant not found', ['leave_id' => $id]);
+
             return $this->respondError($request, 'Applicant not found.');
         }
 
         $applicantRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($applicant->access_level ?? ''))));
         Log::info('Mayor approveLeave: applicant role check', ['leave_id' => $id, 'raw_role' => $applicant->access_level, 'normalized' => $applicantRole]);
 
-        if (!in_array($applicantRole, ['department head', 'hr manager'])) {
+        if (! in_array($applicantRole, ['department head', 'hr manager'])) {
             return $this->respondError($request, 'You are not authorized to approve this request. Only Department Head and HR Manager leave requests are routed to the Mayor.', 403);
         }
 
         try {
             $result = $this->leaveRequestService->approveLeave($request, $id);
             Log::info('Mayor approveLeave: service returned', ['leave_id' => $id, 'response_class' => get_class($result)]);
+
             return $result;
         } catch (\Exception $e) {
             Log::error('Mayor approveLeave: exception', ['leave_id' => $id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['success' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
+                return response()->json(['success' => false, 'message' => 'Server error: '.$e->getMessage()], 500);
             }
+
             return redirect()->back()->with('error', $e->getMessage());
         }
     }
@@ -225,12 +227,12 @@ class MayorController extends Controller
 
         // Verify the applicant is a Department Head or HR Manager
         $applicant = $leave->user;
-        if (!$applicant) {
+        if (! $applicant) {
             return $this->respondError($request, 'Applicant not found.');
         }
 
         $applicantRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($applicant->access_level ?? ''))));
-        if (!in_array($applicantRole, ['department head', 'hr manager'])) {
+        if (! in_array($applicantRole, ['department head', 'hr manager'])) {
             return $this->respondError($request, 'You are not authorized to reject this request.', 403);
         }
 
@@ -241,35 +243,37 @@ class MayorController extends Controller
         // Send rejection notification email
         try {
             $employee = $leave->user;
-            if ($employee && !empty($employee->Dept_id)) {
+            if ($employee && ! empty($employee->Dept_id)) {
                 $empDept = Department::find($employee->Dept_id);
-                if ($empDept) $employee->department_name = $empDept->Dept_name ?? null;
+                if ($empDept) {
+                    $employee->department_name = $empDept->Dept_name ?? null;
+                }
             }
             $formatted = [
                 'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
                 'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                'end'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
             ];
             $lb = $employee ? $employee->leaveBalance : null;
             $balances = [
-                'VL'   => $lb->VL   ?? 0,
-                'SL'   => $lb->SL   ?? 0,
+                'VL' => $lb->VL ?? 0,
+                'SL' => $lb->SL ?? 0,
                 'WLNS' => $lb->WLNS ?? 0,
-                'SP'   => $lb->SP   ?? 0,
-                'SPL'  => $lb->SPL  ?? 0,
-                'CTO'  => $lb->CTO  ?? 0,
+                'SP' => $lb->SP ?? 0,
+                'SPL' => $lb->SPL ?? 0,
+                'CTO' => $lb->CTO ?? 0,
             ];
             if ($employee) {
                 $email = $employee->email ?? null;
                 Log::info('Mayor leave rejection email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (!empty($email)) {
+                if (! empty($email)) {
                     $employee->notify(new HrisTransactionNotification(
                         requestType: 'Leave Request',
                         status: 'Rejected',
                         details: [
                             'Leave Type' => $leave->leave_type ?? 'N/A',
                             'Start Date' => $formatted['start'],
-                            'End Date'   => $formatted['end'],
+                            'End Date' => $formatted['end'],
                         ],
                         actor: Auth::user()->name,
                         notes: $leave->rejection_notes ?? null,
@@ -288,7 +292,7 @@ class MayorController extends Controller
                     'icon' => 'success',
                     'title' => 'Leave request rejected',
                     'text' => 'Leave request has been rejected.',
-                ]
+                ],
             ]);
         }
 
@@ -355,7 +359,7 @@ class MayorController extends Controller
     public function viewTravelOrder(Request $request, $id)
     {
         $order = DB::table('travel_orders')->where('id', $id)->first();
-        if (!$order) {
+        if (! $order) {
             return response()->json(['success' => false, 'message' => 'Travel order not found.'], 404);
         }
 
@@ -367,7 +371,7 @@ class MayorController extends Controller
         $employees = User::whereIn('EmpNo', $empNos)->get()->map(function ($u) {
             return [
                 'emp_no' => $u->EmpNo,
-                'name' => trim(($u->last_name ?? '') . ', ' . ($u->first_name ?? '')),
+                'name' => trim(($u->last_name ?? '').', '.($u->first_name ?? '')),
                 'designation' => $u->designation ?? 'N/A',
             ];
         })->values();
@@ -387,8 +391,8 @@ class MayorController extends Controller
                 'remarks' => $order->Remarks ?? '',
                 'status' => $order->status,
                 'rejection_note' => $order->rejection_note ?? '',
-                'created_by' => $creator ? trim(($creator->last_name ?? '') . ', ' . ($creator->first_name ?? '')) : 'N/A',
-                'recommender' => $recommender ? trim(($recommender->last_name ?? '') . ', ' . ($recommender->first_name ?? '')) : 'N/A',
+                'created_by' => $creator ? trim(($creator->last_name ?? '').', '.($creator->first_name ?? '')) : 'N/A',
+                'recommender' => $recommender ? trim(($recommender->last_name ?? '').', '.($recommender->first_name ?? '')) : 'N/A',
                 'created_at' => $order->created_at,
                 'employees' => $employees,
             ],
@@ -401,7 +405,7 @@ class MayorController extends Controller
     public function approveTravelOrder(Request $request, $id)
     {
         $order = DB::table('travel_orders')->where('id', $id)->first();
-        if (!$order) {
+        if (! $order) {
             return $this->respondError($request, 'Travel order not found.', 404);
         }
 
@@ -436,7 +440,7 @@ class MayorController extends Controller
         ]);
 
         $order = DB::table('travel_orders')->where('id', $id)->first();
-        if (!$order) {
+        if (! $order) {
             return $this->respondError($request, 'Travel order not found.', 404);
         }
 
@@ -487,6 +491,7 @@ class MayorController extends Controller
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => false, 'swal' => ['icon' => 'error', 'title' => 'Error', 'text' => $message]], $code);
         }
+
         return redirect()->back()->with('error', $message);
     }
 
@@ -509,12 +514,12 @@ class MayorController extends Controller
         if ($search !== '') {
             $employeesQuery->where(function ($query) use ($search): void {
                 $query
-                    ->where('last_name', 'like', '%' . $search . '%')
-                    ->orWhere('first_name', 'like', '%' . $search . '%')
-                    ->orWhere('middle_name', 'like', '%' . $search . '%')
-                    ->orWhere('name', 'like', '%' . $search . '%')
-                    ->orWhere('email', 'like', '%' . $search . '%')
-                    ->orWhere('EmpNo', 'like', '%' . $search . '%');
+                    ->where('last_name', 'like', '%'.$search.'%')
+                    ->orWhere('first_name', 'like', '%'.$search.'%')
+                    ->orWhere('middle_name', 'like', '%'.$search.'%')
+                    ->orWhere('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('EmpNo', 'like', '%'.$search.'%');
             });
         }
 
@@ -645,7 +650,7 @@ class MayorController extends Controller
             $ageBucket = $this->extractAgeBucket($pds);
             $ageGroupCounts[$ageBucket] = ($ageGroupCounts[$ageBucket] ?? 0) + 1;
 
-            if (!empty($employee->date_hired)) {
+            if (! empty($employee->date_hired)) {
                 try {
                     $years = Carbon::parse($employee->date_hired)->diffInYears(now());
                 } catch (\Throwable $e) {
@@ -670,8 +675,8 @@ class MayorController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, int> $userIds
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @param  Collection<int, int>  $userIds
+     * @return Collection<int, array<string, mixed>>
      */
     private function pdsByUserId($userIds)
     {
@@ -693,8 +698,13 @@ class MayorController extends Controller
         $personal = (array) ($pds['pds-personal-info'] ?? []);
         $sex = strtolower(trim((string) ($personal['personal[sex]'] ?? '')));
 
-        if ($sex === 'male') return 'Male';
-        if ($sex === 'female') return 'Female';
+        if ($sex === 'male') {
+            return 'Male';
+        }
+        if ($sex === 'female') {
+            return 'Female';
+        }
+
         return 'Not Specified';
     }
 
@@ -703,7 +713,9 @@ class MayorController extends Controller
     {
         $personal = (array) ($pds['pds-personal-info'] ?? []);
         $birthDate = trim((string) ($personal['personal[birth_date]'] ?? ''));
-        if ($birthDate === '') return 'Unknown';
+        if ($birthDate === '') {
+            return 'Unknown';
+        }
 
         try {
             $age = Carbon::parse($birthDate)->age;
@@ -711,28 +723,47 @@ class MayorController extends Controller
             return 'Unknown';
         }
 
-        if ($age <= 25) return '18-25';
-        if ($age <= 35) return '26-35';
-        if ($age <= 45) return '36-45';
-        if ($age <= 55) return '46-55';
+        if ($age <= 25) {
+            return '18-25';
+        }
+        if ($age <= 35) {
+            return '26-35';
+        }
+        if ($age <= 45) {
+            return '36-45';
+        }
+        if ($age <= 55) {
+            return '46-55';
+        }
+
         return '56+';
     }
 
     private function serviceBucket(int $yearsOfService): string
     {
-        if ($yearsOfService < 1) return '< 1 year';
-        if ($yearsOfService <= 3) return '1-3 years';
-        if ($yearsOfService <= 7) return '4-7 years';
-        if ($yearsOfService <= 12) return '8-12 years';
+        if ($yearsOfService < 1) {
+            return '< 1 year';
+        }
+        if ($yearsOfService <= 3) {
+            return '1-3 years';
+        }
+        if ($yearsOfService <= 7) {
+            return '4-7 years';
+        }
+        if ($yearsOfService <= 12) {
+            return '8-12 years';
+        }
+
         return '13+ years';
     }
 
-    /** @param \Illuminate\Support\Collection<int, \stdClass> $employees */
+    /** @param Collection<int, \stdClass> $employees */
     private function countByKey($employees, string $key, string $fallback): array
     {
         return $employees
             ->map(function ($employee) use ($key, $fallback) {
                 $value = trim((string) ($employee->{$key} ?? ''));
+
                 return $value !== '' ? $value : $fallback;
             })
             ->countBy()

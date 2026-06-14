@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
-use App\Models\Payslip;
 use App\Models\PayrollRun;
+use App\Models\Payslip;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -69,6 +69,7 @@ class PayslipController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         Payslip::findOrFail($id)->delete();
+
         return redirect()->route('payroll.payslips.index')
             ->with('status', 'Payslip record deleted.');
     }

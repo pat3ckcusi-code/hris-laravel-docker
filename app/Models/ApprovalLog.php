@@ -2,21 +2,23 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
  * @property int $payroll_run_id
  * @property int $approver_id
  * @property string $status
- * @property \Illuminate\Support\Carbon|null $actioned_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\PayrollRun|null $payrollRun
- * @property-read \App\Models\User|null $approver
+ * @property Carbon|null $actioned_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read PayrollRun|null $payrollRun
+ * @property-read User|null $approver
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class ApprovalLog extends Model
 {

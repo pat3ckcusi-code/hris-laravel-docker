@@ -4,21 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\DocumentRequest;
-use App\Models\Dtr;
 use App\Models\HRAuditTrail;
-use App\Models\Holiday;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\PayrollException;
-use App\Models\PayrollRun;
-use App\Models\Pds;
 use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
+use App\Services\HRDashboardService;
+use App\Services\LeaveCardExportService;
+use App\Services\LeaveRequestService;
+use App\Support\RoleNormalizer;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,6 +31,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HRManagerController extends Controller
 {
+    public function __construct(private HRDashboardService $dashboardService) {}
+
     public function index(Request $request): View
     {
         $this->ensureHrManager($request);
@@ -40,9 +41,9 @@ class HRManagerController extends Controller
 
         return view('hr-manager.dashboard', [
             'departments' => $departments,
-            'summary' => $this->buildSummaryCards(),
+            'summary' => $this->dashboardService->buildSummaryCards(),
             'chartDataUrl' => route('hr-manager.chart-data'),
-            'initialChartData' => $this->buildChartData(null),
+            'initialChartData' => $this->dashboardService->buildChartData(null),
         ]);
     }
 
@@ -54,7 +55,7 @@ class HRManagerController extends Controller
         $deptKey = $departmentId > 0 ? $departmentId : 'all';
 
         $data = Cache::remember("hr_chart_data_{$deptKey}", now()->addMinutes(10), function () use ($departmentId) {
-            return $this->buildChartData($departmentId > 0 ? $departmentId : null);
+            return $this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null);
         });
 
         return response()->json($data);
@@ -104,13 +105,13 @@ class HRManagerController extends Controller
         $rows = $query->orderBy('users.name')->get();
 
         $userIds = $rows->pluck('id');
-        $pdsMap = $this->pdsByUserId($userIds);
+        $pdsMap = $this->dashboardService->pdsByUserId($userIds);
 
         $employees = [];
 
         foreach ($rows as $row) {
             $pds = $pdsMap->get($row->id, []);
-            $genderVal = $this->extractGender($pds);
+            $genderVal = $this->dashboardService->extractGender($pds);
 
             // compute age (number) if birth_date exists
             $personal = (array) ($pds['pds-personal-info'] ?? []);
@@ -129,14 +130,14 @@ class HRManagerController extends Controller
                 try {
                     $yearsOfService = Carbon::parse($row->date_hired)->diffInYears(now());
                 } catch (\Throwable $e) {
-                    $yearsOfService = $this->extractYearsOfService($row->created_at, $pds);
+                    $yearsOfService = $this->dashboardService->extractYearsOfService($row->created_at, $pds);
                 }
             } else {
-                $yearsOfService = $this->extractYearsOfService($row->created_at, $pds);
+                $yearsOfService = $this->dashboardService->extractYearsOfService($row->created_at, $pds);
             }
-            $serviceBucket = $this->serviceBucket($yearsOfService);
+            $serviceBucket = $this->dashboardService->serviceBucket($yearsOfService);
 
-            $ageBucket = $this->extractAgeBucket($pds);
+            $ageBucket = $this->dashboardService->extractAgeBucket($pds);
 
             $employees[] = [
                 'emp_no' => $row->EmpNo,
@@ -255,8 +256,9 @@ class HRManagerController extends Controller
                 'month' => $month,
             ],
             'leaveChart' => $this->leaveUsageChart((int) $request->query('department', 0), $month),
-            'holidayAlerts' => $this->buildHolidayLeaveAlerts(),
+            'holidayAlerts' => $this->dashboardService->buildHolidayLeaveAlerts(),
             'selectedMonth' => $month,
+            'criticalBalances' => app(LeaveRequestService::class)->criticalBalances(),
         ]);
     }
 
@@ -439,7 +441,7 @@ class HRManagerController extends Controller
 
         return view('hr-manager.reports', [
             'departments' => $this->departmentOptions(),
-            'initialChartData' => $this->buildChartData($departmentId > 0 ? $departmentId : null),
+            'initialChartData' => $this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null),
             'reportsChartUrl' => route('hr-manager.chart-data'),
             'exportPdfUrl' => route('hr-manager.reports.export', ['format' => 'pdf']),
             'exportExcelUrl' => route('hr-manager.reports.export', ['format' => 'excel']),
@@ -454,7 +456,7 @@ class HRManagerController extends Controller
             return redirect()->route('hr-manager.reports');
         }
 
-        $chart = $this->buildChartData(null);
+        $chart = $this->dashboardService->buildChartData(null);
         $filename = 'hr-workforce-report-'.now()->format('Ymd-His');
 
         return response()->streamDownload(function () use ($chart): void {
@@ -521,7 +523,7 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $data = Cache::remember('hr_alerts', now()->addMinutes(5), fn () => $this->buildAlerts());
+        $data = Cache::remember('hr_alerts', now()->addMinutes(5), fn () => $this->dashboardService->buildAlerts());
 
         return response()->json($data);
     }
@@ -541,7 +543,7 @@ class HRManagerController extends Controller
         }
 
         $data = Cache::remember("hr_leave_analytics_{$deptKey}_{$month}", now()->addMinutes(5),
-            fn () => $this->buildLeaveAnalytics($departmentId > 0 ? $departmentId : null, $month)
+            fn () => $this->dashboardService->buildLeaveAnalytics($departmentId > 0 ? $departmentId : null, $month)
         );
 
         return response()->json($data);
@@ -609,7 +611,7 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $data = Cache::remember('hr_workforce_planning', now()->addMinutes(15), fn () => $this->buildWorkforcePlanning());
+        $data = Cache::remember('hr_workforce_planning', now()->addMinutes(15), fn () => $this->dashboardService->buildWorkforcePlanning());
 
         return response()->json($data);
     }
@@ -623,6 +625,7 @@ class HRManagerController extends Controller
         return view('hr-manager.attendance-overview', [
             'departments' => $this->departmentOptions(),
             'attendanceDataUrl' => route('hr-manager.attendance.overview.data'),
+            'attendanceNotifyUrl' => route('hr-manager.attendance.notify-dept-head'),
         ]);
     }
 
@@ -639,10 +642,63 @@ class HRManagerController extends Controller
 
         $deptKey = $departmentId > 0 ? $departmentId : 'all';
         $data = Cache::remember("hr_attendance_overview_{$month}_{$deptKey}", now()->addMinutes(10),
-            fn () => $this->buildAttendanceOverview($month, $departmentId > 0 ? $departmentId : null)
+            fn () => $this->dashboardService->buildAttendanceOverview($month, $departmentId > 0 ? $departmentId : null)
         );
 
         return response()->json($data);
+    }
+
+    public function attendanceNotifyDeptHead(Request $request): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $payload = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'tardiness_count' => ['nullable', 'integer', 'min:0'],
+            'undertime_count' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $employee = User::findOrFail($payload['user_id']);
+        $deptService = app(DepartmentService::class);
+        $dept = $deptService->resolveDepartmentForUser($employee);
+
+        $deptHead = null;
+        if ($dept) {
+            $deptHead = User::query()
+                ->where('Dept_id', $dept->Dept_id)
+                ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'department head'")
+                ->first();
+        }
+
+        if (! $deptHead || ! $deptHead->email) {
+            return response()->json(['success' => false, 'message' => 'No department head email found.'], 422);
+        }
+
+        try {
+            $deptHead->notify(new HrisTransactionNotification(
+                'Attendance Alert',
+                'Action Required',
+                [
+                    'Employee' => $employee->name,
+                    'Department' => $dept?->Dept_name ?? 'N/A',
+                    'Tardiness Days' => ($payload['tardiness_count'] ?? '—').' day(s)',
+                    'Undertime Days' => ($payload['undertime_count'] ?? '—').' day(s)',
+                ],
+                $request->user()->name,
+                'This employee has exceeded the tardiness/undertime threshold this month. Please take appropriate action.'
+            ));
+        } catch (\Throwable) {
+            return response()->json(['success' => false, 'message' => 'Notification could not be sent.'], 500);
+        }
+
+        $this->storeAuditTrail($request, 'attendance', 'notify_dept_head', User::class, (int) $employee->id, [
+            'employee' => $employee->name,
+            'dept_head' => $deptHead->name,
+            'tardiness_count' => $payload['tardiness_count'] ?? null,
+            'undertime_count' => $payload['undertime_count'] ?? null,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Department head notified successfully.']);
     }
 
     // ── Enhancement 4: Payroll Overview ───────────────────────────────────
@@ -661,7 +717,7 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $data = Cache::remember('hr_payroll_overview', now()->addMinutes(5), fn () => $this->buildPayrollOverview());
+        $data = Cache::remember('hr_payroll_overview', now()->addMinutes(5), fn () => $this->dashboardService->buildPayrollOverview());
 
         return response()->json($data);
     }
@@ -690,9 +746,11 @@ class HRManagerController extends Controller
         $this->ensureHrManager($request);
 
         $settings = Setting::first();
+        $departments = \App\Models\Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
 
         return view('hr-manager.settings', [
             'settings' => $settings,
+            'departments' => $departments,
         ]);
     }
 
@@ -745,6 +803,10 @@ class HRManagerController extends Controller
             'pdf_font_size' => 'nullable|integer|min:6|max:72',
             // Dashboard
             'dashboard_cache_ttl' => 'nullable|integer|min:1|max:120',
+            // Auto-import
+            'auto_import_enabled'          => 'nullable|boolean',
+            'auto_import_interval_minutes' => 'nullable|integer|min:15|max:1440',
+            'auto_import_dept_id'          => 'nullable|integer|exists:departments,Dept_id',
         ]);
 
         $validated['records_enabled'] = $request->boolean('records_enabled');
@@ -754,6 +816,7 @@ class HRManagerController extends Controller
         $validated['attendance_enabled'] = $request->boolean('attendance_enabled');
         $validated['eta_enabled'] = $request->boolean('eta_enabled');
         $validated['excel_protection_enabled'] = $request->boolean('excel_protection_enabled');
+        $validated['auto_import_enabled'] = $request->boolean('auto_import_enabled');
 
         // Ensure email template fields are never null (database columns are NOT NULL)
         $validated['email_template_subject'] = $validated['email_template_subject'] ?? '';
@@ -1179,910 +1242,6 @@ class HRManagerController extends Controller
         ]);
     }
 
-    /**
-     * @return array<string, int>
-     */
-    private function buildSummaryCards(): array
-    {
-        return Cache::remember('hr_summary_cards', now()->addMinutes(5), function () {
-            return [
-                'total_requests' => $this->totalRequests(),
-                'pending' => $this->countRequestsByBucket('pending'),
-                'approved' => $this->countRequestsByBucket('approved'),
-                'completed' => $this->countRequestsByBucket('completed'),
-            ];
-        });
-    }
-
-    private function totalRequests(): int
-    {
-        $total = 0;
-
-        foreach (['leave_requests', 'document_requests', 'eta', 'locators'] as $table) {
-            if (Schema::hasTable($table)) {
-                $total += (int) DB::table($table)->count();
-            }
-        }
-
-        return $total;
-    }
-
-    private function countRequestsByBucket(string $bucket): int
-    {
-        $statusMap = [
-            'pending' => ['pending', 'requested', 'for recommendation', 'pending recommendation', 'pending approval'],
-            'approved' => ['approved', 'recommended'],
-            'completed' => ['completed', 'released', 'final / archived'],
-        ];
-
-        $statuses = $statusMap[$bucket] ?? [];
-
-        if ($statuses === []) {
-            return 0;
-        }
-
-        $total = 0;
-
-        if (Schema::hasTable('leave_requests')) {
-            $total += (int) DB::table('leave_requests')
-                ->where(function ($query) use ($statuses): void {
-                    $query->whereIn(DB::raw('LOWER(status)'), $statuses)
-                        ->orWhereIn(DB::raw('LOWER(detailed_status)'), $statuses);
-                })
-                ->count();
-        }
-
-        foreach (['document_requests', 'eta', 'locators'] as $table) {
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-
-            $total += (int) DB::table($table)
-                ->whereIn(DB::raw('LOWER(status)'), $statuses)
-                ->count();
-        }
-
-        return $total;
-    }
-
-    /**
-     * @return array<string, array<string, mixed>>
-     */
-    private function buildChartData(?int $departmentId): array
-    {
-        $employees = $this->employeeQuery($departmentId)->get([
-            'id',
-            'Dept_id',
-            'Status',
-            'employee_type',
-            'created_at',
-            'date_hired',
-        ]);
-
-        $workforcePerDepartment = $this->workforcePerDepartment($departmentId);
-        $totalWorkforce = $this->countByKey($employees, 'employee_type', 'Unspecified');
-        // Use employee_type for the employment status pie chart (counts by employee type)
-        $employmentStatus = $this->countByKey($employees, 'employee_type', 'Unknown');
-
-        $pdsByUser = $this->pdsByUserId($employees->pluck('id'));
-
-        $genderCounts = [
-            'Male' => 0,
-            'Female' => 0,
-            'Not Specified' => 0,
-        ];
-
-        $ageGroupCounts = [
-            '18-25' => 0,
-            '26-35' => 0,
-            '36-45' => 0,
-            '46-55' => 0,
-            '56+' => 0,
-            'Unknown' => 0,
-        ];
-
-        $serviceCounts = [
-            '< 1 year' => 0,
-            '1-3 years' => 0,
-            '4-7 years' => 0,
-            '8-12 years' => 0,
-            '13+ years' => 0,
-        ];
-
-        foreach ($employees as $employee) {
-            $pds = $pdsByUser->get($employee->id, []);
-
-            $gender = $this->extractGender($pds);
-            $genderCounts[$gender] = ($genderCounts[$gender] ?? 0) + 1;
-
-            $ageBucket = $this->extractAgeBucket($pds);
-            $ageGroupCounts[$ageBucket] = ($ageGroupCounts[$ageBucket] ?? 0) + 1;
-
-            if (! empty($employee->date_hired)) {
-                try {
-                    $yearsOfService = Carbon::parse($employee->date_hired)->diffInYears(now());
-                } catch (\Throwable $e) {
-                    $yearsOfService = $this->extractYearsOfService($employee->created_at, $pds);
-                }
-            } else {
-                $yearsOfService = $this->extractYearsOfService($employee->created_at, $pds);
-            }
-            $serviceBucket = $this->serviceBucket($yearsOfService);
-            $serviceCounts[$serviceBucket] = ($serviceCounts[$serviceBucket] ?? 0) + 1;
-        }
-
-        return [
-            'workforce_per_department' => $workforcePerDepartment,
-            'total_workforce' => $this->barChartFromAssoc($totalWorkforce),
-            'gender_distribution' => $this->pieChartFromAssoc($genderCounts),
-            'employment_status' => $this->pieChartFromAssoc($employmentStatus),
-            'age_group_distribution' => $this->barChartFromAssoc($ageGroupCounts),
-            'length_of_service' => $this->barChartFromAssoc($serviceCounts),
-        ];
-    }
-
-    /**
-     * @return Builder<User>
-     */
-    private function employeeQuery(?int $departmentId)
-    {
-        $query = User::query()
-            ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = ?", ['employee']);
-
-        if ($departmentId !== null) {
-            $query->where('Dept_id', $departmentId);
-        }
-
-        return $query;
-    }
-
-    /**
-     * @return array{labels: array<int, string>, values: array<int, int>}
-     */
-    private function workforcePerDepartment(?int $departmentId): array
-    {
-        $departmentQuery = Department::query()
-            ->select('departments.Dept_name')
-            ->selectRaw('COUNT(users.id) as total')
-            ->leftJoin('users', function ($join): void {
-                $join->on('users.Dept_id', '=', 'departments.Dept_id')
-                    ->whereRaw("LOWER(REPLACE(REPLACE(users.access_level, '-', ' '), '_', ' ')) = 'employee'");
-            })
-            ->groupBy('departments.Dept_id', 'departments.Dept_name')
-            ->orderBy('departments.Dept_name');
-
-        if ($departmentId !== null) {
-            $departmentQuery->where('departments.Dept_id', $departmentId);
-        }
-
-        $rows = $departmentQuery->get();
-
-        return [
-            'labels' => $rows->pluck('Dept_name')->all(),
-            'values' => $rows->pluck('total')->map(fn ($value) => (int) $value)->all(),
-        ];
-    }
-
-    /**
-     * @param  Collection<int, int>  $userIds
-     * @return Collection<int, array<string, mixed>>
-     */
-    private function pdsByUserId(Collection $userIds): Collection
-    {
-        if ($userIds->isEmpty()) {
-            return collect();
-        }
-
-        return Pds::query()
-            ->whereIn('user_id', $userIds)
-            ->get()
-            ->mapWithKeys(function (Pds $pds): array {
-                return [$pds->user_id => $pds->getAllSectionData()];
-            });
-    }
-
-    /**
-     * @param  array<string, mixed>  $pds
-     */
-    private function extractGender(array $pds): string
-    {
-        $personal = (array) ($pds['pds-personal-info'] ?? []);
-        $sex = strtolower(trim((string) ($personal['personal[sex]'] ?? '')));
-
-        if ($sex === 'male') {
-            return 'Male';
-        }
-
-        if ($sex === 'female') {
-            return 'Female';
-        }
-
-        return 'Not Specified';
-    }
-
-    /**
-     * @param  array<string, mixed>  $pds
-     */
-    private function extractAgeBucket(array $pds): string
-    {
-        $personal = (array) ($pds['pds-personal-info'] ?? []);
-        $birthDate = trim((string) ($personal['personal[birth_date]'] ?? ''));
-
-        if ($birthDate === '') {
-            return 'Unknown';
-        }
-
-        try {
-            $age = Carbon::parse($birthDate)->age;
-        } catch (\Throwable) {
-            return 'Unknown';
-        }
-
-        if ($age <= 25) {
-            return '18-25';
-        }
-
-        if ($age <= 35) {
-            return '26-35';
-        }
-
-        if ($age <= 45) {
-            return '36-45';
-        }
-
-        if ($age <= 55) {
-            return '46-55';
-        }
-
-        return '56+';
-    }
-
-    /**
-     * @param  array<string, mixed>  $pds
-     */
-    private function extractYearsOfService(mixed $createdAt, array $pds): int
-    {
-        $workSection = (array) ($pds['pds-work-experience'] ?? []);
-        $earliestWorkDate = null;
-
-        foreach ($workSection as $key => $value) {
-            if (! preg_match('/^work\[\d+\]\[from\]$/', (string) $key)) {
-                continue;
-            }
-
-            $dateValue = trim((string) $value);
-            if ($dateValue === '') {
-                continue;
-            }
-
-            try {
-                $parsed = Carbon::parse($dateValue);
-            } catch (\Throwable) {
-                continue;
-            }
-
-            if ($earliestWorkDate === null || $parsed->lt($earliestWorkDate)) {
-                $earliestWorkDate = $parsed;
-            }
-        }
-
-        $startDate = $earliestWorkDate;
-
-        if ($startDate === null && $createdAt !== null) {
-            try {
-                $startDate = $createdAt instanceof Carbon ? $createdAt : Carbon::parse((string) $createdAt);
-            } catch (\Throwable) {
-                $startDate = null;
-            }
-        }
-
-        if ($startDate === null) {
-            return 0;
-        }
-
-        return max(0, $startDate->diffInYears(now()));
-    }
-
-    private function serviceBucket(int $yearsOfService): string
-    {
-        if ($yearsOfService < 1) {
-            return '< 1 year';
-        }
-
-        if ($yearsOfService <= 3) {
-            return '1-3 years';
-        }
-
-        if ($yearsOfService <= 7) {
-            return '4-7 years';
-        }
-
-        if ($yearsOfService <= 12) {
-            return '8-12 years';
-        }
-
-        return '13+ years';
-    }
-
-    /**
-     * @param  Collection<int, User>  $employees
-     * @return array<string, int>
-     */
-    private function countByKey(Collection $employees, string $key, string $fallback): array
-    {
-        return $employees
-            ->map(function (User $employee) use ($key, $fallback): string {
-                $value = trim((string) ($employee->{$key} ?? ''));
-
-                return $value !== '' ? $value : $fallback;
-            })
-            ->countBy()
-            ->sortKeys()
-            ->all();
-    }
-
-    /**
-     * @param  array<string, int>  $assoc
-     * @return array{labels: array<int, string>, values: array<int, int>}
-     */
-    private function barChartFromAssoc(array $assoc): array
-    {
-        return [
-            'labels' => array_keys($assoc),
-            'values' => array_values($assoc),
-        ];
-    }
-
-    /**
-     * @param  array<string, int>  $assoc
-     * @return array{labels: array<int, string>, values: array<int, int>}
-     */
-    private function pieChartFromAssoc(array $assoc): array
-    {
-        return [
-            'labels' => array_keys($assoc),
-            'values' => array_values($assoc),
-        ];
-    }
-
-    // ── Enhancement 6: Holiday-Leave Overlap Alerts ───────────────────────
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function buildHolidayLeaveAlerts(): array
-    {
-        if (! Schema::hasTable('holidays') || ! Schema::hasTable('leave_requests')) {
-            return [];
-        }
-
-        $holidays = Holiday::query()
-            ->whereBetween('holiday_date', [today(), today()->addDays(30)])
-            ->orderBy('holiday_date')
-            ->get(['title', 'holiday_date', 'type']);
-
-        $alerts = [];
-        foreach ($holidays as $holiday) {
-            $date = $holiday->holiday_date->toDateString();
-            $count = (int) DB::table('leave_requests')
-                ->whereRaw('LOWER(status) = ?', ['pending'])
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->count();
-
-            if ($count > 0) {
-                $alerts[] = [
-                    'title' => $holiday->title,
-                    'date' => $date,
-                    'type' => $holiday->type,
-                    'count' => $count,
-                ];
-            }
-        }
-
-        return $alerts;
-    }
-
-    // ── Enhancement 1: Actionable Alerts ─────────────────────────────────
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildAlerts(): array
-    {
-        $staleDays = 3;
-
-        $staleLeave = Schema::hasTable('leave_requests')
-            ? (int) DB::table('leave_requests')
-                ->whereRaw('LOWER(status) = ?', ['pending'])
-                ->where('created_at', '<', now()->subDays($staleDays))
-                ->count()
-            : 0;
-
-        $openPayroll = null;
-        if (Schema::hasTable('payroll_runs')) {
-            $run = DB::table('payroll_runs')
-                ->where('status', 'draft')
-                ->whereNull('locked_at')
-                ->orderByDesc('id')
-                ->first(['id', 'period']);
-            if ($run) {
-                $openPayroll = ['period' => $run->period, 'run_id' => $run->id];
-            }
-        }
-
-        $unresolvedExceptions = Schema::hasTable('payroll_exceptions')
-            ? (int) DB::table('payroll_exceptions')->where('resolved_flag', false)->count()
-            : 0;
-
-        $upcomingHolidays = [];
-        if (Schema::hasTable('holidays')) {
-            $upcomingHolidays = DB::table('holidays')
-                ->whereBetween('holiday_date', [today(), today()->addDays(14)])
-                ->orderBy('holiday_date')
-                ->get(['title', 'holiday_date', 'type'])
-                ->map(fn ($h) => [
-                    'title' => $h->title,
-                    'date' => $h->holiday_date,
-                    'type' => $h->type,
-                    'days_away' => (int) today()->diffInDays($h->holiday_date),
-                ])
-                ->all();
-        }
-
-        $staleTravelOrders = Schema::hasTable('travel_orders')
-            ? (int) DB::table('travel_orders')
-                ->whereRaw('LOWER(status) = ?', ['pending'])
-                ->where('created_at', '<', now()->subDays($staleDays))
-                ->count()
-            : 0;
-
-        $staleDocuments = Schema::hasTable('document_requests')
-            ? (int) DB::table('document_requests')
-                ->whereRaw('LOWER(status) = ?', ['requested'])
-                ->where('requested_on', '<', now()->subDays($staleDays))
-                ->count()
-            : 0;
-
-        return [
-            'stale_leave' => ['count' => $staleLeave, 'days' => $staleDays],
-            'open_payroll' => $openPayroll,
-            'unresolved_exceptions' => $unresolvedExceptions,
-            'upcoming_holidays' => $upcomingHolidays,
-            'stale_travel' => $staleTravelOrders,
-            'stale_documents' => $staleDocuments,
-            'total_alerts' => $staleLeave + $staleTravelOrders + $staleDocuments + $unresolvedExceptions + ($openPayroll ? 1 : 0),
-        ];
-    }
-
-    // ── Enhancement 3: Leave Analytics ────────────────────────────────────
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildLeaveAnalytics(?int $departmentId, string $month = ''): array
-    {
-        $types = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
-        $balanceSummary = [];
-
-        if (Schema::hasTable('leave_balances')) {
-            $query = DB::table('leave_balances')
-                ->leftJoin('users', 'users.id', '=', 'leave_balances.user_id');
-
-            if ($departmentId !== null) {
-                $query->where('users.Dept_id', $departmentId);
-            }
-
-            $rows = $query->select('leave_balances.*')->get();
-
-            // Consumption reference: use selected month end, fallback to now
-            $now = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month))
-                ? Carbon::parse($month)->endOfMonth()
-                : now();
-            $prevMonth = $now->copy()->subMonth();
-
-            $consumptionQuery = fn (int $year, int $month) => DB::table('leave_dates')
-                ->join('leave_requests', 'leave_requests.id', '=', 'leave_dates.leave_request_id')
-                ->when($departmentId !== null, function ($q) use ($departmentId) {
-                    $q->join('users', 'users.id', '=', 'leave_requests.user_id')
-                        ->where('users.Dept_id', $departmentId);
-                })
-                ->whereYear('leave_dates.leave_date', $year)
-                ->whereMonth('leave_dates.leave_date', $month)
-                ->where('leave_dates.is_cancelled', false)
-                ->select('leave_requests.leave_type', DB::raw('COUNT(*) as cnt'))
-                ->groupBy('leave_requests.leave_type')
-                ->get()
-                ->pluck('cnt', 'leave_type');
-
-            $thisMonthConsumption = Schema::hasTable('leave_dates')
-                ? $consumptionQuery($now->year, $now->month)
-                : collect();
-            $lastMonthConsumption = Schema::hasTable('leave_dates')
-                ? $consumptionQuery($prevMonth->year, $prevMonth->month)
-                : collect();
-
-            $typeMap = ['VL' => 'Vacation Leave', 'SL' => 'Sick Leave', 'WLNS' => 'Wellness', 'SPL' => 'Solo Parent', 'CTO' => 'CTO', 'SP' => 'Special Privilege'];
-
-            foreach ($types as $type) {
-                $col = $rows->pluck($type)->filter(fn ($v) => $v !== null);
-                $avg = $col->count() > 0 ? round($col->avg(), 1) : 0;
-                $lowCount = $col->filter(fn ($v) => (float) $v < 2)->count();
-                $zeroCount = $col->filter(fn ($v) => (float) $v <= 0)->count();
-
-                $thisMonth = (int) ($thisMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
-                $lastMonth = (int) ($lastMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
-                $trend = $thisMonth > $lastMonth ? 'down' : ($thisMonth < $lastMonth ? 'up' : 'stable');
-
-                $balanceSummary[$type] = [
-                    'avg' => $avg,
-                    'low_count' => $lowCount,
-                    'zero_count' => $zeroCount,
-                    'trend' => $trend,
-                ];
-            }
-        }
-
-        // Critical employees: VL < 2 OR SL < 2
-        $criticalEmployees = [];
-        if (Schema::hasTable('leave_balances')) {
-            $query = DB::table('leave_balances')
-                ->leftJoin('users', 'users.id', '=', 'leave_balances.user_id')
-                ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-                ->select(
-                    'users.id',
-                    'users.name',
-                    'departments.Dept_name',
-                    'leave_balances.VL',
-                    'leave_balances.SL'
-                )
-                ->where(function ($q) {
-                    $q->where('leave_balances.VL', '<', 2)
-                        ->orWhere('leave_balances.SL', '<', 2);
-                });
-
-            if ($departmentId !== null) {
-                $query->where('users.Dept_id', $departmentId);
-            }
-
-            $criticalEmployees = $query->orderBy('users.name')->limit(50)->get()
-                ->map(fn ($r) => [
-                    'user_id' => $r->id,
-                    'name' => $r->name,
-                    'department' => $r->Dept_name,
-                    'vl' => round((float) $r->VL, 1),
-                    'sl' => round((float) $r->SL, 1),
-                ])
-                ->all();
-        }
-
-        // 6-month org-wide submitted vs approved trend anchored to the selected month
-        $refDate = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month))
-            ? Carbon::parse($month)->endOfMonth()
-            : now();
-        $sixMonthsAgo = $refDate->copy()->subMonths(5)->startOfMonth();
-        $trendLabels = [];
-        $trendSubmitted = [];
-        $trendApproved = [];
-
-        $submittedTrend = LeaveRequest::selectRaw('MONTH(created_at) as m, YEAR(created_at) as y, COUNT(*) as cnt')
-            ->when($departmentId !== null, function ($q) use ($departmentId) {
-                $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
-                    ->where('users.Dept_id', $departmentId);
-            })
-            ->where('created_at', '>=', $sixMonthsAgo)
-            ->groupByRaw('YEAR(created_at), MONTH(created_at)')
-            ->get()
-            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
-
-        $approvedTrend = LeaveRequest::selectRaw('MONTH(updated_at) as m, YEAR(updated_at) as y, COUNT(*) as cnt')
-            ->when($departmentId !== null, function ($q) use ($departmentId) {
-                $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
-                    ->where('users.Dept_id', $departmentId);
-            })
-            ->where('status', 'approved')
-            ->where('updated_at', '>=', $sixMonthsAgo)
-            ->groupByRaw('YEAR(updated_at), MONTH(updated_at)')
-            ->get()
-            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
-
-        for ($i = 5; $i >= 0; $i--) {
-            $dt = $refDate->copy()->subMonths($i);
-            $trendLabels[] = $dt->format('M');
-            $key = $dt->year.'-'.$dt->month;
-            $trendSubmitted[] = (int) ($submittedTrend->get($key)?->cnt ?? 0);
-            $trendApproved[] = (int) ($approvedTrend->get($key)?->cnt ?? 0);
-        }
-
-        return [
-            'balance_summary' => $balanceSummary,
-            'critical_employees' => $criticalEmployees,
-            'trend' => [
-                'labels' => $trendLabels,
-                'submitted' => $trendSubmitted,
-                'approved' => $trendApproved,
-            ],
-        ];
-    }
-
-    // ── Enhancement 5: Workforce Planning ─────────────────────────────────
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildWorkforcePlanning(): array
-    {
-        $milestoneYears = [10, 15, 20, 25, 30];
-        $milestones = [];
-
-        $activeEmployees = User::query()
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->select('users.id', 'users.name', 'users.date_hired', 'departments.Dept_name')
-            ->where('users.Status', 'Active')
-            ->whereNotNull('users.date_hired')
-            ->get();
-
-        foreach ($activeEmployees as $emp) {
-            try {
-                $hired = Carbon::parse($emp->date_hired);
-            } catch (\Throwable) {
-                continue;
-            }
-
-            foreach ($milestoneYears as $milestone) {
-                $anniversary = $hired->copy()->addYears($milestone);
-                $daysUntil = (int) now()->diffInDays($anniversary, false);
-
-                if ($daysUntil >= 0 && $daysUntil <= 90) {
-                    $milestones[] = [
-                        'name' => $emp->name,
-                        'department' => $emp->Dept_name ?? 'N/A',
-                        'years' => $milestone,
-                        'anniversary' => $anniversary->toDateString(),
-                        'days_away' => $daysUntil,
-                    ];
-                }
-            }
-        }
-
-        usort($milestones, fn ($a, $b) => $a['days_away'] <=> $b['days_away']);
-
-        $now30Start = now()->subDays(30)->startOfDay();
-        $prev30Start = now()->subDays(60)->startOfDay();
-        $prev30End = now()->subDays(30)->startOfDay();
-
-        $hiredLast30 = (int) User::query()
-            ->where('date_hired', '>=', $now30Start)
-            ->count();
-
-        $hiredPrev30 = (int) User::query()
-            ->where('date_hired', '>=', $prev30Start)
-            ->where('date_hired', '<', $prev30End)
-            ->count();
-
-        $separatedLast30 = (int) User::query()
-            ->whereIn('Status', ['Separated', 'Inactive'])
-            ->where('updated_at', '>=', $now30Start)
-            ->count();
-
-        $separatedPrev30 = (int) User::query()
-            ->whereIn('Status', ['Separated', 'Inactive'])
-            ->where('updated_at', '>=', $prev30Start)
-            ->where('updated_at', '<', $prev30End)
-            ->count();
-
-        $hiredPctChange = $hiredPrev30 > 0
-            ? round((($hiredLast30 - $hiredPrev30) / $hiredPrev30) * 100, 1)
-            : ($hiredLast30 > 0 ? 100.0 : 0.0);
-
-        $separatedPctChange = $separatedPrev30 > 0
-            ? round((($separatedLast30 - $separatedPrev30) / $separatedPrev30) * 100, 1)
-            : ($separatedLast30 > 0 ? 100.0 : 0.0);
-
-        // 12-month hiring trend
-        $trendLabels = [];
-        $trendValues = [];
-        for ($i = 11; $i >= 0; $i--) {
-            $dt = now()->subMonths($i);
-            $trendLabels[] = $dt->format('M');
-            $count = (int) User::query()
-                ->whereYear('date_hired', $dt->year)
-                ->whereMonth('date_hired', $dt->month)
-                ->count();
-            $trendValues[] = $count;
-        }
-
-        return [
-            'milestones' => $milestones,
-            'headcount' => [
-                'hired_30d' => $hiredLast30,
-                'hired_pct_change' => $hiredPctChange,
-                'separated_30d' => $separatedLast30,
-                'separated_pct_change' => $separatedPctChange,
-                'net' => $hiredLast30 - $separatedLast30,
-            ],
-            'trend' => [
-                'labels' => $trendLabels,
-                'values' => $trendValues,
-            ],
-        ];
-    }
-
-    // ── Enhancement 2: Attendance Overview ────────────────────────────────
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildAttendanceOverview(string $month, ?int $departmentId): array
-    {
-        if (! Schema::hasTable('dtrs')) {
-            return ['summary' => [], 'daily_absences' => [], 'dept_late' => [], 'top_employees' => []];
-        }
-
-        [$year, $mon] = explode('-', $month);
-        $year = (int) $year;
-        $mon = (int) $mon;
-
-        $baseQuery = fn () => DB::table('dtrs')
-            ->join('users', 'users.id', '=', 'dtrs.employee_id')
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->whereYear('dtrs.date', $year)
-            ->whereMonth('dtrs.date', $mon)
-            ->when($departmentId !== null, fn ($q) => $q->where('users.Dept_id', $departmentId));
-
-        $summary = $baseQuery()->selectRaw('
-            SUM(dtrs.is_absent) as total_absences,
-            SUM(dtrs.late_minutes) as total_late,
-            SUM(dtrs.undertime_minutes) as total_undertime
-        ')->first();
-
-        $totalDays = Carbon::createFromDate($year, $mon, 1)->daysInMonth;
-        $daysWithAbsences = (int) $baseQuery()
-            ->where('dtrs.is_absent', true)
-            ->distinct()
-            ->count(DB::raw('DATE(dtrs.date)'));
-
-        $summaryCards = [
-            'total_absences' => (int) ($summary->total_absences ?? 0),
-            'total_late_minutes' => (int) ($summary->total_late ?? 0),
-            'total_undertime_minutes' => (int) ($summary->total_undertime ?? 0),
-            'clean_days' => $totalDays - $daysWithAbsences,
-        ];
-
-        // Daily absent count (last 30 days of the selected month)
-        $dailyAbsences = $baseQuery()
-            ->selectRaw('DATE(dtrs.date) as day, SUM(dtrs.is_absent) as absent_count')
-            ->groupBy(DB::raw('DATE(dtrs.date)'))
-            ->orderBy('day')
-            ->get()
-            ->map(fn ($r) => ['day' => $r->day, 'count' => (int) $r->absent_count])
-            ->all();
-
-        // Late minutes by department
-        $deptLate = $baseQuery()
-            ->selectRaw('departments.Dept_name, SUM(dtrs.late_minutes) as total_late')
-            ->groupBy('departments.Dept_id', 'departments.Dept_name')
-            ->orderByDesc('total_late')
-            ->get()
-            ->map(fn ($r) => ['department' => $r->Dept_name ?? 'Unknown', 'late_minutes' => (int) $r->total_late])
-            ->all();
-
-        // Top 15 employees by total tardiness
-        $hasSource = Schema::hasColumn('dtrs', 'source');
-        $topEmployees = $baseQuery()
-            ->selectRaw('
-                users.id,
-                users.name,
-                departments.Dept_name,
-                SUM(dtrs.late_minutes) as late_min,
-                SUM(dtrs.undertime_minutes) as undertime_min,
-                SUM(dtrs.is_absent) as absences'
-                .($hasSource ? ', GROUP_CONCAT(DISTINCT dtrs.source) as sources' : ''))
-            ->groupBy('users.id', 'users.name', 'departments.Dept_name')
-            ->orderByDesc(DB::raw('SUM(dtrs.late_minutes) + SUM(dtrs.undertime_minutes) + SUM(dtrs.is_absent) * 60'))
-            ->limit(15)
-            ->get()
-            ->map(fn ($r) => [
-                'user_id' => $r->id,
-                'name' => $r->name,
-                'department' => $r->Dept_name ?? 'Unknown',
-                'late_minutes' => (int) $r->late_min,
-                'undertime_minutes' => (int) $r->undertime_min,
-                'absences' => (int) $r->absences,
-                'source' => $hasSource ? ($r->sources ?? 'N/A') : 'N/A',
-            ])
-            ->all();
-
-        return [
-            'summary' => $summaryCards,
-            'daily_absences' => $dailyAbsences,
-            'dept_late' => $deptLate,
-            'top_employees' => $topEmployees,
-        ];
-    }
-
-    // ── Enhancement 4: Payroll Overview ───────────────────────────────────
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildPayrollOverview(): array
-    {
-        if (! Schema::hasTable('payroll_runs')) {
-            return ['runs' => [], 'exceptions' => [], 'dept_net_pay' => ['labels' => [], 'values' => []]];
-        }
-
-        $runs = PayrollRun::query()
-            ->withCount(['exceptions as unresolved_count' => fn ($q) => $q->where('resolved_flag', false)])
-            ->withCount('details as employee_count')
-            ->orderByDesc('id')
-            ->limit(6)
-            ->get()
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'period' => $r->period,
-                'period_start' => $r->period_start?->toDateString(),
-                'period_end' => $r->period_end?->toDateString(),
-                'status' => $r->status,
-                'locked_at' => $r->locked_at?->toDateTimeString(),
-                'employee_count' => $r->employee_count,
-                'unresolved_exceptions' => $r->unresolved_count,
-            ])
-            ->all();
-
-        $exceptions = [];
-        if (Schema::hasTable('payroll_exceptions')) {
-            $latestRunId = PayrollRun::query()->orderByDesc('id')->value('id');
-            if ($latestRunId) {
-                $exceptions = PayrollException::query()
-                    ->with('payrollRun:id,period')
-                    ->where('payroll_run_id', $latestRunId)
-                    ->where('resolved_flag', false)
-                    ->orderByDesc('id')
-                    ->limit(50)
-                    ->get()
-                    ->map(fn ($e) => [
-                        'id' => $e->id,
-                        'period' => $e->payrollRun?->period ?? 'N/A',
-                        'type' => $e->type,
-                        'description' => $e->description,
-                    ])
-                    ->all();
-            }
-        }
-
-        // Net pay by department for the latest locked run
-        $deptNetPay = ['labels' => [], 'values' => []];
-        if (Schema::hasTable('payroll_details')) {
-            $lockedRun = PayrollRun::query()
-                ->whereNotNull('locked_at')
-                ->orderByDesc('id')
-                ->first(['id']);
-
-            if ($lockedRun) {
-                $rows = DB::table('payroll_details')
-                    ->join('users', 'users.id', '=', 'payroll_details.employee_id')
-                    ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-                    ->where('payroll_details.payroll_run_id', $lockedRun->id)
-                    ->selectRaw('departments.Dept_name, SUM(payroll_details.net_pay) as total_net')
-                    ->groupBy('departments.Dept_id', 'departments.Dept_name')
-                    ->orderByDesc('total_net')
-                    ->get();
-
-                $deptNetPay = [
-                    'labels' => $rows->pluck('Dept_name')->map(fn ($n) => $n ?? 'Unknown')->all(),
-                    'values' => $rows->pluck('total_net')->map(fn ($v) => round((float) $v, 2))->all(),
-                ];
-            }
-        }
-
-        return [
-            'runs' => $runs,
-            'exceptions' => $exceptions,
-            'dept_net_pay' => $deptNetPay,
-        ];
-    }
-
     private function ensureHrManager(Request $request): void
     {
         $normalizedRole = $this->normalizeRole((string) ($request->user()->access_level ?? ''));
@@ -2091,10 +1250,47 @@ class HRManagerController extends Controller
 
     private function normalizeRole(string $role): string
     {
-        $normalized = strtolower(trim($role));
-        $normalized = str_replace(['_', '-'], ' ', $normalized);
+        return RoleNormalizer::normalize($role);
+    }
 
-        return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    public function downloadLeaveCard(Request $request): StreamedResponse
+    {
+        $this->ensureHrManager($request);
+
+        $userId = (int) $request->input('user_id');
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        if (! $userId || ! $year || $month < 1 || $month > 12) {
+            abort(422, 'Invalid parameters: user_id, year, and month (1–12) are required.');
+        }
+
+        $user = User::findOrFail($userId);
+
+        return app(LeaveCardExportService::class)->generateExcelResponse($user, $year, $month);
+    }
+
+    public function leaveLedger(Request $request): View
+    {
+        $this->ensureHrManager($request);
+
+        $employees = User::query()
+            ->whereHas('leaveBalance')
+            ->where('Status', 'Active')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'first_name', 'last_name', 'EmpNo', 'Dept_id']);
+
+        $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
+        $currentYear = now()->year;
+        $years = range($currentYear, max(2020, $currentYear - 6));
+
+        return view('leave-manager.leave-ledger', [
+            'employees' => $employees,
+            'departments' => $departments,
+            'years' => $years,
+            'currentYear' => $currentYear,
+        ]);
     }
 
     private function formatDateTime(mixed $value): string

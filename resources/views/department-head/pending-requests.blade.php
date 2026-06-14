@@ -8,39 +8,53 @@
 @endsection
 
 @section('tiles')
-    <article class="tile tab-card active" data-tab="leave">
-        <strong>Leave</strong>
-        <div class="muted">Pending applications</div>
+    <article class="kpi-card accent-leave tab-card active" data-tab="leave">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-calendar-days"></i></div>
+                <div class="kpi-title">Leave</div>
+            </div>
+            <div class="kpi-meta">Pending applications</div>
+        </div>
         <div class="tile-count" id="leave-total">—</div>
     </article>
 
-    <article class="tile tab-card" data-tab="eta">
-        <strong>ETA</strong>
-        <div class="muted">Employee Travel Authorization</div>
+    <article class="kpi-card accent-eta tab-card" data-tab="eta">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-plane-departure"></i></div>
+                <div class="kpi-title">ETA</div>
+            </div>
+            <div class="kpi-meta">Employee Travel Authorization</div>
+        </div>
         <div class="tile-count" id="eta-total">—</div>
     </article>
 
-    <article class="tile tab-card" data-tab="locator">
-        <strong>Locator</strong>
-        <div class="muted">Locator / Travel</div>
+    <article class="kpi-card accent-locator tab-card" data-tab="locator">
+        <div>
+            <div class="kpi-head">
+                <div class="kpi-icon" aria-hidden="true"><i class="fa-solid fa-location-dot"></i></div>
+                <div class="kpi-title">Locator</div>
+            </div>
+            <div class="kpi-meta">Locator / Travel</div>
+        </div>
         <div class="tile-count" id="locator-total">—</div>
     </article>
 @endsection
 
 @section('modals')
 <dialog id="pendingModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 id="pending-modal-title" style="margin:0">Details</h3>
-            <span class="record-email">View details for the pending application</span>
-        </div>
+    <div class="dialog-header">
+        <h3 class="dialog-title" id="pending-modal-title">Details</h3>
         <form method="dialog">
-            <button type="submit" class="modal-close" aria-label="Close">x</button>
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
         </form>
     </div>
-    <div id="pending-modal-body" style="margin-top:8px;"></div>
-    <form method="dialog" class="modal-actions" style="margin-top:12px; text-align:right">
-        <button class="btn" type="submit">Close</button>
+    <div class="dialog-body">
+        <div id="pending-modal-body"></div>
+    </div>
+    <form method="dialog" class="modal-actions">
+        <button class="hris-btn hris-btn-secondary" type="submit">Close</button>
     </form>
 </dialog>
 @endsection
@@ -53,8 +67,8 @@
             $prevDate = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
             $nextDate = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
         @endphp
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <div style="display:flex;gap:10px;align-items:center;">
+        <div class="hris-table-filters" style="margin-bottom:14px;">
+            <div class="hris-filter-left" style="align-items:center;">
                 <button class="month-nav" onclick="window.location='?month={{ $prevDate->format('n') }}&year={{ $prevDate->format('Y') }}'">&laquo; Prev</button>
                 <div class="font-weight-bold">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
                 <button class="month-nav" onclick="window.location='?month={{ $nextDate->format('n') }}&year={{ $nextDate->format('Y') }}'">Next &raquo;</button>
@@ -66,54 +80,66 @@
 
         <div id="tab-content">
             <div class="tab-pane" data-pane="leave">
-                <table id="leave-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Leave Type</th>
-                            <th>Reason / Purpose</th>
-                            <th>Period</th>
-                            <th>Total Days</th>
-                            <th>Filed At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="leave-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Leave Type</th>
+                                    <th>Reason / Purpose</th>
+                                    <th>Period</th>
+                                    <th>Total Days</th>
+                                    <th>Filed At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="tab-pane" data-pane="eta" style="display:none">
-                <table id="eta-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Departure</th>
-                            <th>Arrival</th>
-                            <th>Destination</th>
-                            <th>Purpose Details</th>
-                            <th>Filed At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="eta-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Departure</th>
+                                    <th>Arrival</th>
+                                    <th>Destination</th>
+                                    <th>Purpose Details</th>
+                                    <th>Filed At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="tab-pane" data-pane="locator" style="display:none">
-                <table id="locator-table" class="hris-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Type</th>
-                            <th>Travel Date</th>
-                            <th>Location</th>
-                            <th>Purpose of Travel</th>
-                            <th>Filed At</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="hris-table-card">
+                    <div class="hris-table-wrapper">
+                        <table id="locator-table" class="hris-table" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Type</th>
+                                    <th>Travel Date</th>
+                                    <th>Location</th>
+                                    <th>Purpose of Travel</th>
+                                    <th>Filed At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     @endif
@@ -173,7 +199,13 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         columns: [
             { data: 'employee',   title: 'Employee' },
-            { data: 'leave_type', title: 'Leave Type' },
+            { data: 'leave_type', title: 'Leave Type', render: function(data, type, row) {
+                var label = data || '';
+                if (row.rescheduled_from_id) {
+                    label += ' <span style="display:inline-block;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;white-space:nowrap">Reschedule</span>';
+                }
+                return label;
+            }},
             { data: 'reason',     title: 'Reason / Purpose', orderable: false },
             { data: 'period',     title: 'Period', orderable: false },
             { data: 'total_days', title: 'Total Days', orderable: false },
@@ -182,16 +214,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     var btns = '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingLeaveModal(' + row.id + ')">View</button>';
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingLeaveModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>';
 
                     if (row.status === 'pending') {
                         if (!row.printing_allowed) {
                             btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>'
-                                  + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')">Allow Printing</button>';
+                                  + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')"><i class="fa fa-unlock"></i> Allow Printing</button>';
                         } else {
                             btns += '<a href="/dashboard/employee/leave/' + row.id + '/print" class="hris-btn hris-btn-primary hris-btn-sm" target="_blank"><i class="fa fa-print"></i> Print</a>'
-                                  + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApprove(' + row.id + ')">Approve</button>'
-                                  + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject(' + row.id + ')">Reject</button>';
+                                  + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApprove(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
+                                  + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>';
                         }
                     } else if (row.status === 'approved') {
                         if (row.printing_allowed) {
@@ -237,9 +269,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingEtaModal(' + row.id + ')">View</button>'
-                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEta(' + row.id + ')">Approve</button>'
-                        + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEta(' + row.id + ')">Reject</button>'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingEtaModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
+                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEta(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
+                        + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEta(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>'
                         + '</div>';
                 },
             },
@@ -275,9 +307,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
                     return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingLocatorModal(' + row.id + ')">View</button>'
-                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveLocator(' + row.id + ')">Approve</button>'
-                        + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectLocator(' + row.id + ')">Reject</button>'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingLocatorModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
+                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveLocator(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
+                        + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectLocator(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>'
                         + '</div>';
                 },
             },

@@ -4,11 +4,12 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 class RecordsService
 {
     /**
-     * @return array{0: \Illuminate\Support\Collection<int, User>, 1: \Illuminate\Support\Collection<int, Department>, 2: array{total:int, active:int, inactive:int}}
+     * @return array{0: Collection<int, User>, 1: Collection<int, Department>, 2: array{total:int, active:int, inactive:int}}
      */
     public function collections(): array
     {
@@ -67,7 +68,7 @@ class RecordsService
                 $department = $departments->firstWhere('Dept_id', (int) $deptId);
 
                 return [
-                    'department' => (string) ($department->Dept_name ?? ('Department #' . $deptId)),
+                    'department' => (string) ($department->Dept_name ?? ('Department #'.$deptId)),
                     'count' => $group->count(),
                 ];
             })
@@ -107,7 +108,7 @@ class RecordsService
             'Active' => $employees->where('Status', 'Active')->count(),
             'Inactive' => $employees->where('Status', 'Inactive')->count(),
             'Separated' => $employees->where('Status', 'Separated')->count(),
-            'Unset' => $employees->filter(fn (User $employee) => !in_array((string) $employee->Status, ['Active', 'Inactive', 'Separated'], true))->count(),
+            'Unset' => $employees->filter(fn (User $employee) => ! in_array((string) $employee->Status, ['Active', 'Inactive', 'Separated'], true))->count(),
         ];
 
         $dataQuality = [

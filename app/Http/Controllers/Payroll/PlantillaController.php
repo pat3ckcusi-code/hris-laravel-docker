@@ -44,6 +44,7 @@ class PlantillaController extends Controller
     {
         $plantilla = Plantilla::with('assignments.employee')->findOrFail($id);
         $employees = User::orderBy('last_name')->get();
+
         return view('payroll.plantilla-show', compact('plantilla', 'employees'));
     }
 
@@ -70,6 +71,7 @@ class PlantillaController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         Plantilla::findOrFail($id)->delete();
+
         return redirect()->route('payroll.plantilla.index')
             ->with('status', 'Plantilla position deleted.');
     }

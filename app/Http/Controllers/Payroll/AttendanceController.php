@@ -81,6 +81,7 @@ class AttendanceController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         Dtr::findOrFail($id)->delete();
+
         return redirect()->route('payroll.attendance.index')
             ->with('status', 'DTR record deleted.');
     }

@@ -2,14 +2,15 @@
 
 namespace App\Services;
 
-use App\Models\Locator;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
+use App\Models\Locator;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 class LocatorExportService
 {
@@ -28,7 +29,7 @@ class LocatorExportService
 
         // Department
         $dept = '';
-        if ($owner && !empty($owner->Dept_id)) {
+        if ($owner && ! empty($owner->Dept_id)) {
             $department = Department::find($owner->Dept_id);
             $dept = $department ? ($department->Dept_name ?? '') : '';
         }
@@ -43,7 +44,7 @@ class LocatorExportService
 
         // Load template
         $templatePath = storage_path('app/templates/LOCATOR.xls');
-        if (!file_exists($templatePath)) {
+        if (! file_exists($templatePath)) {
             abort(404, 'Locator print template not found.');
         }
 
@@ -56,11 +57,11 @@ class LocatorExportService
         $sheet->setCellValue('B6', $fullName);
         $sheet->setCellValue('I6', $travelDate);
         $sheet->setCellValue('C10', '✓');
-        $sheet->setCellValue('H13', $locator->intended_departure_time 
-            ? date('h:i A', strtotime($locator->intended_departure_time)) 
+        $sheet->setCellValue('H13', $locator->intended_departure_time
+            ? date('h:i A', strtotime($locator->intended_departure_time))
             : '');
-        $sheet->setCellValue('H14', $locator->intended_arrival_time 
-            ? date('h:i A', strtotime($locator->intended_arrival_time)) 
+        $sheet->setCellValue('H14', $locator->intended_arrival_time
+            ? date('h:i A', strtotime($locator->intended_arrival_time))
             : '');
 
         if ($isOfficial) {
@@ -81,11 +82,11 @@ class LocatorExportService
         $sheet->setCellValue('M6', $fullName);
         $sheet->setCellValue('T6', $travelDate);
         $sheet->setCellValue('N10', '✓');
-        $sheet->setCellValue('S13', $locator->intended_departure_time 
-            ? date('h:i A', strtotime($locator->intended_departure_time)) 
+        $sheet->setCellValue('S13', $locator->intended_departure_time
+            ? date('h:i A', strtotime($locator->intended_departure_time))
             : '');
-        $sheet->setCellValue('S14', $locator->intended_arrival_time 
-            ? date('h:i A', strtotime($locator->intended_arrival_time)) 
+        $sheet->setCellValue('S14', $locator->intended_arrival_time
+            ? date('h:i A', strtotime($locator->intended_arrival_time))
             : '');
 
         if ($isOfficial) {
@@ -115,7 +116,7 @@ class LocatorExportService
         }
 
         // Audit log
-        $filename = 'Locator-' . $locator->id . '-' . now()->format('Ymd-His') . '.xls';
+        $filename = 'Locator-'.$locator->id.'-'.now()->format('Ymd-His').'.xls';
 
         Log::info('Locator print action', [
             'locator_id' => $locator->id,
@@ -159,32 +160,40 @@ class LocatorExportService
 
     private function buildFullName(?User $user): string
     {
-        if (!$user) {
+        if (! $user) {
             return '';
         }
 
         $parts = [];
-        if (!empty($user->first_name)) $parts[] = $user->first_name;
-        if (!empty($user->middle_name)) $parts[] = $user->middle_name;
-        if (!empty($user->last_name)) $parts[] = $user->last_name;
-        if (empty($parts) && !empty($user->name)) $parts[] = $user->name;
+        if (! empty($user->first_name)) {
+            $parts[] = $user->first_name;
+        }
+        if (! empty($user->middle_name)) {
+            $parts[] = $user->middle_name;
+        }
+        if (! empty($user->last_name)) {
+            $parts[] = $user->last_name;
+        }
+        if (empty($parts) && ! empty($user->name)) {
+            $parts[] = $user->name;
+        }
 
         return implode(' ', $parts);
     }
 
     private function resolveDeptHeadName(?User $owner): string
     {
-        if (!$owner || empty($owner->Dept_id)) {
+        if (! $owner || empty($owner->Dept_id)) {
             return '';
         }
 
         $department = Department::find($owner->Dept_id);
-        if (!$department || empty($department->EmpNo) || $department->EmpNo === 'UNASSIGNED') {
+        if (! $department || empty($department->EmpNo) || $department->EmpNo === 'UNASSIGNED') {
             return '';
         }
 
         $head = User::where('EmpNo', $department->EmpNo)->first();
-        if (!$head) {
+        if (! $head) {
             return '';
         }
 
@@ -194,11 +203,11 @@ class LocatorExportService
     /**
      * Lock all sheets in the spreadsheet to prevent editing.
      */
-    private function protectAllSheets(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet, ?User $owner): void
+    private function protectAllSheets(Spreadsheet $spreadsheet, ?User $owner): void
     {
         $first = $owner->first_name ?? ($owner->firstname ?? '');
-        $last  = $owner->last_name ?? ($owner->lastname ?? '');
-        $password = strtoupper($first . substr((string) $last, 0, 1));
+        $last = $owner->last_name ?? ($owner->lastname ?? '');
+        $password = strtoupper($first.substr((string) $last, 0, 1));
 
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             // NOTE: We intentionally skip bulk getStyle($range)->setLocked() here.

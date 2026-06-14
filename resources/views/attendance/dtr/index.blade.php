@@ -245,12 +245,8 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
         <summary style="cursor:pointer;font-weight:600;font-size:.95rem;">
             ⬇ Download Form 48 (CSC Form 48 DTR)
         </summary>
-        {{-- name="month" is populated by setDlMonth() before the form submits --}}
-        <form id="dl-form" method="GET" action="{{ route('attendance.dtr.download') }}"
-              onsubmit="return setDlMonth()"
+        <form id="dl-form" onsubmit="return setDlMonth()"
               style="margin-top:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;">
-
-            <input type="hidden" name="month" id="dl-month-hidden">
 
             @if ($isAdmin || $isOfficer)
                 {{-- Employee type narrows the employee dropdown client-side --}}
@@ -404,6 +400,14 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
 
 @endsection
 
+@if(session('dtr_error'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    Swal.fire({ icon: 'info', title: 'No Records Found', text: '{{ session('dtr_error') }}', confirmButtonColor: '#3b82f6' });
+});
+</script>
+@endif
+
 @section('page_scripts')
 <script>
 // Guard: the layout yields page_scripts twice — prevent double-execution.
@@ -481,28 +485,40 @@ if (typeof window.__dtrViewReady === 'undefined') {
         return document.getElementById(id).value;   // dateFormat:'Y-m' → "2026-06"
     }
 
-    // Populate the hidden name="month" field before the download form submits.
+    // Submit handler — converts form fields to a background export job.
     function setDlMonth() {
-        var val = fpMonth('dl-month-fp');
-        if (!val) {
+        var month = fpMonth('dl-month-fp');
+        if (!month) {
             Swal.fire({
                 icon: 'error',
                 title: 'Missing Field',
                 text: 'Please select a month before downloading.',
                 confirmButtonColor: '#3b82f6',
             });
-            return false;   // cancel form submission
+            return false; // cancel form submission
         }
-        document.getElementById('dl-month-hidden').value = val;
-        Swal.fire({
-            icon: 'success',
-            title: 'Download Started',
-            text: 'Your Form 48 is being prepared.',
-            timer: 2500,
-            timerProgressBar: true,
-            showConfirmButton: false,
-        });
-        return true;
+
+        var dtrType = document.getElementById('dl-dtr-type').value;
+        var period  = (document.getElementById('dl-period') || {}).value || 1;
+        var params  = { month: month, dtr_type: dtrType, period: parseInt(period) };
+
+        @if ($isAdmin || $isOfficer)
+        var empId = document.getElementById('dl-emp-select').value;
+        if (!empId) {
+            Swal.fire({ icon: 'error', title: 'Missing Field', text: 'Please select an employee.', confirmButtonColor: '#3b82f6' });
+            return false;
+        }
+        params.target_user_id = parseInt(empId);
+        @else
+        params.target_user_id = {{ auth()->id() }};
+        @endif
+
+        startExport(
+            '{{ route('export-jobs.create') }}',
+            { type: 'form48', params: params },
+            'Building Form 48&hellip;'
+        );
+        return false; // always prevent native form submission
     }
 
     // ── "Load Records" button ────────────────────────────────────────────────
@@ -595,12 +611,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
     }
 
     // ── Bulk department download (admin and administrative officer) ───────────
-    // For admins:  #bulk-dept is a <select>.
-    // For officers: #bulk-dept is a <input type="hidden"> pre-set to their dept id.
-    // Both are read identically via .value; no JS branching needed.
-    // employee_type is included in the URL params when selected; the server applies
-    // it as an AND filter alongside dept_id.
-    function bulkDownload(type) {
+    function bulkDownload(exportType) {
         var dept    = document.getElementById('bulk-dept').value;
         var empType = document.getElementById('bulk-emp-type').value;
         var dtrType = document.getElementById('bulk-dtr-type').value;
@@ -608,44 +619,26 @@ if (typeof window.__dtrViewReady === 'undefined') {
         var period  = document.getElementById('bulk-period').value;
 
         if (!dept) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Missing Field',
-                text: 'Please select a department.',
-                confirmButtonColor: '#3b82f6',
-            });
+            Swal.fire({ icon: 'error', title: 'Missing Field', text: 'Please select a department.', confirmButtonColor: '#3b82f6' });
             return;
         }
         if (!month) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Missing Field',
-                text: 'Please select a month.',
-                confirmButtonColor: '#3b82f6',
-            });
+            Swal.fire({ icon: 'error', title: 'Missing Field', text: 'Please select a month.', confirmButtonColor: '#3b82f6' });
             return;
         }
 
-        var base = type === 'zip'
-            ? '{{ route('attendance.dtr.download-dept-zip') }}'
-            : '{{ route('attendance.dtr.download-dept') }}';
+        var jobParams = {
+            dept_id:  parseInt(dept),
+            dtr_type: dtrType,
+            month:    month,
+            period:   parseInt(period),
+        };
+        if (empType) jobParams.employee_type = empType;
 
-        var params = new URLSearchParams({ dept_id: dept, dtr_type: dtrType, month: month });
-        if (dtrType === 'semi-monthly') params.append('period', period);
-        if (empType) params.append('employee_type', empType);
+        var jobType = (exportType === 'zip') ? 'form48_dept_zip' : 'form48_dept';
+        var label   = (exportType === 'zip') ? 'Building ZIP archive&hellip;' : 'Building multi-sheet workbook&hellip;';
 
-        window.location.href = base + '?' + params.toString();
-
-        Swal.fire({
-            icon: 'success',
-            title: 'Download Started',
-            text: type === 'zip'
-                ? 'Your ZIP archive is being prepared.'
-                : 'Your multi-sheet workbook is being prepared.',
-            timer: 2500,
-            timerProgressBar: true,
-            showConfirmButton: false,
-        });
+        startExport('{{ route('export-jobs.create') }}', { type: jobType, params: jobParams }, label);
     }
 }
 </script>

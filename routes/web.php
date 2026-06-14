@@ -16,6 +16,7 @@ use App\Http\Controllers\MayorController;
 use App\Http\Controllers\OfficeOrderController;
 use App\Http\Controllers\RecordsManagerController;
 use App\Http\Controllers\TravelOrderController;
+use App\Http\Controllers\OicAssignmentController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
@@ -37,11 +38,8 @@ use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
 use App\Http\Controllers\Payroll\PayrollSettingsController;
-use App\Mail\LeaveRequestStatusNotification;
-use App\Models\Department;
-use App\Models\LeaveRequest;
-use App\Models\User;
-use Carbon\Carbon;
+use App\Http\Controllers\DevController;
+use App\Http\Controllers\ExportJobController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -61,6 +59,13 @@ Route::get('/favicon.ico', function () {
     abort(404);
 });
 
+// Background export jobs
+Route::middleware('auth')->group(function () {
+    Route::post('/export-jobs', [ExportJobController::class, 'create'])->name('export-jobs.create');
+    Route::get('/export-jobs/{id}/status', [ExportJobController::class, 'status'])->name('export-jobs.status');
+    Route::get('/export-jobs/{id}/download', [ExportJobController::class, 'download'])->name('export-jobs.download');
+});
+
 // Employee Leave Management
 Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::get('/employee/leave-management', [LeaveRequestController::class, 'index'])->name('employee.leave.management');
@@ -70,6 +75,7 @@ Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::get('/employee/leave-management/{id}/edit', [LeaveRequestController::class, 'edit'])->name('employee.leave.edit');
     Route::patch('/employee/leave-management/{id}/cancel', [LeaveRequestController::class, 'cancel'])->name('employee.leave.cancel');
     Route::post('/employee/leave-management/{id}/request-cancellation', [LeaveRequestController::class, 'requestCancellation'])->name('employee.leave.request-cancellation');
+    Route::post('/employee/leave-management/{id}/reschedule', [LeaveRequestController::class, 'requestReschedule'])->name('employee.leave.reschedule');
 
     });
 
@@ -242,6 +248,11 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
         Route::get('/office-orders', [DepartmentHeadController::class, 'officeOrders'])->name('office-orders');
         Route::get('/filed-travel-orders', [DepartmentHeadController::class, 'filedTravelOrders'])->name('filed-travel-orders');
         Route::get('/filed-office-orders', [DepartmentHeadController::class, 'filedOfficeOrders'])->name('filed-office-orders');
+
+        // OIC assignment management
+        Route::get('/oic-assignments', [OicAssignmentController::class, 'index'])->name('oic-assignments.index');
+        Route::post('/oic-assignments', [OicAssignmentController::class, 'store'])->name('oic-assignments.store');
+        Route::delete('/oic-assignments/{id}', [OicAssignmentController::class, 'destroy'])->name('oic-assignments.destroy');
     });
 });
 
@@ -265,6 +276,8 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
         Route::get('/office-orders', [AdministrativeOfficerController::class, 'officeOrders'])->name('office-orders');
         Route::get('/filed-travel-orders', [AdministrativeOfficerController::class, 'filedTravelOrders'])->name('filed-travel-orders');
         Route::get('/filed-office-orders', [AdministrativeOfficerController::class, 'filedOfficeOrders'])->name('filed-office-orders');
+        Route::get('/monitoring-matrix', [AdministrativeOfficerController::class, 'monitoringMatrix'])->name('monitoring-matrix');
+        Route::get('/monitoring-matrix/export', [AdministrativeOfficerController::class, 'exportMonitoringMatrix'])->name('monitoring-matrix.export');
     });
 
     // Administrative Officer approval actions
@@ -326,34 +339,35 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
     Route::post('/leave-manager/apply-credits', [LeaveManagerController::class, 'applyCredits'])
         ->name('leave-manager.apply-credits');
 
-    Route::get('/leave-manager/approved-leaves', function () {
-        return redirect()->route('dashboard');
-    })->name('leave-manager.approved-leaves');
+    Route::get('/leave-manager/approved-leaves', [LeaveManagerController::class, 'approvedLeaves'])
+        ->name('leave-manager.approved-leaves');
 
-    Route::get('/leave-manager/cancel-leaves', [LeaveManagerController::class, 'cancelLeaves'])
-        ->name('leave-manager.cancel-leaves');
     Route::get('/leave-manager/employee-cancellation-requests', [LeaveManagerController::class, 'employeeCancellationRequests'])
         ->name('leave-manager.employee-cancellation-requests');
 
-    // API endpoints used by cancel-leaves UI
-    Route::post('/api/leave/cancel-date', [LeaveManagerController::class, 'apiCancelDate'])
-        ->name('api.leave.cancel-date');
     Route::post('/api/leave/{leave}/approve-cancellation', [LeaveManagerController::class, 'apiApproveCancellation'])->name('api.leave.approve-cancellation');
     Route::post('/api/leave/{leave}/reject-cancellation', [LeaveManagerController::class, 'apiRejectCancellation'])->name('api.leave.reject-cancellation');
+    Route::post('/api/leave/bulk-approve-cancellations', [LeaveManagerController::class, 'apiBulkApproveCancellation'])->name('api.leave.bulk-approve-cancellations');
+    Route::post('/api/leave/bulk-reject-cancellations', [LeaveManagerController::class, 'apiBulkRejectCancellation'])->name('api.leave.bulk-reject-cancellations');
     Route::get('/api/leave-manager/pending-cancellation-count', [LeaveManagerController::class, 'apiPendingCancellationCount'])
         ->name('api.leave-manager.pending-cancellation-count');
+    Route::post('/api/leave-manager/notify-dept-head', [LeaveManagerController::class, 'apiNotifyDeptHead'])
+        ->name('api.leave-manager.notify-dept-head');
     Route::get('/api/employee-search', [LeaveManagerController::class, 'employeeSearch'])
         ->name('api.employee.search');
 
-    // Bulk cancel leaves on a declared holiday
-    Route::post('/api/leave/bulk-cancel-holiday', [LeaveManagerController::class, 'apiBulkCancelByHoliday'])
-        ->name('api.leave.bulk-cancel-holiday');
+    Route::get('/leave-manager/leave-ledger', [LeaveManagerController::class, 'leaveLedger'])
+        ->name('leave-manager.leave-ledger');
 
-    // Holiday management
-    Route::post('/api/holidays', [LeaveManagerController::class, 'storeHoliday'])
-        ->name('api.holidays.store');
-    Route::get('/api/holidays', [LeaveManagerController::class, 'listHolidays'])
-        ->name('api.holidays.list');
+    Route::get('/leave-manager/leave-card/download', [LeaveManagerController::class, 'downloadLeaveCard'])
+        ->name('leave-manager.leave-card.download');
+});
+
+Route::middleware(['auth', 'role:leave-manager,hr-manager'])->group(function () {
+    Route::get('/api/leave-ledger/history', [LeaveManagerController::class, 'apiLedgerHistory'])
+        ->name('api.leave-ledger.history');
+    Route::get('/api/leave-ledger/monthly', [LeaveManagerController::class, 'apiMonthlyCredits'])
+        ->name('api.leave-ledger.monthly');
 });
 
 Route::middleware(['auth', 'role:hr-manager'])->group(function () {
@@ -381,7 +395,8 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     Route::get('/dashboard/hr-manager/settings/backup', [HRManagerController::class, 'backupDatabase'])
         ->name('hr-manager.settings.backup');
     Route::post('/dashboard/hr-manager/settings/restore', [HRManagerController::class, 'restoreDatabase'])
-        ->name('hr-manager.settings.restore');
+        ->name('hr-manager.settings.restore')
+        ->withoutMiddleware(\App\Http\Middleware\LimitPayloadSize::class);
 
     Route::get('/dashboard/hr-manager/records/data', [HRManagerController::class, 'recordsData'])
         ->name('hr-manager.records.data');
@@ -413,6 +428,8 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.attendance.overview');
     Route::get('/dashboard/hr-manager/attendance-overview/data', [HRManagerController::class, 'attendanceOverviewData'])
         ->name('hr-manager.attendance.overview.data');
+    Route::post('/dashboard/hr-manager/attendance-overview/notify-dept-head', [HRManagerController::class, 'attendanceNotifyDeptHead'])
+        ->name('hr-manager.attendance.notify-dept-head');
 
     // Enhancement 3: Leave Analytics
     Route::get('/dashboard/hr-manager/leave/analytics', [HRManagerController::class, 'getLeaveAnalytics'])
@@ -431,6 +448,12 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     // Enhancement 5: Workforce Planning
     Route::get('/dashboard/hr-manager/records/planning-data', [HRManagerController::class, 'recordsPlanningData'])
         ->name('hr-manager.records.planning-data');
+
+    Route::get('/dashboard/hr-manager/leave-ledger', [HRManagerController::class, 'leaveLedger'])
+        ->name('hr-manager.leave-ledger');
+
+    Route::get('/dashboard/hr-manager/leave-card/download', [HRManagerController::class, 'downloadLeaveCard'])
+        ->name('hr-manager.leave-card.download');
 
 });
 
@@ -601,56 +624,7 @@ Route::fallback(function () {
     abort(404);
 });
 
-// Development-only: preview leave status email in browser
-Route::get('/dev/preview-leave-email', function () {
-    if (!app()->environment('local')) {
-        abort(404);
-    }
-
-    $employee = User::first();
-    $leave = LeaveRequest::latest()->first();
-    if (! $employee || ! $leave) {
-        return 'No sample employee or leave request found in the database.';
-    }
-
-    if (! empty($employee->Dept_id)) {
-        $dept = Department::find($employee->Dept_id);
-        $employee->department_name = $dept->Dept_name ?? null;
-    }
-
-    $formatted = [
-        'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
-        'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-        'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
-    ];
-
-    $mailable = new LeaveRequestStatusNotification($employee, $leave, $formatted, 'approved');
-    return $mailable->render();
-})->name('dev.preview.leave.email');
-// DEBUG: Test document requests endpoint
-Route::get('/test-doc-requests', function () {
-    $requests = \App\Models\DocumentRequest::query()
-        ->leftJoin('users', 'document_requests.EmpNo', '=', 'users.EmpNo')
-        ->leftJoin('departments', 'users.Dept_id', '=', 'departments.Dept_id')
-        ->select([
-            'document_requests.*',
-            'users.name as employee_name',
-            'departments.Dept_name as department_name',
-        ])
-        ->orderByDesc('document_requests.requested_on')
-        ->orderByDesc('document_requests.id')
-        ->get();
-
-    return [
-        'total_records' => $requests->count(),
-        'records' => $requests->map(function ($r) {
-            return [
-                'id' => $r->id,
-                'emp_no' => $r->EmpNo,
-                'employee_name' => $r->employee_name,
-                'status' => $r->status,
-                'document_type' => $r->document_type,
-            ];
-        }),
-    ];
-});
+// Development-only: preview leave status email in browser (local + authenticated only)
+Route::get('/dev/preview-leave-email', [DevController::class, 'previewLeaveEmail'])
+    ->middleware('auth')
+    ->name('dev.preview.leave.email');

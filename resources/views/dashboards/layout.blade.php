@@ -14,7 +14,7 @@
         @endif
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/export-job.js'])
     @yield('page_head')
 </head>
 <body class="bg-gray-50 text-slate-900 min-h-screen">

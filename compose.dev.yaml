@@ -15,9 +15,9 @@
 #   │  nginx   │──▶│  app  │──▶│   db   │
 #   │ :8090    │   │ :9000 │   │ :3306  │
 #   └──────────┘   └───┬───┘   └────────┘
-#                      │       ┌────────────┐
-#                      └──────▶│   queue    │
-#                              └────────────┘
+#                      │       ┌────────────┐   ┌───────────┐
+#                      └──────▶│   queue    │   │ scheduler │
+#                              └────────────┘   └───────────┘
 #   ┌──────────┐   ┌─────────────┐
 #   │  vite    │   │ phpmyadmin  │
 #   │ :5173    │   │ :8091       │
@@ -198,6 +198,44 @@ services:
         limits:
           cpus: "0.5"
           memory: 256M
+
+  # ── Scheduler: Laravel Task Scheduler ────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    image: hris-app:dev
+    container_name: hris-dev-scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: []
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *php-env
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+      - ./storage/app/templates:/var/www/html/storage/app/templates
+      - ./storage/app/pds:/var/www/html/storage/app/pds
+      - storage_logs:/var/www/html/storage/logs
+      - ./docker/php-upload.ini:/usr/local/etc/php/conf.d/99-upload.ini:ro
+    networks: [hris-dev-network]
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
 
   # ── Frontend: Vite Dev Server (HMR) ──────────────────────────────────────
   #

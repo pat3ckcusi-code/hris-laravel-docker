@@ -21,6 +21,7 @@ class ExceptionsController extends Controller
 
         $exceptions = $query->paginate(20);
         $runs = PayrollRun::orderByDesc('id')->get();
+
         return view('payroll.exceptions', compact('exceptions', 'runs'));
     }
 
@@ -70,6 +71,7 @@ class ExceptionsController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         PayrollException::findOrFail($id)->delete();
+
         return redirect()->route('payroll.exceptions.index')
             ->with('status', 'Exception deleted.');
     }

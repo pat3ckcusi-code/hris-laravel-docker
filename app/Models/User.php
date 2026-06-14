@@ -5,9 +5,11 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Notifications\ResetPasswordNotification;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -18,7 +20,7 @@ use Illuminate\Notifications\Notifiable;
  * @property string|null $firstname
  * @property string|null $middle_name
  * @property string $email
- * @property \Illuminate\Support\Carbon|null $email_verified_at
+ * @property Carbon|null $email_verified_at
  * @property string $password
  * @property bool $force_password_change
  * @property string|null $remember_token
@@ -29,18 +31,21 @@ use Illuminate\Notifications\Notifiable;
  * @property int|null $Dept_id
  * @property string|null $Status
  * @property string|null $employee_type
+ * @property bool $is_sanggunian_member
+ * @property bool $on_extended_service
+ * @property float|null $hours_per_day
  * @property string|null $ContactNo
  * @property string|null $access_level
  * @property float|null $leave_balance
- * @property \Illuminate\Support\Carbon|null $date_hired
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\LeaveBalance|null $leaveBalance
+ * @property Carbon|null $date_hired
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read LeaveBalance|null $leaveBalance
  * @property-read string $full_name
  * @property string|null $department_name
  * @property string|null $dept_head_name
  *
- * @mixin \Illuminate\Database\Eloquent\Builder
+ * @mixin Builder
  */
 class User extends Authenticatable
 {
@@ -49,12 +54,22 @@ class User extends Authenticatable
 
     public function getFullNameAttribute(): string
     {
-        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
+        return trim(($this->first_name ?? '').' '.($this->last_name ?? ''));
     }
 
     public function leaveBalance()
     {
         return $this->hasOne(LeaveBalance::class, 'user_id', 'id');
+    }
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'Dept_id', 'Dept_id');
+    }
+
+    public function oicAssignments()
+    {
+        return $this->hasMany(OicAssignment::class, 'user_id', 'id');
     }
 
     /**
@@ -73,6 +88,9 @@ class User extends Authenticatable
         'leave_balance',
         'date_hired',
         'employee_type',
+        'is_sanggunian_member',
+        'on_extended_service',
+        'hours_per_day',
     ];
 
     /**
@@ -115,6 +133,9 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'date_hired' => 'date',
+            'is_sanggunian_member' => 'boolean',
+            'on_extended_service' => 'boolean',
+            'hours_per_day' => 'float',
         ];
     }
 

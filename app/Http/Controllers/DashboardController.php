@@ -3,23 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\HRAuditTrail;
+use App\Models\LeaveBalance;
+use App\Models\LeaveRequest;
 use App\Models\Pds;
 use App\Models\User;
-use App\Notifications\EmployeeDefaultPasswordNotification;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\JsonResponse;
-use Symfony\Component\HttpFoundation\StreamedResponse;
-use Illuminate\Contracts\View\View;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use Throwable;
-use Illuminate\Validation\Rule;
-use App\Models\HRAuditTrail;
+use App\Services\LeaveRequestService;
 use App\Services\PdsService;
 use App\Services\RecordsService;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class DashboardController extends Controller
 {
@@ -81,10 +83,62 @@ class DashboardController extends Controller
 
         $view = self::ROLE_VIEW_MAP[$role] ?? 'dashboards.generic';
 
-        return view($view, [
-            'user' => $user,
-            'role' => $role,
-        ]);
+        $viewData = ['user' => $user, 'role' => $role];
+
+        if ($role === 'leave manager') {
+            $now = now();
+            $yearStart = $now->copy()->startOfYear()->toDateString();
+            $threeMonthsAgo = $now->copy()->subMonths(3)->toDateString();
+
+            $departments = Department::query()->pluck('Dept_name', 'Dept_id')->toArray();
+            $leaveService = app(LeaveRequestService::class);
+
+            // Summary cards
+            $totalFiled = LeaveRequest::where('date_filed', '>=', $yearStart)->count();
+            $approvedCount = LeaveRequest::where('date_filed', '>=', $yearStart)->where('status', 'approved')->count();
+            $cancelledCount = LeaveRequest::where('date_filed', '>=', $yearStart)->where('status', 'cancelled')->count();
+            $pendingCancellationCount = LeaveRequest::where('cancellation_status', 'Pending Cancellation')->count();
+            $employeeBalanceCount = LeaveBalance::count();
+            $lowBalanceCount = LeaveBalance::where(function ($q): void {
+                $q->where(function ($q2): void {
+                    $q2->whereNotNull('VL')->where('VL', '<=', 5);
+                })
+                    ->orWhere(function ($q2): void {
+                        $q2->whereNotNull('SL')->where('SL', '<=', 5);
+                    });
+            })->count();
+
+            // Anomaly: dept with most sick leave in last 3 months
+            $anomalyDept = null;
+            $sickRow = LeaveRequest::join('users', 'leave_requests.user_id', '=', 'users.id')
+                ->where('leave_requests.status', 'approved')
+                ->where('leave_requests.leave_type', 'LIKE', '%Sick%')
+                ->where('leave_requests.date_filed', '>=', $threeMonthsAgo)
+                ->whereNotNull('users.Dept_id')
+                ->selectRaw('users.Dept_id, COUNT(*) as cnt')
+                ->groupBy('users.Dept_id')
+                ->orderByDesc('cnt')
+                ->first();
+            if ($sickRow && $sickRow->cnt >= 3) {
+                $anomalyDept = [
+                    'name' => $departments[$sickRow->Dept_id] ?? 'Unknown Department',
+                    'count' => (int) $sickRow->cnt,
+                ];
+            }
+
+            $viewData = array_merge($viewData, [
+                'pendingCancellationCount' => $pendingCancellationCount,
+                'employeeBalanceCount' => $employeeBalanceCount,
+                'totalFiled' => $totalFiled,
+                'approvedCount' => $approvedCount,
+                'cancelledCount' => $cancelledCount,
+                'lowBalanceCount' => $lowBalanceCount,
+                'criticalBalances' => $leaveService->criticalBalances(),
+                'anomalyDept' => $anomalyDept,
+            ]);
+        }
+
+        return view($view, $viewData);
     }
 
     public function employeePds(Request $request): View
@@ -174,7 +228,7 @@ class DashboardController extends Controller
                     $nameUpdates['name_extension'] = trim($nameExt);
                 }
 
-                if (!empty($nameUpdates)) {
+                if (! empty($nameUpdates)) {
                     // Rebuild the composite "name" column: LAST, FIRST MIDDLE EXT
                     $last = $nameUpdates['last_name'] ?? $user->last_name ?? '';
                     $first = $nameUpdates['first_name'] ?? $user->first_name ?? '';
@@ -218,7 +272,7 @@ class DashboardController extends Controller
     {
         $this->ensureEmployee($request);
 
-        $user    = $request->user();
+        $user = $request->user();
         $tmpFile = null;
 
         try {
@@ -227,12 +281,12 @@ class DashboardController extends Controller
             $pdsRecord = Pds::where('user_id', $user->id)->first();
 
             Log::info('PDS export started', [
-                'user_id'         => $user->id,
-                'EmpNo'           => $user->EmpNo,
-                'pds_id'          => $pdsRecord?->id,
+                'user_id' => $user->id,
+                'EmpNo' => $user->EmpNo,
+                'pds_id' => $pdsRecord?->id,
                 'sections_filled' => $pdsRecord ? count(array_filter((array) $pdsRecord->section_data)) : 0,
                 'template_exists' => is_file(storage_path('app/templates/PDS.xlsx')),
-                'memory_limit'    => ini_get('memory_limit'),
+                'memory_limit' => ini_get('memory_limit'),
             ]);
 
             $spreadsheet = $pdsService->exportToExcel($user);
@@ -240,31 +294,32 @@ class DashboardController extends Controller
             // Write to a temp file so any serialization failure is caught here,
             // not after headers have been sent inside the streamDownload callback.
             $tmpFile = tempnam(sys_get_temp_dir(), 'pds_');
-            $writer  = IOFactory::createWriter($spreadsheet, 'Xlsx');
+            $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
             $writer->save($tmpFile);
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
 
-            $filename = 'PDS_' . strtoupper(str_replace(' ', '_', (string) $user->name)) . '_' . now()->format('Y-m-d') . '.xlsx';
+            $filename = 'PDS_'.strtoupper(str_replace(' ', '_', (string) $user->name)).'_'.now()->format('Y-m-d').'.xlsx';
 
             HRAuditTrail::create([
                 'actor_user_id' => $user->id,
-                'module'        => 'PDS',
-                'action'        => 'export',
-                'target_type'   => 'App\\Models\\Pds',
-                'target_id'     => $pdsRecord?->id,
-                'details'       => [
-                    'EmpNo'    => $user->EmpNo,
+                'module' => 'PDS',
+                'action' => 'export',
+                'target_type' => 'App\\Models\\Pds',
+                'target_id' => $pdsRecord?->id,
+                'details' => [
+                    'EmpNo' => $user->EmpNo,
                     'filename' => $filename,
                 ],
             ]);
 
             $localTmp = $tmpFile;
+
             return response()->streamDownload(
                 static function () use ($localTmp): void {
                     $handle = fopen($localTmp, 'rb');
                     if ($handle !== false) {
-                        while (!feof($handle)) {
+                        while (! feof($handle)) {
                             echo fread($handle, 65536);
                         }
                         fclose($handle);
@@ -281,12 +336,12 @@ class DashboardController extends Controller
 
             Log::error('PDS export failed', [
                 'user_id' => $user->id ?? null,
-                'EmpNo'   => $user->EmpNo ?? null,
-                'error'   => $e->getMessage(),
-                'file'    => $e->getFile() . ':' . $e->getLine(),
-                'trace'   => array_slice(
+                'EmpNo' => $user->EmpNo ?? null,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile().':'.$e->getLine(),
+                'trace' => array_slice(
                     array_map(
-                        static fn(array $f) => ($f['file'] ?? '?') . ':' . ($f['line'] ?? '?'),
+                        static fn (array $f) => ($f['file'] ?? '?').':'.($f['line'] ?? '?'),
                         $e->getTrace()
                     ),
                     0, 8
@@ -299,7 +354,6 @@ class DashboardController extends Controller
             ], 500);
         }
     }
-
 
     public function recordsManager(Request $request, RecordsService $recordsService): View
     {
@@ -325,8 +379,6 @@ class DashboardController extends Controller
         ]);
     }
 
-    
-
     public function recordsManagerDepartments(Request $request): View
     {
         $this->ensureRecordsManager($request);
@@ -346,7 +398,7 @@ class DashboardController extends Controller
         $departmentsQuery = Department::query()->orderBy('Dept_name');
 
         if ($search !== '') {
-            $departmentsQuery->where('Dept_name', 'like', '%' . $search . '%');
+            $departmentsQuery->where('Dept_name', 'like', '%'.$search.'%');
         }
 
         if ($statusFilter === 'assigned') {
@@ -620,7 +672,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * @return array{0: \Illuminate\Support\Collection<int, User>, 1: \Illuminate\Support\Collection<int, Department>, 2: array{total:int, active:int, inactive:int}}
+     * @return array{0: Collection<int, User>, 1: Collection<int, Department>, 2: array{total:int, active:int, inactive:int}}
      */
     private function recordsManagerCollections(): array
     {
@@ -667,8 +719,6 @@ class DashboardController extends Controller
         return [$employees, $departments, $statusSummary];
     }
 
-    
-
     private function ensureRecordsManager(Request $request): void
     {
         $role = $this->normalizeRole((string) $request->user()->access_level);
@@ -678,8 +728,8 @@ class DashboardController extends Controller
     private function ensureEmployee(Request $request): void
     {
         $role = $this->normalizeRole((string) $request->user()->access_level);
-        $allowed = ['employee', 'department head', 'hr manager'];
-        abort_unless(in_array($role, $allowed, true), 403, 'Only Employee, Department Head, or HR Manager users can access this section.');
+        $allowed = ['employee', 'department head', 'hr manager', 'administrative officer'];
+        abort_unless(in_array($role, $allowed, true), 403, 'Only Employee, Department Head, HR Manager, or Administrative Officer users can access this section.');
     }
 
     /**
@@ -734,19 +784,19 @@ class DashboardController extends Controller
         $firstName = trim($firstName);
         $middleName = trim((string) $middleName);
 
-        $givenName = trim($firstName . ' ' . $middleName);
+        $givenName = trim($firstName.' '.$middleName);
 
-        return trim($lastName . ', ' . $givenName, ', ');
+        return trim($lastName.', '.$givenName, ', ');
     }
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
      */
     private function normalizeEmployeeTextInput(array $validated): array
     {
         foreach (['last_name', 'first_name', 'middle_name', 'EmpNo', 'designation'] as $field) {
-            if (!array_key_exists($field, $validated) || $validated[$field] === null) {
+            if (! array_key_exists($field, $validated) || $validated[$field] === null) {
                 continue;
             }
 
@@ -758,13 +808,13 @@ class DashboardController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
      */
     private function normalizeDepartmentTextInput(array $validated): array
     {
         foreach (['DeptCode', 'Dept_name', 'EmpNo', 'Designation'] as $field) {
-            if (!array_key_exists($field, $validated) || $validated[$field] === null) {
+            if (! array_key_exists($field, $validated) || $validated[$field] === null) {
                 continue;
             }
 
@@ -799,7 +849,7 @@ class DashboardController extends Controller
 
             $next = $max + 1;
 
-            return $base . '-C' . $next;
+            return $base.'-C'.$next;
         }
 
         // Top-level department code generation: DEPT-###
@@ -822,7 +872,7 @@ class DashboardController extends Controller
         $next = $max + 1;
         $num = str_pad((string) $next, 3, '0', STR_PAD_LEFT);
 
-        return 'DEPT-' . $num;
+        return 'DEPT-'.$num;
     }
 
     private function hasDuplicateEmployeeName(string $lastName, string $firstName, ?int $ignoreUserId = null): bool

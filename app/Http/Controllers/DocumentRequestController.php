@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\DocumentRequest;
 use App\Models\DocumentType;
 use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 use Illuminate\Support\Facades\Auth;
-use App\Notifications\HrisTransactionNotification;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\View\View;
 
 class DocumentRequestController extends Controller
 {
@@ -32,9 +32,9 @@ class DocumentRequestController extends Controller
         $search = $request->query('search');
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('document_type', 'like', '%' . $search . '%')
-                  ->orWhere('purpose', 'like', '%' . $search . '%')
-                  ->orWhere('status', 'like', '%' . $search . '%');
+                $q->where('document_type', 'like', '%'.$search.'%')
+                    ->orWhere('purpose', 'like', '%'.$search.'%')
+                    ->orWhere('status', 'like', '%'.$search.'%');
             });
         }
 
@@ -60,14 +60,14 @@ class DocumentRequestController extends Controller
     {
         $validated = $request->validate([
             'document_type_id' => ['nullable', 'exists:document_types,id'],
-            'document_type'    => ['nullable', 'string', 'max:100'],
-            'purpose'          => ['required', 'string', 'max:1000'],
+            'document_type' => ['nullable', 'string', 'max:100'],
+            'purpose' => ['required', 'string', 'max:1000'],
         ]);
 
         $user = Auth::user();
         $documentTypeName = $validated['document_type'] ?? null;
 
-        if (!empty($validated['document_type_id'])) {
+        if (! empty($validated['document_type_id'])) {
             $documentType = DocumentType::findOrFail($validated['document_type_id']);
             $documentTypeName = $documentType->name;
         }
@@ -80,17 +80,17 @@ class DocumentRequestController extends Controller
         }
 
         DocumentRequest::create([
-            'EmpNo'         => $user->EmpNo,
+            'EmpNo' => $user->EmpNo,
             'document_type' => $documentTypeName,
-            'purpose'       => $validated['purpose'],
-            'status'        => 'Requested',
-            'requested_on'  => now(),
+            'purpose' => $validated['purpose'],
+            'status' => 'Requested',
+            'requested_on' => now(),
         ]);
 
-        \Illuminate\Support\Facades\Log::info('Document request submitted', [
-            'emp_no'        => $user->EmpNo,
+        Log::info('Document request submitted', [
+            'emp_no' => $user->EmpNo,
             'document_type' => $documentTypeName,
-            'status'        => 'Requested',
+            'status' => 'Requested',
         ]);
 
         try {
@@ -99,8 +99,8 @@ class DocumentRequestController extends Controller
                 status: 'Filed',
                 details: [
                     'Document Type' => $documentTypeName,
-                    'Purpose'       => $validated['purpose'],
-                    'Filed On'      => now()->format('l, F j, Y g:i A'),
+                    'Purpose' => $validated['purpose'],
+                    'Filed On' => now()->format('l, F j, Y g:i A'),
                 ],
             ));
         } catch (\Exception $ex) {
@@ -156,11 +156,11 @@ class DocumentRequestController extends Controller
         $parts = $documentType->parts ?? [];
 
         return [
-            'title'         => $parts['title'] ?? $documentType->name,
-            'date'          => now()->format('F d, Y'),
-            'salutation'    => $parts['salutation'] ?? 'To Whom It May Concern:',
+            'title' => $parts['title'] ?? $documentType->name,
+            'date' => now()->format('F d, Y'),
+            'salutation' => $parts['salutation'] ?? 'To Whom It May Concern:',
             'employee_name' => $user->name ?? '',
-            'designation'   => $user->designation ?? '',
+            'designation' => $user->designation ?? '',
             'employee_type' => $user->employee_type ?? '',
         ];
     }

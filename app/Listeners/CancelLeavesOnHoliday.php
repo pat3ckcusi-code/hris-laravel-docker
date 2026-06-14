@@ -18,8 +18,8 @@ class CancelLeavesOnHoliday
     {
         $holiday = $event->holiday;
 
-        $reason = 'Cancelled by Holiday: ' . $holiday->title
-            . ' (' . $holiday->holiday_date->format('M d, Y') . ')';
+        $reason = 'Cancelled by Holiday: '.$holiday->title
+            .' ('.$holiday->holiday_date->format('M d, Y').')';
 
         $this->service->cancelLeavesOnDate(
             $holiday->holiday_date->format('Y-m-d'),

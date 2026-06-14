@@ -17,7 +17,7 @@ class ResetPasswordNotification extends BaseResetPassword implements ShouldQueue
     public function toMail($notifiable): MailMessage
     {
         $url = $this->resetUrl($notifiable);
-        $expire = config('auth.passwords.' . config('auth.defaults.passwords') . '.expire');
+        $expire = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 
         return (new MailMessage)
             ->subject('CHRMD Password Reset Request')

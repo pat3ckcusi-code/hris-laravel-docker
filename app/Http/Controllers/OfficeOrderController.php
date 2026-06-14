@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
+use App\Services\DepartmentService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Services\DepartmentService;
 
 class OfficeOrderController extends Controller
 {
@@ -21,7 +21,9 @@ class OfficeOrderController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!$user) return response()->json(['success' => false, 'data' => []]);
+        if (! $user) {
+            return response()->json(['success' => false, 'data' => []]);
+        }
 
         $roleNorm = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
         $depts = ($roleNorm === 'administrative officer')
@@ -50,7 +52,8 @@ class OfficeOrderController extends Controller
                 ->pluck('emp_no')
                 ->map(function ($eno) {
                     $u = User::where('EmpNo', $eno)->first();
-                    return $u ? ($u->last_name . ', ' . $u->first_name) : $eno;
+
+                    return $u ? ($u->last_name.', '.$u->first_name) : $eno;
                 })->values();
 
             return [
@@ -72,14 +75,18 @@ class OfficeOrderController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user) return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
 
         $order = DB::table('office_orders')->where('id', $id)->first();
-        if (!$order) return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
 
         $empNos = DB::table('office_order_employees')->where('office_order_id', $order->id)->pluck('emp_no')->toArray();
         $employees = User::whereIn('EmpNo', $empNos)->get()->map(function ($u) {
-            return ['EmpNo' => $u->EmpNo, 'name' => ($u->last_name . ', ' . $u->first_name), 'designation' => $u->designation ?? ''];
+            return ['EmpNo' => $u->EmpNo, 'name' => ($u->last_name.', '.$u->first_name), 'designation' => $u->designation ?? ''];
         })->values();
 
         return response()->json(['success' => true, 'data' => [
@@ -110,9 +117,11 @@ class OfficeOrderController extends Controller
         ]);
 
         $user = Auth::user();
-        if (!$user) return response()->json(['message' => 'Unauthorized'], 401);
+        if (! $user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
 
-        $officeOrderNum = 'OO-' . now()->format('YmdHis') . '-' . $user->id;
+        $officeOrderNum = 'OO-'.now()->format('YmdHis').'-'.$user->id;
 
         $officeOrderId = DB::table('office_orders')->insertGetId([
             'office_order_num' => $officeOrderNum,

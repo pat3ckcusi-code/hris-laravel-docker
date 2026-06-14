@@ -11,6 +11,7 @@ class FileLocatorOfficialNotification extends Mailable
     use Queueable, SerializesModels;
 
     public $employee;
+
     public $locator;
 
     public function __construct($employee, $locator)
@@ -22,10 +23,10 @@ class FileLocatorOfficialNotification extends Mailable
     public function build()
     {
         return $this->subject('New Official File Locator Application')
-                    ->view('emails.file_locator_official')
-                    ->with([
-                        'employee' => $this->employee,
-                        'locator' => $this->locator,
-                    ]);
+            ->view('emails.file_locator_official')
+            ->with([
+                'employee' => $this->employee,
+                'locator' => $this->locator,
+            ]);
     }
 }

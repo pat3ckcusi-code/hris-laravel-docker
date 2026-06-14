@@ -11,7 +11,9 @@ class LeaveRequestNotification extends Mailable
     use Queueable, SerializesModels;
 
     public $employee;
+
     public $leave;
+
     public $formatted;
 
     public function __construct($employee, $leave, $formatted = [])
@@ -24,11 +26,11 @@ class LeaveRequestNotification extends Mailable
     public function build()
     {
         return $this->subject('New Leave Request Application')
-                    ->view('emails.leave_request_notification')
-                    ->with([
-                        'employee' => $this->employee,
-                        'leave' => $this->leave,
-                        'formatted' => $this->formatted,
-                    ]);
+            ->view('emails.leave_request_notification')
+            ->with([
+                'employee' => $this->employee,
+                'leave' => $this->leave,
+                'formatted' => $this->formatted,
+            ]);
     }
 }

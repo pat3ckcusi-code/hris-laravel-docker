@@ -1413,31 +1413,11 @@
                             initializeFlatpickrOn(trainingTable);
                             sortTrainingRows();
 
-                            return fetch('{{ route("dashboard.employee.pds.export") }}', {
-                                method: 'GET',
-                                credentials: 'same-origin',
-                                headers: { 'Accept': 'application/octet-stream, application/json' },
-                            });
-                        })
-                        .then(function (response) {
-                            if (!response.ok) {
-                                return response.json().then(function (body) {
-                                    throw new Error(body.message || 'Export failed');
-                                }).catch(function () {
-                                    throw new Error('Export failed (HTTP ' + response.status + ')');
-                                });
-                            }
-                            return response.blob();
-                        })
-                        .then(function (blob) {
-                            const url = URL.createObjectURL(blob);
-                            const link = document.createElement('a');
-                            link.href = url;
-                            link.download = 'PDS_' + new Date().toISOString().split('T')[0] + '.xlsx';
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                            URL.revokeObjectURL(url);
+                            startExport(
+                                '{{ route("export-jobs.create") }}',
+                                { type: 'pds', params: { user_id: {{ auth()->id() }} } },
+                                'Building your PDS spreadsheet&hellip;'
+                            );
                         })
                         .catch(function (error) {
                             console.error('PDS export error:', error);

@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\Department;
 use App\Models\EmployeeAssignment;
 use App\Models\HRAuditTrail;
+use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
+use App\Models\OicAssignment;
 use App\Models\Plantilla;
 use App\Models\SalaryMatrix;
 use App\Models\Setting;
@@ -16,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -44,6 +47,37 @@ class LeaveRequestService
     }
 
     /**
+     * Employees whose VL or SL balance is below 2 days, ordered by last name.
+     * Optionally filtered to a single department.
+     *
+     * @return Collection<int, \stdClass>
+     */
+    public function criticalBalances(?int $departmentId = null, int $limit = 50): Collection
+    {
+        return DB::table('leave_balances')
+            ->leftJoin('users', 'users.id', '=', 'leave_balances.user_id')
+            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+            ->select(
+                'users.id as user_id',
+                'users.last_name',
+                'users.first_name',
+                'departments.Dept_name',
+                'leave_balances.VL',
+                'leave_balances.SL',
+                'leave_balances.id as balance_id',
+            )
+            ->where(function ($q): void {
+                $q->where('leave_balances.VL', '<', 2)
+                    ->orWhere('leave_balances.SL', '<', 2);
+            })
+            ->when($departmentId !== null, fn ($q) => $q->where('users.Dept_id', $departmentId))
+            ->orderBy('users.last_name')
+            ->orderBy('users.first_name')
+            ->limit($limit)
+            ->get();
+    }
+
+    /**
      * Determine if the given user may print the provided leave request.
      */
     public function canPrint(LeaveRequest $leave, User $user): bool
@@ -53,16 +87,44 @@ class LeaveRequestService
             return false;
         }
 
-        // Department Heads and HR Managers may print their own approved leave without
-        // the printing_allowed flag — they have no AO in their own approval chain.
-        if ($leave->user_id === $user->id && $leave->status === 'approved') {
-            $role = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
-            if (str_contains($role, 'department head') || str_contains($role, 'hr manager')) {
-                return true;
+        $role = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
+
+        // Determine if the user is effectively an AO or HR Manager (via actual role or OIC assignment).
+        $isAoOrHrm = str_contains($role, 'administrative officer') || str_contains($role, 'hr manager');
+        if (! $isAoOrHrm && $leave->status === 'approved') {
+            $today = now()->toDateString();
+            $isAoOrHrm = OicAssignment::where('user_id', $user->id)
+                ->whereDate('start_date', '<=', $today)
+                ->whereDate('end_date', '>=', $today)
+                ->whereIn('role', ['administrative officer', 'hr manager'])
+                ->exists();
+        }
+
+        // Administrative officer and HR manager may print any approved leave — mirrors ETA/locator behaviour.
+        if ($leave->status === 'approved' && $isAoOrHrm) {
+            return true;
+        }
+
+        // Department head (or OIC-as-DH) may print approved leave for employees in their department(s).
+        if ($leave->status === 'approved') {
+            $isDh = str_contains($role, 'department head');
+            if (! $isDh) {
+                $today = now()->toDateString();
+                $isDh = OicAssignment::where('user_id', $user->id)
+                    ->whereDate('start_date', '<=', $today)
+                    ->whereDate('end_date', '>=', $today)
+                    ->where('role', 'department head')
+                    ->exists();
+            }
+            if ($isDh) {
+                $depts = $this->departmentService->resolveAllDepartmentsForUser($user);
+                if ($leave->user && $depts->where('Dept_id', $leave->user->Dept_id)->isNotEmpty()) {
+                    return true;
+                }
             }
         }
 
-        // All other parties still require the printing_allowed flag.
+        // All other parties require the printing_allowed flag.
         if (empty($leave->printing_allowed)) {
             return false;
         }
@@ -74,15 +136,6 @@ class LeaveRequestService
         $dept = $this->departmentService->resolveDepartmentForUser($user);
         if ($dept && $leave->user && ($leave->user->Dept_id == $dept->Dept_id)) {
             return true;
-        }
-
-        try {
-            $role = strtolower(trim((string) $user->access_level));
-            if ($role === 'administrative officer') {
-                return true;
-            }
-        } catch (\Exception $e) {
-            // ignore and continue
         }
 
         return false;
@@ -566,6 +619,178 @@ class LeaveRequestService
             return redirect()->back()->with('success', 'Leave already approved.');
         }
 
+        // If this is a reschedule leave, atomically cancel the original approved leave and restore its balances.
+        if (! empty($leave->rescheduled_from_id)) {
+            $original = LeaveRequest::with(['user', 'leaveDates'])->find($leave->rescheduled_from_id);
+            if ($original && $original->status === 'approved') {
+                try {
+                    DB::transaction(function () use ($original) {
+                        $lb = $original->user->leaveBalance ?? null;
+                        $applied = [];
+                        if (! empty($original->printing_deduction_details)) {
+                            $applied = json_decode($original->printing_deduction_details, true) ?: [];
+                        }
+
+                        $candidates = [
+                            'VL'   => ['balance_vacation_leave', 'vl', 'VL'],
+                            'SL'   => ['balance_sick_leave', 'sl', 'SL'],
+                            'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
+                            'SPL'  => ['balance_special_leave_privilege', 'spl', 'SPL'],
+                            'CTO'  => ['balance_cto', 'cto', 'CTO'],
+                            'SP'   => ['balance_solo_parent_leave', 'sp', 'SP'],
+                        ];
+
+                        $restored = [];
+                        if (! empty($applied) && $lb) {
+                            foreach ($applied as $type => $amt) {
+                                if (! is_numeric($amt) || floatval($amt) <= 0) {
+                                    continue;
+                                }
+                                $key = strtoupper((string) $type);
+                                $found = null;
+                                foreach (($candidates[$key] ?? []) as $cand) {
+                                    if (array_key_exists($cand, $lb->getAttributes()) || isset($lb->{$cand})) {
+                                        $found = $cand;
+                                        break;
+                                    }
+                                }
+                                if ($found) {
+                                    $lb->{$found} = floatval($lb->{$found} ?? 0) + floatval($amt);
+                                    $restored[$key] = floatval($amt);
+                                }
+                            }
+                            $lb->save();
+                        } elseif ($lb) {
+                            // Fallback: restore from leave_dates allocation
+                            $leaveDates = $original->leaveDates()->where('is_cancelled', false)->get();
+                            foreach ($leaveDates as $ld) {
+                                $days = floatval($ld->days ?? 1.0);
+                                $t = strtolower((string) ($ld->leave_type ?? $original->leave_type ?? ''));
+                                if (str_contains($t, 'vacation')) {
+                                    $lb->VL = ($lb->VL ?? 0) + $days;
+                                } elseif (str_contains($t, 'sick')) {
+                                    $lb->SL = ($lb->SL ?? 0) + $days;
+                                } elseif (str_contains($t, 'wellness')) {
+                                    $lb->WLNS = ($lb->WLNS ?? 0) + $days;
+                                } elseif (str_contains($t, 'solo')) {
+                                    $lb->SP = ($lb->SP ?? 0) + $days;
+                                } elseif (str_contains($t, 'special') || str_contains($t, 'spl')) {
+                                    $lb->SPL = ($lb->SPL ?? 0) + $days;
+                                }
+                            }
+                            $lb->save();
+                        }
+
+                        $original->leaveDates()->where('is_cancelled', false)->each(function ($ld) {
+                            $ld->is_cancelled = true;
+                            $ld->cancel_reason = 'Rescheduled';
+                            $ld->cancelled_by = auth()->id();
+                            $ld->cancelled_at = now();
+                            $ld->save();
+                        });
+
+                        $original->status              = 'cancelled';
+                        $original->detailed_status     = 'Cancelled';
+                        $original->cancellation_status = 'Rescheduled';
+                        $original->reschedule_status   = 'Rescheduled';
+                        $original->save();
+
+                        try {
+                            HRAuditTrail::create([
+                                'actor_user_id' => auth()->id(),
+                                'module'        => 'leave',
+                                'action'        => 'cancel_restore_balances',
+                                'target_type'   => 'leave_request',
+                                'target_id'     => $original->id,
+                                'details'       => [
+                                    'restored'     => $restored,
+                                    'reason'       => 'Rescheduled to leave #'.$original->rescheduledLeaves()->latest('id')->first()?->id,
+                                    'cancelled_at' => now()->toDateTimeString(),
+                                ],
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('HRAuditTrail write failed on reschedule cancel', ['leave_id' => $original->id, 'error' => $e->getMessage()]);
+                        }
+
+                        try {
+                            app(LeaveLedgerService::class)->writeLedgerEntry([
+                                'user_id'          => $original->user_id,
+                                'transaction_date' => now()->toDateString(),
+                                'transaction_type' => 'LEAVE_CANCELLED',
+                                'leave_type'       => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
+                                'credit_vl'        => floatval($restored['VL'] ?? 0),
+                                'credit_sl'        => floatval($restored['SL'] ?? 0),
+                                'debit_vl'         => 0,
+                                'debit_sl'         => 0,
+                                'reference_id'     => $original->id,
+                                'reference_type'   => 'leave_request',
+                                'created_by'       => auth()->id(),
+                                'is_system'        => false,
+                                'remarks'          => 'Leave rescheduled',
+                            ]);
+                        } catch (\Throwable $ex) {
+                            Log::error('LeaveLedger write failed on reschedule cancel', ['leave_id' => $original->id, 'error' => $ex->getMessage()]);
+                        }
+                    });
+                } catch (\Exception $e) {
+                    Log::error('Failed to cancel original leave during reschedule approval', ['original_id' => $original->id, 'error' => $e->getMessage()]);
+                    if ($request->ajax() || $request->wantsJson()) {
+                        return response()->json(['success' => false, 'message' => 'Failed to cancel original leave: '.$e->getMessage()], 422);
+                    }
+
+                    return redirect()->back()->with('error', 'Failed to cancel original leave: '.$e->getMessage());
+                }
+
+                // Notify all 4 parties about the reschedule approval (best-effort)
+                try {
+                    $employee = $leave->user;
+                    $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                    $department = $employee->Dept_id ? Department::find($employee->Dept_id) : null;
+                    $departmentName = $department?->Dept_name ?? 'N/A';
+
+                    $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
+                    $dh = null;
+                    if (in_array($filerRole, ['department head', 'hr manager'])) {
+                        $dh = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
+                    } elseif ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+                        $dh = User::where('EmpNo', $department->EmpNo)->first();
+                    }
+                    $ao = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
+                    $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
+
+                    $notifDetails = [
+                        'Employee'             => $empName,
+                        'Department'           => $departmentName,
+                        'Leave Type'           => $leave->leave_type ?? 'N/A',
+                        'New Start Date'       => Carbon::parse($leave->start_date)->format('l, F j, Y'),
+                        'New End Date'         => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                        'Original Leave'       => '#'.$original->id.' ('.Carbon::parse($original->start_date)->format('M j').' – '.Carbon::parse($original->end_date)->format('M j, Y').')',
+                        'Approved By'          => auth()->user()?->name ?? 'Approver',
+                    ];
+
+                    $employee->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Reschedule',
+                        status: 'Approved',
+                        details: $notifDetails,
+                        actor: auth()->user()?->name ?? 'Approver',
+                    ));
+
+                    foreach (array_filter([$dh, $ao, $lm]) as $recipient) {
+                        if ($recipient->id !== $employee->id) {
+                            $recipient->notify(new HrisTransactionNotification(
+                                requestType: 'Leave Reschedule',
+                                status: 'Approved',
+                                details: $notifDetails,
+                                actor: auth()->user()?->name ?? 'Approver',
+                            ));
+                        }
+                    }
+                } catch (\Exception $ex) {
+                    Log::error('Reschedule approval notification failed', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+                }
+            }
+        }
+
         $user = $leave->user;
         $leaveBalance = $user->leaveBalance;
         if (! $leaveBalance) {
@@ -627,52 +852,7 @@ class LeaveRequestService
         if ($toDeduct <= 0) {
             $leave->status = 'approved';
             $leave->save();
-            // notify employee about approval
-            try {
-                $employee = $leave->user;
-                if ($employee && ! empty($employee->Dept_id)) {
-                    $dept = Department::find($employee->Dept_id);
-                    if ($dept) {
-                        $employee->department_name = $dept->Dept_name ?? null;
-                    }
-                }
-                $formatted = [
-                    'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
-                    'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                    'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
-                ];
-                $balances = [
-                    'VL' => $leaveBalance->VL ?? 0,
-                    'SL' => $leaveBalance->SL ?? 0,
-                    'WLNS' => $leaveBalance->WLNS ?? 0,
-                    'SP' => $leaveBalance->SP ?? 0,
-                    'SPL' => $leaveBalance->SPL ?? 0,
-                    'CTO' => $leaveBalance->CTO ?? 0,
-                ];
-                if ($employee) {
-                    $email = $employee->email ?? null;
-                    Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                    if (! empty($email)) {
-                        $employee->notify(new HrisTransactionNotification(
-                            requestType: 'Leave Request',
-                            status: 'Approved',
-                            details: [
-                                'Leave Type' => $leave->leave_type ?? 'N/A',
-                                'Start Date' => $formatted['start'],
-                                'End Date' => $formatted['end'],
-                                'Date Filed' => $formatted['filed'],
-                                'VL Balance' => number_format($balances['VL'] ?? 0, $this->leaveDecimals()),
-                                'SL Balance' => number_format($balances['SL'] ?? 0, 0),
-                            ],
-                        ));
-                        Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
-                    } else {
-                        Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('Error sending leave approval email', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
-            }
+            $this->notifyLeaveApproval($leave, $leaveBalance);
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Leave approved.']);
             }
@@ -683,52 +863,7 @@ class LeaveRequestService
         if (! $column) {
             $leave->status = 'approved';
             $leave->save();
-            // notify employee about approval
-            try {
-                $employee = $leave->user;
-                if ($employee && ! empty($employee->Dept_id)) {
-                    $dept = Department::find($employee->Dept_id);
-                    if ($dept) {
-                        $employee->department_name = $dept->Dept_name ?? null;
-                    }
-                }
-                $formatted = [
-                    'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
-                    'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                    'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
-                ];
-                $balances = [
-                    'VL' => $leaveBalance->VL ?? 0,
-                    'SL' => $leaveBalance->SL ?? 0,
-                    'WLNS' => $leaveBalance->WLNS ?? 0,
-                    'SP' => $leaveBalance->SP ?? 0,
-                    'SPL' => $leaveBalance->SPL ?? 0,
-                    'CTO' => $leaveBalance->CTO ?? 0,
-                ];
-                if ($employee) {
-                    $email = $employee->email ?? null;
-                    Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                    if (! empty($email)) {
-                        $employee->notify(new HrisTransactionNotification(
-                            requestType: 'Leave Request',
-                            status: 'Approved',
-                            details: [
-                                'Leave Type' => $leave->leave_type ?? 'N/A',
-                                'Start Date' => $formatted['start'],
-                                'End Date' => $formatted['end'],
-                                'Date Filed' => $formatted['filed'],
-                                'VL Balance' => number_format($balances['VL'] ?? 0, $this->leaveDecimals()),
-                                'SL Balance' => number_format($balances['SL'] ?? 0, 0),
-                            ],
-                        ));
-                        Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
-                    } else {
-                        Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('Error sending leave approval email', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
-            }
+            $this->notifyLeaveApproval($leave, $leaveBalance);
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Leave approved.']);
             }
@@ -908,6 +1043,25 @@ class LeaveRequestService
             Log::error('Failed to write HRAuditTrail for leave deduction', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
         }
 
+        try {
+            app(LeaveLedgerService::class)->writeLedgerEntry([
+                'user_id' => $leave->user_id,
+                'transaction_date' => now()->toDateString(),
+                'transaction_type' => 'LEAVE_USED',
+                'leave_type' => $column ?? 'OTHER',
+                'debit_vl' => $deductionLog['VL'] ?? 0,
+                'debit_sl' => $deductionLog['SL'] ?? 0,
+                'credit_vl' => 0,
+                'credit_sl' => 0,
+                'reference_id' => $leave->id,
+                'reference_type' => 'leave_request',
+                'created_by' => auth()->id(),
+                'is_system' => false,
+            ]);
+        } catch (\Throwable $ex) {
+            Log::error('LeaveLedger write failed on approval', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
+        }
+
         Log::info('Leave approved and credits deducted', [
             'leave_id' => $leave->id,
             'employee_id' => $user->id ?? null,
@@ -916,52 +1070,8 @@ class LeaveRequestService
             'timestamp' => now()->toDateTimeString(),
         ]);
 
-        // notify employee about approval after transaction (runs for both Ajax and non-Ajax)
-        try {
-            $employee = $leave->user;
-            if ($employee && ! empty($employee->Dept_id)) {
-                $dept = Department::find($employee->Dept_id);
-                if ($dept) {
-                    $employee->department_name = $dept->Dept_name ?? null;
-                }
-            }
-            $formatted = [
-                'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
-                'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
-            ];
-            $balances = [
-                'VL' => $leaveBalance->VL ?? 0,
-                'SL' => $leaveBalance->SL ?? 0,
-                'WLNS' => $leaveBalance->WLNS ?? 0,
-                'SP' => $leaveBalance->SP ?? 0,
-                'SPL' => $leaveBalance->SPL ?? 0,
-                'CTO' => $leaveBalance->CTO ?? 0,
-            ];
-            if ($employee) {
-                $email = $employee->email ?? null;
-                Log::info('Leave approval email attempt', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null, 'email' => $email]);
-                if (! empty($email)) {
-                    $employee->notify(new HrisTransactionNotification(
-                        requestType: 'Leave Request',
-                        status: 'Approved',
-                        details: [
-                            'Leave Type' => $leave->leave_type ?? 'N/A',
-                            'Start Date' => $formatted['start'],
-                            'End Date' => $formatted['end'],
-                            'Date Filed' => $formatted['filed'],
-                            'VL Balance' => number_format($balances['VL'] ?? 0, 3),
-                            'SL Balance' => number_format($balances['SL'] ?? 0, 0),
-                        ],
-                    ));
-                    Log::info('Leave approval email queued', ['leave_id' => $leave->id, 'email' => $email]);
-                } else {
-                    Log::warning('Leave approval email not sent: employee has no email', ['leave_id' => $leave->id, 'user_id' => $employee->id ?? null]);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('Error sending leave approval email', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
-        }
+        $this->notifyLeaveApproval($leave, $leaveBalance);
+
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Leave approved and balance updated.']);
         }
@@ -1396,6 +1506,48 @@ class LeaveRequestService
             $protection->setScenarios(false);
             $protection->setSelectLockedCells(false);
             $protection->setSelectUnlockedCells(false);
+        }
+    }
+
+    /**
+     * Send an approval notification to the leave owner.
+     * Extracted from three identical blocks inside approveLeave().
+     *
+     * @param  LeaveBalance  $leaveBalance
+     */
+    private function notifyLeaveApproval(LeaveRequest $leave, object $leaveBalance): void
+    {
+        $employee = $leave->user;
+
+        if (! $employee) {
+            return;
+        }
+
+        $formatted = [
+            'filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
+            'start' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
+            'end' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+        ];
+
+        try {
+            $employee->notify(new HrisTransactionNotification(
+                requestType: 'Leave Request',
+                status: 'Approved',
+                details: [
+                    'Leave Type' => $leave->leave_type ?? 'N/A',
+                    'Start Date' => $formatted['start'],
+                    'End Date' => $formatted['end'],
+                    'Date Filed' => $formatted['filed'],
+                    'VL Balance' => number_format((float) ($leaveBalance->VL ?? 0), $this->leaveDecimals()),
+                    'SL Balance' => number_format((float) ($leaveBalance->SL ?? 0), 0),
+                ],
+            ));
+        } catch (\Exception $e) {
+            Log::error('Failed to send leave approval notification', [
+                'leave_id' => $leave->id,
+                'user_id' => $employee->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

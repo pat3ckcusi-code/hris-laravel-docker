@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
-use App\Models\LeaveRequest;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class HolidayLeaveCancellationService
@@ -13,10 +11,10 @@ class HolidayLeaveCancellationService
     /**
      * Cancel all approved leave dates that fall on the given date and refund credits.
      *
-     * @param  string  $date        The holiday date (Y-m-d)
-     * @param  string  $reason      Reason for cancellation
-     * @param  int|null $actorId    User performing the action (null = system/auto)
-     * @return array   Summary: ['cancelled_count' => int, 'affected_employees' => int, 'details' => array]
+     * @param  string  $date  The holiday date (Y-m-d)
+     * @param  string  $reason  Reason for cancellation
+     * @param  int|null  $actorId  User performing the action (null = system/auto)
+     * @return array Summary: ['cancelled_count' => int, 'affected_employees' => int, 'details' => array]
      */
     public function cancelLeavesOnDate(string $date, string $reason, ?int $actorId = null): array
     {
@@ -75,7 +73,7 @@ class HolidayLeaveCancellationService
                     'leave_date_id' => $ld->id,
                     'date' => $date,
                     'user_id' => $user->id ?? null,
-                    'employee' => $user ? trim(($user->last_name ?? '') . ', ' . ($user->first_name ?? '')) : null,
+                    'employee' => $user ? trim(($user->last_name ?? '').', '.($user->first_name ?? '')) : null,
                     'leave_type' => $leave->leave_type,
                     'refunded_field' => $refundedField,
                 ];
@@ -108,7 +106,7 @@ class HolidayLeaveCancellationService
     /**
      * Refund 1 day to the appropriate leave balance field.
      *
-     * @return string|null  The field that was credited, or null if no refund possible
+     * @return string|null The field that was credited, or null if no refund possible
      */
     private function refundCredit($leaveBalance, ?string $leaveType): ?string
     {
@@ -140,7 +138,7 @@ class HolidayLeaveCancellationService
             }
         }
 
-        if (!$field) {
+        if (! $field) {
             $code = strtoupper(trim($type));
             $allowed = ['VL', 'SL', 'WLNS', 'SPL', 'SP', 'CTO'];
             if (in_array($code, $allowed, true)) {
@@ -148,7 +146,7 @@ class HolidayLeaveCancellationService
             }
         }
 
-        if (!$field) {
+        if (! $field) {
             $field = 'VL';
         }
 

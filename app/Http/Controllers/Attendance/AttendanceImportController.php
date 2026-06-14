@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportAttendanceLogsJob;
 use App\Models\Department;
+use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -15,16 +16,17 @@ class AttendanceImportController extends Controller
     public function index(): View
     {
         $departments = Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+        $setting = Setting::first();
 
-        return view('hr-manager.attendance-import', compact('departments'));
+        return view('hr-manager.attendance-import', compact('departments', 'setting'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'from_date' => ['required', 'date', 'before_or_equal:to_date'],
-            'to_date'   => ['required', 'date', 'after_or_equal:from_date'],
-            'dept_id'   => ['nullable', 'integer', 'exists:departments,Dept_id'],
+            'to_date' => ['required', 'date', 'after_or_equal:from_date'],
+            'dept_id' => ['nullable', 'integer', 'exists:departments,Dept_id'],
         ]);
 
         $deptId = isset($validated['dept_id']) ? (int) $validated['dept_id'] : null;
@@ -41,7 +43,7 @@ class AttendanceImportController extends Controller
             : 'All Departments';
 
         $fromFormatted = Carbon::parse($validated['from_date'])->format('M j, Y');
-        $toFormatted   = Carbon::parse($validated['to_date'])->format('M j, Y');
+        $toFormatted = Carbon::parse($validated['to_date'])->format('M j, Y');
 
         return redirect()
             ->route('hr-manager.attendance.import')

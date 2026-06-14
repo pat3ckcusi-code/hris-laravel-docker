@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -29,7 +28,7 @@ class LimitPayloadSize
             ]);
 
             return response(
-                json_encode(['error' => 'Payload too large. Maximum size: ' . ($this->maxSize / 1024 / 1024) . 'MB']),
+                json_encode(['error' => 'Payload too large. Maximum size: '.($this->maxSize / 1024 / 1024).'MB']),
                 413,
                 ['Content-Type' => 'application/json']
             );
