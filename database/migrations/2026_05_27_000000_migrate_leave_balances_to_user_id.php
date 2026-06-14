@@ -23,7 +23,9 @@ return new class extends Migration
             DB::statement("ALTER TABLE leave_balances DROP FOREIGN KEY `{$foreignKey->CONSTRAINT_NAME}`");
         }
 
-        DB::statement("UPDATE leave_balances lb JOIN users u ON lb.EmpNo = u.EmpNo SET lb.user_id = u.id");
+        if (Schema::hasColumn('leave_balances', 'EmpNo')) {
+            DB::statement("UPDATE leave_balances lb JOIN users u ON lb.EmpNo = u.EmpNo SET lb.user_id = u.id");
+        }
 
         $userForeignKey = DB::selectOne("SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_balances' AND COLUMN_NAME = 'user_id' AND REFERENCED_TABLE_NAME = 'users'");
         if (!$userForeignKey) {
@@ -72,7 +74,9 @@ return new class extends Migration
             });
         }
 
-        DB::statement("UPDATE leave_balances lb JOIN users u ON lb.user_id = u.id SET lb.EmpNo = u.EmpNo");
+        if (Schema::hasColumn('leave_balances', 'user_id')) {
+            DB::statement("UPDATE leave_balances lb JOIN users u ON lb.user_id = u.id SET lb.EmpNo = u.EmpNo");
+        }
 
         $uniqueIndex = DB::selectOne("SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'leave_balances' AND index_name = 'leave_balances_empno_unique'");
         if (!$uniqueIndex) {
