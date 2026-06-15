@@ -1,6 +1,7 @@
 import Swal from 'sweetalert2';
 
 const POLL_INTERVAL_MS = 2000;
+const MAX_WAIT_MS = 300_000; // 5 minutes
 
 /**
  * Queue a background export job and show a SweetAlert progress dialog.
@@ -41,7 +42,20 @@ window.startExport = function startExport(createUrl, params, label = 'Generating
                 didOpen() {
                     Swal.showLoading();
 
+                    const deadline = Date.now() + MAX_WAIT_MS;
+
                     pollTimer = setInterval(() => {
+                        if (Date.now() > deadline) {
+                            clearInterval(pollTimer);
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Export Taking Too Long',
+                                text: 'The export is taking longer than expected. Please try again.',
+                                confirmButtonColor: '#3b82f6',
+                            });
+                            return;
+                        }
+
                         fetch(status_url, { headers: { Accept: 'application/json' } })
                             .then((r) => r.json())
                             .then(({ status, download_url, filename, error }) => {

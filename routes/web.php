@@ -218,6 +218,10 @@ Route::middleware('auth')->group(function () {
         ->name('dashboard.records-manager.users.destroy');
     Route::post('/records-manager/employees/{id}/reset-password', [RecordsManagerController::class, 'resetPassword'])
         ->name('records-manager.employees.reset-password');
+    Route::get('/dashboard/records-manager/employees/import-template', [RecordsManagerController::class, 'downloadImportTemplate'])
+        ->name('dashboard.records-manager.employees.import-template');
+    Route::post('/dashboard/records-manager/employees/import', [RecordsManagerController::class, 'import'])
+        ->name('dashboard.records-manager.employees.import');
 
     // Self-Service: Change Password (all authenticated users)
     Route::get('/user/change-password', [UserController::class, 'showChangePassword'])

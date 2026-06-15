@@ -15,20 +15,28 @@
 
         <div class="hrm-summary-grid">
             <article class="hrm-summary-card">
-                <p>Total Requests</p>
-                <h3 id="summaryTotalRequests">{{ number_format($summary['total_requests']) }}</h3>
+                <p>Total Employees</p>
+                <h3>{{ number_format($workforceCards['total_employees']) }}</h3>
+                <small>Across all departments</small>
+            </article>
+            <article class="hrm-summary-card" style="cursor:pointer"
+                data-filter="award_recipients"
+                data-title="Award Recipients {{ date('Y') }}">
+                <p>Award Recipients</p>
+                <h3>{{ number_format($workforceCards['award_recipients']) }}</h3>
+                <small>Service milestones in {{ date('Y') }}</small>
             </article>
             <article class="hrm-summary-card">
-                <p>Pending</p>
-                <h3 id="summaryPending">{{ number_format($summary['pending']) }}</h3>
+                <p>{{ $workforceCards['top_employee_type'] }}</p>
+                <h3>{{ number_format($workforceCards['top_employee_type_count']) }}</h3>
+                <small>Largest employee type</small>
             </article>
-            <article class="hrm-summary-card">
-                <p>Approved</p>
-                <h3 id="summaryApproved">{{ number_format($summary['approved']) }}</h3>
-            </article>
-            <article class="hrm-summary-card">
-                <p>Completed</p>
-                <h3 id="summaryCompleted">{{ number_format($summary['completed']) }}</h3>
+            <article class="hrm-summary-card" style="cursor:pointer"
+                data-filter="sixty_plus"
+                data-title="Employees Age 60+">
+                <p>Employees Age 60+</p>
+                <h3>{{ number_format($workforceCards['sixty_plus_count']) }}</h3>
+                <small>Nearing retirement age</small>
             </article>
         </div>
 

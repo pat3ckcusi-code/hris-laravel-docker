@@ -273,10 +273,10 @@
                         <input type="number" class="hrm-input" id="auto_import_interval_minutes"
                                name="auto_import_interval_minutes"
                                value="{{ old('auto_import_interval_minutes', $settings->auto_import_interval_minutes ?? 30) }}"
-                               min="1" max="1440">
+                               min="15" max="1440">
                         <span class="settings-hint">
                             Minutes to wait after a full sweep completes before starting the next one.
-                            Each sweep processes 100 logs per minute — set to 1 for near-continuous import.
+                            Each sweep processes 500 logs per minute — minimum 15 minutes.
                         </span>
                         @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>

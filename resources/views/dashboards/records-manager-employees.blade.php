@@ -20,6 +20,7 @@
 
 @section('top_actions')
     <button type="button" class="btn" id="openAddEmployeeModal">Add New Employee</button>
+    <button type="button" class="btn" id="openImportEmployeeModal">Import Employees</button>
 @endsection
 
 @section('page_head')
@@ -71,7 +72,8 @@
 
             <label>
                 Employee No.
-                <input type="text" name="EmpNo" value="{{ old('EmpNo') }}" data-uppercase-input>
+                <input type="text" id="addEmpNo" name="EmpNo" value="{{ old('EmpNo') }}"
+                       readonly data-next-sequential-by-type="{{ json_encode($nextSequentialByType) }}">
             </label>
 
             <label>
@@ -125,6 +127,37 @@
             </p>
 
             <button type="submit" class="record-btn">Create Employee</button>
+        </form>
+    </dialog>
+
+    <dialog id="importEmployeeModal" class="employee-modal">
+        <form method="dialog" class="modal-top-actions">
+            <button type="submit" class="modal-close" aria-label="Close">x</button>
+        </form>
+
+        <header>
+            <h3>Import Employees</h3>
+            <span class="record-email">Upload a filled template to create multiple employee accounts at once.</span>
+        </header>
+
+        <div style="margin-bottom:1rem;">
+            <a href="{{ route('dashboard.records-manager.employees.import-template') }}" class="btn" style="font-size:0.85rem;">
+                Download Template
+            </a>
+            <span style="font-size:0.8rem; color:#6b7280; margin-left:0.5rem;">Fill in the template then upload it below.</span>
+        </div>
+
+        <form id="importEmployeeForm" class="record-form">
+            @csrf
+            <label>
+                Excel / CSV File
+                <input type="file" id="importFile" name="import_file" accept=".xlsx,.xls,.csv" required>
+            </label>
+            <p class="create-note">
+                Required columns: Last Name, First Name, Email, Date Hired, Employee Type, Access Level.<br>
+                Credential emails will be sent to each employee automatically.
+            </p>
+            <button type="submit" class="record-btn">Import</button>
         </form>
     </dialog>
 
@@ -399,6 +432,32 @@
                 openCreateModal();
             });
 
+            // Auto-fill EmpNo (read-only) when date_hired or employee_type is picked (format: YY + 5-digit per-type sequential)
+            var addEmpNoInput    = document.getElementById('addEmpNo');
+            var addDateHiredInput = document.querySelector('#addEmployeeForm [name="date_hired"]');
+            var addEmpTypeSelect  = document.querySelector('#addEmployeeForm [name="employee_type"]');
+
+            if (addEmpNoInput && addDateHiredInput && addEmpTypeSelect) {
+                var nextSeqByType = JSON.parse(addEmpNoInput.dataset.nextSequentialByType || '{}');
+
+                function buildEmpNo(dateValue, empType) {
+                    var year = (dateValue || '').slice(2, 4);
+                    var seq  = nextSeqByType[empType] || '';
+                    return (year && seq) ? year + seq : '';
+                }
+
+                function tryAutoFill() {
+                    addEmpNoInput.value = buildEmpNo(addDateHiredInput.value, addEmpTypeSelect.value);
+                }
+
+                addDateHiredInput.addEventListener('change', tryAutoFill);
+                addEmpTypeSelect.addEventListener('change', tryAutoFill);
+
+                openButton.addEventListener('click', function () {
+                    addEmpNoInput.value = buildEmpNo(addDateHiredInput.value, addEmpTypeSelect.value);
+                });
+            }
+
             document.querySelectorAll('.open-update-modal').forEach(function (button) {
                 button.addEventListener('click', function () {
                     if (!updateForm) {
@@ -508,6 +567,94 @@
                 });
             });
         })(jQuery);
+
+        // Import Employees modal
+        (function () {
+            var importModal  = document.getElementById('importEmployeeModal');
+            var importButton = document.getElementById('openImportEmployeeModal');
+            var importForm   = document.getElementById('importEmployeeForm');
+
+            if (!importModal || !importButton || !importForm) return;
+
+            importButton.addEventListener('click', function () {
+                if (!importModal.open) importModal.showModal();
+            });
+
+            importForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                var fileInput = document.getElementById('importFile');
+                if (!fileInput || !fileInput.files.length) {
+                    Swal.fire('No file selected', 'Please choose an Excel or CSV file to upload.', 'warning');
+                    return;
+                }
+
+                if (importModal.open) importModal.close();
+
+                Swal.fire({
+                    title: 'Importing employees',
+                    text: 'Processing your file. Please wait.',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    showConfirmButton: false,
+                    didOpen: function () { Swal.showLoading(); },
+                });
+
+                var formData = new FormData();
+                formData.append('import_file', fileInput.files[0]);
+                formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+
+                fetch('{{ route('dashboard.records-manager.employees.import') }}', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body: formData,
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.success === false) {
+                        Swal.fire('Error', data.message || 'An error occurred.', 'error');
+                        return;
+                    }
+
+                    var failedHtml = '';
+                    if (data.failed && data.failed.length) {
+                        failedHtml = '<br><br><strong style="color:#dc2626;">Failed rows:</strong><ul style="text-align:left;margin-top:0.5rem;color:#dc2626;">';
+                        data.failed.forEach(function (f) {
+                            failedHtml += '<li>Row ' + f.row + ': ' + f.errors.join(', ') + '</li>';
+                        });
+                        failedHtml += '</ul>';
+                    }
+
+                    var warningsHtml = '';
+                    if (data.warnings && data.warnings.length) {
+                        warningsHtml = '<br><br><strong style="color:#d97706;">Warnings:</strong><ul style="text-align:left;margin-top:0.5rem;color:#d97706;">';
+                        data.warnings.forEach(function (w) {
+                            warningsHtml += '<li>Row ' + w.row + ': ' + w.message + '</li>';
+                        });
+                        warningsHtml += '</ul>';
+                    }
+
+                    var icon  = data.imported > 0 ? 'success' : 'warning';
+                    var title = data.imported > 0 ? 'Import Complete' : 'No Records Imported';
+                    var msg   = data.imported + ' employee' + (data.imported !== 1 ? 's' : '') + ' imported.';
+                    if (data.failed && data.failed.length) {
+                        msg += ' ' + data.failed.length + ' row' + (data.failed.length !== 1 ? 's' : '') + ' failed.';
+                    }
+
+                    Swal.fire({
+                        icon: icon,
+                        title: title,
+                        html: msg + warningsHtml + failedHtml,
+                        confirmButtonColor: '#f06c00',
+                    }).then(function () {
+                        if (data.imported > 0) window.location.reload();
+                    });
+                })
+                .catch(function () {
+                    Swal.fire('Error', 'An unexpected error occurred. Please try again.', 'error');
+                });
+            });
+        })();
 
         // Initialize DataTables (guard to avoid reinitialization)
         document.addEventListener('DOMContentLoaded', function () {

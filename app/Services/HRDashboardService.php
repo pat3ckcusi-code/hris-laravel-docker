@@ -29,6 +29,40 @@ class HRDashboardService
 
     // ── Summary cards ────────────────────────────────────────────────────────
 
+    /** @return array<string, mixed> */
+    public function buildWorkforceCards(): array
+    {
+        $chartData = $this->buildChartData(null);
+
+        $totalEmployees = array_sum($chartData['workforce_per_department']['values']);
+
+        $typeMap = array_combine(
+            $chartData['employment_status']['labels'],
+            $chartData['employment_status']['values']
+        ) ?: [];
+        arsort($typeMap);
+        $topType = (string) (array_key_first($typeMap) ?? 'N/A');
+        $topTypeCount = (int) ($typeMap[$topType] ?? 0);
+
+        $milestoneYears = [10, 15, 20, 25, 30, 35, 40];
+        $currentYear = now()->year;
+        $hiredYears = array_map(fn ($m) => $currentYear - $m, $milestoneYears);
+
+        $awardRecipientsCount = (int) User::query()
+            ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee'])
+            ->whereNotNull('date_hired')
+            ->whereIn(DB::raw('YEAR(date_hired)'), $hiredYears)
+            ->count();
+
+        return [
+            'total_employees' => $totalEmployees,
+            'award_recipients' => $awardRecipientsCount,
+            'top_employee_type' => $topType,
+            'top_employee_type_count' => $topTypeCount,
+            'sixty_plus_count' => $chartData['sixty_plus_count'],
+        ];
+    }
+
     /** @return array<string, int> */
     public function buildSummaryCards(): array
     {
@@ -110,7 +144,17 @@ class HRDashboardService
 
         $genderCounts = ['Male' => 0, 'Female' => 0, 'Not Specified' => 0];
         $ageGroupCounts = ['18-25' => 0, '26-35' => 0, '36-45' => 0, '46-55' => 0, '56+' => 0, 'Unknown' => 0];
-        $serviceCounts = ['< 1 year' => 0, '1-3 years' => 0, '4-7 years' => 0, '8-12 years' => 0, '13+ years' => 0];
+        $serviceCounts = [
+            '< 10 years' => 0,
+            '10-14 years' => 0,
+            '15-19 years' => 0,
+            '20-24 years' => 0,
+            '25-29 years' => 0,
+            '30-34 years' => 0,
+            '35-39 years' => 0,
+            '40+ years' => 0,
+        ];
+        $sixtyPlusCount = 0;
 
         foreach ($employees as $employee) {
             $pds = $pdsByUser->get($employee->id, []);
@@ -120,6 +164,11 @@ class HRDashboardService
 
             $ageBucket = $this->extractAgeBucket($pds);
             $ageGroupCounts[$ageBucket] = ($ageGroupCounts[$ageBucket] ?? 0) + 1;
+
+            $empAge = $this->extractAge($pds);
+            if ($empAge !== null && $empAge >= 60) {
+                $sixtyPlusCount++;
+            }
 
             if (! empty($employee->date_hired)) {
                 try {
@@ -142,6 +191,7 @@ class HRDashboardService
             'employment_status' => $this->pieChartFromAssoc($employmentStatus),
             'age_group_distribution' => $this->barChartFromAssoc($ageGroupCounts),
             'length_of_service' => $this->barChartFromAssoc($serviceCounts),
+            'sixty_plus_count' => $sixtyPlusCount,
         ];
     }
 
@@ -212,17 +262,25 @@ class HRDashboardService
     }
 
     /** @param array<string, mixed> $pds */
-    public function extractAgeBucket(array $pds): string
+    private function extractAge(array $pds): ?int
     {
         $birthDate = trim((string) (((array) ($pds['pds-personal-info'] ?? []))['personal[birth_date]'] ?? ''));
-
         if ($birthDate === '') {
-            return 'Unknown';
+            return null;
         }
-
         try {
-            $age = Carbon::parse($birthDate)->age;
+            return Carbon::parse($birthDate)->age;
         } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** @param array<string, mixed> $pds */
+    public function extractAgeBucket(array $pds): string
+    {
+        $age = $this->extractAge($pds);
+
+        if ($age === null) {
             return 'Unknown';
         }
 
@@ -281,20 +339,29 @@ class HRDashboardService
 
     public function serviceBucket(int $years): string
     {
-        if ($years < 1) {
-            return '< 1 year';
+        if ($years < 10) {
+            return '< 10 years';
         }
-        if ($years <= 3) {
-            return '1-3 years';
+        if ($years < 15) {
+            return '10-14 years';
         }
-        if ($years <= 7) {
-            return '4-7 years';
+        if ($years < 20) {
+            return '15-19 years';
         }
-        if ($years <= 12) {
-            return '8-12 years';
+        if ($years < 25) {
+            return '20-24 years';
+        }
+        if ($years < 30) {
+            return '25-29 years';
+        }
+        if ($years < 35) {
+            return '30-34 years';
+        }
+        if ($years < 40) {
+            return '35-39 years';
         }
 
-        return '13+ years';
+        return '40+ years';
     }
 
     /**

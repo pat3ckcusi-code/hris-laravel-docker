@@ -41,7 +41,7 @@ class HRManagerController extends Controller
 
         return view('hr-manager.dashboard', [
             'departments' => $departments,
-            'summary' => $this->dashboardService->buildSummaryCards(),
+            'workforceCards' => $this->dashboardService->buildWorkforceCards(),
             'chartDataUrl' => route('hr-manager.chart-data'),
             'initialChartData' => $this->dashboardService->buildChartData(null),
         ]);
@@ -73,13 +73,18 @@ class HRManagerController extends Controller
         $status = trim((string) $request->query('status', ''));
         $ageGroup = trim((string) $request->query('age_group', ''));
         $lengthOfService = trim((string) $request->query('length_of_service', ''));
+        $awardRecipients = trim((string) $request->query('award_recipients', ''));
+        $sixtyPlus = trim((string) $request->query('sixty_plus', ''));
 
         $query = User::query()
             ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
             ->select(
                 'users.id',
                 'users.EmpNo',
-                'users.name',
+                'users.last_name',
+                'users.first_name',
+                'users.middle_name',
+                'users.name_extension',
                 'users.designation',
                 'users.Status',
                 'users.employee_type',
@@ -102,7 +107,7 @@ class HRManagerController extends Controller
             $query->where('users.Status', $status);
         }
 
-        $rows = $query->orderBy('users.name')->get();
+        $rows = $query->orderBy('users.last_name')->orderBy('users.first_name')->get();
 
         $userIds = $rows->pluck('id');
         $pdsMap = $this->dashboardService->pdsByUserId($userIds);
@@ -139,9 +144,16 @@ class HRManagerController extends Controller
 
             $ageBucket = $this->dashboardService->extractAgeBucket($pds);
 
+            $fullName = trim(
+                ($row->last_name ?? '').', '
+                .($row->first_name ?? '')
+                .($row->middle_name ? ' '.mb_substr(trim($row->middle_name), 0, 1).'.' : '')
+                .($row->name_extension ? ' '.$row->name_extension : '')
+            );
+
             $employees[] = [
                 'emp_no' => $row->EmpNo,
-                'name' => $row->name,
+                'name' => $fullName,
                 'position' => $row->designation,
                 'gender' => $genderVal,
                 'age' => $age,
@@ -150,12 +162,16 @@ class HRManagerController extends Controller
                 'status' => $row->Status,
                 'date_hired' => $row->date_hired ? Carbon::parse($row->date_hired)->toDateString() : null,
                 'length_of_service' => $serviceBucket,
+                'years_of_service_int' => $yearsOfService,
                 'department' => $row->Dept_name,
             ];
         }
 
-        // Apply client-side filters (age group, length of service, gender)
-        $filtered = collect($employees)->filter(function ($emp) use ($gender, $ageGroup, $lengthOfService) {
+        $awardMilestones = [10, 15, 20, 25, 30, 35, 40];
+        $currentYear = now()->year;
+
+        // Apply client-side filters (age group, length of service, gender, award recipients, 60+)
+        $filtered = collect($employees)->filter(function ($emp) use ($gender, $ageGroup, $lengthOfService, $awardRecipients, $sixtyPlus, $awardMilestones, $currentYear) {
             if ($gender !== '' && strcasecmp($emp['gender'], $gender) !== 0) {
                 return false;
             }
@@ -165,6 +181,20 @@ class HRManagerController extends Controller
             }
 
             if ($lengthOfService !== '' && $emp['length_of_service'] !== $lengthOfService) {
+                return false;
+            }
+
+            if ($awardRecipients !== '') {
+                if (empty($emp['date_hired'])) {
+                    return false;
+                }
+                $hireYear = (int) substr((string) $emp['date_hired'], 0, 4);
+                if (! in_array($currentYear - $hireYear, $awardMilestones, true)) {
+                    return false;
+                }
+            }
+
+            if ($sixtyPlus !== '' && ($emp['age'] === null || $emp['age'] < 60)) {
                 return false;
             }
 

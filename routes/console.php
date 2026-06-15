@@ -14,3 +14,6 @@ Schedule::command('credit:process-monthly')->monthlyOn(1, '00:30');
 // Auto-import biometric punch logs. The command self-throttles via cache
 // based on the interval configured in HR Settings → Attendance.
 Schedule::command('attendance:auto-import')->everyMinute();
+
+// Clean up export jobs stuck in processing/pending beyond the 6-minute window.
+Schedule::command('export:prune')->everyFiveMinutes();

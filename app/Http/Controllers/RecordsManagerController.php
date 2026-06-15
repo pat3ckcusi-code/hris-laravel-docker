@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\EmployeeImportTemplate;
 use App\Models\Department;
 use App\Models\User;
 use App\Notifications\EmployeeDefaultPasswordNotification;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 
 class RecordsManagerController extends Controller
@@ -78,6 +80,18 @@ class RecordsManagerController extends Controller
         $totalEmployees = User::count();
         $activeEmployees = User::where('Status', 'Active')->count();
 
+        $maxSequentialByType = User::whereNotNull('EmpNo')
+            ->whereNotNull('employee_type')
+            ->whereRaw("EmpNo REGEXP '^[0-9]{7}$'")
+            ->selectRaw('employee_type, MAX(CAST(SUBSTRING(EmpNo, 3) AS UNSIGNED)) as max_seq')
+            ->groupBy('employee_type')
+            ->pluck('max_seq', 'employee_type');
+
+        $nextSequentialByType = [];
+        foreach (self::EMPLOYEE_TYPES as $type) {
+            $nextSequentialByType[$type] = str_pad((int) ($maxSequentialByType[$type] ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+        }
+
         return view('dashboards.records-manager-employees', [
             'user' => $request->user(),
             'employees' => $employees,
@@ -92,6 +106,7 @@ class RecordsManagerController extends Controller
             'search' => $search,
             'statusFilter' => $statusFilter,
             'departmentFilter' => $departmentFilter,
+            'nextSequentialByType' => $nextSequentialByType,
         ]);
     }
 
@@ -264,6 +279,167 @@ class RecordsManagerController extends Controller
         }
 
         return redirect()->back()->with(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to '.$employee->email.'.']);
+    }
+
+    public function downloadImportTemplate()
+    {
+        return Excel::download(new EmployeeImportTemplate(), 'employee_import_template.xlsx');
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $this->ensureRecordsManager($request);
+
+        $request->validate([
+            'import_file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:2048'],
+        ]);
+
+        $rows = Excel::toCollection(null, $request->file('import_file'))->first();
+
+        if ($rows === null || $rows->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'The uploaded file is empty.'], 422);
+        }
+
+        $allowedAccessLevels = array_keys(self::ROLE_VIEW_MAP);
+        $departments = Department::query()->pluck('Dept_id', 'Dept_name');
+        $departmentLookup = $departments->mapWithKeys(fn ($id, $name) => [strtolower($name) => $id]);
+
+        $maxSequentialByType = User::whereNotNull('EmpNo')
+            ->whereNotNull('employee_type')
+            ->whereRaw("EmpNo REGEXP '^[0-9]{7}$'")
+            ->selectRaw('employee_type, MAX(CAST(SUBSTRING(EmpNo, 3) AS UNSIGNED)) as max_seq')
+            ->groupBy('employee_type')
+            ->pluck('max_seq', 'employee_type');
+
+        $sequentialCounters = [];
+        foreach (self::EMPLOYEE_TYPES as $type) {
+            $sequentialCounters[$type] = (int) ($maxSequentialByType[$type] ?? 0);
+        }
+
+        $imported = 0;
+        $failed   = [];
+        $warnings = [];
+
+        // Skip the header row (index 0)
+        foreach ($rows->skip(1) as $index => $row) {
+            $rowNumber = $index + 2; // 1-based, accounting for header
+
+            $empNoInput  = trim((string) ($row[0] ?? ''));
+            $lastName   = strtoupper(trim((string) ($row[1] ?? '')));
+            $firstName  = strtoupper(trim((string) ($row[2] ?? '')));
+            $middleName = strtoupper(trim((string) ($row[3] ?? '')));
+            $email      = strtolower(trim((string) ($row[4] ?? '')));
+            $designation = trim((string) ($row[5] ?? ''));
+            $deptName   = trim((string) ($row[6] ?? ''));
+            $dateHired  = trim((string) ($row[7] ?? ''));
+            $empType    = trim((string) ($row[8] ?? ''));
+            $accessLevel = strtolower(trim((string) ($row[9] ?? '')));
+
+            $rowErrors = [];
+
+            if ($lastName === '')   $rowErrors[] = 'Last Name is required.';
+            if ($firstName === '')  $rowErrors[] = 'First Name is required.';
+            if ($email === '')      $rowErrors[] = 'Email is required.';
+            if ($dateHired === '')  $rowErrors[] = 'Date Hired is required.';
+            if ($empType === '')    $rowErrors[] = 'Employee Type is required.';
+            if ($accessLevel === '') $rowErrors[] = 'Access Level is required.';
+
+            if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $rowErrors[] = 'Email is not valid.';
+            }
+
+            if ($empType !== '' && ! in_array($empType, self::EMPLOYEE_TYPES, true)) {
+                $rowErrors[] = 'Employee Type must be one of: '.implode(', ', self::EMPLOYEE_TYPES).'.';
+            }
+
+            if ($accessLevel !== '' && ! in_array($accessLevel, $allowedAccessLevels, true)) {
+                $rowErrors[] = 'Access Level must be one of: '.implode(', ', $allowedAccessLevels).'.';
+            }
+
+            if ($dateHired !== '' && ! strtotime($dateHired)) {
+                $rowErrors[] = 'Date Hired is not a valid date.';
+            }
+
+            if ($email !== '' && User::where('email', $email)->exists()) {
+                $rowErrors[] = 'Email is already in use.';
+            }
+
+            if ($empNoInput !== '' && User::where('EmpNo', $empNoInput)->exists()) {
+                $rowErrors[] = 'Employee number is already in use.';
+            }
+
+            if (! empty($rowErrors)) {
+                $failed[] = ['row' => $rowNumber, 'errors' => $rowErrors];
+                continue;
+            }
+
+            $deptId = null;
+            if ($deptName !== '') {
+                $deptId = $departmentLookup->get(strtolower($deptName));
+                if ($deptId === null) {
+                    $warnings[] = ['row' => $rowNumber, 'message' => "Department '{$deptName}' was not found — employee created without department assignment."];
+                }
+            }
+
+            $empNoWasProvided = $empNoInput !== '';
+            if ($empNoWasProvided) {
+                $empNo = $empNoInput;
+            } else {
+                // Generate EmpNo: YY (from date_hired year) + 5-digit sequential per type
+                $year = substr(date('Y', strtotime($dateHired)), 2, 2);
+                $sequentialCounters[$empType]++;
+                $empNo = $year . str_pad($sequentialCounters[$empType], 5, '0', STR_PAD_LEFT);
+            }
+
+            $fullName = $this->buildEmployeeName($lastName, $firstName, $middleName ?: null);
+            $emailName = (string) strstr($email, '@', true);
+            $defaultPassword = 'HRIS-' . Str::upper(Str::random(8));
+
+            $newUser = new User;
+            $newUser->forceFill([
+                'name'                 => $fullName,
+                'email'                => $email,
+                'UserName'             => $emailName !== '' ? $emailName : $email,
+                'AcctName'             => $fullName,
+                'last_name'            => $lastName,
+                'first_name'           => $firstName,
+                'middle_name'          => $middleName ?: null,
+                'EmpNo'                => $empNo,
+                'designation'          => $designation ?: null,
+                'Dept_id'              => $deptId,
+                'Status'               => 'Active',
+                'employee_type'        => $empType,
+                'access_level'         => $accessLevel,
+                'password'             => Hash::make($defaultPassword),
+                'force_password_change' => true,
+                'date_hired'           => $dateHired,
+            ]);
+
+            try {
+                $newUser->save();
+            } catch (UniqueConstraintViolationException) {
+                if (! $empNoWasProvided) {
+                    $sequentialCounters[$empType]--;
+                }
+                $failed[] = ['row' => $rowNumber, 'errors' => ['A duplicate email or employee number was detected.']];
+                continue;
+            } catch (Throwable) {
+                if (! $empNoWasProvided) {
+                    $sequentialCounters[$empType]--;
+                }
+                $failed[] = ['row' => $rowNumber, 'errors' => ['An unexpected error occurred while saving this record.']];
+                continue;
+            }
+
+            $newUser->notify(new EmployeeDefaultPasswordNotification($defaultPassword));
+            $imported++;
+        }
+
+        return response()->json([
+            'imported' => $imported,
+            'failed'   => $failed,
+            'warnings' => $warnings,
+        ]);
     }
 
     private function ensureRecordsManager(Request $request): void

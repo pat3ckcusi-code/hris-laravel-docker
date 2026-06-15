@@ -64,6 +64,11 @@ class ProcessExportJob implements ShouldQueue
         }
     }
 
+    public function failed(\Throwable $exception): void
+    {
+        $this->exportJob->markFailed($exception->getMessage() ?: 'Export timed out. Please try again.');
+    }
+
     // ── PDS ───────────────────────────────────────────────────────────────────
 
     private function handlePds(ExportJob $job, PdsService $pdsService): array

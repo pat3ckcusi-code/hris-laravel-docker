@@ -189,55 +189,33 @@
         })();
     </script>
     <script>
-        // Cancel locator via SweetAlert confirmation
-        document.addEventListener('click', function (event) {
-            const target = event.target.closest('.cancel-locator');
-            if (!target) return;
-            const locatorId = target.dataset.id;
-            if (!locatorId) return;
+        function cancelLocatorRequest(locatorId) {
             const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-            if (window.Swal) {
-                Swal.fire({
-                    title: 'Cancel Locator Request?',
-                    text: 'Are you sure you want to cancel this locator?',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, cancel it',
-                    cancelButtonText: 'No'
-                }).then((result) => {
-                    if (!result.isConfirmed) return;
-                    fetch('/dashboard/employee/locator/' + locatorId + '/cancel', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-TOKEN': token,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: new URLSearchParams({ _token: token })
-                    }).then(async response => {
-                        const data = await response.json().catch(() => ({}));
-                        if (!response.ok) {
-                            throw new Error(data.message || 'Failed to cancel locator.');
-                        }
+            function doCancel() {
+                fetch('/dashboard/employee/locator/' + locatorId + '/cancel', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({ _token: token })
+                }).then(async response => {
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Failed to cancel locator.');
+                    }
+                    if (window.Swal) {
                         Swal.fire('Cancelled!', data.message || 'Your locator has been cancelled.', 'success').then(() => location.reload());
-                    }).catch((error) => {
-                        Swal.fire('Error', error.message || 'Failed to cancel locator.', 'error');
-                    });
+                    } else {
+                        location.reload();
+                    }
+                }).catch((error) => {
+                    if (window.Swal) Swal.fire('Error', error.message || 'Failed to cancel locator.', 'error');
+                    else alert(error.message || 'Failed to cancel locator.');
                 });
-            } else {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/dashboard/employee/locator/' + locatorId + '/cancel';
-                const csrf = document.createElement('input'); csrf.type = 'hidden'; csrf.name = '_token'; csrf.value = token; form.appendChild(csrf);
-                document.body.appendChild(form);
-                form.submit();
             }
-        });
-            const btn = $(this);
-            const locatorId = btn.data('id');
-            if (!locatorId) return;
-            const token = $('meta[name="csrf-token"]').attr('content');
 
             if (window.Swal) {
                 Swal.fire({
@@ -248,23 +226,9 @@
                     confirmButtonText: 'Yes, cancel it',
                     cancelButtonText: 'No'
                 }).then((result) => {
-                    if (!result.isConfirmed) return;
-                    $.ajax({
-                        url: '/dashboard/employee/locator/' + locatorId + '/cancel',
-                        type: 'POST',
-                        data: { _token: token },
-                        success: function (resp) {
-                            Swal.fire('Cancelled!', resp.message || 'Your locator has been cancelled.', 'success').then(() => location.reload());
-                        },
-                        error: function (xhr) {
-                            let msg = 'Failed to cancel locator.';
-                            try { msg = xhr.responseJSON?.message || msg; } catch (e) {}
-                            Swal.fire('Error', msg, 'error');
-                        }
-                    });
+                    if (result.isConfirmed) doCancel();
                 });
             } else {
-                // No native confirm — submit directly when Swal is not present
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.action = '/dashboard/employee/locator/' + locatorId + '/cancel';
@@ -272,7 +236,7 @@
                 document.body.appendChild(form);
                 form.submit();
             }
-        });
+        }
     </script>
     <script>
         function openViewLocator(id) {

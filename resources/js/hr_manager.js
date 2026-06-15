@@ -178,8 +178,18 @@ const initializeWorkforceCharts = (root, initialData) => {
         attachChartClickHandlers();
     };
 
+    const defaultEmployeeColumns = [
+        { key: 'emp_no', label: 'Employee No' },
+        { key: 'name', label: 'Name' },
+        { key: 'position', label: 'Position' },
+        { key: 'gender', label: 'Gender' },
+        { key: 'age', label: 'Age' },
+        { key: 'employee_type', label: 'Employee Type' },
+        { key: 'date_hired', label: 'Date Hired' },
+    ];
+
     // Fetch employees for a given filter and render popup
-    const fetchEmployees = async (key, value, title = 'Employees') => {
+    const fetchEmployees = async (key, value, title = 'Employees', columns = null) => {
         try {
             const params = new URLSearchParams();
             if (key && value !== undefined && value !== null) {
@@ -190,37 +200,19 @@ const initializeWorkforceCharts = (root, initialData) => {
             const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (!res.ok) throw new Error('Failed to fetch employees.');
             const data = await res.json();
-            renderEmployeePopup(title, data || []);
+            renderEmployeePopup(title, data || [], columns);
         } catch (err) {
             await Swal.fire('Error', 'Failed to load employee list.', 'error');
         }
     };
 
-    const renderEmployeePopup = (title, employees) => {
-        const tableHead = `
-            <thead>
-                <tr>
-                    <th>Employee No</th>
-                    <th>Name</th>
-                    <th>Position</th>
-                    <th>Gender</th>
-                    <th>Age</th>
-                    <th>Employee Type</th>
-                    <th>Date Hired</th>
-                </tr>
-            </thead>`;
+    const renderEmployeePopup = (title, employees, columns = null) => {
+        const cols = columns || defaultEmployeeColumns;
+
+        const tableHead = `<thead><tr>${cols.map((c) => `<th>${c.label}</th>`).join('')}</tr></thead>`;
 
         const bodyRows = employees
-            .map((emp) => `
-                <tr>
-                    <td>${emp.emp_no ?? ''}</td>
-                    <td>${emp.name ?? ''}</td>
-                    <td>${emp.position ?? ''}</td>
-                    <td>${emp.gender ?? ''}</td>
-                    <td>${emp.age ?? ''}</td>
-                    <td>${emp.employee_type ?? ''}</td>
-                    <td>${emp.date_hired ?? ''}</td>
-                </tr>`)
+            .map((emp) => `<tr>${cols.map((c) => `<td>${emp[c.key] ?? ''}</td>`).join('')}</tr>`)
             .join('');
 
         const tableHtml = `
@@ -269,6 +261,32 @@ const initializeWorkforceCharts = (root, initialData) => {
 
     // initial attach
     attachChartClickHandlers();
+
+    // Clickable summary cards — award recipients and 60+ employees
+    root.querySelectorAll('.hrm-summary-card[data-filter]').forEach((card) => {
+        card.addEventListener('click', () => {
+            const filter = card.dataset.filter;
+            const title = card.dataset.title || 'Employees';
+
+            if (filter === 'award_recipients') {
+                fetchEmployees('award_recipients', '1', title, [
+                    { key: 'emp_no', label: 'Employee No' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'department', label: 'Department' },
+                    { key: 'date_hired', label: 'Date Hired' },
+                    { key: 'years_of_service_int', label: 'Years of Service' },
+                ]);
+            } else if (filter === 'sixty_plus') {
+                fetchEmployees('sixty_plus', '1', title, [
+                    { key: 'emp_no', label: 'Employee No' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'department', label: 'Department' },
+                    { key: 'age', label: 'Age' },
+                    { key: 'date_hired', label: 'Date Hired' },
+                ]);
+            }
+        });
+    });
 };
 
 const renderPagination = (container, pagination, onPage) => {
