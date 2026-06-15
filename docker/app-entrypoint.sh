@@ -47,9 +47,7 @@ fi
 
 if [ "${APP_ENV:-production}" = "local" ]; then
   echo "[entrypoint] Dev mode — clearing caches and running migrations..."
-  php artisan config:clear  >/dev/null 2>&1 || true
-  php artisan route:clear   >/dev/null 2>&1 || true
-  php artisan view:clear    >/dev/null 2>&1 || true
+  php artisan optimize:clear >/dev/null 2>&1 || true
   php artisan migrate --force 2>&1 || true
 else
   echo "[entrypoint] Production mode — running migrations..."

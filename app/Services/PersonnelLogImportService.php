@@ -58,7 +58,12 @@ class PersonnelLogImportService
         // Bulk fetch: one API call per page for ALL employees instead of one call
         // per employee. Replaced 781 sequential calls with ≤ a handful of pages.
         do {
-            [$logsData, $httpStatus] = $this->integrationApi->fetchBulkLogs($token, $from, $to, $start, $pageSize);
+            try {
+                [$logsData, $httpStatus] = $this->integrationApi->fetchBulkLogs($token, $from, $to, $start, $pageSize);
+            } catch (\Throwable $e) {
+                return ['imported' => $imported, 'skipped' => $skipped, 'messages' => $messages,
+                    'error' => "Bulk API connection error at offset {$start}: {$e->getMessage()}"];
+            }
 
             if ($httpStatus !== 200) {
                 $error = "Bulk API call failed (HTTP {$httpStatus}) at offset {$start}";

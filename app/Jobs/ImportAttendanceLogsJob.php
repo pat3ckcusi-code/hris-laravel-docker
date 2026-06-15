@@ -24,13 +24,17 @@ class ImportAttendanceLogsJob implements ShouldQueue
     public function __construct(
         public readonly string $from,
         public readonly string $to,
-        public readonly ?int $actorUserId = null,
-        public readonly ?int $deptId = null,
+        public ?int $actorUserId = null,
+        public ?int $deptId = null,
     ) {}
 
     public function handle(PersonnelLogImportService $importService): void
     {
-        $result = $importService->importForDateRange($this->from, $this->to, $this->deptId);
+        try {
+            $result = $importService->importForDateRange($this->from, $this->to, $this->deptId);
+        } catch (\Throwable $e) {
+            $result = ['imported' => 0, 'skipped' => 0, 'messages' => [], 'error' => $e->getMessage()];
+        }
 
         $failed = ! empty($result['error']);
 

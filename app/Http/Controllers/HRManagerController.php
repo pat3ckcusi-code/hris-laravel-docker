@@ -835,7 +835,7 @@ class HRManagerController extends Controller
             'dashboard_cache_ttl' => 'nullable|integer|min:1|max:120',
             // Auto-import
             'auto_import_enabled'          => 'nullable|boolean',
-            'auto_import_interval_minutes' => 'nullable|integer|min:15|max:1440',
+            'auto_import_interval_minutes' => 'nullable|integer|min:1|max:1440',
             'auto_import_dept_id'          => 'nullable|integer|exists:departments,Dept_id',
         ]);
 

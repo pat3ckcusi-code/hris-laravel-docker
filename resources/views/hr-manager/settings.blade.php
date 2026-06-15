@@ -275,8 +275,8 @@
                                value="{{ old('auto_import_interval_minutes', $settings->auto_import_interval_minutes ?? 30) }}"
                                min="15" max="1440">
                         <span class="settings-hint">
-                            Minutes to wait after a full sweep completes before starting the next one.
-                            Each sweep processes 500 logs per minute — minimum 15 minutes.
+                            Minutes to wait between sweeps. Values below 15 are treated as 15
+                            (the scheduler enforces a minimum 15-minute gap).
                         </span>
                         @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
