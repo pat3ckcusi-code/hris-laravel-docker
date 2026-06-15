@@ -25,7 +25,7 @@ services:
       - APP_NAME=HRIS
       - APP_ENV=production
       - APP_DEBUG=false
-      - APP_URL=https://hris.lgucalapan.ph
+      - APP_URL=https://chrmis.lgucalapan.ph
       - DB_CONNECTION=mysql
       - DB_HOST=db
       - DB_PORT=3306
@@ -92,7 +92,7 @@ services:
       - APP_NAME=HRIS
       - APP_ENV=production
       - APP_DEBUG=false
-      - APP_URL=https://hris.lgucalapan.ph
+      - APP_URL=https://chrmis.lgucalapan.ph
       - DB_CONNECTION=mysql
       - DB_HOST=db
       - DB_PORT=3306
@@ -132,7 +132,7 @@ services:
       - APP_NAME=HRIS
       - APP_ENV=production
       - APP_DEBUG=false
-      - APP_URL=https://hris.lgucalapan.ph
+      - APP_URL=https://chrmis.lgucalapan.ph
       - DB_CONNECTION=mysql
       - DB_HOST=db
       - DB_PORT=3306
