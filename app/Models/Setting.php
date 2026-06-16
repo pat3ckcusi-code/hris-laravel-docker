@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property bool $auto_import_enabled
  * @property int $auto_import_interval_minutes
  * @property int|null $auto_import_dept_id
+ * @property int $auto_import_page_size
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -92,6 +93,7 @@ class Setting extends Model
         'auto_import_enabled',
         'auto_import_interval_minutes',
         'auto_import_dept_id',
+        'auto_import_page_size',
     ];
 
     protected $casts = [

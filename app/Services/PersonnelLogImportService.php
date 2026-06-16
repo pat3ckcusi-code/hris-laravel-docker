@@ -17,7 +17,7 @@ class PersonnelLogImportService
     /**
      * @return array{imported: int, skipped: int, messages: array<int, string>, error: ?string}
      */
-    public function importForDateRange(string $from, string $to, ?int $deptId = null): array
+    public function importForDateRange(string $from, string $to, ?int $deptId = null, ?int $pageSize = null): array
     {
         $imported = 0;
         $skipped = 0;
@@ -37,6 +37,13 @@ class PersonnelLogImportService
             $userQuery->where('Dept_id', $deptId);
         }
         $users = $userQuery->get(['id', 'EmpNo', 'Dept_id']);
+
+        if ($users->isEmpty()) {
+            $scope = $deptId ? "department #{$deptId}" : 'any department';
+            return ['imported' => 0, 'skipped' => 0, 'messages' => [],
+                'error' => "No HRIS users with EmpNo found for {$scope}. Set EmpNo on employee records before importing."];
+        }
+
         $exactMap = $users->keyBy('EmpNo');          // primary: exact string match
 
         $strippedMap = [];                            // fallback: leading-zeros stripped
@@ -52,7 +59,7 @@ class PersonnelLogImportService
         // Track personnelids with no HRIS match so the audit log can name them.
         $unmatchedNames = [];   // personnelid → "FIRSTNAME LASTNAME"
 
-        $pageSize = (int) config('integration.logs_page_size', 1000);
+        $pageSize = $pageSize ?? (int) config('integration.logs_page_size', 1000);
         $start = 0;
 
         // Bulk fetch: one API call per page for ALL employees instead of one call
@@ -165,6 +172,10 @@ class PersonnelLogImportService
 
             $start += $pageSize;
         } while (count($logsData) >= $pageSize);
+
+        if ($imported === 0 && $skipped === 0 && empty($unmatchedNames)) {
+            $messages[] = "API returned no punch records for [{$from} to {$to}]. Verify the date range and that the biometric system has data for this period.";
+        }
 
         // Upsert DTR rows only for users who actually received new punches.
         foreach ($affectedUsers as $user) {

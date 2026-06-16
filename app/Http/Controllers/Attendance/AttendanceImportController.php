@@ -7,6 +7,7 @@ use App\Jobs\ImportAttendanceLogsJob;
 use App\Models\Department;
 use App\Models\Setting;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,12 +32,10 @@ class AttendanceImportController extends Controller
 
         $deptId = isset($validated['dept_id']) ? (int) $validated['dept_id'] : null;
 
-        ImportAttendanceLogsJob::dispatch(
-            $validated['from_date'],
-            $validated['to_date'],
-            $request->user()->id,
-            $deptId,
-        );
+        foreach (CarbonPeriod::create($validated['from_date'], $validated['to_date']) as $date) {
+            $day = $date->toDateString();
+            ImportAttendanceLogsJob::dispatch($day, $day, $request->user()->id, $deptId);
+        }
 
         $deptLabel = $deptId
             ? (Department::find($deptId)?->Dept_name ?? "Department #{$deptId}")
@@ -44,9 +43,10 @@ class AttendanceImportController extends Controller
 
         $fromFormatted = Carbon::parse($validated['from_date'])->format('M j, Y');
         $toFormatted = Carbon::parse($validated['to_date'])->format('M j, Y');
+        $dayCount = Carbon::parse($validated['from_date'])->diffInDays($validated['to_date']) + 1;
 
         return redirect()
             ->route('hr-manager.attendance.import')
-            ->with('success', "Attendance import queued: {$fromFormatted} to {$toFormatted} — {$deptLabel}. Results will be recorded in the audit log.");
+            ->with('success', "Attendance import queued: {$fromFormatted} to {$toFormatted} — {$deptLabel}. {$dayCount} job(s) dispatched. Results will be recorded in the audit log.");
     }
 }

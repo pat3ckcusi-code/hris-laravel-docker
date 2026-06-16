@@ -273,10 +273,9 @@
                         <input type="number" class="hrm-input" id="auto_import_interval_minutes"
                                name="auto_import_interval_minutes"
                                value="{{ old('auto_import_interval_minutes', $settings->auto_import_interval_minutes ?? 30) }}"
-                               min="15" max="1440">
+                               min="1" max="1440">
                         <span class="settings-hint">
-                            Minutes to wait between sweeps. Values below 15 are treated as 15
-                            (the scheduler enforces a minimum 15-minute gap).
+                            Minutes to wait between sweeps. Minimum is 1 minute.
                         </span>
                         @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
@@ -292,6 +291,17 @@
                             @endforeach
                         </select>
                         @error('auto_import_dept_id')<span class="hrm-error">{{ $message }}</span>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label for="auto_import_page_size">Rows per sweep</label>
+                        <input type="number" class="hrm-input" id="auto_import_page_size"
+                               name="auto_import_page_size"
+                               value="{{ old('auto_import_page_size', $settings->auto_import_page_size ?? 100) }}"
+                               min="10" max="5000">
+                        <span class="settings-hint">
+                            How many rows to fetch per API call. Lower values reduce memory usage per sweep.
+                        </span>
+                        @error('auto_import_page_size')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                 </div>
             </div>

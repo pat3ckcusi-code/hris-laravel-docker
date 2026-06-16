@@ -837,6 +837,7 @@ class HRManagerController extends Controller
             'auto_import_enabled'          => 'nullable|boolean',
             'auto_import_interval_minutes' => 'nullable|integer|min:1|max:1440',
             'auto_import_dept_id'          => 'nullable|integer|exists:departments,Dept_id',
+            'auto_import_page_size'        => 'nullable|integer|min:10|max:5000',
         ]);
 
         $validated['records_enabled'] = $request->boolean('records_enabled');
@@ -864,6 +865,10 @@ class HRManagerController extends Controller
             $validated['email_template_subject'] ??= '';
             $validated['email_template_body'] ??= '';
             Setting::create($validated);
+        }
+
+        if ($request->boolean('auto_import_enabled')) {
+            Cache::forget('attendance_auto_import_last_run');
         }
 
         return redirect()->route('hr-manager.settings')->with('success', 'Settings updated successfully.');

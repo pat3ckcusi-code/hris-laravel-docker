@@ -80,7 +80,7 @@ services:
     working_dir: /var/www/html
     entrypoint: []
     command: ["php", "artisan", "queue:work",
-              "--sleep=3", "--tries=3", "--timeout=300", "--max-jobs=500"]
+              "--sleep=3", "--tries=3", "--timeout=660", "--max-jobs=500"]
     depends_on:
       db:
         condition: service_healthy
@@ -102,7 +102,7 @@ services:
       - SESSION_DRIVER=database
       - CACHE_STORE=database
       - QUEUE_CONNECTION=database
-      - DB_QUEUE_RETRY_AFTER=360
+      - DB_QUEUE_RETRY_AFTER=660
     volumes:
       - storage_app:/var/www/html/storage/app
       - storage_logs:/var/www/html/storage/logs

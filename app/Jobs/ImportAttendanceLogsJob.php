@@ -26,12 +26,13 @@ class ImportAttendanceLogsJob implements ShouldQueue
         public readonly string $to,
         public ?int $actorUserId = null,
         public ?int $deptId = null,
+        public ?int $pageSize = null,
     ) {}
 
     public function handle(PersonnelLogImportService $importService): void
     {
         try {
-            $result = $importService->importForDateRange($this->from, $this->to, $this->deptId);
+            $result = $importService->importForDateRange($this->from, $this->to, $this->deptId, $this->pageSize);
         } catch (\Throwable $e) {
             $result = ['imported' => 0, 'skipped' => 0, 'messages' => [], 'error' => $e->getMessage()];
         }
@@ -74,5 +75,24 @@ class ImportAttendanceLogsJob implements ShouldQueue
                 'error' => $result['error'],
             ]);
         }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        HRAuditTrail::create([
+            'actor_user_id' => $this->actorUserId,
+            'module' => 'attendance',
+            'action' => 'attendance_import',
+            'target_type' => 'attendance_logs',
+            'target_id' => $this->deptId,
+            'details' => [
+                'description' => "Import job failed unexpectedly for [{$this->from}]",
+                'from' => $this->from,
+                'to' => $this->to,
+                'dept_id' => $this->deptId,
+                'status' => 'failed',
+                'error' => $exception->getMessage(),
+            ],
+        ]);
     }
 }
