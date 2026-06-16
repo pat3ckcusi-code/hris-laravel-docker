@@ -80,7 +80,7 @@ services:
     working_dir: /var/www/html
     entrypoint: []
     command: ["php", "artisan", "queue:work",
-              "--sleep=3", "--tries=1", "--timeout=300", "--max-jobs=500"]
+              "--sleep=3", "--tries=3", "--timeout=300", "--max-jobs=500"]
     depends_on:
       db:
         condition: service_healthy
