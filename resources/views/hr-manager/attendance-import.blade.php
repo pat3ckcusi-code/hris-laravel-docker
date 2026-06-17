@@ -347,6 +347,57 @@
                 @endif
             @endif
 
+            {{-- EmpNo pre-flight check --}}
+            @if($empNoCount === 0)
+                <div class="import-warning-card" style="border-left-color:#b91c1c;background:#fef2f2;border-color:#fca5a5;">
+                    <i class="fa-solid fa-triangle-exclamation" style="color:#b91c1c;"></i>
+                    <p><strong>No employees have an EmpNo set.</strong> Every biometric punch will be skipped. Go to Employees and enter each person's Employee Number before importing.</p>
+                </div>
+            @else
+                <div style="font-size:0.78rem;color:#166534;padding:0.4rem 0.65rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">
+                    <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:0.3rem;"></i>
+                    {{ $empNoCount }} employee(s) configured with EmpNo.
+                </div>
+            @endif
+
+            {{-- Recent import results --}}
+            @if($recentImports->isNotEmpty())
+            <div class="import-info-card">
+                <h4><i class="fa-solid fa-clock-rotate-left"></i> Recent Import Results</h4>
+                <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                    @foreach($recentImports as $entry)
+                        @php
+                            $d        = $entry->details ?? [];
+                            $ok       = ($d['status'] ?? '') === 'success';
+                            $imported = $d['imported'] ?? 0;
+                            $skipped  = $d['skipped'] ?? 0;
+                            $err      = $d['error'] ?? null;
+                            $msgs     = array_slice($d['messages'] ?? [], 0, 3);
+                        @endphp
+                        <div style="font-size:0.78rem;padding:0.45rem 0.65rem;border-radius:6px;
+                            background:{{ ($ok && $imported > 0) ? '#f0fdf4' : ($ok ? '#f8fafc' : '#fef2f2') }};
+                            border:1px solid {{ ($ok && $imported > 0) ? '#bbf7d0' : ($ok ? '#e2e8f0' : '#fca5a5') }};">
+                            <div style="font-weight:600;color:{{ ($ok && $imported > 0) ? '#15803d' : ($ok ? '#64748b' : '#b91c1c') }};">
+                                {{ $ok ? ($imported > 0 ? '✓' : '○') : '✗' }}
+                                {{ $d['from'] ?? '?' }}–{{ $d['to'] ?? '?' }}
+                                &nbsp;{{ $imported }} in / {{ $skipped }} skipped
+                            </div>
+                            @if($err)
+                                <div style="color:#7f1d1d;margin-top:0.2rem;word-break:break-word;">{{ $err }}</div>
+                            @endif
+                            @foreach($msgs as $msg)
+                                <div style="color:#475569;margin-top:0.15rem;">{{ $msg }}</div>
+                            @endforeach
+                            <div style="color:#94a3b8;margin-top:0.2rem;">
+                                {{ $entry->created_at->diffForHumans() }}
+                                &middot; {{ $d['dept_name'] ?? 'ALL' }}
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
             <div class="import-info-card">
                 <h4><i class="fa-solid fa-list-check"></i> How It Works</h4>
                 <ol class="import-info-steps">

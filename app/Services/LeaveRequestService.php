@@ -330,6 +330,17 @@ class LeaveRequestService
         $displayRequestedCTO = isset($preview['CTO']) ? floatval($preview['CTO']) : 0;
         $displayRequestedSP = isset($preview['SP']) ? floatval($preview['SP']) : 0;
 
+        // When deduction is already applied to live balances (post-approval), restore
+        // the pre-deduction totals so Section 7.A shows the same values as at Allow Printing.
+        if (! empty($leave->printing_deduction_applied)) {
+            $displayTotalEarnedVL   += $displayRequestedVL;
+            $displayTotalEarnedSL   += $displayRequestedSL;
+            $displayTotalEarnedWLNS += $displayRequestedWLNS;
+            $displayTotalEarnedSPL  += $displayRequestedSPL;
+            $displayTotalEarnedCTO  += $displayRequestedCTO;
+            $displayTotalEarnedSP   += $displayRequestedSP;
+        }
+
         $displayBalanceVL = $displayTotalEarnedVL - $displayRequestedVL;
         $displayBalanceSL = $displayTotalEarnedSL - $displayRequestedSL;
 
@@ -1199,13 +1210,13 @@ class LeaveRequestService
         if (strpos($location, 'within') !== false || $location === 'within_the_philippines') {
             $sheet->setCellValue('H13', $checkMark);
             if ($locationSpecify) {
-                $sheet->setCellValue('J13', $locationSpecify);
+                $sheet->setCellValue('K13', $locationSpecify);
             }
         }
         if (strpos($location, 'abroad') !== false) {
             $sheet->setCellValue('H15', $checkMark);
             if ($locationSpecify) {
-                $sheet->setCellValue('J15', $locationSpecify);
+                $sheet->setCellValue('K15', $locationSpecify);
             }
         }
 
@@ -1215,13 +1226,13 @@ class LeaveRequestService
         if (strpos($sickTreatment, 'hospital') !== false || $sickTreatment === 'in_hospital') {
             $sheet->setCellValue('H19', $checkMark);
             if ($sickIllness) {
-                $sheet->setCellValue('J19', $sickIllness);
+                $sheet->setCellValue('K19', $sickIllness);
             }
         }
         if (strpos($sickTreatment, 'out') !== false || $sickTreatment === 'out_patient' || $sickTreatment === 'outpatient') {
             $sheet->setCellValue('H21', $checkMark);
             if ($sickIllness) {
-                $sheet->setCellValue('J21', $sickIllness);
+                $sheet->setCellValue('K21', $sickIllness);
             }
         }
 
@@ -1254,6 +1265,14 @@ class LeaveRequestService
         $lt = strtolower((string) ($leave->leave_type ?? ''));
         $vlRequested = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
         $slRequested = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
+
+        // When deduction is already applied to live balances (post-approval), restore
+        // the pre-deduction totals so Section 7.A shows the same values as at Allow Printing.
+        if (! empty($leave->printing_deduction_applied)) {
+            $vlCurrent += $vlRequested;
+            $slCurrent += $slRequested;
+        }
+
         $vlBalance = $vlCurrent - $vlRequested;
         $slBalance = $slCurrent - $slRequested;
         // Compute printable reason, with Wellness override when WLNS is present in preview or leave type
@@ -1286,11 +1305,14 @@ class LeaveRequestService
             'leave_status' => $leave->status,
         ]);
 
-        // HR Manager name
+        // HR Manager name and designation
         $siteSettings = Setting::first();
         if ($siteSettings && ! empty($siteSettings->hr_manager_name)) {
-            $sheet->setCellValue('C60', $siteSettings->hr_manager_name);
+            $sheet->mergeCells('C59:E59');
+            $sheet->setCellValue('C59', $siteSettings->hr_manager_name);
+            $sheet->getStyle('C59')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
         }
+        $sheet->setCellValue('C60', $siteSettings->hr_manager_designation ?? 'OIC-CHRMD');
 
         // --- 6. Recommendation (Section 7.B) ---
         $status = strtolower($leave->status ?? '');
@@ -1334,7 +1356,10 @@ class LeaveRequestService
                     if (empty($deptHeadName)) {
                         $deptHeadName = $headUser->name ?? '';
                     }
-                    $sheet->setCellValue('H60', $deptHeadName);
+                    $sheet->setCellValue('I59', $deptHeadName);
+                    if (! empty($headUser->designation)) {
+                        $sheet->setCellValue('H60', $headUser->designation);
+                    }
                 }
             }
 

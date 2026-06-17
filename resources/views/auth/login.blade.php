@@ -30,9 +30,11 @@
                         id="email"
                         type="email"
                         name="email"
-                        value="{{ old('email') }}"
                         class="input"
-                        autocomplete="email"
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="none"
+                        spellcheck="false"
                         required
                     >
                 </div>

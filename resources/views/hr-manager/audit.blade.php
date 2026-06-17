@@ -21,6 +21,7 @@
                 <option value="">All Actions</option>
                 <option value="edit">Edit</option>
                 <option value="update">Update</option>
+                <option value="attendance_import">Attendance Import</option>
                 <option value="compliance-report">Compliance Report</option>
                 <option value="approve">Approve</option>
                 <option value="reject">Reject</option>

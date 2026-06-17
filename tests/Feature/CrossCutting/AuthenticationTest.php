@@ -225,4 +225,28 @@ class AuthenticationTest extends TestCase
 
         $response->assertRedirect();
     }
+
+    // ──────────────────────────────────────────────
+    // Privacy: Login Form Autocomplete
+    // ──────────────────────────────────────────────
+
+    public function test_login_form_email_field_has_autocomplete_off(): void
+    {
+        $response = $this->get(route('login'));
+
+        $response->assertStatus(200);
+        $response->assertSee('autocomplete="off"', false);
+        $response->assertDontSee('autocomplete="email"', false);
+    }
+
+    public function test_login_page_does_not_expose_other_user_emails(): void
+    {
+        $this->createEmployee(['email' => 'alice@example.com']);
+        $this->createEmployee(['email' => 'bob@example.com']);
+
+        $response = $this->get(route('login'));
+
+        $response->assertDontSee('alice@example.com');
+        $response->assertDontSee('bob@example.com');
+    }
 }

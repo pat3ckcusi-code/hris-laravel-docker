@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportAttendanceLogsJob;
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\Setting;
+use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Contracts\View\View;
@@ -19,7 +21,16 @@ class AttendanceImportController extends Controller
         $departments = Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
         $setting = Setting::first();
 
-        return view('hr-manager.attendance-import', compact('departments', 'setting'));
+        $empNoCount = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '')->count();
+
+        $recentImports = HRAuditTrail::where('module', 'attendance')
+            ->where('action', 'attendance_import')
+            ->orderByDesc('created_at')
+            ->limit(5)
+            ->get(['details', 'created_at', 'actor_user_id']);
+
+        return view('hr-manager.attendance-import',
+            compact('departments', 'setting', 'empNoCount', 'recentImports'));
     }
 
     public function store(Request $request): RedirectResponse

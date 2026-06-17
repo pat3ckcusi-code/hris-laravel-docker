@@ -408,6 +408,14 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 @endif
 
+@php
+$emptyTableMsg = $isAdmin
+    ? 'No DTR records found for the selected period. <a href="'
+      . route('hr-manager.attendance.import')
+      . '" style="color:#3b82f6;text-decoration:underline;">Import attendance logs →</a>'
+    : 'No DTR records found for the selected period.';
+@endphp
+
 @section('page_scripts')
 <script>
 // Guard: the layout yields page_scripts twice — prevent double-execution.
@@ -600,7 +608,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
             },
             language: {
                 processing:  'Loading…',
-                emptyTable:  'No DTR records found for the selected period.',
+                emptyTable:  @json($emptyTableMsg),
                 zeroRecords: 'No DTR records found for the selected period.',
                 lengthMenu:  'Show _MENU_ entries',
                 info:        'Showing _START_–_END_ of _TOTAL_ records',
