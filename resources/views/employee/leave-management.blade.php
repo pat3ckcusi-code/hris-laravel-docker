@@ -968,7 +968,7 @@
                                                 @if($leave->reschedule_status === 'Pending Reschedule')
                                                     <span class="hris-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:4px 8px;border-radius:4px;font-size:0.75rem;white-space:nowrap">Reschedule Pending</span>
                                                 @else
-                                                    <button type="button" class="hris-btn hris-btn-secondary" onclick="openRescheduleModal({{ $leave->id }}, {{ json_encode($leave->leave_type) }})">Reschedule</button>
+                                                    <button type="button" class="hris-btn hris-btn-secondary" onclick="openRescheduleModal({{ $leave->id }}, {{ json_encode($leave->leave_type) }}, {{ (float) $leave->total_days }})">Reschedule</button>
                                                 @endif
                                             @endif
                                         @endif
@@ -1077,6 +1077,11 @@
                             <td style="padding:8px;border:1px solid #e2e8f0;font-weight:600">Total</td>
                             <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;font-weight:600" id="rsTotalDays">0</td>
                             <td style="border:1px solid #e2e8f0"></td>
+                        </tr>
+                        <tr id="rsTotalDaysWarningRow" style="display:none">
+                            <td colspan="3" style="padding:6px 8px;border:1px solid #fca5a5;background:#fef2f2;color:#b91c1c;font-size:0.8rem">
+                                Total cannot exceed original leave total (<span id="rsMaxDaysLabel"></span> day(s)).
+                            </td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1220,13 +1225,15 @@ function closeCancellationModal() { const dlg = document.getElementById('cancell
 // ---- Reschedule Modal ----
 let _rsLeaveType = '';
 let _rsDates = [];
+let _rsMaxDays = 0;
 
-function openRescheduleModal(id, leaveType) {
+function openRescheduleModal(id, leaveType, maxDays) {
     const dlg = document.getElementById('rescheduleModal');
     const form = document.getElementById('rescheduleForm');
     if (!dlg || !form) return alert('Reschedule dialog not available');
     form.action = `/employee/leave-management/${id}/reschedule`;
     _rsLeaveType = leaveType;
+    _rsMaxDays = maxDays;
     _rsDates = [];
     document.getElementById('rsLeaveName').value = leaveType;
     document.getElementById('rsLeaveTypeLabel').textContent = leaveType;
@@ -1310,6 +1317,12 @@ function rsUpdateTotal() {
     let t = 0;
     selects.forEach(s => { t += parseFloat(s.value || 1); });
     document.getElementById('rsTotalDays').textContent = t % 1 === 0 ? t : t.toFixed(1);
+
+    const exceeded = _rsMaxDays > 0 && t > _rsMaxDays;
+    const warnRow = document.getElementById('rsTotalDaysWarningRow');
+    document.getElementById('rsMaxDaysLabel').textContent = _rsMaxDays % 1 === 0 ? _rsMaxDays : _rsMaxDays.toFixed(1);
+    warnRow.style.display = exceeded ? '' : 'none';
+    document.getElementById('rsSubmitBtn').disabled = exceeded || _rsDates.length === 0;
 }
 </script>
 @endsection

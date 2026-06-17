@@ -248,7 +248,7 @@ class LeaveRequestController extends Controller
                 // swallow notification errors
             }
 
-            return redirect()->route('employee.leave.index')
+            return redirect()->route('employee.leave.management')
                 ->with('success', 'Leave application submitted successfully.');
         }
 
@@ -1106,6 +1106,13 @@ class LeaveRequestController extends Controller
         }
 
         $totalDays = array_sum(array_column($allocations, 'days'));
+
+        if ($totalDays > $original->total_days) {
+            return redirect()->back()
+                ->withErrors(['leave_dates' => 'Total rescheduled days ('.$totalDays.') cannot exceed the original leave total ('.$original->total_days.' days).'])
+                ->withInput();
+        }
+
         $paidDays  = $totalDays;
         $lwopDays  = 0;
 
@@ -1205,7 +1212,7 @@ class LeaveRequestController extends Controller
             // swallow notification errors
         }
 
-        return redirect()->route('employee.leave.index')
+        return redirect()->route('employee.leave.management')
             ->with('success', 'Reschedule request submitted. It will proceed through the approval process again.');
     }
 
