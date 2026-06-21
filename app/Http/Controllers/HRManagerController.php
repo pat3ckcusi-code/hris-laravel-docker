@@ -512,9 +512,12 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
+        $page = $this->auditRows($request);
+
         return view('hr-manager.audit', [
             'auditUsers' => $this->auditUsers(),
-            'logs' => $this->auditRows($request),
+            'logs' => $page->items(),
+            'auditPagination' => $this->paginationPayload($page),
             'auditDataUrl' => route('hr-manager.audit.data'),
         ]);
     }
@@ -523,8 +526,11 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
+        $page = $this->auditRows($request);
+
         return response()->json([
-            'rows' => $this->auditRows($request),
+            'rows' => $page->items(),
+            'pagination' => $this->paginationPayload($page),
         ]);
     }
 
@@ -1203,9 +1209,9 @@ class HRManagerController extends Controller
     }
 
     /**
-     * @return array<int, array<string, string>>
+     * @return LengthAwarePaginator<int, array<string, string>>
      */
-    private function auditRows(Request $request): array
+    private function auditRows(Request $request): LengthAwarePaginator
     {
         $user = trim((string) $request->query('user', ''));
         $action = trim((string) $request->query('action', ''));
@@ -1235,17 +1241,13 @@ class HRManagerController extends Controller
         }
 
         return $query
-            ->limit(200)
-            ->get()
-            ->map(function ($row): array {
-                return [
-                    'user' => (string) ($row->actor_name ?? 'System'),
-                    'role' => ucwords($this->normalizeRole((string) ($row->access_level ?? 'hr manager'))),
-                    'action' => strtoupper((string) $row->module).': '.strtoupper((string) $row->action),
-                    'timestamp' => $this->formatDateTime($row->created_at),
-                ];
-            })
-            ->all();
+            ->paginate(25)
+            ->through(fn ($row): array => [
+                'user' => (string) ($row->actor_name ?? 'System'),
+                'role' => ucwords($this->normalizeRole((string) ($row->access_level ?? 'hr manager'))),
+                'action' => strtoupper((string) $row->module).': '.strtoupper((string) $row->action),
+                'timestamp' => $this->formatDateTime($row->created_at),
+            ]);
     }
 
     /**

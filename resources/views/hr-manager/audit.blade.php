@@ -8,7 +8,7 @@
 @endsection
 
 @section('content')
-    <section class="hrm-module" data-module="audit" data-url="{{ $auditDataUrl }}">
+    <section class="hrm-module" data-module="audit" data-url="{{ $auditDataUrl }}" data-pagination='@json($auditPagination)'>
         <div class="hrm-toolbar">
             <select id="auditUser">
                 <option value="">All Users</option>
@@ -53,6 +53,7 @@
                 </tbody>
             </table>
         </div>
+        <div id="auditPagination" class="hrm-pagination"></div>
     </section>
 @endsection
 

@@ -326,13 +326,11 @@ class DtrController extends Controller
                 'is_am_in_late' => $isAmInLate,
                 'is_pm_in_late' => $isPmInLate,
                 'is_pm_out_undertime' => $isPmOutUndertime,
-                'source_badge' => ($leaveCode || $showEta || $loc)
-                    ? ''
-                    : match ($dtr->source) {
-                        'biometric' => '<span class="hris-badge badge-approved">Biometric</span>',
-                        'manual' => '<span class="hris-badge" style="background:#e5e7eb;color:#374151;">Manual</span>',
-                        default => '<span style="color:#9ca3af;">—</span>',
-                    },
+                'source_badge' => match ($dtr->source) {
+                    'biometric' => '<span class="hris-badge badge-approved">Biometric</span>',
+                    'manual' => '<span class="hris-badge" style="background:#e5e7eb;color:#374151;">Manual</span>',
+                    default => '<span style="color:#9ca3af;">—</span>',
+                },
                 'status_badge' => $leaveCode
                     ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">On Leave ('.$leaveCode.')</span>'
                     : ($showEta

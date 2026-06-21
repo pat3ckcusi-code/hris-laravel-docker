@@ -623,6 +623,7 @@ const bindAuditModule = (root) => {
     const date = document.getElementById('auditDate');
     const action = document.getElementById('auditAction');
     const filterBtn = document.getElementById('auditFilterBtn');
+    const paginationRoot = document.getElementById('auditPagination');
 
     const renderRows = (rows) => {
         if (!tableBody) return;
@@ -641,11 +642,12 @@ const bindAuditModule = (root) => {
             .join('');
     };
 
-    const fetchRows = async () => {
+    const fetchRows = async (page = 1) => {
         const params = new URLSearchParams({
             user: user?.value || '',
             date: date?.value || '',
             action: action?.value || '',
+            page: String(page),
         });
 
         try {
@@ -654,12 +656,16 @@ const bindAuditModule = (root) => {
 
             const data = await response.json();
             renderRows(data.rows || []);
+            renderPagination(paginationRoot, data.pagination, fetchRows);
         } catch (error) {
             await Swal.fire('Error', 'Failed to load audit logs.', 'error');
         }
     };
 
-    filterBtn?.addEventListener('click', fetchRows);
+    filterBtn?.addEventListener('click', () => fetchRows(1));
+
+    const initialPagination = JSON.parse(root.dataset.pagination || '{"current_page":1,"last_page":1}');
+    renderPagination(paginationRoot, initialPagination, fetchRows);
 };
 
 const bindSimpleSuccessButtons = () => {
