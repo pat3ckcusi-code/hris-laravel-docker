@@ -11,6 +11,12 @@
 
 @section('content')
     <div class="request-documents-layout">
+        @if (session('success'))
+            <div class="alert alert-success" role="alert" style="margin-bottom: 12px;">
+                {{ session('success') }}
+            </div>
+        @endif
+
         <section class="tile request-form-tile">
             <h2 style="margin-top: 0;">New Document Request</h2>
 

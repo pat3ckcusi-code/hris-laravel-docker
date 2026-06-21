@@ -113,13 +113,25 @@
 }
 
 .table-wrap {
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .request-control-table {
     border-collapse: collapse;
     width: 100%;
+    table-layout: fixed;
 }
+
+.request-control-table th:nth-child(1) { width: 7%; }
+.request-control-table th:nth-child(2) { width: 14%; }
+.request-control-table th:nth-child(3) { width: 12%; }
+.request-control-table th:nth-child(4) { width: 12%; }
+.request-control-table th:nth-child(5) { width: 17%; }
+.request-control-table th:nth-child(6) { width: 11%; }
+.request-control-table th:nth-child(7) { width: 7%; }
+.request-control-table th:nth-child(8) { width: 11%; }
+.request-control-table th:nth-child(9) { width: 9%; }
 
 .request-control-table th,
 .request-control-table td {
@@ -138,6 +150,13 @@
 
 .request-control-table tbody tr:hover {
     background: #f1f5f9;
+}
+
+.cell-truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .request-badge {

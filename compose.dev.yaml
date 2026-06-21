@@ -122,6 +122,7 @@ services:
         condition: service_healthy
     volumes:
       - ./public:/var/www/html/public:ro
+      - ./storage/app/public:/var/www/html/storage/app/public:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [hris-dev-network]
     logging: *default-logging

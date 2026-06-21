@@ -48,6 +48,8 @@ services:
     ports:
       - "8090:80"
     depends_on: [app]
+    volumes:
+      - storage_app:/var/www/html/storage/app:ro
     networks: [hris-network]
 
   db:

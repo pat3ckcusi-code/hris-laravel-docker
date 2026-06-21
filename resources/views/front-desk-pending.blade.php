@@ -47,10 +47,10 @@
                                 <td>{{ $request['employee_name'] }}</td>
                                 <td>{{ $request['department'] }}</td>
                                 <td>{{ $request['document_type'] }}</td>
-                                <td>{{ $request['purpose'] }}</td>
+                                <td class="cell-truncate" title="{{ $request['purpose'] }}">{{ $request['purpose'] }}</td>
                                 <td>{{ $request['requested_on'] }}</td>
                                 <td><span class="badge badge-info">{{ $request['status'] }}</span></td>
-                                <td>{{ $request['remarks'] }}</td>
+                                <td class="cell-truncate" title="{{ $request['remarks'] }}">{{ $request['remarks'] }}</td>
                                 <td>
                                     <button type="button" class="btn btn-sm btn-primary" onclick="acceptRequest({{ $request['id'] }})" title="Accept this request"><i class="fas fa-check"></i> Accept</button>
                                     <button type="button" class="btn btn-sm btn-danger" onclick="rejectRequest({{ $request['id'] }})" title="Reject this request"><i class="fas fa-times"></i> Reject</button>

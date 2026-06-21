@@ -7,6 +7,7 @@ use App\Models\DocumentType;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -56,7 +57,7 @@ class DocumentRequestController extends Controller
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'document_type_id' => ['nullable', 'exists:document_types,id'],
@@ -107,10 +108,15 @@ class DocumentRequestController extends Controller
             // do not block on mail failure
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Document request submitted successfully.',
-        ]);
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Document request submitted successfully.',
+            ]);
+        }
+
+        return redirect()->route('dashboard.employee.request-documents')
+            ->with('success', 'Document request submitted successfully.');
     }
 
     public function preview(DocumentRequest $documentRequest): View

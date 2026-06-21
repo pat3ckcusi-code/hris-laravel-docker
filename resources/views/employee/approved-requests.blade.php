@@ -51,10 +51,10 @@
                                 <td>{{ $request['employee_name'] }}</td>
                                 <td>{{ $request['department'] }}</td>
                                 <td>{{ $request['document_type'] }}</td>
-                                <td>{{ $request['purpose'] }}</td>
+                                <td class="cell-truncate" title="{{ $request['purpose'] }}">{{ $request['purpose'] }}</td>
                                 <td>{{ $request['requested_on'] }}</td>
                                 <td><span class="badge badge-success">{{ $request['status'] }}</span></td>
-                                <td>{{ $request['remarks'] }}</td>
+                                <td class="cell-truncate" title="{{ $request['remarks'] }}">{{ $request['remarks'] }}</td>
                                 <td>
                                     <a href="{{ url('/dashboard/employee/front-desk/print/' . $request['id']) }}"
                                        class="btn btn-sm btn-primary"
