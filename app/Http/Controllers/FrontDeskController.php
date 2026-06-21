@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\DocumentRequest;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\DocumentWordExportService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FrontDeskController extends Controller
 {
@@ -220,6 +222,16 @@ class FrontDeskController extends Controller
             'employee' => $employee,
             'template' => $template,
         ]);
+    }
+
+    public function downloadWord(Request $request, int $id): StreamedResponse
+    {
+        $this->ensureFrontDesk($request);
+
+        $documentRequest = DocumentRequest::with(['employee', 'documentType'])->findOrFail($id);
+        $paper = $request->query('paper', 'letter');
+
+        return app(DocumentWordExportService::class)->download($documentRequest, $paper);
     }
 
     public function updateStatus(Request $request): JsonResponse

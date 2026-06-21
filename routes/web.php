@@ -173,6 +173,8 @@ Route::middleware('auth')->group(function () {
         ->name('requests.complete');
     Route::get('/dashboard/employee/front-desk/print/{id}', [FrontDeskController::class, 'printRequest'])
         ->name('front-desk.print-request');
+    Route::get('/dashboard/employee/front-desk/word/{id}', [FrontDeskController::class, 'downloadWord'])
+        ->name('front-desk.download-word');
     Route::post('/dashboard/employee/front-desk/update-status', [FrontDeskController::class, 'updateStatus'])
         ->name('front-desk.update-status');
     Route::post('/dashboard/employee/front-desk/print-report', [FrontDeskController::class, 'printReport'])

@@ -154,8 +154,23 @@
 
 <div class="no-print">
     <button class="btn-print" onclick="window.print()">Print Document</button>
+    <select id="paperSize" style="padding:9px 8px;margin:0 4px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;cursor:pointer;">
+        <option value="letter">Letter (8.5" × 11")</option>
+        <option value="legal">Legal (8.5" × 14")</option>
+        <option value="a4">A4 (8.27" × 11.69")</option>
+    </select>
+    <button onclick="downloadWord()"
+            style="padding:10px 20px;margin:0 5px;border:none;border-radius:4px;cursor:pointer;font-size:14px;background:#16a34a;color:#fff;">
+        Download Word
+    </button>
     <button class="btn-close" onclick="window.close()">Close</button>
 </div>
+<script>
+function downloadWord() {
+    const paper = document.getElementById('paperSize').value;
+    window.location.href = '{{ route("front-desk.download-word", $documentRequest->id) }}?paper=' + paper;
+}
+</script>
 
 <div class="print-container">
     @php

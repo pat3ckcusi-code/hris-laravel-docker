@@ -12,6 +12,7 @@
         "laravel/tinker": "^2.10.1",
         "maatwebsite/excel": "^4.0@dev",
         "phpoffice/phpspreadsheet": "^5.3",
+        "phpoffice/phpword": "^1.4",
         "setasign/fpdi-fpdf": "^2.3",
         "tijsverkoyen/css-to-inline-styles": "^2.4"
     },
