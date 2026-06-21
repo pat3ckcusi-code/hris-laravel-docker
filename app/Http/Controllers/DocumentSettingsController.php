@@ -58,6 +58,21 @@ class DocumentSettingsController extends Controller
             'footer_size' => ['nullable', 'integer', 'min:6', 'max:72'],
             'footer_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'footer_image' => ['nullable', 'image', 'max:4096'],
+            'ph_employee_name_font'  => ['nullable', 'string', 'max:100'],
+            'ph_employee_name_size'  => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_employee_name_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_date_font'           => ['nullable', 'string', 'max:100'],
+            'ph_date_size'           => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_date_color'          => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_designation_font'    => ['nullable', 'string', 'max:100'],
+            'ph_designation_size'    => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_designation_color'   => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_employee_type_font'  => ['nullable', 'string', 'max:100'],
+            'ph_employee_type_size'  => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_employee_type_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_department_font'     => ['nullable', 'string', 'max:100'],
+            'ph_department_size'     => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_department_color'    => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         $parts = $this->buildPartsFromRequest($request, null);
@@ -113,6 +128,21 @@ class DocumentSettingsController extends Controller
             'footer_size' => ['nullable', 'integer', 'min:6', 'max:72'],
             'footer_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'footer_image' => ['nullable', 'image', 'max:4096'],
+            'ph_employee_name_font'  => ['nullable', 'string', 'max:100'],
+            'ph_employee_name_size'  => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_employee_name_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_date_font'           => ['nullable', 'string', 'max:100'],
+            'ph_date_size'           => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_date_color'          => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_designation_font'    => ['nullable', 'string', 'max:100'],
+            'ph_designation_size'    => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_designation_color'   => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_employee_type_font'  => ['nullable', 'string', 'max:100'],
+            'ph_employee_type_size'  => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_employee_type_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_department_font'     => ['nullable', 'string', 'max:100'],
+            'ph_department_size'     => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_department_color'    => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         $headerPath = $documentType->header_image ?: (($documentType->parts['header_image'] ?? null));
@@ -234,6 +264,17 @@ class DocumentSettingsController extends Controller
                 'italic' => (bool) $request->input('closing_remark_italic'),
                 'underline' => (bool) $request->input('closing_remark_underline'),
             ],
+            'placeholder_styles' => array_combine(
+                $phKeys = ['employee_name', 'date', 'designation', 'employee_type', 'department'],
+                array_map(fn ($k) => [
+                    'font'      => $request->input("ph_{$k}_font", 'Arial'),
+                    'size'      => (int) $request->input("ph_{$k}_size", 12),
+                    'color'     => $request->input("ph_{$k}_color", '#000000'),
+                    'bold'      => (bool) $request->input("ph_{$k}_bold"),
+                    'italic'    => (bool) $request->input("ph_{$k}_italic"),
+                    'underline' => (bool) $request->input("ph_{$k}_underline"),
+                ], $phKeys)
+            ),
             'signatories' => $signatories,
             'footer' => [
                 'text' => $request->input('footer_text', ''),

@@ -62,11 +62,39 @@ class DocumentWordExportService
 
         // Body
         $bodyD    = $this->normalizeStyledText($parts['body'] ?? []);
-        $bodyText = strtr($bodyD['text'], $replacements);
-        if ($bodyText !== '') {
-            $fontStyle = $this->fontStyle($bodyD);
-            foreach (explode("\n", $bodyText) as $line) {
-                $section->addText($line !== '' ? $line : ' ', $fontStyle, ['alignment' => 'both', 'spaceAfter' => 0]);
+        $bodyRaw  = $bodyD['text'];
+        if ($bodyRaw !== '') {
+            $fontStyle        = $this->fontStyle($bodyD);
+            $phStyles         = $parts['placeholder_styles'] ?? [];
+            $bodyParaStyle    = ['alignment' => 'both', 'spaceAfter' => 0];
+            $tokenMap         = [
+                '{employee_name}' => 'employee_name',
+                '{designation}'   => 'designation',
+                '{employee_type}' => 'employee_type',
+                '{department}'    => 'department',
+                '{date}'          => 'date',
+            ];
+            $tokenPattern = '/(' . implode('|', array_map(fn ($t) => preg_quote($t, '/'), array_keys($tokenMap))) . ')/';
+
+            foreach (explode("\n", $bodyRaw) as $line) {
+                if ($line === '') {
+                    $section->addText(' ', $fontStyle, $bodyParaStyle);
+                    continue;
+                }
+                $segments = preg_split($tokenPattern, $line, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+                $textRun  = $section->addTextRun($bodyParaStyle);
+                foreach ($segments as $seg) {
+                    if (isset($tokenMap[$seg])) {
+                        $key   = $tokenMap[$seg];
+                        $value = $replacements[$seg] ?? $seg;
+                        $phFontStyle = !empty($phStyles[$key])
+                            ? array_merge($fontStyle, $this->fontStyle($phStyles[$key]))
+                            : $fontStyle;
+                        $textRun->addText($value !== '' ? $value : ' ', $phFontStyle);
+                    } else {
+                        $textRun->addText($seg, $fontStyle);
+                    }
+                }
             }
             $section->addTextBreak(1);
         }

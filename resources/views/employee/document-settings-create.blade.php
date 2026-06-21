@@ -137,6 +137,42 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                 <code>{employee_type}</code> (Permanent / Job Order / Contractual / Elected Official),
                 <code>{department}</code>
             </span>
+
+            <div style="margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:14px;">
+                <p class="hint" style="margin-bottom:10px;font-size:.82em;">Placeholder font styles — set how each placeholder value is rendered in the document:</p>
+                @php
+                $phLabels = [
+                    'employee_name' => ['{employee_name}', 'Employee Name'],
+                    'date'          => ['{date}',          'Date'],
+                    'designation'   => ['{designation}',   'Designation'],
+                    'employee_type' => ['{employee_type}', 'Employee Type'],
+                    'department'    => ['{department}',    'Department'],
+                ];
+                @endphp
+                @foreach($phLabels as $phKey => [$phToken, $phLabel])
+                <div style="margin-bottom:8px;">
+                    <span class="sub-label"><code>{{ $phToken }}</code> — {{ $phLabel }}</span>
+                    <div class="font-bar">
+                        <select name="ph_{{ $phKey }}_font" title="Font family">
+                            @foreach($fonts as $f)
+                                <option value="{{ $f }}" {{ old('ph_'.$phKey.'_font', 'Arial') === $f ? 'selected' : '' }}>{{ $f }}</option>
+                            @endforeach
+                        </select>
+                        <input type="number" name="ph_{{ $phKey }}_size" min="6" max="72"
+                               value="{{ old('ph_'.$phKey.'_size', 12) }}" title="Font size (pt)">
+                        <input type="color" name="ph_{{ $phKey }}_color"
+                               value="{{ old('ph_'.$phKey.'_color', '#000000') }}" title="Font color">
+                        <span class="sep">|</span>
+                        <label title="Bold"><input type="checkbox" name="ph_{{ $phKey }}_bold" value="1"
+                            {{ old('ph_'.$phKey.'_bold') ? 'checked' : '' }}> <strong>B</strong></label>
+                        <label title="Italic"><input type="checkbox" name="ph_{{ $phKey }}_italic" value="1"
+                            {{ old('ph_'.$phKey.'_italic') ? 'checked' : '' }}> <em>I</em></label>
+                        <label title="Underline"><input type="checkbox" name="ph_{{ $phKey }}_underline" value="1"
+                            {{ old('ph_'.$phKey.'_underline') ? 'checked' : '' }}> <u>U</u></label>
+                    </div>
+                </div>
+                @endforeach
+            </div>
         </div>
 
         {{-- ── Closing Remark ──────────────────────────── --}}

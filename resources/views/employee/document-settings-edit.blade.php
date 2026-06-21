@@ -18,9 +18,10 @@ $footerD = is_array($p['footer'] ?? null)
                ? $p['footer']
                : ['text' => ($p['footer'] ?? ''), 'font' => 'Calibri', 'size' => 10, 'color' => '#000000',
                   'italic' => true, 'underline' => false, 'image' => null];
-$sigsD   = is_array($p['signatories'] ?? null) ? $p['signatories'] : [];
-$hdrImg  = $p['header_image'] ?? null;
-$ftrImg  = $footerD['image'] ?? null;
+$sigsD    = is_array($p['signatories'] ?? null) ? $p['signatories'] : [];
+$hdrImg   = $p['header_image'] ?? null;
+$ftrImg   = $footerD['image'] ?? null;
+$phStyles = is_array($p['placeholder_styles'] ?? null) ? $p['placeholder_styles'] : [];
 
 $fonts = ['Arial', 'Times New Roman', 'Calibri', 'Georgia', 'Verdana'];
 @endphp
@@ -159,6 +160,43 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                 <code>{employee_type}</code> (Permanent / Job Order / Contractual / Elected Official),
                 <code>{department}</code>
             </span>
+
+            <div style="margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:14px;">
+                <p class="hint" style="margin-bottom:10px;font-size:.82em;">Placeholder font styles — set how each placeholder value is rendered in the document:</p>
+                @php
+                $phLabels = [
+                    'employee_name' => ['{employee_name}', 'Employee Name'],
+                    'date'          => ['{date}',          'Date'],
+                    'designation'   => ['{designation}',   'Designation'],
+                    'employee_type' => ['{employee_type}', 'Employee Type'],
+                    'department'    => ['{department}',    'Department'],
+                ];
+                @endphp
+                @foreach($phLabels as $phKey => [$phToken, $phLabel])
+                @php $phD = $phStyles[$phKey] ?? []; @endphp
+                <div style="margin-bottom:8px;">
+                    <span class="sub-label"><code>{{ $phToken }}</code> — {{ $phLabel }}</span>
+                    <div class="font-bar">
+                        <select name="ph_{{ $phKey }}_font" title="Font family">
+                            @foreach($fonts as $f)
+                                <option value="{{ $f }}" {{ old('ph_'.$phKey.'_font', $phD['font'] ?? 'Arial') === $f ? 'selected' : '' }}>{{ $f }}</option>
+                            @endforeach
+                        </select>
+                        <input type="number" name="ph_{{ $phKey }}_size" min="6" max="72"
+                               value="{{ old('ph_'.$phKey.'_size', $phD['size'] ?? 12) }}" title="Font size (pt)">
+                        <input type="color" name="ph_{{ $phKey }}_color"
+                               value="{{ old('ph_'.$phKey.'_color', $phD['color'] ?? '#000000') }}" title="Font color">
+                        <span class="sep">|</span>
+                        <label title="Bold"><input type="checkbox" name="ph_{{ $phKey }}_bold" value="1"
+                            {{ !empty(old('ph_'.$phKey.'_bold', $phD['bold'] ?? false)) ? 'checked' : '' }}> <strong>B</strong></label>
+                        <label title="Italic"><input type="checkbox" name="ph_{{ $phKey }}_italic" value="1"
+                            {{ !empty(old('ph_'.$phKey.'_italic', $phD['italic'] ?? false)) ? 'checked' : '' }}> <em>I</em></label>
+                        <label title="Underline"><input type="checkbox" name="ph_{{ $phKey }}_underline" value="1"
+                            {{ !empty(old('ph_'.$phKey.'_underline', $phD['underline'] ?? false)) ? 'checked' : '' }}> <u>U</u></label>
+                    </div>
+                </div>
+                @endforeach
+            </div>
         </div>
 
         {{-- ── Closing Remark ──────────────────────────── --}}

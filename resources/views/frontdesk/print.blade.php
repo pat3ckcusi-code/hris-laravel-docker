@@ -215,13 +215,23 @@ function downloadWord() {
         $department = $employee->dept_name ?? '';
         $dateToday = now()->format('F d, Y');
 
-        /* Replace placeholders in body text */
-        $bodyText = $bodyD['text'] ?? '';
-        $bodyText = str_replace(
-            ['{employee_name}', '{designation}', '{employee_type}', '{department}', '{date}'],
-            [$employeeName, $designation, $employeeType, $department, $dateToday],
-            $bodyText
-        );
+        /* Replace placeholders in body text with optionally-styled spans */
+        $phStyles = $parts['placeholder_styles'] ?? [];
+        $phMap = [
+            '{employee_name}' => ['employee_name', $employeeName],
+            '{designation}'   => ['designation',   $designation],
+            '{employee_type}' => ['employee_type', $employeeType],
+            '{department}'    => ['department',    $department],
+            '{date}'          => ['date',          $dateToday],
+        ];
+        $bodyHtml = e($bodyD['text'] ?? '');
+        foreach ($phMap as $token => [$key, $value]) {
+            $s = $phStyles[$key] ?? [];
+            $inner = e($value);
+            $replacement = !empty($s) ? '<span style="' . $css($s) . '">' . $inner . '</span>' : $inner;
+            $bodyHtml = str_replace($token, $replacement, $bodyHtml);
+        }
+        $bodyHtml = nl2br($bodyHtml);
 
         /* Replace placeholders in closing text */
         $closingText = $closingD['text'] ?? '';
@@ -248,9 +258,9 @@ function downloadWord() {
     <p class="doc-salutation">{{ $parts['salutation'] ?? 'To Whom It May Concern:' }}</p>
 
     {{-- Body --}}
-    @if ($bodyText)
+    @if ($bodyHtml)
         <div class="document-body" style="{{ $css($bodyD) }}">
-            {!! nl2br(e($bodyText)) !!}
+            {!! $bodyHtml !!}
         </div>
     @endif
 
