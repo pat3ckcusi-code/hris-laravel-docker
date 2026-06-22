@@ -200,14 +200,8 @@
         'payroll manager' => [
             ['label' => 'Dashboard',           'icon' => 'dashboard',       'route' => 'payroll.dashboard',           'active' => ['payroll.dashboard']],
 
-            ['section' => 'Quick Actions'],
-            ['label' => 'Create Payroll Run',  'icon' => 'payroll_create',  'route' => 'payroll.runs.create',         'active' => ['payroll.runs.create']],
-            ['label' => 'View Latest Payroll', 'icon' => 'payroll_view',    'route' => 'payroll.runs.index',          'active' => ['payroll.runs.index']],
-
             ['section' => 'Pay Processing'],
             ['label' => 'Payroll Runs',        'icon' => 'payroll_runs',    'route' => 'payroll.runs.index',          'active' => ['payroll.runs.*']],
-            ['label' => 'DTR Records',  'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Import Logs',  'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Compensation'],
             ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',      'route' => 'payroll.plantilla.index',     'active' => ['payroll.plantilla.*']],

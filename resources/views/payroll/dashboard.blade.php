@@ -38,6 +38,7 @@
         </div>
 
         @if($recentRuns->count())
+            <div class="hris-table-wrapper">
             <table class="hris-table">
                 <thead>
                     <tr>
@@ -62,6 +63,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @else
             <p class="empty-state">No payroll runs yet. <a href="{{ route('payroll.runs.create') }}">Create one</a>.</p>
         @endif
@@ -70,6 +72,7 @@
     <section class="payroll-section">
         <h2>Recent Audit Activity</h2>
         @if($recentAudit->count())
+            <div class="hris-table-wrapper">
             <table class="hris-table">
                 <thead>
                     <tr>
@@ -86,12 +89,13 @@
                             <td><span class="status-chip">{{ $log->action }}</span></td>
                             <td>{{ $log->user->name ?? '—' }}</td>
                             <td>{{ $log->payroll_run_id ?? '—' }}</td>
-                            <td>{{ Str::limit($log->details, 60) }}</td>
+                            <td>{{ str($log->details)->limit(60) }}</td>
                             <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @else
             <p class="empty-state">No audit activity recorded yet.</p>
         @endif

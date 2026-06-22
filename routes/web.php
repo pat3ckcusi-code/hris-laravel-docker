@@ -30,6 +30,7 @@ use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\EmployeeAssignmentController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
 use App\Http\Controllers\Payroll\EarningsController;
+use App\Http\Controllers\Payroll\EmployeeEarningController;
 use App\Http\Controllers\Payroll\DeductionsController;
 use App\Http\Controllers\Payroll\LeaveIntegrationController;
 use App\Http\Controllers\Payroll\ExceptionsController;
@@ -552,6 +553,9 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'earnings.update',
         'destroy' => 'earnings.destroy',
     ]);
+    Route::post('earnings/{earning}/assignments', [EmployeeEarningController::class, 'store'])->name('earnings.assignments.store');
+    Route::put('earnings/{earning}/assignments/{assignment}', [EmployeeEarningController::class, 'update'])->name('earnings.assignments.update');
+    Route::delete('earnings/{earning}/assignments/{assignment}', [EmployeeEarningController::class, 'destroy'])->name('earnings.assignments.destroy');
     Route::resource('deductions', DeductionsController::class)->names([
         'index' => 'deductions.index',
         'create' => 'deductions.create',

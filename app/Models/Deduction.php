@@ -26,6 +26,8 @@ class Deduction extends Model
 
     protected $fillable = [
         'type',
+        'deduction_category',
+        'deduction_type',
         'description',
         'formula',
     ];

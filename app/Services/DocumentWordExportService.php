@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DocumentRequest;
+use App\Models\PayrollDetail;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\Converter;
@@ -18,12 +19,17 @@ class DocumentWordExportService
         $employee     = $documentRequest->employee;
         $parts        = $documentType?->parts ?? [];
 
+        $salaryRaw = $employee
+            ? PayrollDetail::where('employee_id', $employee->id)->latest('id')->value('basic_salary')
+            : null;
+
         $replacements = [
             '{employee_name}' => $employee?->name ?? 'Employee',
             '{designation}'   => $employee?->designation ?? 'Position',
             '{employee_type}' => $employee?->employee_type ?? 'Permanent',
             '{department}'    => $employee?->dept_name ?? '',
             '{date}'          => now()->format('F d, Y'),
+            '{salary}'        => $salaryRaw !== null ? '₱' . number_format((float) $salaryRaw, 2) : 'N/A',
         ];
 
         $paperSize = match (strtolower($paper)) {
@@ -73,6 +79,7 @@ class DocumentWordExportService
                 '{employee_type}' => 'employee_type',
                 '{department}'    => 'department',
                 '{date}'          => 'date',
+                '{salary}'        => 'salary',
             ];
             $tokenPattern = '/(' . implode('|', array_map(fn ($t) => preg_quote($t, '/'), array_keys($tokenMap))) . ')/';
 

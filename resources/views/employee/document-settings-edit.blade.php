@@ -158,7 +158,8 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                 Placeholders: <code>{employee_name}</code>, <code>{date}</code>,
                 <code>{designation}</code> (from users.designation),
                 <code>{employee_type}</code> (Permanent / Job Order / Contractual / Elected Official),
-                <code>{department}</code>
+                <code>{department}</code>,
+                <code>{salary}</code> (monthly salary from latest payroll run)
             </span>
 
             <div style="margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:14px;">
@@ -170,6 +171,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                     'designation'   => ['{designation}',   'Designation'],
                     'employee_type' => ['{employee_type}', 'Employee Type'],
                     'department'    => ['{department}',    'Department'],
+                    'salary'        => ['{salary}',        'Monthly Salary'],
                 ];
                 @endphp
                 @foreach($phLabels as $phKey => [$phToken, $phLabel])

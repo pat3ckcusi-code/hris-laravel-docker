@@ -685,7 +685,7 @@
         // Reset Password confirmation modal
         window.confirmResetPassword = function (employeeId, resetUrl, email) {
             if (typeof Swal === 'undefined') {
-                if (!confirm('Reset password for ' + email + '? A temporary password will be emailed.')) return;
+                if (!confirm('Reset password for ' + email + '? A temporary password will be shown on screen.')) return;
                 var form = document.createElement('form');
                 form.method = 'POST';
                 form.action = resetUrl;
@@ -701,7 +701,7 @@
 
             Swal.fire({
                 title: 'Reset Password?',
-                html: 'A temporary password will be generated and sent to:<br><strong>' + email + '</strong><br><br>The employee will be required to change it on next login.',
+                html: 'A temporary password will be generated for <strong>' + email + '</strong>.<br><br>Give the password to the employee in person. They will be required to change it on next login.',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#6366f1',
@@ -721,12 +721,24 @@
                     })
                     .then(function (response) { return response.json(); })
                     .then(function (data) {
-                        Swal.fire({
-                            icon: data.status === 'success' ? 'success' : 'error',
-                            title: data.status === 'success' ? 'Password Reset' : 'Error',
-                            text: data.message,
-                            confirmButtonColor: '#6366f1',
-                        });
+                        if (data.status === 'success' && data.temporary_password) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Password Reset',
+                                html: 'Give this temporary password to the employee:<br><br>'
+                                    + '<code style="font-size:1.4rem;font-weight:700;letter-spacing:0.05em;background:#f3f4f6;padding:0.4rem 0.8rem;border-radius:6px;">' + data.temporary_password + '</code>'
+                                    + '<br><br><small>The employee will be required to change it on next login.</small>',
+                                confirmButtonColor: '#6366f1',
+                                confirmButtonText: 'Done',
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error',
+                                text: data.message || 'An unexpected error occurred.',
+                                confirmButtonColor: '#6366f1',
+                            });
+                        }
                     })
                     .catch(function () {
                         Swal.fire({ icon: 'error', title: 'Error', text: 'An unexpected error occurred.', confirmButtonColor: '#ea580c' });

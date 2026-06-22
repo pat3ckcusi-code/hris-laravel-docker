@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Payroll;
 use App\Http\Controllers\Controller;
 use App\Models\EmployeeAssignment;
 use App\Models\Plantilla;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -38,6 +39,12 @@ class EmployeeAssignmentController extends Controller
             'end_date' => $request->end_date,
         ]);
 
+        // Sync salary grade/step directly onto the user for quick identification
+        User::where('id', $request->employee_id)->update([
+            'salary_grade' => $plantilla->salary_grade,
+            'salary_step'  => $plantilla->step,
+        ]);
+
         return redirect()->route('payroll.plantilla.show', $plantilla->id)
             ->with('status', 'Employee assigned successfully.');
     }
@@ -53,6 +60,12 @@ class EmployeeAssignmentController extends Controller
         ]);
 
         $assignment->update($request->only('start_date', 'end_date'));
+
+        // Re-sync salary grade/step in case the plantilla position changed
+        User::where('id', $assignment->employee_id)->update([
+            'salary_grade' => $plantilla->salary_grade,
+            'salary_step'  => $plantilla->step,
+        ]);
 
         return redirect()->route('payroll.plantilla.show', $plantilla->id)
             ->with('status', 'Assignment updated.');

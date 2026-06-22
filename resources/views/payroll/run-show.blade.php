@@ -50,19 +50,24 @@
     <section class="payroll-section">
         <h2>Payroll Details</h2>
         @if($run->details->count())
+            <div class="hris-table-wrapper">
             <table class="hris-table">
                 <thead>
                     <tr>
                         <th>Employee</th>
-                        <th>Days Worked</th>
-                        <th>Late (min)</th>
-                        <th>UT (min)</th>
+                        <th>Days</th>
+                        <th>Late</th>
+                        <th>UT</th>
                         <th>Absent</th>
                         <th>Basic Salary</th>
-                        <th>Earnings</th>
-                        <th>Deductions</th>
-                        <th>LWOP Ded.</th>
-                        <th>Loan Ded.</th>
+                        <th>Allowances</th>
+                        <th>Gross Pay</th>
+                        <th>GSIS</th>
+                        <th>PhilHealth</th>
+                        <th>Pag-IBIG</th>
+                        <th>BIR</th>
+                        <th>Loans</th>
+                        <th>LWOP</th>
                         <th>Net Pay</th>
                     </tr>
                 </thead>
@@ -76,14 +81,19 @@
                             <td>{{ $detail->absent_days ?? 0 }}</td>
                             <td>₱{{ number_format($detail->basic_salary, 2) }}</td>
                             <td>₱{{ number_format($detail->earnings, 2) }}</td>
-                            <td>₱{{ number_format($detail->deductions, 2) }}</td>
-                            <td>₱{{ number_format($detail->lwop_deduction ?? 0, 2) }}</td>
+                            <td>₱{{ number_format($detail->gross_pay ?? ($detail->basic_salary + $detail->earnings), 2) }}</td>
+                            <td>₱{{ number_format($detail->gsis_deduction ?? 0, 2) }}</td>
+                            <td>₱{{ number_format($detail->philhealth_deduction ?? 0, 2) }}</td>
+                            <td>₱{{ number_format($detail->pagibig_deduction ?? 0, 2) }}</td>
+                            <td>₱{{ number_format($detail->bir_deduction ?? 0, 2) }}</td>
                             <td>₱{{ number_format($detail->loan_deduction ?? 0, 2) }}</td>
+                            <td>₱{{ number_format($detail->lwop_deduction ?? 0, 2) }}</td>
                             <td><strong>₱{{ number_format($detail->net_pay, 2) }}</strong></td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @else
             <p class="empty-state">No payroll details computed yet. Click <strong>Compute</strong> to generate.</p>
         @endif
@@ -92,6 +102,7 @@
     <section class="payroll-section">
         <h2>Approval History</h2>
         @if($run->approvalLogs->count())
+            <div class="hris-table-wrapper">
             <table class="hris-table">
                 <thead><tr><th>Approver</th><th>Status</th><th>Date</th></tr></thead>
                 <tbody>
@@ -104,6 +115,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @else
             <p class="empty-state">No approval actions yet.</p>
         @endif

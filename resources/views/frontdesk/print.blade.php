@@ -214,6 +214,10 @@ function downloadWord() {
         $employeeType = $employee->employee_type ?? 'Permanent';
         $department = $employee->dept_name ?? '';
         $dateToday = now()->format('F d, Y');
+        $salaryRaw = $employee
+            ? \App\Models\PayrollDetail::where('employee_id', $employee->id)->latest('id')->value('basic_salary')
+            : null;
+        $salaryFormatted = $salaryRaw !== null ? '₱' . number_format((float) $salaryRaw, 2) : 'N/A';
 
         /* Replace placeholders in body text with optionally-styled spans */
         $phStyles = $parts['placeholder_styles'] ?? [];
@@ -223,6 +227,7 @@ function downloadWord() {
             '{employee_type}' => ['employee_type', $employeeType],
             '{department}'    => ['department',    $department],
             '{date}'          => ['date',          $dateToday],
+            '{salary}'        => ['salary',        $salaryFormatted],
         ];
         $bodyHtml = e($bodyD['text'] ?? '');
         foreach ($phMap as $token => [$key, $value]) {

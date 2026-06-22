@@ -38,9 +38,10 @@ class EarningsController extends Controller
 
     public function show(int $id): View
     {
-        $earning = Earning::with('employeeEarnings.employee')->findOrFail($id);
+        $earning   = Earning::with('employeeEarnings.employee')->findOrFail($id);
+        $employees = \App\Models\User::orderBy('name')->get(['id', 'name']);
 
-        return view('payroll.earning-show', compact('earning'));
+        return view('payroll.earning-show', compact('earning', 'employees'));
     }
 
     public function edit(int $id): RedirectResponse

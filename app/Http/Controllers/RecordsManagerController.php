@@ -6,7 +6,6 @@ use App\Exports\EmployeeImportTemplate;
 use App\Models\Department;
 use App\Models\User;
 use App\Notifications\EmployeeDefaultPasswordNotification;
-use App\Notifications\PasswordResetByAdminNotification;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -264,21 +263,15 @@ class RecordsManagerController extends Controller
             'force_password_change' => true,
         ])->save();
 
-        try {
-            $employee->notify(new PasswordResetByAdminNotification($temporaryPassword));
-        } catch (Throwable $exception) {
-            if ($request->expectsJson()) {
-                return response()->json(['status' => 'error', 'message' => 'Password was reset but the email could not be sent. Please inform the employee manually.'], 500);
-            }
-
-            return redirect()->back()->with(['status' => 'error', 'message' => 'Password was reset but the email could not be sent.']);
-        }
-
         if ($request->expectsJson()) {
-            return response()->json(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to '.$employee->email.'.']);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Password reset successfully.',
+                'temporary_password' => $temporaryPassword,
+            ]);
         }
 
-        return redirect()->back()->with(['status' => 'success', 'message' => 'Password reset successfully. A temporary password has been sent to '.$employee->email.'.']);
+        return redirect()->back()->with(['status' => 'success', 'message' => 'Password reset successfully. Temporary password: '.$temporaryPassword]);
     }
 
     public function downloadImportTemplate()

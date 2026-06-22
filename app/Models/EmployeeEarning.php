@@ -28,13 +28,16 @@ class EmployeeEarning extends Model
         'employee_id',
         'earnings_id',
         'amount',
+        'amount_type',
+        'percentage',
         'recurring',
     ];
 
     protected function casts(): array
     {
         return [
-            'recurring' => 'boolean',
+            'recurring'  => 'boolean',
+            'percentage' => 'float',
         ];
     }
 

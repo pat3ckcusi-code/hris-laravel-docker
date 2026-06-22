@@ -91,6 +91,8 @@ class User extends Authenticatable
         'is_sanggunian_member',
         'on_extended_service',
         'hours_per_day',
+        'salary_grade',
+        'salary_step',
     ];
 
     /**

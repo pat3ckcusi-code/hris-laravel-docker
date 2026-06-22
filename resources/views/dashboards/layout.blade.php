@@ -21,7 +21,7 @@
     <div class="app-shell min-h-screen">
         @include('partials.global-sidebar')
 
-        <main class="card flex-1 max-w-7xl mx-auto mt-6 w-full bg-white p-6 rounded-3xl shadow-xl">
+        <main class="card">
             <div class="top mb-6">
                 <h1 class="text-3xl font-semibold text-slate-900">{{ $title ?? 'Dashboard' }}</h1>
                 @yield('top_actions')

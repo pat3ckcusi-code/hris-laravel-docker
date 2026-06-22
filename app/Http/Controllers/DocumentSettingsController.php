@@ -73,6 +73,9 @@ class DocumentSettingsController extends Controller
             'ph_department_font'     => ['nullable', 'string', 'max:100'],
             'ph_department_size'     => ['nullable', 'integer', 'min:6', 'max:72'],
             'ph_department_color'    => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_salary_font'         => ['nullable', 'string', 'max:100'],
+            'ph_salary_size'         => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_salary_color'        => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         $parts = $this->buildPartsFromRequest($request, null);
@@ -143,6 +146,9 @@ class DocumentSettingsController extends Controller
             'ph_department_font'     => ['nullable', 'string', 'max:100'],
             'ph_department_size'     => ['nullable', 'integer', 'min:6', 'max:72'],
             'ph_department_color'    => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'ph_salary_font'         => ['nullable', 'string', 'max:100'],
+            'ph_salary_size'         => ['nullable', 'integer', 'min:6', 'max:72'],
+            'ph_salary_color'        => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
         ]);
 
         $headerPath = $documentType->header_image ?: (($documentType->parts['header_image'] ?? null));
@@ -265,7 +271,7 @@ class DocumentSettingsController extends Controller
                 'underline' => (bool) $request->input('closing_remark_underline'),
             ],
             'placeholder_styles' => array_combine(
-                $phKeys = ['employee_name', 'date', 'designation', 'employee_type', 'department'],
+                $phKeys = ['employee_name', 'date', 'designation', 'employee_type', 'department', 'salary'],
                 array_map(fn ($k) => [
                     'font'      => $request->input("ph_{$k}_font", 'Arial'),
                     'size'      => (int) $request->input("ph_{$k}_size", 12),

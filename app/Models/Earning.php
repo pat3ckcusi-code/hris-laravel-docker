@@ -27,6 +27,7 @@ class Earning extends Model
 
     protected $fillable = [
         'type',
+        'allowance_type',
         'description',
         'recurring',
     ];
