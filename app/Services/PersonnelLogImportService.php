@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
 use App\Models\User;
+use App\Support\WorkSchedule;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class PersonnelLogImportService
@@ -12,6 +14,7 @@ class PersonnelLogImportService
     public function __construct(
         private readonly IntegrationApiService $integrationApi,
         private readonly DtrPunchResolver $punchResolver,
+        private readonly ShiftPunchGrouper $punchGrouper,
     ) {}
 
     /**
@@ -40,6 +43,7 @@ class PersonnelLogImportService
 
         if ($users->isEmpty()) {
             $scope = $deptId ? "department #{$deptId}" : 'any department';
+
             return ['imported' => 0, 'skipped' => 0, 'messages' => [],
                 'error' => "No HRIS users with EmpNo found for {$scope}. Set EmpNo on employee records before importing."];
         }
@@ -216,8 +220,16 @@ class PersonnelLogImportService
 
     private function upsertDtrRecords(User $user, string $from, string $to): void
     {
+        $schedule = WorkSchedule::forUser($user);
+
+        // A night shift's punches span two calendar days, so widen the fetch by
+        // one day on each side to complete the first/last shift in the range.
+        $pad = $schedule->crossesMidnight ? 1 : 0;
+        $fetchFrom = Carbon::parse($from)->subDays($pad)->toDateString();
+        $fetchTo = Carbon::parse($to)->addDays($pad)->toDateString();
+
         $logs = AttendanceLog::where('user_id', $user->id)
-            ->whereBetween('logdate', [$from, $to])
+            ->whereBetween('logdate', [$fetchFrom, $fetchTo])
             ->orderBy('logdate')
             ->orderBy('logtime')
             ->get();
@@ -226,11 +238,13 @@ class PersonnelLogImportService
             return;
         }
 
-        foreach ($logs->groupBy(fn ($log) => $log->logdate->format('Y-m-d')) as $date => $dayLogs) {
-            $resolved = $this->punchResolver->resolve(
-                $dayLogs->pluck('logtime')->map(fn ($t) => (string) $t),
-                $date
-            );
+        foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
+            // Only write shifts whose logical date falls inside the requested range.
+            if ($date < $from || $date > $to) {
+                continue;
+            }
+
+            $resolved = $this->punchResolver->resolve($punches, $date, $schedule);
 
             Dtr::updateOrCreate(
                 ['employee_id' => $user->id, 'date' => $date],

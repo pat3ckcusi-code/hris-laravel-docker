@@ -9,6 +9,7 @@ use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
@@ -17,25 +18,8 @@ class Form48ExportService
 {
     public function __construct(
         private readonly DtrPunchResolver $punchResolver,
+        private readonly ShiftPunchGrouper $punchGrouper,
     ) {}
-
-    private ?array $shiftConfig = null;
-
-    private function shiftConfig(): array
-    {
-        if ($this->shiftConfig !== null) {
-            return $this->shiftConfig;
-        }
-        $s = Setting::first();
-
-        return $this->shiftConfig = [
-            'work_start' => $s?->work_start ?? '08:00',
-            'morning_end' => $s?->morning_end ?? '11:00',
-            'lunch_return' => $s?->lunch_return ?? '13:00',
-            'noon_end' => $s?->noon_end ?? '14:00',
-            'work_end' => $s?->work_end ?? '17:00',
-        ];
-    }
 
     // Row where day 1 lives: 11 + 1 = 12.
     private const DATA_ROW_OFFSET = 11;
@@ -99,25 +83,33 @@ class Form48ExportService
             ];
         }
 
-        // Fallback: for days with attendance_logs but no DTR, derive AM/PM
-        // via the shared DtrPunchResolver (same logic the import uses).
-        $logsByDay = AttendanceLog::where('user_id', $userId)
-            ->whereBetween('logdate', [$from, $to])
+        // Fallback: for shifts with attendance_logs but no DTR, derive the slots
+        // via the shared grouper + resolver (same logic the import uses). Widen
+        // the fetch by a day on each side so night shifts at the range edges are
+        // complete.
+        $user = User::find($userId);
+        $schedule = WorkSchedule::forUser($user);
+        $pad = $schedule->crossesMidnight ? 1 : 0;
+
+        $logs = AttendanceLog::where('user_id', $userId)
+            ->whereBetween('logdate', [
+                Carbon::parse($from)->subDays($pad)->toDateString(),
+                Carbon::parse($to)->addDays($pad)->toDateString(),
+            ])
             ->orderBy('logdate')
             ->orderBy('logtime')
-            ->get()
-            ->groupBy(fn ($log) => $log->logdate->format('Y-m-d'));
+            ->get();
 
-        foreach ($logsByDay as $date => $dayLogs) {
+        foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
+            if ($date < $from || $date > $to) {
+                continue;   // shift outside the requested range
+            }
             $day = (int) Carbon::parse($date)->day;
             if (isset($records[$day])) {
-                continue;   // DTR entry already covers this day
+                continue;   // DTR entry already covers this shift
             }
 
-            $resolved = $this->punchResolver->resolve(
-                $dayLogs->pluck('logtime')->map(fn ($t) => (string) $t),
-                $date
-            );
+            $resolved = $this->punchResolver->resolve($punches, $date, $schedule);
 
             $records[$day] = [
                 'date' => $date,
@@ -227,12 +219,13 @@ class Form48ExportService
     public function buildLocatorMap(int $userId, string $from, string $to): array
     {
         $map = [];
+        $sc = WorkSchedule::forUser(User::find($userId));
 
         Locator::where('user_id', $userId)
             ->where('status', 'approved')
             ->whereBetween('travel_date', [$from, $to])
             ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
-            ->each(function ($locator) use (&$map): void {
+            ->each(function ($locator) use (&$map, $sc): void {
                 $day = (int) Carbon::parse($locator->travel_date)->day;
                 $dep = substr((string) $locator->intended_departure_time, 0, 5);
                 $arr = substr((string) $locator->intended_arrival_time, 0, 5);
@@ -246,17 +239,16 @@ class Form48ExportService
                     'arrival' => $arr,
                 ];
 
-                $sc = $this->shiftConfig();
-                if ($dep <= $sc['work_start']) {
+                if ($dep <= $sc->workStart) {
                     $cur['covers_am_in'] = true;
                 }
-                if ($dep <= '12:00' && $arr >= $sc['morning_end']) {
+                if ($dep <= '12:00' && $arr >= $sc->morningEnd) {
                     $cur['covers_am_out'] = true;
                 }
-                if ($dep <= $sc['lunch_return'] && $arr >= $sc['lunch_return']) {
+                if ($dep <= $sc->lunchReturn && $arr >= $sc->lunchReturn) {
                     $cur['covers_pm_in'] = true;
                 }
-                if ($arr >= $sc['work_end']) {
+                if ($arr >= $sc->workEnd) {
                     $cur['covers_pm_out'] = true;
                 }
 
@@ -371,36 +363,30 @@ class Form48ExportService
         string $date,
         string $amIn,
         string $pmIn,
-        string $pmOut
+        string $pmOut,
+        WorkSchedule $schedule
     ): array {
-        $s = Setting::first();
-        $workStart = $s?->work_start ?? '08:00';
-        $morningEnd = $s?->morning_end ?? '11:00';
-        $lunchReturn = $s?->lunch_return ?? '13:00';
-        $noonEnd = $s?->noon_end ?? '14:00';
-        $workEnd = $s?->work_end ?? '17:00';
-
         $tardiness = 0;
         $undertime = 0;
 
         if ($amIn !== '' && $amIn !== 'LOCATOR') {
             $hm = substr($amIn, 0, 5);
-            if ($hm > $workStart && $hm < $morningEnd) {
-                $tardiness += (int) Carbon::parse("$date $workStart")->diffInMinutes(Carbon::parse("$date $hm"));
+            if ($hm > $schedule->workStart && $hm < $schedule->morningEnd) {
+                $tardiness += (int) Carbon::parse("$date $schedule->workStart")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
         if ($pmIn !== '' && $pmIn !== 'LOCATOR') {
             $hm = substr($pmIn, 0, 5);
-            if ($hm > $lunchReturn && $hm < $noonEnd) {
-                $tardiness += (int) Carbon::parse("$date $lunchReturn")->diffInMinutes(Carbon::parse("$date $hm"));
+            if ($hm > $schedule->lunchReturn && $hm < $schedule->noonEnd) {
+                $tardiness += (int) Carbon::parse("$date $schedule->lunchReturn")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
         if ($pmOut !== '' && $pmOut !== 'LOCATOR') {
             $hm = substr($pmOut, 0, 5);
-            if ($hm >= $lunchReturn && $hm < $workEnd) {
-                $undertime += (int) Carbon::parse("$date $hm")->diffInMinutes(Carbon::parse("$date $workEnd"));
+            if ($hm >= $schedule->lunchReturn && $hm < $schedule->workEnd) {
+                $undertime += (int) Carbon::parse("$date $hm")->diffInMinutes(Carbon::parse("$date $schedule->workEnd"));
             }
         }
 
@@ -426,9 +412,10 @@ class Form48ExportService
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
+        $schedule = WorkSchedule::forUser($employee);
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule);
 
         // Exclude leave days and ETA days with fewer than 4 punches from the total.
         // For locator days, zero the penalty for each covered slot that lacks a punch.
@@ -453,7 +440,7 @@ class Form48ExportService
                     $locatorMap[$day]
                 );
                 [$tardiness, $undertime] = self::computeSlotPenalties(
-                    $r['date'], $lAmIn ?? '', $lPmIn ?? '', $lPmOut ?? ''
+                    $r['date'], $lAmIn ?? '', $lPmIn ?? '', $lPmOut ?? '', $schedule
                 );
             } else {
                 $tardiness = $r['tardiness'] ?? 0;
@@ -538,9 +525,10 @@ class Form48ExportService
         Worksheet $sheet,
         array $records,
         string $from,
-        array $leaveMap = [],
-        array $etaMap = [],
-        array $locatorMap = []
+        array $leaveMap,
+        array $etaMap,
+        array $locatorMap,
+        WorkSchedule $schedule
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -694,7 +682,7 @@ class Form48ExportService
                 // are unreliable on locator days (sequential assignment mis-positions
                 // punches), and the old OR logic zeroed ALL tardiness even when only
                 // one slot was covered.
-                [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amIn, $pmIn, $pmOut);
+                [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amIn, $pmIn, $pmOut, $schedule);
             } else {
                 $amIn = $fmt($rec['am_in']);
                 $amOut = $fmt($rec['am_out']);
@@ -718,10 +706,9 @@ class Form48ExportService
             $amInHm = $cellHm($amIn);
             $pmInHm = $cellHm($pmIn);
             $pmOutHm = $cellHm($pmOut);
-            $sc = $this->shiftConfig();
-            $redAmIn = $amInHm !== null && $amInHm > $sc['work_start'] && $amInHm < $sc['morning_end'];
-            $redPmIn = $pmInHm !== null && $pmInHm > $sc['lunch_return'] && $pmInHm < $sc['noon_end'];
-            $redPmOut = $pmOutHm !== null && $pmOutHm >= $sc['lunch_return'] && $pmOutHm < $sc['work_end'];
+            $redAmIn = $amInHm !== null && $amInHm > $schedule->workStart && $amInHm < $schedule->morningEnd;
+            $redPmIn = $pmInHm !== null && $pmInHm > $schedule->lunchReturn && $pmInHm < $schedule->noonEnd;
+            $redPmOut = $pmOutHm !== null && $pmOutHm >= $schedule->lunchReturn && $pmOutHm < $schedule->workEnd;
 
             foreach (range(0, 3) as $i) {
                 $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $amIn);

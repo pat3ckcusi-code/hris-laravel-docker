@@ -68,6 +68,7 @@
         'payroll_runs'        => 'fas fa-receipt fa-fw',
         'attendance'          => 'fas fa-clock fa-fw',
         'attendance_import'   => 'fas fa-file-import fa-fw',
+        'work_schedule'       => 'fas fa-user-clock fa-fw',
         'plantilla'           => 'fas fa-building fa-fw',
         'salary_matrix'       => 'fas fa-table fa-fw',
         'earnings'            => 'fas fa-coins fa-fw',
@@ -170,6 +171,8 @@
             ['section' => 'Attendance'],
             ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',             'active' => ['attendance.shifts*']],
+            ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',          'active' => ['attendance.schedules*']],
             ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',   'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Reports'],
@@ -242,8 +245,10 @@
             ['label' => 'Dashboard',   'icon' => 'dashboard', 'route' => 'dashboard', 'active' => ['dashboard']],
 
             ['section' => 'Attendance'],
-            ['label' => 'DTR Records', 'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Import Logs', 'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
+            ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'Shift Templates',  'icon' => 'work_schedule',     'route' => 'attendance.shifts',            'active' => ['attendance.shifts*']],
+            ['label' => 'Shift Assignment', 'icon' => 'work_schedule',     'route' => 'attendance.schedules',         'active' => ['attendance.schedules*']],
+            ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
         ],
 
         // ─── Front Desk ───────────────────────────────────

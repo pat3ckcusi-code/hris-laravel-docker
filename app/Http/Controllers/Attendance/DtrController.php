@@ -11,6 +11,7 @@ use App\Models\Locator;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\Form48ExportService;
+use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -183,6 +184,9 @@ class DtrController extends Controller
             ->orderBy('date')
             ->get();
 
+        // Effective shift for this employee (template or global standard day).
+        $schedule = WorkSchedule::forUser($employee);
+
         // Build leave map: date string → leave code (approved, non-cancelled).
         $leaveMap = LeaveDate::query()
             ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
@@ -290,7 +294,7 @@ class DtrController extends Controller
                 // Recompute per-slot: the old OR logic zeroed all tardiness whenever
                 // any covered slot was LOCATOR, hiding genuine late AM In punches.
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
-                    $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? ''
+                    $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $schedule
                 );
             } else {
                 $tAmIn = $dtr->time_in_am ?? '—';
@@ -309,9 +313,9 @@ class DtrController extends Controller
             $amInHm = $slotHm($tAmIn);
             $pmInHm = $slotHm($tPmIn);
             $pmOutHm = $slotHm($tPmOut);
-            $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > '08:00' && $amInHm < '11:00';
-            $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > '13:00' && $pmInHm < '14:00';
-            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= '13:00' && $pmOutHm < '17:00';
+            $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $schedule->workStart && $amInHm < $schedule->morningEnd;
+            $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $schedule->lunchReturn && $pmInHm < $schedule->noonEnd;
+            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $schedule->lunchReturn && $pmOutHm < $schedule->workEnd;
 
             $data->push([
                 'date' => Carbon::parse($dtr->date)->format('M d, Y (D)'),

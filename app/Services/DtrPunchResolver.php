@@ -2,135 +2,124 @@
 
 namespace App\Services;
 
-use App\Models\Setting;
+use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Resolves a single day's raw biometric punches into the four CSC Form 48
- * slots (AM arrival/departure, PM arrival/departure) plus tardiness and
- * undertime minutes.
+ * Resolves a single shift's raw biometric punches into the four CSC Form 48
+ * slots (arrival, break-out, break-in, departure) plus tardiness and undertime
+ * minutes.
  *
  * Shared by PersonnelLogImportService (writes the dtrs table) and
  * Form48ExportService (export fallback) so the two can never disagree.
  *
- * Slot assignment:
- *  - 1–4 punches: SEQUENTIAL — 1st → AM arrival, 2nd → AM departure,
- *    3rd → PM arrival, 4th → PM departure. Fewer than four fill only the
- *    leading slots; no slot is duplicated and the PM arrival is never dropped.
- *  - 5+ punches (re-scans): the bookends anchor AM arrival (first) and PM
- *    departure (last), and the midday cluster collapses to the lunch pair
- *    (first/last punch in the 11:00–14:00 window). This prevents the real
- *    arrival/departure from being lost behind duplicate scans.
+ * Punches arrive as full datetimes already grouped onto one logical shift date
+ * (see ShiftPunchGrouper), so a night shift's pre-midnight arrival and
+ * post-midnight departure sort and score correctly across the day boundary.
  *
- * Penalties are TIME-AWARE: a slot is only scored when its time is plausible
- * for the role (morning arrival < 11:00; lunch return in 11:00–14:00; afternoon
- * departure >= 13:00), so misread punches on malformed days (e.g. a noon-only
- * day with no morning scan) don't inflate the totals.
+ * Slot assignment:
+ *  - 1–4 punches: SEQUENTIAL — 1st → arrival, 2nd → break-out, 3rd → break-in,
+ *    4th → departure. Fewer than four fill only the leading slots.
+ *  - 5+ punches (re-scans): the bookends anchor arrival (first) and departure
+ *    (last), and the midday cluster collapses to the break pair (first/last
+ *    punch inside the [break-out, shift-end) window).
+ *
+ * Penalties are TIME-AWARE: a slot is only scored when its datetime is plausible
+ * for the role, so misread punches on malformed shifts don't inflate totals.
  */
 class DtrPunchResolver
 {
-    private string $workStart;
-
-    private string $lunchReturn;
-
-    private string $workEnd;
-
-    private string $morningEnd;
-
-    private string $noonEnd;
-
-    public function __construct()
-    {
-        $s = Setting::first();
-        $this->workStart = $s?->work_start ?? '08:00';
-        $this->lunchReturn = $s?->lunch_return ?? '13:00';
-        $this->workEnd = $s?->work_end ?? '17:00';
-        $this->morningEnd = $s?->morning_end ?? '11:00';
-        $this->noonEnd = $s?->noon_end ?? '14:00';
-    }
-
     /**
-     * @param  iterable<int, string>  $times  punch times for ONE day (HH:MM:SS)
+     * @param  iterable<int, Carbon|string>  $punches  full punch datetimes for ONE shift
      * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string, late_minutes:int, undertime_minutes:int}
      */
-    public function resolve(iterable $times, string $date): array
+    public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule): array
     {
-        // Normalize, de-duplicate (repeated scans within a minute), sort ascending.
-        $sorted = collect($times)
-            ->map(fn ($t) => substr((string) $t, 0, 8))
-            ->filter(fn ($t) => $t !== '')
-            ->unique()
-            ->sort()
+        // Normalize to Carbon, de-duplicate (repeated scans within a minute), sort ascending.
+        $sorted = collect($punches)
+            ->map(fn ($p) => $p instanceof Carbon ? $p->copy() : Carbon::parse((string) $p))
+            ->sortBy(fn (Carbon $c) => $c->getTimestamp())
             ->values();
 
-        [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($sorted);
+        $deduped = collect();
+        foreach ($sorted as $punch) {
+            $last = $deduped->last();
+            if ($last === null || abs($punch->getTimestamp() - $last->getTimestamp()) >= 60) {
+                $deduped->push($punch);
+            }
+        }
 
-        $hm = fn (?string $t): ?string => $t !== null ? substr($t, 0, 5) : null;
+        [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($deduped, $shiftDate, $schedule);
+
+        // ── Reference datetimes (rolled past midnight for crossing shifts) ──
+        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart);
+        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+        $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
 
         // ── Time-aware penalties ──
         $late = 0;
 
-        // Morning lateness — only when the arrival is genuinely a morning punch.
-        if ($amIn !== null && $hm($amIn) < $this->morningEnd) {
-            $late += $this->minutesLate($date, $amIn, $this->workStart);
+        // Arrival lateness — only when the arrival is genuinely a shift-start punch.
+        if ($amIn !== null && $amIn->lt($breakOutRef)) {
+            $late += $this->minutesLate($amIn, $startRef);
         }
 
-        // Lunch-return lateness — only when the PM arrival lands in the lunch window.
-        if ($pmIn !== null && $hm($pmIn) >= $this->morningEnd && $hm($pmIn) < $this->noonEnd) {
-            $late += $this->minutesLate($date, $pmIn, $this->lunchReturn);
+        // Break-return lateness — only when the return lands inside the break window.
+        if ($pmIn !== null && $pmIn->gte($breakOutRef) && $pmIn->lt($endRef)) {
+            $late += $this->minutesLate($pmIn, $breakInRef);
         }
 
-        // Undertime — only when the departure is genuinely an afternoon punch.
+        // Undertime — only when the departure is genuinely a shift-end punch.
         $undertime = 0;
-        if ($pmOut !== null && $hm($pmOut) >= $this->lunchReturn) {
-            $undertime = $this->minutesEarly($date, $pmOut, $this->workEnd);
+        if ($pmOut !== null && $pmOut->gte($breakInRef)) {
+            $undertime = $this->minutesEarly($pmOut, $endRef);
         }
 
         return [
-            'am_in' => $amIn,
-            'am_out' => $amOut,
-            'pm_in' => $pmIn,
-            'pm_out' => $pmOut,
+            'am_in' => $this->fmt($amIn),
+            'am_out' => $this->fmt($amOut),
+            'pm_in' => $this->fmt($pmIn),
+            'pm_out' => $this->fmt($pmOut),
             'late_minutes' => $late,
             'undertime_minutes' => $undertime,
         ];
     }
 
     /**
-     * Map sorted, de-duplicated punches to the four slots.
+     * Map sorted, de-duplicated punch datetimes to the four slots.
      *
-     * @param  Collection<int, string>  $sorted  ascending HH:MM:SS punch times
-     * @return array{0: ?string, 1: ?string, 2: ?string, 3: ?string} [am_in, am_out, pm_in, pm_out]
+     * @param  Collection<int, Carbon>  $sorted  ascending punch datetimes
+     * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon} [am_in, am_out, pm_in, pm_out]
      */
-    private function assignSlots(Collection $sorted): array
+    private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule): array
     {
         $count = $sorted->count();
 
         // 1–4 punches map straight to the four slots in chronological order.
-        // Missing positions stay null (Collection::get returns null when absent).
         if ($count <= 4) {
             return [$sorted->get(0), $sorted->get(1), $sorted->get(2), $sorted->get(3)];
         }
 
-        // 5+ punches: the day has re-scans. Anchor the bookends so the genuine
-        // arrival and departure are never lost, then collapse the midday cluster.
+        // 5+ punches: the shift has re-scans. Anchor the bookends, then collapse
+        // the midday cluster inside the [break-out, shift-end) window.
         $amIn = $sorted->first();
         $pmOut = $sorted->last();
 
-        $lunch = $sorted
-            ->slice(1, $count - 2)                       // exclude the bookends
-            ->filter(fn ($t) => substr($t, 0, 5) >= $this->morningEnd
-                             && substr($t, 0, 5) < $this->noonEnd)
+        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+        $break = $sorted
+            ->slice(1, $count - 2)
+            ->filter(fn (Carbon $t) => $t->gte($breakOutRef) && $t->lt($endRef))
             ->values();
 
-        if ($lunch->count() >= 2) {
-            $amOut = $lunch->first();   // first lunch-window punch = out for lunch
-            $pmIn = $lunch->last();     // last lunch-window punch  = back from lunch
+        if ($break->count() >= 2) {
+            $amOut = $break->first();   // first break-window punch = out for break
+            $pmIn = $break->last();     // last break-window punch  = back from break
         } else {
-            // No clear midday cluster — fall back to the 2nd and 2nd-to-last
-            // punch. With 5+ punches these are always distinct, so no slot
-            // is ever duplicated.
+            // No clear cluster — fall back to the 2nd and 2nd-to-last punch.
             $amOut = $sorted->get(1);
             $pmIn = $sorted->get($count - 2);
         }
@@ -138,19 +127,18 @@ class DtrPunchResolver
         return [$amIn, $amOut, $pmIn, $pmOut];
     }
 
-    private function minutesLate(string $date, string $actual, string $reference): int
+    private function minutesLate(Carbon $actual, Carbon $reference): int
     {
-        $ref = Carbon::parse("$date $reference");
-        $act = Carbon::parse("$date $actual");
-
-        return $act->gt($ref) ? (int) $ref->diffInMinutes($act) : 0;
+        return $actual->gt($reference) ? (int) $reference->diffInMinutes($actual) : 0;
     }
 
-    private function minutesEarly(string $date, string $actual, string $reference): int
+    private function minutesEarly(Carbon $actual, Carbon $reference): int
     {
-        $ref = Carbon::parse("$date $reference");
-        $act = Carbon::parse("$date $actual");
+        return $actual->lt($reference) ? (int) $actual->diffInMinutes($reference) : 0;
+    }
 
-        return $act->lt($ref) ? (int) $act->diffInMinutes($ref) : 0;
+    private function fmt(?Carbon $time): ?string
+    {
+        return $time?->format('H:i:s');
     }
 }

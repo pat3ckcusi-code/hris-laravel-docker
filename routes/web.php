@@ -20,6 +20,8 @@ use App\Http\Controllers\OicAssignmentController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
+use App\Http\Controllers\Attendance\EmployeeScheduleController;
+use App\Http\Controllers\Attendance\ShiftController;
 use App\Http\Controllers\Employee\EmployeePayslipController;
 use App\Http\Controllers\Employee\EtaController;
 use App\Http\Controllers\Employee\LocatorController;
@@ -200,6 +202,21 @@ Route::middleware('auth')->group(function () {
         ->name('attendance.dtr.download-dept-zip');
     Route::get('/attendance/dtr/download-dept', [DtrController::class, 'downloadDepartmentForm48'])
         ->name('attendance.dtr.download-dept');
+
+    // Work-shift templates + per-employee assignment (Time Keeper / HR Manager — gated in controller)
+    Route::get('/attendance/shifts', [ShiftController::class, 'index'])
+        ->name('attendance.shifts');
+    Route::post('/attendance/shifts', [ShiftController::class, 'store'])
+        ->name('attendance.shifts.store');
+    Route::put('/attendance/shifts/{shift}', [ShiftController::class, 'update'])
+        ->name('attendance.shifts.update');
+    Route::delete('/attendance/shifts/{shift}', [ShiftController::class, 'destroy'])
+        ->name('attendance.shifts.destroy');
+
+    Route::get('/attendance/schedules', [EmployeeScheduleController::class, 'index'])
+        ->name('attendance.schedules');
+    Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
+        ->name('attendance.schedules.update');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');

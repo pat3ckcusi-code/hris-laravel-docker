@@ -7,6 +7,7 @@ use App\Notifications\ResetPasswordNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -93,6 +94,7 @@ class User extends Authenticatable
         'hours_per_day',
         'salary_grade',
         'salary_step',
+        'shift_id',
     ];
 
     /**
@@ -139,6 +141,15 @@ class User extends Authenticatable
             'on_extended_service' => 'boolean',
             'hours_per_day' => 'float',
         ];
+    }
+
+    /**
+     * The work-shift template assigned to this employee. A null shift means the
+     * employee follows the global standard-day shift from the settings table.
+     */
+    public function shift(): BelongsTo
+    {
+        return $this->belongsTo(Shift::class, 'shift_id');
     }
 
     /**
