@@ -548,8 +548,10 @@ class PdsService
                     $r = $volStart + (int) $idx;
                     $sheetC3->setCellValue('A'.$r, $vr['organization'] ?? ($vr['org'] ?? ''));
                     $sheetC3->setCellValue('H'.$r, $vr['position'] ?? '');
-                    $sheetC3->setCellValue('E'.$r, $vr['from'] ?? '');
-                    $sheetC3->setCellValue('F'.$r, $vr['to'] ?? '');
+                    $volFrom = trim((string) ($vr['from'] ?? ''));
+                    $sheetC3->setCellValue('E'.$r, ($volFrom === '' || strtoupper($volFrom) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volFrom)));
+                    $volTo = trim((string) ($vr['to'] ?? ''));
+                    $sheetC3->setCellValue('F'.$r, ($volTo === '' || strtoupper($volTo) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volTo)));
                     $sheetC3->setCellValue('G'.$r, $vr['hours'] ?? '');
                 }
             }
@@ -610,8 +612,8 @@ class PdsService
                 foreach ($ldRows as $idx => $lr) {
                     $rowNum = $startRow + (int) $idx;
                     $sheetC3->setCellValue('A'.$rowNum, $lr['title'] ?? ($lr['program'] ?? ''));
-                    $sheetC3->setCellValue('E'.$rowNum, $lr['from'] ?? '');
-                    $sheetC3->setCellValue('F'.$rowNum, $lr['to'] ?? '');
+                    $sheetC3->setCellValue('E'.$rowNum, ! empty($lr['from']) ? date('d/m/Y', strtotime($lr['from'])) : '');
+                    $sheetC3->setCellValue('F'.$rowNum, ! empty($lr['to']) ? date('d/m/Y', strtotime($lr['to'])) : '');
                     $sheetC3->setCellValue('G'.$rowNum, $lr['hours'] ?? '');
                     $sheetC3->setCellValue('H'.$rowNum, $lr['type'] ?? '');
                     $sheetC3->setCellValue('I'.$rowNum, $lr['sponsor'] ?? '');
