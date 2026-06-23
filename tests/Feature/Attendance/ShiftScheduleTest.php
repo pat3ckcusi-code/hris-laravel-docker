@@ -3,8 +3,11 @@
 namespace Tests\Feature\Attendance;
 
 use App\Models\AttendanceLog;
+use App\Models\Department;
 use App\Models\Shift;
+use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
+use App\Services\PersonnelLogImportService;
 use App\Services\ShiftPunchGrouper;
 use App\Support\WorkSchedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -204,5 +207,91 @@ class ShiftScheduleTest extends TestCase
             ->assertSessionHas('shift_error');
 
         $this->assertDatabaseHas('shifts', ['id' => $shift->id]);
+    }
+
+    // ── Biometric / DTR exemption ─────────────────────────────────────────────
+
+    public function test_time_keeper_can_toggle_exemption_and_it_clears_shift(): void
+    {
+        $employee = $this->createEmployee(['shift_id' => $this->nightShiftModel()->id]);
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee))
+            ->assertRedirect();
+
+        $employee->refresh();
+        $this->assertTrue($employee->dtr_exempt);
+        $this->assertNull($employee->shift_id);
+
+        // Toggling again removes the exemption.
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee))
+            ->assertRedirect();
+
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+    }
+
+    public function test_recompute_writes_no_dtr_for_exempt_employee(): void
+    {
+        $employee = $this->createEmployee(['dtr_exempt' => true]);
+
+        foreach (['2026-06-10 08:00:00', '2026-06-10 17:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $employee->id, 'emp_no' => $employee->EmpNo,
+                'logdate' => $d, 'logtime' => $t, 'in_out' => 'IN',
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($employee, '2026-06-10', '2026-06-10');
+
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $employee->id]);
+    }
+
+    public function test_exempt_employee_blocked_from_single_form48_download(): void
+    {
+        $employee = $this->createEmployee(['dtr_exempt' => true]);
+
+        $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.dtr.download', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]))
+            ->assertStatus(422);
+    }
+
+    public function test_schedules_index_hides_exempt_by_default(): void
+    {
+        $active = $this->createEmployee(['last_name' => 'Activeperson']);
+        $exempt = $this->createEmployee(['last_name' => 'Exemptperson', 'dtr_exempt' => true]);
+        $tk = $this->createTimeKeeper();
+
+        $this->actingAs($tk)->get(route('attendance.schedules'))
+            ->assertSee('Activeperson')
+            ->assertDontSee('Exemptperson');
+
+        $this->actingAs($tk)->get(route('attendance.schedules', ['show_exempt' => 1]))
+            ->assertSee('Exemptperson')
+            ->assertDontSee('Activeperson');
+    }
+
+    public function test_monitoring_matrix_keeps_exempt_employee_and_flags_it(): void
+    {
+        $active = $this->createEmployee(['last_name' => 'Activeperson']);
+        $exempt = $this->createEmployee(['last_name' => 'Exemptperson', 'dtr_exempt' => true]);
+
+        $departments = Department::where('Dept_id', $active->Dept_id)->get();
+        $rows = app(AttendanceMonitoringExportService::class)
+            ->getRows($departments, (int) now()->month, (int) now()->year);
+
+        // Exempt employee is NOT filtered out — both employees appear.
+        $this->assertTrue($rows->contains(fn ($r) => str_contains($r['name'], 'Activeperson')));
+        $this->assertTrue($rows->contains(fn ($r) => str_contains($r['name'], 'Exemptperson')));
+
+        $exemptRow = $rows->firstWhere(fn ($r) => str_contains($r['name'], 'Exemptperson'));
+        $activeRow = $rows->firstWhere(fn ($r) => str_contains($r['name'], 'Activeperson'));
+        $this->assertTrue($exemptRow['is_exempt']);
+        $this->assertFalse($activeRow['is_exempt']);
     }
 }

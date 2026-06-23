@@ -87,24 +87,40 @@
                         <td style="{{ $td }}color:#6b7280;">{{ $i + 1 }}</td>
                         <td style="{{ $td }}text-align:left;font-weight:600;">{{ $row['name'] }}</td>
                         <td style="{{ $td }}">{{ $row['position'] ?: '—' }}</td>
-                        <td style="{{ $td }}{{ $row['undertime_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
-                            {{ $row['undertime_count'] ?: 0 }}
-                        </td>
-                        <td style="{{ $td }}{{ $row['tardiness_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
-                            {{ $row['tardiness_count'] ?: 0 }}
-                        </td>
-                        <td style="{{ $td }}{{ $row['unfiled_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
-                            {{ $row['unfiled_count'] ?: 0 }}
-                        </td>
+                        @if ($row['is_exempt'])
+                            <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @else
+                            <td style="{{ $td }}{{ $row['undertime_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
+                                {{ $row['undertime_count'] ?: 0 }}
+                            </td>
+                        @endif
+                        @if ($row['is_exempt'])
+                            <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @else
+                            <td style="{{ $td }}{{ $row['tardiness_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
+                                {{ $row['tardiness_count'] ?: 0 }}
+                            </td>
+                        @endif
+                        @if ($row['is_exempt'])
+                            <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @else
+                            <td style="{{ $td }}{{ $row['unfiled_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
+                                {{ $row['unfiled_count'] ?: 0 }}
+                            </td>
+                        @endif
                         <td style="{{ $td }}{{ $row['official_leave_count'] > 0 ? 'color:#2563eb;font-weight:600;' : 'color:#6b7280;' }}">
                             {{ $row['official_leave_count'] ?: 0 }}
                         </td>
                         <td style="{{ $td }}{{ $row['unofficial_exit_count'] > 0 ? 'color:#d97706;font-weight:600;' : 'color:#6b7280;' }}">
                             {{ $row['unofficial_exit_count'] ?: 0 }}
                         </td>
-                        <td style="{{ $td }}{{ $row['total_minutes'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
-                            {{ $row['total_minutes'] ? $row['total_minutes'].' MINS' : 0 }}
-                        </td>
+                        @if ($row['is_exempt'])
+                            <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @else
+                            <td style="{{ $td }}{{ $row['total_minutes'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
+                                {{ $row['total_minutes'] ? $row['total_minutes'].' MINS' : 0 }}
+                            </td>
+                        @endif
                         <td style="{{ $td }}{{ $row['personal_locator_minutes'] > 0 ? 'color:#d97706;font-weight:600;' : 'color:#6b7280;' }}">
                             {{ $row['personal_locator_minutes'] ? $row['personal_locator_minutes'].' MINS' : 0 }}
                         </td>

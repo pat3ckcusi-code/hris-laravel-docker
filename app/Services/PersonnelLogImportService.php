@@ -39,7 +39,7 @@ class PersonnelLogImportService
         if ($deptId !== null) {
             $userQuery->where('Dept_id', $deptId);
         }
-        $users = $userQuery->get(['id', 'EmpNo', 'Dept_id']);
+        $users = $userQuery->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
 
         if ($users->isEmpty()) {
             $scope = $deptId ? "department #{$deptId}" : 'any department';
@@ -136,6 +136,13 @@ class PersonnelLogImportService
                     continue;
                 }
 
+                // Exempt employees never receive biometric/DTR records — drop their punches.
+                if ($resolvedUser->dtr_exempt) {
+                    $skipped++;
+
+                    continue;
+                }
+
                 // inout: API returns 'IN', 'OUT', or '255' (undefined direction from reader).
                 $rawInOut = $this->getKey($item, ['inout', 'InOut', 'In_Out']);
                 $inOut = match ((string) $rawInOut) {
@@ -220,6 +227,11 @@ class PersonnelLogImportService
 
     private function upsertDtrRecords(User $user, string $from, string $to): void
     {
+        // Exempt employees keep no DTR rows regardless of imported punches.
+        if ($user->dtr_exempt) {
+            return;
+        }
+
         $schedule = WorkSchedule::forUser($user);
 
         // A night shift's punches span two calendar days, so widen the fetch by

@@ -45,10 +45,13 @@ class EmployeeScheduleController extends Controller
         $deptId = $request->integer('dept_id') ?: null;
         $shiftId = $request->integer('shift_id') ?: null;
         $search = trim((string) $request->query('search', ''));
+        $showExempt = $request->boolean('show_exempt');
 
         $shifts = Shift::where('is_active', true)->orderBy('name')->get();
 
         $employees = User::query()
+            // Exempt employees are hidden from shift assignment unless explicitly requested.
+            ->where('dtr_exempt', $showExempt)
             ->when($deptId, fn ($q) => $q->where('Dept_id', $deptId))
             ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
             ->when($search !== '', fn ($q) => $q->where(function ($sub) use ($search): void {
@@ -59,10 +62,10 @@ class EmployeeScheduleController extends Controller
                     ->orWhere('EmpNo', 'like', '%'.$search.'%');
             }))
             ->orderBy('last_name')->orderBy('first_name')
-            ->paginate(25, ['id', 'first_name', 'last_name', 'Dept_id', 'shift_id'])
+            ->paginate(25, ['id', 'first_name', 'last_name', 'Dept_id', 'shift_id', 'dtr_exempt'])
             ->withQueryString();
 
-        return view('attendance.schedules.index', compact('departments', 'shifts', 'employees', 'deptId', 'shiftId', 'search'));
+        return view('attendance.schedules.index', compact('departments', 'shifts', 'employees', 'deptId', 'shiftId', 'search', 'showExempt'));
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -81,6 +84,29 @@ class EmployeeScheduleController extends Controller
         $label = $user->shift_id ? ($user->shift()->value('name') ?? 'shift') : 'Standard Day';
 
         return back()->with('schedule_status', "{$name} assigned to {$label}. Existing time records were recomputed.");
+    }
+
+    /**
+     * Toggle an employee's biometric/DTR exemption. Exempt employees are skipped
+     * by the import pipeline, excluded from Form 48/DTR exports, and hidden from
+     * the shift-assignment list. Turning exemption on clears any assigned shift.
+     */
+    public function toggleExempt(Request $request, User $user): RedirectResponse
+    {
+        $this->authorizeManager($request->user());
+
+        $exempt = ! $user->dtr_exempt;
+        $user->update([
+            'dtr_exempt' => $exempt,
+            'shift_id' => $exempt ? null : $user->shift_id,
+        ]);
+
+        $name = trim("{$user->first_name} {$user->last_name}");
+        $message = $exempt
+            ? "{$name} is now exempt from biometric/DTR."
+            : "{$name} is no longer exempt from biometric/DTR.";
+
+        return back()->with('schedule_status', $message);
     }
 
     /**

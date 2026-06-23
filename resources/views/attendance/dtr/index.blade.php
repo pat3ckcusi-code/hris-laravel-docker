@@ -586,6 +586,18 @@ if (typeof window.__dtrViewReady === 'undefined') {
                     @if ($isAdmin || $isOfficer)
                     d.employee_id = document.getElementById('list-emp-select').value;
                     @endif
+                },
+                dataSrc: function (json) {
+                    // Exempt employees keep no DTR — inform the user instead of showing an empty table.
+                    if (json.exempt) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Exempt from biometric/DTR',
+                            text: 'This employee is exempt from biometric attendance and has no DTR records.',
+                            confirmButtonColor: '#3b82f6',
+                        });
+                    }
+                    return json.data;
                 }
             },
             columns: [

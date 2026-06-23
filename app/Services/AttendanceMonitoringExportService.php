@@ -17,6 +17,8 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceMonitoringExportService
 {
@@ -75,10 +77,10 @@ class AttendanceMonitoringExportService
             ->groupBy('user_id');
 
         return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $month, $year) {
-            $empDtrs       = $dtrs->get($emp->id, collect());
+            $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
-            $empLocators   = $locators->get($emp->id, collect());
-            $empEtas       = $etas->get($emp->id, collect());
+            $empLocators = $locators->get($emp->id, collect());
+            $empEtas = $etas->get($emp->id, collect());
 
             $undertimeCount = $empDtrs->filter(fn ($d) => $d->undertime_minutes > 0)->count();
             $tardinessCount = $empDtrs->filter(fn ($d) => $d->late_minutes > 0)->count();
@@ -93,7 +95,7 @@ class AttendanceMonitoringExportService
 
             $officialLeaveCount = $empLeaveDates->count();
 
-            $personalLocators    = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'personal');
+            $personalLocators = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'personal');
             $unofficialExitCount = $personalLocators->count();
 
             $totalMinutes = $empDtrs->sum(fn ($d) => (int) $d->late_minutes + (int) $d->undertime_minutes);
@@ -132,7 +134,7 @@ class AttendanceMonitoringExportService
 
             // Approved leave dates
             foreach ($empLeaveDates as $ld) {
-                $day  = Carbon::parse($ld->leave_date)->day;
+                $day = Carbon::parse($ld->leave_date)->day;
                 $type = trim((string) ($ld->leaveRequest->leave_type ?? ''));
                 if ($type !== '') {
                     $remarkEntries->push(['day' => $day, 'label' => $day.'-'.$type]);
@@ -142,7 +144,7 @@ class AttendanceMonitoringExportService
             // Official locator slips
             $officialLocators = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'official');
             foreach ($officialLocators as $l) {
-                $day    = Carbon::parse($l->travel_date)->day;
+                $day = Carbon::parse($l->travel_date)->day;
                 $detail = trim((string) ($l->detail ?? $l->location ?? ''));
                 if ($detail !== '') {
                     $remarkEntries->push(['day' => $day, 'label' => $day.'-'.$detail]);
@@ -151,22 +153,22 @@ class AttendanceMonitoringExportService
 
             // Personal locator slips
             foreach ($personalLocators as $l) {
-                $day    = Carbon::parse($l->travel_date)->day;
+                $day = Carbon::parse($l->travel_date)->day;
                 $detail = trim((string) ($l->detail ?? $l->location ?? ''));
-                $label  = $detail !== '' ? $day.'-Locator ('.$detail.')' : $day.'-Locator';
+                $label = $detail !== '' ? $day.'-Locator ('.$detail.')' : $day.'-Locator';
                 $remarkEntries->push(['day' => $day, 'label' => $label]);
             }
 
             // ETAs — expand each ETA to individual days within the month
             foreach ($empEtas as $eta) {
-                $dest      = trim((string) ($eta->destination ?? $eta->purpose ?? ''));
-                $start     = Carbon::parse($eta->departure_date)->startOfDay();
-                $end       = Carbon::parse($eta->arrival_date)->startOfDay();
+                $dest = trim((string) ($eta->destination ?? $eta->purpose ?? ''));
+                $start = Carbon::parse($eta->departure_date)->startOfDay();
+                $end = Carbon::parse($eta->arrival_date)->startOfDay();
                 $monthStart = Carbon::createFromDate($year, $month, 1)->startOfDay();
-                $monthEnd   = $monthStart->copy()->endOfMonth();
+                $monthEnd = $monthStart->copy()->endOfMonth();
 
                 $cursor = $start->lt($monthStart) ? $monthStart->copy() : $start->copy();
-                $until  = $end->gt($monthEnd) ? $monthEnd->copy() : $end->copy();
+                $until = $end->gt($monthEnd) ? $monthEnd->copy() : $end->copy();
 
                 while ($cursor->lte($until)) {
                     $day = $cursor->day;
@@ -190,16 +192,17 @@ class AttendanceMonitoringExportService
             }
 
             return [
-                'name'                    => $name,
-                'position'                => $emp->designation ?? $emp->position ?? '',
-                'undertime_count'         => $undertimeCount,
-                'tardiness_count'         => $tardinessCount,
-                'unfiled_count'           => $unfiledCount,
-                'official_leave_count'    => $officialLeaveCount,
-                'unofficial_exit_count'   => $unofficialExitCount,
-                'total_minutes'           => $totalMinutes,
-                'personal_locator_minutes'=> $personalLocatorMinutes,
-                'remarks'                 => $fullRemarks,
+                'name' => $name,
+                'position' => $emp->designation ?? $emp->position ?? '',
+                'is_exempt' => (bool) $emp->dtr_exempt,
+                'undertime_count' => $undertimeCount,
+                'tardiness_count' => $tardinessCount,
+                'unfiled_count' => $unfiledCount,
+                'official_leave_count' => $officialLeaveCount,
+                'unofficial_exit_count' => $unofficialExitCount,
+                'total_minutes' => $totalMinutes,
+                'personal_locator_minutes' => $personalLocatorMinutes,
+                'remarks' => $fullRemarks,
             ];
         });
     }
@@ -223,13 +226,13 @@ class AttendanceMonitoringExportService
      * Pass $actor explicitly when calling from a queue job (Auth::user() won't work there).
      *
      * @param  Collection<int, Department>  $departments
-     * @return array{0: Spreadsheet, 1: string}  [spreadsheet, filename]
+     * @return array{0: Spreadsheet, 1: string} [spreadsheet, filename]
      */
     public function buildSpreadsheet(Collection $departments, int $month, int $year, ?User $actor = null): array
     {
-        $actor    ??= Auth::user();
+        $actor ??= Auth::user();
         $deptName = $departments->pluck('Dept_name')->filter()->implode(' / ');
-        $rows     = $this->getRows($departments, $month, $year);
+        $rows = $this->getRows($departments, $month, $year);
 
         $spreadsheet = new Spreadsheet;
         $spreadsheet->getProperties()
@@ -240,13 +243,25 @@ class AttendanceMonitoringExportService
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Matrix');
 
+        // Print-ready: landscape, Folio (8.5" x 13"), narrow margins, and fit all
+        // columns to one page wide so the matrix prints cleanly.
+        $sheet->getPageSetup()
+            ->setOrientation(PageSetup::ORIENTATION_LANDSCAPE)
+            ->setPaperSize(PageSetup::PAPERSIZE_FOLIO)
+            ->setFitToWidth(1)
+            ->setFitToHeight(0);
+        $sheet->getPageMargins()
+            ->setTop(0.75)->setBottom(0.75)
+            ->setLeft(0.25)->setRight(0.25)
+            ->setHeader(0.3)->setFooter(0.3);
+
         $monthLabel = Carbon::createFromDate($year, $month, 1)->format('F Y');
 
         // Row 1: Department name
         $sheet->mergeCells('A1:K1');
         $sheet->setCellValue('A1', strtoupper($deptName));
         $sheet->getStyle('A1')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 13],
+            'font' => ['bold' => true, 'size' => 13],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
         $sheet->getRowDimension(1)->setRowHeight(20);
@@ -255,7 +270,7 @@ class AttendanceMonitoringExportService
         $sheet->mergeCells('A2:K2');
         $sheet->setCellValue('A2', strtoupper($deptName).' CGC Employees\' Attendance, Leave and Locator Monitoring Matrix');
         $sheet->getStyle('A2')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
+            'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
         ]);
         $sheet->getRowDimension(2)->setRowHeight(28);
@@ -264,7 +279,7 @@ class AttendanceMonitoringExportService
         $sheet->mergeCells('A3:K3');
         $sheet->setCellValue('A3', 'For the Month of: '.$monthLabel);
         $sheet->getStyle('A3')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 10],
+            'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
         $sheet->getRowDimension(3)->setRowHeight(16);
@@ -285,10 +300,10 @@ class AttendanceMonitoringExportService
         ];
 
         $headerStyle = [
-            'font'      => ['bold' => true, 'size' => 8],
+            'font' => ['bold' => true, 'size' => 8],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'BDD7EE']],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'BDD7EE']],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
         ];
 
         foreach ($headers as $cell => $label) {
@@ -298,11 +313,11 @@ class AttendanceMonitoringExportService
         $sheet->getRowDimension(4)->setRowHeight(72);
 
         $dataStyle = [
-            'font'      => ['size' => 9],
+            'font' => ['size' => 9],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
         ];
-        $nameStyle    = array_merge($dataStyle, ['alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]]);
+        $nameStyle = array_merge($dataStyle, ['alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]]);
         $remarksStyle = array_merge($dataStyle, ['font' => ['size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]]);
 
         $rowNum = 5;
@@ -310,13 +325,15 @@ class AttendanceMonitoringExportService
             $sheet->setCellValue("A{$rowNum}", $i + 1);
             $sheet->setCellValue("B{$rowNum}", $row['name']);
             $sheet->setCellValue("C{$rowNum}", $row['position']);
-            $sheet->setCellValue("D{$rowNum}", $row['undertime_count'] ?: 'NONE');
-            $sheet->setCellValue("E{$rowNum}", $row['tardiness_count'] ?: 'NONE');
-            $sheet->setCellValue("F{$rowNum}", $row['unfiled_count'] ?: 'NONE');
-            $sheet->setCellValue("G{$rowNum}", $row['official_leave_count'] ?: 'NONE');
-            $sheet->setCellValue("H{$rowNum}", $row['unofficial_exit_count'] ?: 'NONE');
-            $sheet->setCellValue("I{$rowNum}", $row['total_minutes'] ?: 'NONE');
-            $sheet->setCellValue("J{$rowNum}", $row['personal_locator_minutes'] ?: 'NONE');
+            // DTR-derived columns read "EXEMPT" for biometric/DTR-exempt employees
+            // (they have no DTR), while leave/locator columns stay populated.
+            $sheet->setCellValue("D{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['undertime_count'] ?: 0));
+            $sheet->setCellValue("E{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['tardiness_count'] ?: 0));
+            $sheet->setCellValue("F{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['unfiled_count'] ?: 0));
+            $sheet->setCellValue("G{$rowNum}", $row['official_leave_count'] ?: 0);
+            $sheet->setCellValue("H{$rowNum}", $row['unofficial_exit_count'] ?: 0);
+            $sheet->setCellValue("I{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['total_minutes'] ?: 0));
+            $sheet->setCellValue("J{$rowNum}", $row['personal_locator_minutes'] ?: 0);
             $sheet->setCellValue("K{$rowNum}", $row['remarks']);
 
             $sheet->getStyle("A{$rowNum}:J{$rowNum}")->applyFromArray($dataStyle);
@@ -337,16 +354,16 @@ class AttendanceMonitoringExportService
         $sheet->freezePane('A5');
 
         // --- Signature block ---
-        $aoName        = $this->buildFullName($actor);
+        $aoName = $this->buildFullName($actor);
         $aoDesignation = $actor->designation ?? $actor->position ?? 'Administrative Officer';
 
-        $dept          = $departments->first();
-        $deptHeadName  = '';
+        $dept = $departments->first();
+        $deptHeadName = '';
         $deptHeadDesig = '';
         if ($dept && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
             $head = User::where('EmpNo', $dept->EmpNo)->first();
             if ($head) {
-                $deptHeadName  = $this->buildFullName($head);
+                $deptHeadName = $this->buildFullName($head);
                 $deptHeadDesig = $head->designation ?? $head->position ?? 'Department Head';
             }
         }
@@ -354,15 +371,15 @@ class AttendanceMonitoringExportService
         $sigRow = $rowNum + 1; // one blank row after last data row
 
         $labelStyle = [
-            'font'      => ['size' => 9],
+            'font' => ['size' => 9],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
         $sigNameStyle = [
-            'font'      => ['bold' => true, 'size' => 10, 'underline' => true],
+            'font' => ['bold' => true, 'size' => 10, 'underline' => true],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
         $sigDesigStyle = [
-            'font'      => ['size' => 9, 'italic' => true],
+            'font' => ['size' => 9, 'italic' => true],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
 
@@ -405,16 +422,16 @@ class AttendanceMonitoringExportService
         try {
             HRAuditTrail::create([
                 'actor_user_id' => $actor->id,
-                'module'        => 'monitoring_matrix',
-                'action'        => 'export',
-                'target_type'   => 'department',
-                'target_id'     => $departments->first()?->Dept_id,
-                'details'       => [
-                    'month'          => $month,
-                    'year'           => $year,
-                    'departments'    => $departments->pluck('Dept_name')->toArray(),
+                'module' => 'monitoring_matrix',
+                'action' => 'export',
+                'target_type' => 'department',
+                'target_id' => $departments->first()?->Dept_id,
+                'details' => [
+                    'month' => $month,
+                    'year' => $year,
+                    'departments' => $departments->pluck('Dept_name')->toArray(),
                     'employee_count' => $rows->count(),
-                    'filename'       => $filename,
+                    'filename' => $filename,
                 ],
             ]);
         } catch (\Exception) {
@@ -429,7 +446,7 @@ class AttendanceMonitoringExportService
      *
      * @param  Collection<int, Department>  $departments
      */
-    public function generateExcelResponse(Collection $departments, int $month, int $year): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function generateExcelResponse(Collection $departments, int $month, int $year): StreamedResponse
     {
         [$spreadsheet, $filename] = $this->buildSpreadsheet($departments, $month, $year);
 

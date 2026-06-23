@@ -1,48 +1,49 @@
 <?php
 
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\Auth\ForgotPasswordController;
-use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\AdministrativeOfficerController;
+use App\Http\Controllers\Attendance\AttendanceImportController;
+use App\Http\Controllers\Attendance\DtrController;
+use App\Http\Controllers\Attendance\EmployeeScheduleController;
+use App\Http\Controllers\Attendance\ShiftController;
+use App\Http\Controllers\Auth\ForgotPasswordController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentHeadController;
+use App\Http\Controllers\DevController;
 use App\Http\Controllers\DocumentRequestController;
 use App\Http\Controllers\DocumentSettingsController;
+use App\Http\Controllers\Employee\EmployeePayslipController;
+use App\Http\Controllers\Employee\EtaController;
+use App\Http\Controllers\Employee\LocatorController;
+use App\Http\Controllers\ExportJobController;
 use App\Http\Controllers\FrontDeskController;
-use App\Http\Controllers\DepartmentHeadController;
 use App\Http\Controllers\HRManagerController;
 use App\Http\Controllers\LeaveManagerController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\MayorController;
 use App\Http\Controllers\OfficeOrderController;
-use App\Http\Controllers\RecordsManagerController;
-use App\Http\Controllers\TravelOrderController;
 use App\Http\Controllers\OicAssignmentController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\Attendance\AttendanceImportController;
-use App\Http\Controllers\Attendance\DtrController;
-use App\Http\Controllers\Attendance\EmployeeScheduleController;
-use App\Http\Controllers\Attendance\ShiftController;
-use App\Http\Controllers\Employee\EmployeePayslipController;
-use App\Http\Controllers\Employee\EtaController;
-use App\Http\Controllers\Employee\LocatorController;
+use App\Http\Controllers\Payroll\ApprovalsController;
+use App\Http\Controllers\Payroll\AttendanceController as PayrollAttendanceController;
+use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
+use App\Http\Controllers\Payroll\DeductionsController;
+use App\Http\Controllers\Payroll\EarningsController;
+use App\Http\Controllers\Payroll\EmployeeAssignmentController;
+use App\Http\Controllers\Payroll\EmployeeEarningController;
+use App\Http\Controllers\Payroll\ExceptionsController;
+use App\Http\Controllers\Payroll\LeaveIntegrationController;
 use App\Http\Controllers\Payroll\PayrollDashboardController;
 use App\Http\Controllers\Payroll\PayrollRunController;
-use App\Http\Controllers\Payroll\AttendanceController as PayrollAttendanceController;
-use App\Http\Controllers\Payroll\PlantillaController;
-use App\Http\Controllers\Payroll\EmployeeAssignmentController;
-use App\Http\Controllers\Payroll\SalaryMatrixController;
-use App\Http\Controllers\Payroll\EarningsController;
-use App\Http\Controllers\Payroll\EmployeeEarningController;
-use App\Http\Controllers\Payroll\DeductionsController;
-use App\Http\Controllers\Payroll\LeaveIntegrationController;
-use App\Http\Controllers\Payroll\ExceptionsController;
-use App\Http\Controllers\Payroll\ApprovalsController;
-use App\Http\Controllers\Payroll\PayslipController;
-use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
-use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
 use App\Http\Controllers\Payroll\PayrollSettingsController;
-use App\Http\Controllers\DevController;
-use App\Http\Controllers\ExportJobController;
+use App\Http\Controllers\Payroll\PayslipController;
+use App\Http\Controllers\Payroll\PlantillaController;
+use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
+use App\Http\Controllers\Payroll\SalaryMatrixController;
+use App\Http\Controllers\RecordsManagerController;
+use App\Http\Controllers\TravelOrderController;
+use App\Http\Controllers\UserController;
+use App\Http\Middleware\LimitPayloadSize;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -80,7 +81,7 @@ Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::post('/employee/leave-management/{id}/request-cancellation', [LeaveRequestController::class, 'requestCancellation'])->name('employee.leave.request-cancellation');
     Route::post('/employee/leave-management/{id}/reschedule', [LeaveRequestController::class, 'requestReschedule'])->name('employee.leave.reschedule');
 
-    });
+});
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
@@ -217,6 +218,8 @@ Route::middleware('auth')->group(function () {
         ->name('attendance.schedules');
     Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
         ->name('attendance.schedules.update');
+    Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
+        ->name('attendance.schedules.exempt');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');
@@ -338,7 +341,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
     Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
     Route::post('/department-head/leave/{id}/allow-printing', [DepartmentHeadController::class, 'allowPrinting'])->name('department-head.leave.allow-printing');
-    
+
     // ETA and Locator actions
     Route::post('/department-head/eta/{id}/approve', [DepartmentHeadController::class, 'approveEta'])->name('department-head.eta.approve');
     Route::post('/department-head/eta/{id}/reject', [DepartmentHeadController::class, 'rejectEta'])->name('department-head.eta.reject');
@@ -420,7 +423,7 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.settings.backup');
     Route::post('/dashboard/hr-manager/settings/restore', [HRManagerController::class, 'restoreDatabase'])
         ->name('hr-manager.settings.restore')
-        ->withoutMiddleware(\App\Http\Middleware\LimitPayloadSize::class);
+        ->withoutMiddleware(LimitPayloadSize::class);
 
     Route::get('/dashboard/hr-manager/records/data', [HRManagerController::class, 'recordsData'])
         ->name('hr-manager.records.data');

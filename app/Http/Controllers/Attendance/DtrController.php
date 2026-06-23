@@ -120,7 +120,9 @@ class DtrController extends Controller
 
         if ($isAdmin) {
             $departments = Department::orderBy('Dept_name')->get();
-            $employees = User::orderBy('last_name')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_type']);
+            $employees = User::where('dtr_exempt', false)
+                ->orderBy('last_name')->orderBy('first_name')
+                ->get(['id', 'first_name', 'last_name', 'employee_type']);
             $officerDepts = collect();
             $officerDept = null;
         } elseif ($isOfficer) {
@@ -128,6 +130,7 @@ class DtrController extends Controller
             $officerDepts = Department::whereIn('Dept_id', $officerDeptIds)->orderBy('Dept_name')->get();
             $officerDept = $officerDepts->firstWhere('Dept_id', $officerDeptId);
             $employees = User::whereIn('Dept_id', $officerDeptIds)
+                ->where('dtr_exempt', false)
                 ->orderBy('last_name')->orderBy('first_name')
                 ->get(['id', 'first_name', 'last_name', 'employee_type']);
         } else {
@@ -170,13 +173,24 @@ class DtrController extends Controller
             $employee = $user;
         }
 
+        $draw = $request->integer('draw', 1);
+
+        // Exempt employees keep no DTR — surface the exempt state instead of rows.
+        if ($employee->dtr_exempt) {
+            return response()->json([
+                'draw' => $draw,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'exempt' => true,
+            ]);
+        }
+
         [$from, $to] = $this->resolvePeriod(
             $request->input('month'),
             $request->input('dtr_type'),
             $request->integer('period', 1)
         );
-
-        $draw = $request->integer('draw', 1);
 
         // Fetch biometric/manual DTR rows for the period.
         $dtrRows = Dtr::where('employee_id', $employee->id)
@@ -454,6 +468,8 @@ class DtrController extends Controller
             $employee = $user;
         }
 
+        abort_if($employee->dtr_exempt, 422, 'This employee is exempt from biometric/DTR.');
+
         $dtrType = $request->input('dtr_type');
         $month = $request->input('month');
         $period = $request->integer('period', 1);
@@ -518,6 +534,7 @@ class DtrController extends Controller
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
 
         $employees = User::where('Dept_id', $deptId)
+            ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();
@@ -618,6 +635,7 @@ class DtrController extends Controller
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
 
         $employees = User::where('Dept_id', $deptId)
+            ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();

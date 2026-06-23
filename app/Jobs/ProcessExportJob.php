@@ -48,14 +48,14 @@ class ProcessExportJob implements ShouldQueue
             }
 
             [$path, $filename, $mime] = match ($job->type) {
-                'pds'              => $this->handlePds($job, $pdsService),
-                'form48'           => $this->handleForm48($job, $form48Service),
-                'form48_dept_zip'  => $this->handleForm48DeptZip($job, $form48Service),
-                'form48_dept'      => $this->handleForm48Dept($job, $form48Service),
-                'monitoring_matrix'=> $this->handleMonitoringMatrix($job, $monitoringService, $departmentService),
-                'leave_card'       => $this->handleLeaveCard($job, $leaveCardService),
-                'hr_reports'       => $this->handleHrReports($job, $dashboardService),
-                default            => throw new \RuntimeException("Unknown export type: {$job->type}"),
+                'pds' => $this->handlePds($job, $pdsService),
+                'form48' => $this->handleForm48($job, $form48Service),
+                'form48_dept_zip' => $this->handleForm48DeptZip($job, $form48Service),
+                'form48_dept' => $this->handleForm48Dept($job, $form48Service),
+                'monitoring_matrix' => $this->handleMonitoringMatrix($job, $monitoringService, $departmentService),
+                'leave_card' => $this->handleLeaveCard($job, $leaveCardService),
+                'hr_reports' => $this->handleHrReports($job, $dashboardService),
+                default => throw new \RuntimeException("Unknown export type: {$job->type}"),
             };
 
             $job->markCompleted($path, $filename, $mime);
@@ -95,6 +95,11 @@ class ProcessExportJob implements ShouldQueue
     {
         $params = $job->params;
         $employee = User::findOrFail($params['target_user_id']);
+
+        if ($employee->dtr_exempt) {
+            throw new \RuntimeException('This employee is exempt from biometric/DTR.');
+        }
+
         $dtrType = $params['dtr_type'];
         $month = $params['month'];
         $period = (int) ($params['period'] ?? 1);
@@ -148,6 +153,7 @@ class ProcessExportJob implements ShouldQueue
         }
 
         $employees = User::where('Dept_id', $deptId)
+            ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();
@@ -235,6 +241,7 @@ class ProcessExportJob implements ShouldQueue
         }
 
         $employees = User::where('Dept_id', $deptId)
+            ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')->orderBy('first_name')
             ->get();

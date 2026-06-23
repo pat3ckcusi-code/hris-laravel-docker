@@ -35,6 +35,8 @@ use Illuminate\Support\Carbon;
  * @property bool $is_sanggunian_member
  * @property bool $on_extended_service
  * @property float|null $hours_per_day
+ * @property int|null $shift_id
+ * @property bool $dtr_exempt
  * @property string|null $ContactNo
  * @property string|null $access_level
  * @property float|null $leave_balance
@@ -95,6 +97,7 @@ class User extends Authenticatable
         'salary_grade',
         'salary_step',
         'shift_id',
+        'dtr_exempt',
     ];
 
     /**
@@ -140,6 +143,7 @@ class User extends Authenticatable
             'is_sanggunian_member' => 'boolean',
             'on_extended_service' => 'boolean',
             'hours_per_day' => 'float',
+            'dtr_exempt' => 'boolean',
         ];
     }
 
