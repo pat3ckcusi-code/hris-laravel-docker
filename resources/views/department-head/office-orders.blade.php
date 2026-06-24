@@ -10,12 +10,26 @@
     </article>
 @endsection
 @section('content')
+@php $isEdit = isset($order); @endphp
 <div class="card mb-4 shadow-lg border-0 rounded-lg pro-travel-card">
     <div class="card-body p-4">
-        <form id="officeOrderForm" action="{{ route('api.office-orders') }}" method="POST" class="needs-validation" novalidate autocomplete="off">
+        <form id="officeOrderForm"
+              action="{{ $isEdit ? route('api.office-orders.update', $order->id) : route('api.office-orders') }}"
+              method="POST" class="needs-validation" novalidate autocomplete="off">
             <input type="hidden" name="_token" value="{{ csrf_token() }}">
+            @if ($isEdit)<input type="hidden" name="_method" value="PUT">@endif
+
+            <div class="mb-3 p-2 rounded bg-light border" style="font-size:0.95em;">
+                <div><strong>From:</strong> <span class="text-muted">Department Head of the recipients' department (set automatically on the document).</span></div>
+                @if ($isEdit)
+                    <div class="text-muted" style="font-size:0.9em;">Editing Office Order No. <strong>{{ $order->office_order_num }}</strong> (number is preserved).</div>
+                @else
+                    <div class="text-muted" style="font-size:0.9em;">Office Order No. is auto-assigned (format: YYYY - NNN).</div>
+                @endif
+            </div>
+
             <div class="mb-4">
-                <label class="font-weight-bold mb-2">Select Employees <span class="text-muted" style="font-size:0.95em;">(choose one or more)</span></label>
+                <label class="font-weight-bold mb-2">To (Recipients) <span class="text-muted" style="font-size:0.95em;">(choose one or more)</span></label>
                 <div class="d-flex align-items-center mb-2">
                     <input type="checkbox" id="selectAllEmployees" class="mr-2">
                     <label for="selectAllEmployees" class="mb-0">Select All</label>
@@ -26,12 +40,12 @@
 
                 <div class="field-grid two" style="margin-top:10px;">
                     <label>
-                        Date Issued
-                        <input type="date" class="form-input" id="issued_date" name="issued_date" required>
+                        Date
+                        <input type="date" class="form-input" id="issued_date" name="issued_date" required value="{{ $isEdit ? \Illuminate\Support\Str::of($order->issued_date)->substr(0, 10) : '' }}">
                     </label>
                     <label>
                         Effective Until
-                        <input type="date" class="form-input" id="effective_date" name="effective_date">
+                        <input type="date" class="form-input" id="effective_date" name="effective_date" value="{{ $isEdit && $order->effective_date ? \Illuminate\Support\Str::of($order->effective_date)->substr(0, 10) : '' }}">
                     </label>
                 </div>
 
@@ -39,39 +53,46 @@
 
             <div class="field-grid">
                 <label>
-                    Subject / Title
-                    <input type="text" class="form-input" id="subject" name="subject" required placeholder="Enter subject/title">
+                    Subject
+                    <input type="text" class="form-input" id="subject" name="subject" required placeholder="Enter subject (e.g. As Stated)" value="{{ $isEdit ? $order->subject : '' }}">
                 </label>
             </div>
 
             <div class="field-grid">
                 <label>
-                    Details
-                    <textarea class="form-input" id="details" name="details" rows="3" placeholder="Describe the office order" required></textarea>
+                    Body / Directive
+                    <textarea class="form-input" id="details" name="details" rows="4" placeholder="Write the directive/body of the office order" required>{{ $isEdit ? $order->details : '' }}</textarea>
                 </label>
             </div>
 
             <div class="mb-4">
                 <label class="w-100">
                     Remarks / Special Instructions
-                    <textarea class="form-input" id="remarks" name="remarks" rows="2" placeholder="Any special instructions"></textarea>
+                    <textarea class="form-input" id="remarks" name="remarks" rows="2" placeholder="Any special instructions">{{ $isEdit ? $order->Remarks : '' }}</textarea>
                 </label>
             </div>
 
             <div class="text-right">
-                <button type="submit" class="btn btn-lg btn-primary px-5 shadow-sm" id="submitOfficeOrder" style="font-weight:600; letter-spacing:0.5px;">Submit Office Order</button>
+                <button type="submit" class="btn btn-lg btn-primary px-5 shadow-sm" id="submitOfficeOrder" style="font-weight:600; letter-spacing:0.5px;">{{ $isEdit ? 'Update Office Order' : 'Submit Office Order' }}</button>
             </div>
         </form>
     </div>
 </div>
+<script>
+    const OO_IS_EDIT = @json($isEdit);
+    const OO_SELECTED_IDS = @json($selectedIds ?? []);
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const dep = document.getElementById('issued_date');
     const arr = document.getElementById('effective_date');
     if (!dep || !arr) return;
     const today = new Date().toISOString().slice(0, 10);
-    dep.setAttribute('min', today);
-    if (!arr.getAttribute('min')) arr.setAttribute('min', today);
+    // Allow keeping/choosing past dates when editing an existing order.
+    if (!OO_IS_EDIT) {
+        dep.setAttribute('min', today);
+        if (!arr.getAttribute('min')) arr.setAttribute('min', today);
+    }
     function syncArrivalMin() {
         const depVal = dep.value || today;
         arr.setAttribute('min', depVal);
@@ -92,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.employees && data.employees.length > 0) {
                 employeesList.innerHTML = data.employees.map(emp => `
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="employee_ids[]" value="${emp.id}" id="emp_${emp.id}">
+                        <input class="form-check-input" type="checkbox" name="employee_ids[]" value="${emp.id}" id="emp_${emp.id}" ${OO_SELECTED_IDS.includes(Number(emp.id)) ? 'checked' : ''}>
                         <label class="form-check-label" for="emp_${emp.id}">
                             <span style="font-weight:500;">${emp.last_name}, ${emp.first_name}</span>
                             <span class="text-muted" style="font-size:0.85em; font-style:italic;">${emp.designation || ''}</span>
@@ -196,16 +217,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (SwalLib) {
             const result = await SwalLib.fire({
-                title: 'Submit Office Order?',
-                text: 'Are you sure you want to submit this office order?',
+                title: OO_IS_EDIT ? 'Update Office Order?' : 'Submit Office Order?',
+                text: OO_IS_EDIT ? 'Are you sure you want to save these changes?' : 'Are you sure you want to submit this office order?',
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Yes, submit',
+                confirmButtonText: OO_IS_EDIT ? 'Yes, update' : 'Yes, submit',
                 cancelButtonText: 'Cancel'
             });
             if (result.isConfirmed) await proceed();
         } else {
-            if (confirm('Submit Office Order?')) await proceed();
+            if (confirm(OO_IS_EDIT ? 'Update Office Order?' : 'Submit Office Order?')) await proceed();
         }
     });
 });

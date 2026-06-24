@@ -333,10 +333,17 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
     Route::post('/api/office-orders', [OfficeOrderController::class, 'store'])->name('api.office-orders');
     Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
     Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
+    Route::put('/api/office-orders/{id}', [OfficeOrderController::class, 'update'])->name('api.office-orders.update');
 });
 
 // Department Head and Administrative Officer shared actions
 Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
+    // Office order page / file routes (not under throttle:api — a 429 here would be
+    // saved by the browser as the .docx download and open as a "corrupted" file)
+    Route::get('/office-orders/{id}/edit', [OfficeOrderController::class, 'edit'])->name('office-orders.edit');
+    Route::get('/office-orders/{id}/print', [OfficeOrderController::class, 'print'])->name('office-orders.print');
+    Route::get('/office-orders/{id}/word', [OfficeOrderController::class, 'downloadWord'])->name('office-orders.word');
+
     // Leave approval actions
     Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
     Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');

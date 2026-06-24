@@ -29,13 +29,12 @@
                         <th>Date Issued</th>
                         <th>Effective Until</th>
                         <th>Employees</th>
-                        <th>Status</th>
                         <th>Created At</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="9" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
                 </div>
@@ -55,25 +54,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(r => r.json())
                 .then(res => {
                         if (!res.success) {
-                                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Failed to load data</td></tr>';
+                                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Failed to load data</td></tr>';
                                 return;
                         }
 
                         const rows = res.data;
                         if (!rows || rows.length === 0) {
-                                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No office orders found.</td></tr>';
+                                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No office orders found.</td></tr>';
                                 return;
                         }
-                        const badgeFor = (status) => {
-                                if (!status) return '<span class="status-badge status-draft">Unknown</span>';
-                                const s = status.toLowerCase();
-                                if (s.includes('draft')) return '<span class="status-badge status-draft">Draft</span>';
-                                if (s.includes('pending recommendation')) return '<span class="status-badge status-pending-rec">Pending Recommendation</span>';
-                                if (s.includes('pending approval')) return '<span class="status-badge status-pending-approval">Pending Approval</span>';
-                                if (s.includes('approved')) return '<span class="status-badge status-approved">Approved</span>';
-                                return '<span class="status-badge">' + status + '</span>';
-                        };
-
                         tbody.innerHTML = rows.map((row, idx) => {
                                 const names = (row.employees || []).map(n => `<div class="td-ellipsis" title="${n.replace(/"/g,'&quot;')}">${n}</div>`);
                                 const show = names.slice(0,3).join('');
@@ -87,17 +76,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <td>${row.issued_date || '-'}</td>
                                             <td>${row.effective_date || '-'}</td>
                                             <td class="employees-cell">${show}${more}</td>
-                                            <td>${badgeFor(row.status)}</td>
                                             <td>${row.created_at}</td>
                                             <td>
                                                 <button class="btn-sm btn-view" type="button" onclick="openOfficeOrderModal(${row.id})">View</button>
-                                                <button class="btn-sm btn-view" type="button" style="background:#16a34a" onclick="printOfficeOrder(${row.id})"><i class="fas fa-print"></i> Print</button>
+                                                <button class="btn-sm btn-view" type="button" style="background:#f59e0b" onclick="window.location='/office-orders/' + ${row.id} + '/edit'"><i class="fas fa-edit"></i> Edit</button>
+                                                <button class="btn-sm btn-view" type="button" style="background:#16a34a" onclick="window.open('/office-orders/' + ${row.id} + '/print', '_blank')"><i class="fas fa-print"></i> Print</button>
                                             </td>
                                         </tr>`;
                         }).join('');
                 })
                 .catch(() => {
-                        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Failed to load data</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Failed to load data</td></tr>';
                 });
 });
 </script>
@@ -109,7 +98,8 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="muted" style="font-size:0.9rem;margin-bottom:12px">View details for this office order</div>
         <div id="officeOrderModalBody"></div>
         <div class="modal-actions">
-            <button class="btn-sm btn-view" style="background:#16a34a" onclick="printOfficeOrderFromModal()"><i class="fas fa-print"></i> Print</button>
+            <button class="btn-sm btn-view" style="background:#16a34a" onclick="if(_currentOfficeOrderData) window.open('/office-orders/' + _currentOfficeOrderData.id + '/print', '_blank')"><i class="fas fa-print"></i> Print</button>
+            <button class="btn-sm btn-view" style="background:#2563eb" onclick="if(_currentOfficeOrderData) window.location='/office-orders/' + _currentOfficeOrderData.id + '/word'"><i class="fas fa-file-word"></i> Download Word</button>
             <button class="btn-sm btn-view" onclick="closeOfficeOrderModal()">Close</button>
         </div>
     </div>
@@ -125,25 +115,34 @@ async function openOfficeOrderModal(id) {
                 const j = await resp.json();
                 if (!j.success) { body.innerHTML = '<div class="text-danger">Failed to load details</div>'; return; }
                 const d = j.data;
-                const emps = (d.employees || []).map(e => `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">${e.name}${e.designation ? ' — <span class="muted">' + e.designation + '</span>' : ''}</div>`).join('');
+                const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+                const fmtDate = (s) => {
+                    if (!s) return '—';
+                    const dt = new Date(s + 'T00:00:00');
+                    if (isNaN(dt)) return esc(s);
+                    return dt.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }).toUpperCase();
+                };
+                const party = (p) => p ? `<span style="font-weight:bold;text-transform:uppercase">${esc(p.name)}</span>${p.designation ? `<br><span style="font-style:italic">${esc(p.designation)}</span>` : ''}` : '—';
+                const toBlock = (d.employees && d.employees.length)
+                    ? d.employees.map(e => `<div style="margin-bottom:8px">${party(e)}</div>`).join('')
+                    : '—';
+                const conformed = (d.employees && d.employees.length)
+                    ? d.employees.map(e => `<div style="font-weight:bold;text-transform:uppercase;margin-bottom:16px">${esc(e.name)}</div>`).join('')
+                    : '<div style="font-weight:bold">_______________________</div>';
+                const row = (label, value) => `<div style="display:flex;margin-bottom:12px"><div style="width:78px;flex:0 0 78px;font-weight:bold">${label}</div><div style="flex:1">${value}</div></div>`;
                 body.innerHTML = `
-                    <div style="display:grid; grid-template-columns: 1fr 340px; gap:18px;">
-                        <div>
-                            <table style="width:100%; border-collapse:collapse">
-                                <tbody>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9; width:140px"><strong>OO Number</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.office_order_num || d.id}</td></tr>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Subject</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.subject || '-'}</td></tr>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Date Issued</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.issued_date || '-'}</td></tr>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Effective Until</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.effective_date || '-'}</td></tr>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Details</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.details || '-'}</td></tr>
-                                    <tr><td style="padding:8px; border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px; border:1px solid #f1f5f9">${d.remarks || '-'}</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div>
-                            <h4 style="margin-top:0; margin-bottom:8px">Employees</h4>
-                            <div style="border:1px solid #f1f5f9; border-radius:6px; padding:8px">${emps || '<div class="muted">No employees listed</div>'}</div>
-                        </div>
+                    <div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.5;color:#000;padding:8px 4px">
+                        <div style="font-weight:bold;font-size:13pt;margin-bottom:22px">Office Order No. <span style="text-decoration:underline">${esc(d.office_order_num || d.id)}</span></div>
+                        ${row('To', toBlock)}
+                        ${row('From', party(d.issued_by))}
+                        ${row('Subject', `<strong>${esc(d.subject || '—')}</strong>`)}
+                        ${row('Date', `<strong>${fmtDate(d.issued_date)}</strong>`)}
+                        <hr style="border:none;border-top:2px solid #000;margin:16px 0 20px">
+                        <div style="text-align:justify;white-space:pre-line;margin-bottom:22px">${esc(d.details || '')}</div>
+                        <div style="margin-bottom:40px">For information and strict compliance.</div>
+                        <div style="margin-bottom:28px">Conformed:</div>
+                        ${conformed}
+                        ${d.remarks ? `<div style="margin-top:24px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:0.85em;color:#64748b"><strong>Internal remarks:</strong> ${esc(d.remarks)}</div>` : ''}
                     </div>`;
                 _currentOfficeOrderData = d;
         } catch (err) {
@@ -153,48 +152,6 @@ async function openOfficeOrderModal(id) {
 function closeOfficeOrderModal(){ document.getElementById('officeOrderModalOverlay').style.display='none'; }
 
 var _currentOfficeOrderData = null;
-
-function printOfficeOrder(id) {
-    fetch(`/api/office-orders/${id}`)
-        .then(r => r.json())
-        .then(j => {
-            if (j.success) {
-                _currentOfficeOrderData = j.data;
-                printOfficeOrderContent(j.data);
-            }
-        });
-}
-
-function printOfficeOrderFromModal() {
-    if (_currentOfficeOrderData) printOfficeOrderContent(_currentOfficeOrderData);
-}
-
-function printOfficeOrderContent(d) {
-    const emps = (d.employees || []).map((e,i) => `<tr><td>${i+1}</td><td>${e.name || e.EmpNo || ''}</td><td>${e.designation || ''}</td></tr>`).join('');
-    const w = window.open('', '_blank', 'width=800,height=600');
-    w.document.write(`<html><head><title>Office Order - ${d.office_order_num || d.id}</title>
-        <style>body{font-family:Arial,sans-serif;margin:24px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}.header{text-align:center;margin-bottom:18px}h2{margin:4px 0}.note{font-size:12px;color:#666;margin-top:18px}@media print{button{display:none}}</style>
-    </head><body>
-        <div class="header">
-            <h2>OFFICE ORDER</h2>
-            <p>Submitted to: HR Department</p>
-        </div>
-        <table><tbody>
-            <tr><td style="width:160px"><strong>OO Number</strong></td><td>${d.office_order_num || d.id}</td></tr>
-            <tr><td><strong>Subject</strong></td><td>${d.subject || '-'}</td></tr>
-            <tr><td><strong>Date Issued</strong></td><td>${d.issued_date || '-'}</td></tr>
-            <tr><td><strong>Effective Until</strong></td><td>${d.effective_date || '-'}</td></tr>
-            <tr><td><strong>Details</strong></td><td>${d.details || '-'}</td></tr>
-            <tr><td><strong>Remarks</strong></td><td>${d.remarks || '-'}</td></tr>
-            <tr><td><strong>Status</strong></td><td>${d.status || '-'}</td></tr>
-        </tbody></table>
-        <h3>Employees</h3>
-        <table><thead><tr><th>#</th><th>Name</th><th>Designation</th></tr></thead><tbody>${emps || '<tr><td colspan="3">No employees</td></tr>'}</tbody></table>
-        <p class="note">Office Orders are submitted to the HR Department.</p>
-        <button onclick="window.print()">Print</button>
-    </body></html>`);
-    w.document.close();
-}
 </script>
 
 @endsection
