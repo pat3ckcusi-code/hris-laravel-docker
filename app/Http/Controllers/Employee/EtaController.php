@@ -369,61 +369,40 @@ class EtaController extends Controller
         $spreadsheet = IOFactory::load($templatePath);
         $sheet = $spreadsheet->getActiveSheet();
 
-        // Purpose checkbox mapping: purpose => [checkboxCell for copy1, checkboxCell for copy2]
+        // Purpose checkbox mapping: purpose => empty cell immediately before its label
         $purposeCheckboxes = [
-            'Audit-Inspection-Licensing' => ['F10', 'F40'],
-            'Client Support' => ['K10', 'K40'],
-            'Conference' => ['M10', 'M40'],
-            'Construction Repair Maintenance' => ['B11', 'B41'],
-            'Economic Development' => ['G11', 'G41'],
-            'General Expense/Other' => ['K11', 'K41'],
-            'Legal-Law Enforcement' => ['B12', 'B42'],
-            'Legislator' => ['F12', 'F42'],
-            'Meeting' => ['I12', 'I42'],
-            'Training' => ['K12', 'K42'],
-            'Seminar' => ['M12', 'M42'],
+            'Audit-Inspection-Licensing' => 'F10',
+            'Client Support' => 'K10',
+            'Conference' => 'M10',
+            'Construction Repair Maintenance' => 'B11',
+            'Economic Development' => 'G11',
+            'General Expense/Other' => 'K11',
+            'Legal-Law Enforcement' => 'B12',
+            'Legislator' => 'F12',
+            'Meeting' => 'I12',
+            'Training' => 'K12',
+            'Seminar' => 'M12',
         ];
 
-        // Fill both copies of the form (rows 1-30 and rows 31-60)
-        // --- Copy 1 (top half) ---
+        // Fill single-copy form
         $sheet->setCellValue('D6', $fullName);
         $sheet->setCellValue('D7', $dept);
         $sheet->setCellValue('D8', $position);
         $sheet->setCellValue('D9', $destination);
-        $sheet->setCellValue('K6', $departure);
-        $sheet->setCellValue('K8', $arrival);
+        $sheet->setCellValue('K7', $departure);   // K6:O6 is now the "DEPARTURE DATE" label row
+        $sheet->setCellValue('K9', $arrival);     // K8:O8 is now the "RETURN DATE" label row
         $sheet->setCellValue('A14', $reason);
         if (isset($purposeCheckboxes[$purpose])) {
-            $sheet->setCellValue($purposeCheckboxes[$purpose][0], '✓');
+            $sheet->setCellValue($purposeCheckboxes[$purpose], '✓');
         }
         // Approval section
         if ($eta->status === 'approved') {
-            $sheet->setCellValue('D24', '✓');
+            $sheet->setCellValue('D24', '✓');     // D24 is before E24:G24 "APPROVED" label
         }
         if ($deptHeadName) {
-            $sheet->setCellValue('A22', $deptHeadName);
+            $sheet->setCellValue('A26', $deptHeadName);  // A26:G26 printed name field
         }
-        $sheet->setCellValue('J27', $dateApproved);
-
-        // --- Copy 2 (bottom half, +30 row offset) ---
-        $sheet->setCellValue('D36', $fullName);
-        $sheet->setCellValue('D37', $dept);
-        $sheet->setCellValue('D38', $position);
-        $sheet->setCellValue('D39', $destination);
-        $sheet->setCellValue('K36', $departure);
-        $sheet->setCellValue('K38', $arrival);
-        $sheet->setCellValue('A44', $reason);
-        if (isset($purposeCheckboxes[$purpose])) {
-            $sheet->setCellValue($purposeCheckboxes[$purpose][1], '✓');
-        }
-        // Approval section
-        if ($eta->status === 'approved') {
-            $sheet->setCellValue('D54', '✓');
-        }
-        if ($deptHeadName) {
-            $sheet->setCellValue('A52', $deptHeadName);
-        }
-        $sheet->setCellValue('J58', $dateApproved);
+        $sheet->setCellValue('J26', $dateApproved);      // J26:N26 date field above "DATE" label
 
         // Apply sheet protection
         $lockApplied = false;
