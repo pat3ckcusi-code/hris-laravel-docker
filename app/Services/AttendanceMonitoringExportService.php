@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\User;
+use App\Support\WorkSchedule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -76,20 +78,35 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id');
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $month, $year) {
+        $periodStart = Carbon::createFromDate($year, $month, 1)->toDateString();
+        $periodEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+        $allAssignments = EmployeeShiftSchedule::whereIn('user_id', $employeeIds)
+            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->get()
+            ->groupBy('user_id')
+            ->map(fn ($group) => $group->keyBy(fn ($a) => $a->date->toDateString()));
+
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $month, $year, $allAssignments) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
             $empEtas = $etas->get($emp->id, collect());
+            $empAssignments = $allAssignments->get($emp->id, collect());
 
-            $undertimeCount = $empDtrs->filter(fn ($d) => $d->undertime_minutes > 0)->count();
-            $tardinessCount = $empDtrs->filter(fn ($d) => $d->late_minutes > 0)->count();
+            // Exclude DTR records that fall on rest days (per-date shift schedule).
+            $workDtrs = $empDtrs->filter(
+                fn ($d) => ! WorkSchedule::isRestDay($emp, Carbon::parse($d->date), $empAssignments)
+            );
+
+            $undertimeCount = $workDtrs->filter(fn ($d) => $d->undertime_minutes > 0)->count();
+            $tardinessCount = $workDtrs->filter(fn ($d) => $d->late_minutes > 0)->count();
 
             $approvedLeaveDateStrings = $empLeaveDates->pluck('leave_date')
                 ->map(fn ($d) => Carbon::parse($d)->toDateString())
                 ->flip();
 
-            $unfiledCount = $empDtrs->filter(function ($d) use ($approvedLeaveDateStrings) {
+            $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings) {
                 return $d->is_absent && ! $approvedLeaveDateStrings->has(Carbon::parse($d->date)->toDateString());
             })->count();
 
@@ -98,7 +115,7 @@ class AttendanceMonitoringExportService
             $personalLocators = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'personal');
             $unofficialExitCount = $personalLocators->count();
 
-            $totalMinutes = $empDtrs->sum(fn ($d) => (int) $d->late_minutes + (int) $d->undertime_minutes);
+            $totalMinutes = $workDtrs->sum(fn ($d) => (int) $d->late_minutes + (int) $d->undertime_minutes);
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
                 if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
@@ -121,13 +138,13 @@ class AttendanceMonitoringExportService
             $remarkEntries = collect();
 
             // DTR: tardiness days
-            foreach ($empDtrs->filter(fn ($d) => $d->late_minutes > 0) as $d) {
+            foreach ($workDtrs->filter(fn ($d) => $d->late_minutes > 0) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$d->late_minutes.' mins)']);
             }
 
             // DTR: undertime days
-            foreach ($empDtrs->filter(fn ($d) => $d->undertime_minutes > 0) as $d) {
+            foreach ($workDtrs->filter(fn ($d) => $d->undertime_minutes > 0) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$d->undertime_minutes.' mins)']);
             }

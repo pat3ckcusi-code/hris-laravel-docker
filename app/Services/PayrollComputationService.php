@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Dtr;
 use App\Models\EmployeeAssignment;
 use App\Models\EmployeeEarning;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\LeaveRequest;
 use App\Models\Loan;
 use App\Models\PayrollAuditLog;
@@ -15,6 +16,7 @@ use App\Models\PayrollSetting;
 use App\Models\SalaryMatrix;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\WorkSchedule;
 
 class PayrollComputationService
 {
@@ -101,23 +103,23 @@ class PayrollComputationService
             }
 
             PayrollDetail::create([
-                'payroll_run_id'       => $run->id,
-                'employee_id'          => $employee->id,
-                'days_worked'          => $dtrSummary['days_worked'],
-                'late_minutes'         => $dtrSummary['late_minutes'],
-                'undertime_minutes'    => $dtrSummary['undertime_minutes'],
-                'absent_days'          => $dtrSummary['absent_days'],
-                'basic_salary'         => $basicSalary,
-                'gross_pay'            => $grossPay,
-                'earnings'             => $allowances['total'],
-                'gsis_deduction'       => $mandatory['gsis'],
+                'payroll_run_id' => $run->id,
+                'employee_id' => $employee->id,
+                'days_worked' => $dtrSummary['days_worked'],
+                'late_minutes' => $dtrSummary['late_minutes'],
+                'undertime_minutes' => $dtrSummary['undertime_minutes'],
+                'absent_days' => $dtrSummary['absent_days'],
+                'basic_salary' => $basicSalary,
+                'gross_pay' => $grossPay,
+                'earnings' => $allowances['total'],
+                'gsis_deduction' => $mandatory['gsis'],
                 'philhealth_deduction' => $mandatory['philhealth'],
-                'pagibig_deduction'    => $mandatory['pagibig'],
-                'bir_deduction'        => $mandatory['bir'],
-                'deductions'           => $mandatory['total'],
-                'loan_deduction'       => $loanDeduction,
-                'lwop_deduction'       => $lwopDeduction,
-                'net_pay'              => $netPay,
+                'pagibig_deduction' => $mandatory['pagibig'],
+                'bir_deduction' => $mandatory['bir'],
+                'deductions' => $mandatory['total'],
+                'loan_deduction' => $loanDeduction,
+                'lwop_deduction' => $lwopDeduction,
+                'net_pay' => $netPay,
             ]);
 
             $processed++;
@@ -126,11 +128,11 @@ class PayrollComputationService
         $run->update(['status' => 'computed']);
 
         PayrollAuditLog::create([
-            'action'          => 'payroll_computed',
-            'user_id'         => $actor->id,
-            'payroll_run_id'  => $run->id,
-            'details'         => "Payroll computed for {$processed} employee(s). Period: {$run->period_start->format('M d')} – {$run->period_end->format('M d, Y')}.",
-            'actioned_at'     => now(),
+            'action' => 'payroll_computed',
+            'user_id' => $actor->id,
+            'payroll_run_id' => $run->id,
+            'details' => "Payroll computed for {$processed} employee(s). Period: {$run->period_start->format('M d')} – {$run->period_end->format('M d, Y')}.",
+            'actioned_at' => now(),
         ]);
 
         return [
@@ -148,12 +150,12 @@ class PayrollComputationService
         $rows = PayrollSetting::all()->pluck('value', 'key')->toArray();
 
         $defaults = [
-            'gsis_premium_rate'  => 0.09,
-            'philhealth_rate'    => 0.05,
-            'philhealth_floor'   => 400.00,
+            'gsis_premium_rate' => 0.09,
+            'philhealth_rate' => 0.05,
+            'philhealth_floor' => 400.00,
             'philhealth_ceiling' => 3750.00,
-            'pagibig_amount'     => 100.00,
-            'bir_tax_brackets'   => $this->defaultBirBrackets(),
+            'pagibig_amount' => 100.00,
+            'bir_tax_brackets' => $this->defaultBirBrackets(),
         ];
 
         $settings = [];
@@ -217,9 +219,23 @@ class PayrollComputationService
 
         $dtrDates = $dtrs->pluck('date')->map(fn ($d) => $d->format('Y-m-d'))->toArray();
 
+        // Pre-load per-date shift assignments so rest-day checks are O(1).
+        $employee = User::find($employeeId);
+        $assignments = EmployeeShiftSchedule::where('user_id', $employeeId)
+            ->whereBetween('date', [$run->period_start->toDateString(), $run->period_end->toDateString()])
+            ->get()
+            ->keyBy(fn ($a) => $a->date->toDateString());
+
         $cursor = $run->period_start->copy();
         while ($cursor <= $run->period_end) {
             if ($cursor->isWeekday()) {
+                // A scheduled rest/off day is neither worked nor absent.
+                if ($employee && WorkSchedule::isRestDay($employee, $cursor, $assignments)) {
+                    $cursor->addDay();
+
+                    continue;
+                }
+
                 if (in_array($cursor->format('Y-m-d'), $dtrDates)) {
                     $dtr = $dtrs->first(fn ($d) => $d->date->format('Y-m-d') === $cursor->format('Y-m-d'));
                     if ($dtr && ! $dtr->is_absent && $dtr->status !== 'absent') {
@@ -237,10 +253,10 @@ class PayrollComputationService
         }
 
         return [
-            'days_worked'       => $daysWorked,
-            'late_minutes'      => $totalLate,
+            'days_worked' => $daysWorked,
+            'late_minutes' => $totalLate,
             'undertime_minutes' => $totalUndertime,
-            'absent_days'       => $absentDays,
+            'absent_days' => $absentDays,
         ];
     }
 
@@ -257,12 +273,12 @@ class PayrollComputationService
             ->get();
 
         $result = [
-            'pera'                  => 0.0,
-            'hazard_pay'            => 0.0,
+            'pera' => 0.0,
+            'hazard_pay' => 0.0,
             'subsistence_allowance' => 0.0,
-            'laundry_allowance'     => 0.0,
-            'other'                 => 0.0,
-            'total'                 => 0.0,
+            'laundry_allowance' => 0.0,
+            'other' => 0.0,
+            'total' => 0.0,
         ];
 
         foreach ($rows as $row) {
@@ -277,7 +293,7 @@ class PayrollComputationService
                 $value = (float) $row->amount;
             }
 
-            $result[$key]    += $value;
+            $result[$key] += $value;
             $result['total'] += $value;
         }
 
@@ -307,11 +323,11 @@ class PayrollComputationService
         $bir = $this->computeBir($taxable, $settings['bir_tax_brackets']);
 
         return [
-            'gsis'       => $gsis,
+            'gsis' => $gsis,
             'philhealth' => $philhealth,
-            'pagibig'    => $pagibig,
-            'bir'        => $bir,
-            'total'      => $gsis + $philhealth + $pagibig + $bir,
+            'pagibig' => $pagibig,
+            'bir' => $bir,
+            'total' => $gsis + $philhealth + $pagibig + $bir,
         ];
     }
 

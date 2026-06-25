@@ -5,6 +5,7 @@ use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Attendance\EmployeeScheduleController;
 use App\Http\Controllers\Attendance\ShiftController;
+use App\Http\Controllers\Attendance\ShiftScheduleController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
@@ -220,6 +221,12 @@ Route::middleware('auth')->group(function () {
         ->name('attendance.schedules.update');
     Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
         ->name('attendance.schedules.exempt');
+
+    // Per-date shift schedule (rotating / 24-7 departments)
+    Route::get('/attendance/shift-schedule', [ShiftScheduleController::class, 'index'])
+        ->name('attendance.shift-schedule.index');
+    Route::post('/attendance/shift-schedule', [ShiftScheduleController::class, 'store'])
+        ->name('attendance.shift-schedule.store');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');

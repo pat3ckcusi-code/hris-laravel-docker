@@ -64,8 +64,15 @@
         </div>
     </div>
 
-    <div style="padding:0.75rem 1rem;overflow-x:auto;">
-        <table id="monitoring-matrix-table" class="display" style="width:100%;font-size:0.82rem;">
+    <div style="padding:0.5rem 1rem 0;display:flex;align-items:center;gap:0.5rem;">
+        <label for="matrix-search" style="font-size:0.8rem;font-weight:600;color:#374151;white-space:nowrap;">Search:</label>
+        <input id="matrix-search" type="search" placeholder="Name or position…"
+               style="padding:0.35rem 0.6rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem;width:220px;">
+        <span style="font-size:0.78rem;color:#9ca3af;margin-left:0.25rem;">Click column headers to sort.</span>
+    </div>
+
+    <div style="padding:0.5rem 1rem 0.75rem;overflow-x:auto;">
+        <table id="monitoring-matrix-table" style="width:100%;font-size:0.82rem;border-collapse:collapse;">
             <thead>
                 <tr style="background:#bdd7ee;">
                     <th style="{{ $th }}width:36px;">#</th>
@@ -82,7 +89,7 @@
                 </tr>
             </thead>
             <tbody>
-                @forelse($rows as $i => $row)
+                @foreach($rows as $i => $row)
                     <tr>
                         <td style="{{ $td }}color:#6b7280;">{{ $i + 1 }}</td>
                         <td style="{{ $td }}text-align:left;font-weight:600;">{{ $row['name'] }}</td>
@@ -128,14 +135,7 @@
                             {{ $row['remarks'] ?: '—' }}
                         </td>
                     </tr>
-                @empty
-                    <tr>
-                        <td colspan="11"
-                            style="padding:2rem;text-align:center;color:#9ca3af;font-size:0.9rem;">
-                            No employees found for this department and period.
-                        </td>
-                    </tr>
-                @endforelse
+                @endforeach
             </tbody>
         </table>
     </div>
@@ -145,38 +145,75 @@
 
 @section('page_scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    if (!window.jQuery || !$.fn.DataTable) return;
+// If DataTables has been initialized on this table by any script, destroy it immediately.
+// Suppress the warning popup that DataTables shows on column count mismatches.
+(function destroyDataTablesIfPresent() {
+    function tryDestroy() {
+        if (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) return;
+        jQuery.fn.DataTable.ext.errMode = 'none'; // suppress alert popups
+        var $t = jQuery('#monitoring-matrix-table');
+        if ($t.length && jQuery.fn.DataTable.isDataTable($t)) {
+            $t.DataTable().destroy(true);
+        }
+    }
+    // Run immediately (catches eager inits) and again after DOM is ready.
+    tryDestroy();
+    document.addEventListener('DOMContentLoaded', tryDestroy);
+    // Belt-and-suspenders: catch any late init after our DOMContentLoaded handler.
+    setTimeout(tryDestroy, 0);
+}());
 
-    $('#monitoring-matrix-table').DataTable({
-        pageLength: 10,
-        lengthMenu: [10, 25, 50, 100],
-        ordering: true,
-        order: [[1, 'asc']],   // default sort by name
-        columnDefs: [
-            { orderable: false, targets: [0, 10] },  // # and Remarks not sortable
-            { className: 'dt-center', targets: '_all' },
-            { className: 'dt-body-left', targets: [1, 10] },
-        ],
-        language: {
-            search: 'Search employee:',
-            lengthMenu: 'Show _MENU_ employees',
-            info: 'Showing _START_ to _END_ of _TOTAL_ employees',
-            infoEmpty: 'No employees found',
-            zeroRecords: 'No matching employees found',
-            paginate: {
-                first: '«', last: '»', previous: '‹', next: '›',
-            },
-        },
-        // Re-apply row number after pagination/search
-        drawCallback: function () {
-            var api = this.api();
-            var start = api.page.info().start;
-            api.column(0, { page: 'current' }).nodes().each(function (cell, i) {
-                cell.innerHTML = '<span style="color:#6b7280">' + (start + i + 1) + '</span>';
-            });
-        },
-    });
+document.addEventListener('DOMContentLoaded', function () {
+    var table = document.getElementById('monitoring-matrix-table');
+    if (!table) return;
+
+    // ── Search ──────────────────────────────────────────────────────────
+    var searchInput = document.getElementById('matrix-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            var q = this.value.toLowerCase().trim();
+            var rows = table.tBodies[0].rows;
+            var visible = 0;
+            for (var i = 0; i < rows.length; i++) {
+                var name = (rows[i].cells[1] ? rows[i].cells[1].textContent : '').toLowerCase();
+                var pos  = (rows[i].cells[2] ? rows[i].cells[2].textContent : '').toLowerCase();
+                var show = !q || name.indexOf(q) > -1 || pos.indexOf(q) > -1;
+                rows[i].style.display = show ? '' : 'none';
+                if (show) rows[i].cells[0].textContent = ++visible;
+            }
+        });
+    }
+
+    // ── Sortable columns (click header) ─────────────────────────────────
+    var sortState = { col: 1, dir: 1 };
+    var headers = table.tHead.rows[0].cells;
+    var noSort = [0, 10]; // # and Remarks
+
+    for (var h = 0; h < headers.length; h++) {
+        if (noSort.indexOf(h) === -1) {
+            headers[h].style.cursor = 'pointer';
+            headers[h].title = 'Click to sort';
+            (function (col) {
+                headers[col].addEventListener('click', function () {
+                    var dir = (sortState.col === col) ? -sortState.dir : 1;
+                    sortState = { col: col, dir: dir };
+                    var tbody = table.tBodies[0];
+                    var rows = Array.from(tbody.rows);
+                    rows.sort(function (a, b) {
+                        var av = a.cells[col] ? a.cells[col].textContent.trim() : '';
+                        var bv = b.cells[col] ? b.cells[col].textContent.trim() : '';
+                        var an = parseFloat(av), bn = parseFloat(bv);
+                        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+                        return av.localeCompare(bv) * dir;
+                    });
+                    rows.forEach(function (r, i) {
+                        r.cells[0].textContent = i + 1;
+                        tbody.appendChild(r);
+                    });
+                });
+            }(h));
+        }
+    }
 });
 </script>
 @endsection

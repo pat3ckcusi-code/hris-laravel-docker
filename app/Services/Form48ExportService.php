@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\Locator;
@@ -263,6 +264,43 @@ class Form48ExportService
     }
 
     /**
+     * Build a day-of-month → true map for scheduled rest days (null shift_id assignment).
+     * Used by fill() to label those days as "Rest Day" instead of treating them as absences.
+     *
+     * @return array<int, true>
+     */
+    public function buildRestDayMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+
+        EmployeeShiftSchedule::where('user_id', $userId)
+            ->whereNull('shift_id')
+            ->where('type', 'rest')
+            ->whereBetween('date', [$from, $to])
+            ->get(['date'])
+            ->each(function ($a) use (&$map): void {
+                $map[(int) $a->date->day] = true;
+            });
+
+        return $map;
+    }
+
+    public function buildFieldWorkMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+
+        EmployeeShiftSchedule::where('user_id', $userId)
+            ->where('type', 'field_work')
+            ->whereBetween('date', [$from, $to])
+            ->get(['date'])
+            ->each(function ($a) use (&$map): void {
+                $map[(int) $a->date->day] = true;
+            });
+
+        return $map;
+    }
+
+    /**
      * Redistribute a day's biometric punches around a locator's travel window.
      *
      * DtrPunchResolver assigns punches sequentially (1st→AM-in, 2nd→AM-out, …)
@@ -408,19 +446,24 @@ class Form48ExportService
         string $from,
         array $leaveMap = [],
         array $etaMap = [],
-        array $locatorMap = []
+        array $locatorMap = [],
+        array $restDayMap = [],
+        array $fieldWorkMap = []
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
         $schedule = WorkSchedule::forUser($employee);
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap);
 
-        // Exclude leave days and ETA days with fewer than 4 punches from the total.
+        // Exclude rest days, leave days, and ETA days with fewer than 4 punches from the total.
         // For locator days, zero the penalty for each covered slot that lacks a punch.
         $totalMins = 0;
         foreach ($records as $day => $r) {
+            if (isset($restDayMap[$day]) || isset($fieldWorkMap[$day])) {
+                continue;
+            }
             if (isset($leaveMap[$day])) {
                 continue;
             }
@@ -528,7 +571,9 @@ class Form48ExportService
         array $leaveMap,
         array $etaMap,
         array $locatorMap,
-        WorkSchedule $schedule
+        WorkSchedule $schedule,
+        array $restDayMap = [],
+        array $fieldWorkMap = []
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -545,6 +590,42 @@ class Form48ExportService
             $rec = $records[$day] ?? null;
             $isWeekend = $dayDate->isSaturday() || $dayDate->isSunday();
             $leaveCode = $leaveMap[$day] ?? null;
+
+            // Per-date shift rest day: always shows "Rest Day", even if a stale DTR record exists.
+            if (isset($restDayMap[$day])) {
+                foreach (range(0, 3) as $i) {
+                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Rest Day');
+                    $sheet->getStyle($range)->getAlignment()
+                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                }
+
+                continue;
+            }
+
+            // Field work day: merge cells and write "Field Work" label.
+            if (isset($fieldWorkMap[$day])) {
+                foreach (range(0, 3) as $i) {
+                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Field Work');
+                    $sheet->getStyle($range)->getAlignment()
+                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                }
+
+                continue;
+            }
 
             // Approved leave: merge AM-in → PM-out and write the leave code.
             // Leave takes priority over any biometric/manual punch for that day.

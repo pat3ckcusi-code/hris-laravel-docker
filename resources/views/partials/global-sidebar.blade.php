@@ -171,9 +171,10 @@
             ['section' => 'Attendance'],
             ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',             'active' => ['attendance.shifts*']],
-            ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',          'active' => ['attendance.schedules*']],
-            ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',   'active' => ['hr-manager.attendance.import*']],
+            ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',                   'active' => ['attendance.shifts*']],
+            ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',                'active' => ['attendance.schedules*']],
+            ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',     'active' => ['attendance.shift-schedule*']],
+            ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',        'active' => ['hr-manager.attendance.import*']],
 
             ['section' => 'Reports'],
             ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',     'active' => ['hr-manager.reports']],
@@ -246,9 +247,10 @@
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Shift Templates',  'icon' => 'work_schedule',     'route' => 'attendance.shifts',            'active' => ['attendance.shifts*']],
-            ['label' => 'Shift Assignment', 'icon' => 'work_schedule',     'route' => 'attendance.schedules',         'active' => ['attendance.schedules*']],
-            ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
+            ['label' => 'Shift Templates',  'icon' => 'work_schedule',     'route' => 'attendance.shifts',                 'active' => ['attendance.shifts*']],
+            ['label' => 'Shift Assignment', 'icon' => 'work_schedule',     'route' => 'attendance.schedules',              'active' => ['attendance.schedules*']],
+            ['label' => 'Shift Schedule',   'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',   'active' => ['attendance.shift-schedule*']],
+            ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',      'active' => ['hr-manager.attendance.import*']],
         ],
 
         // ─── Front Desk ───────────────────────────────────

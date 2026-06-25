@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\Locator;
@@ -199,7 +200,15 @@ class DtrController extends Controller
             ->get();
 
         // Effective shift for this employee (template or global standard day).
+        // Kept for any context that doesn't need per-date resolution (e.g. headers).
         $schedule = WorkSchedule::forUser($employee);
+
+        // Pre-load per-date shift assignments so each DTR row can use its own schedule.
+        $shiftAssignments = EmployeeShiftSchedule::where('user_id', $employee->id)
+            ->whereBetween('date', [$from, $to])
+            ->with('shift')
+            ->get()
+            ->keyBy(fn ($a) => $a->date->toDateString());
 
         // Build leave map: date string → leave code (approved, non-cancelled).
         $leaveMap = LeaveDate::query()
@@ -272,6 +281,7 @@ class DtrController extends Controller
 
         foreach ($dtrRows as $dtr) {
             $dateStr = Carbon::parse($dtr->date)->format('Y-m-d');
+            $rowSchedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dtr->date), $shiftAssignments);
             $leaveCode = $leaveMap[$dateStr] ?? null;
             $isEtaDay = ! $leaveCode && isset($etaDateSet[$dateStr]);
 
@@ -308,7 +318,7 @@ class DtrController extends Controller
                 // Recompute per-slot: the old OR logic zeroed all tardiness whenever
                 // any covered slot was LOCATOR, hiding genuine late AM In punches.
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
-                    $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $schedule
+                    $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $rowSchedule
                 );
             } else {
                 $tAmIn = $dtr->time_in_am ?? '—';
@@ -327,9 +337,9 @@ class DtrController extends Controller
             $amInHm = $slotHm($tAmIn);
             $pmInHm = $slotHm($tPmIn);
             $pmOutHm = $slotHm($tPmOut);
-            $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $schedule->workStart && $amInHm < $schedule->morningEnd;
-            $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $schedule->lunchReturn && $pmInHm < $schedule->noonEnd;
-            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $schedule->lunchReturn && $pmOutHm < $schedule->workEnd;
+            $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd;
+            $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd;
+            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $rowSchedule->lunchReturn && $pmOutHm < $rowSchedule->workEnd;
 
             $data->push([
                 'date' => Carbon::parse($dtr->date)->format('M d, Y (D)'),
@@ -430,6 +440,40 @@ class DtrController extends Controller
             ]);
         }
 
+        // Add rest-day and field-work rows: special-assignment dates with no DTR record and no leave.
+        foreach ($shiftAssignments as $dateStr => $assignment) {
+            if ($assignment->shift_id !== null) {
+                continue; // normal shift override, handled via DTR rows
+            }
+            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr)) {
+                continue; // already represented by a DTR or leave row
+            }
+
+            if ($assignment->type === 'field_work') {
+                $data->push([
+                    'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                    'time_in_am' => '—', 'time_out_am' => '—',
+                    'time_in_pm' => '—', 'time_out_pm' => '—',
+                    'late_minutes' => 0, 'undertime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">—</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>',
+                ]);
+            } else {
+                $data->push([
+                    'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                    'time_in_am' => '—', 'time_out_am' => '—',
+                    'time_in_pm' => '—', 'time_out_pm' => '—',
+                    'late_minutes' => 0, 'undertime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">—</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>',
+                ]);
+            }
+        }
+
         $data = $data->sortBy('date')->values();
         $total = $data->count();
 
@@ -484,10 +528,12 @@ class DtrController extends Controller
         $leaveMap = $exportService->buildLeaveMap($employee->id, $from, $to);
         $etaMap = $exportService->buildEtaMap($employee->id, $from, $to);
         $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
+        $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
+        $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
         $spreadsheet = IOFactory::load($templatePath);
         $sheet = $spreadsheet->getActiveSheet();
 
-        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap);
+        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
 
         $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'DTR';
         $downloadName = "CSC_Form_48_({$safe}).xlsx";
@@ -555,13 +601,15 @@ class DtrController extends Controller
             $leaveMap = $exportService->buildLeaveMap($employee->id, $from, $to);
             $etaMap = $exportService->buildEtaMap($employee->id, $from, $to);
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
+            $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
+            $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
 
             $spreadsheet = IOFactory::load($templatePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap);
+            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
 
             $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'Employee_'.$employee->id;
             $tmpPath = tempnam(sys_get_temp_dir(), 'dtr_');
@@ -658,6 +706,8 @@ class DtrController extends Controller
             $leaveMap = $exportService->buildLeaveMap($employee->id, $from, $to);
             $etaMap = $exportService->buildEtaMap($employee->id, $from, $to);
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
+            $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
+            $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
@@ -671,7 +721,7 @@ class DtrController extends Controller
 
             // addSheet before fill so merged-cell operations resolve against the workbook.
             $workbook->addSheet($clone);
-            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap);
+            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
             $filled++;
         }
 

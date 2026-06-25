@@ -2,9 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\EmployeeShiftSchedule;
 use App\Models\Setting;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * The effective shift for a single employee.
@@ -57,6 +59,91 @@ class WorkSchedule
             noonEnd: self::hm($s?->noon_end) ?? '14:00',
             crossesMidnight: false,
         );
+    }
+
+    /**
+     * The effective schedule for a user on a specific date.
+     *
+     * Checks $preloaded (a date-string-keyed Collection of EmployeeShiftSchedule)
+     * before querying the database, so bulk loops can pre-load once and avoid N+1.
+     * Falls back to forUser() when no per-date assignment exists.
+     *
+     * Returns forUser() unchanged when the assignment is a rest day (shift_id null);
+     * callers should check isRestDay() first and skip punch resolution for those dates.
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function forUserOnDate(User $user, Carbon $date, ?Collection $preloaded = null): self
+    {
+        $dateStr = $date->toDateString();
+
+        if ($preloaded !== null) {
+            $assignment = $preloaded->get($dateStr);
+        } else {
+            $assignment = EmployeeShiftSchedule::where('user_id', $user->id)
+                ->where('date', $dateStr)
+                ->with('shift')
+                ->first();
+        }
+
+        if ($assignment === null || $assignment->shift_id === null) {
+            return self::forUser($user);
+        }
+
+        $shift = $assignment->relationLoaded('shift') ? $assignment->shift : $assignment->shift()->first();
+
+        if ($shift === null) {
+            return self::forUser($user);
+        }
+
+        return new self(
+            workStart: self::hm($shift->time_in),
+            lunchReturn: self::hm($shift->break_in),
+            workEnd: self::hm($shift->time_out),
+            morningEnd: self::hm($shift->break_out),
+            noonEnd: self::hm($shift->time_out),
+            crossesMidnight: (bool) $shift->crosses_midnight,
+        );
+    }
+
+    /**
+     * True when the employee is scheduled off on $date (assignment row with shift_id = null).
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function isRestDay(User $user, Carbon $date, ?Collection $preloaded = null): bool
+    {
+        $dateStr = $date->toDateString();
+
+        if ($preloaded !== null) {
+            $assignment = $preloaded->get($dateStr);
+        } else {
+            $assignment = EmployeeShiftSchedule::where('user_id', $user->id)
+                ->where('date', $dateStr)
+                ->first();
+        }
+
+        return $assignment !== null && $assignment->shift_id === null && $assignment->type !== 'field_work';
+    }
+
+    /**
+     * True when the employee is on field work on $date (assignment row with type = 'field_work').
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function isFieldWork(User $user, Carbon $date, ?Collection $preloaded = null): bool
+    {
+        $dateStr = $date->toDateString();
+
+        if ($preloaded !== null) {
+            $assignment = $preloaded->get($dateStr);
+        } else {
+            $assignment = EmployeeShiftSchedule::where('user_id', $user->id)
+                ->where('date', $dateStr)
+                ->first();
+        }
+
+        return $assignment !== null && $assignment->type === 'field_work';
     }
 
     /**

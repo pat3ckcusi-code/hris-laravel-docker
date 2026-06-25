@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AttendanceLog;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -15,6 +16,11 @@ use Illuminate\Support\Collection;
  * shiftDateFor rule). For a standard day shift this reproduces the previous
  * group-by-logdate behaviour exactly.
  *
+ * When $assignments is provided (a date-string-keyed Collection of
+ * EmployeeShiftSchedule), each punch is evaluated against the schedule
+ * effective on its own logdate. This supports employees whose shift rotates
+ * day-to-day without causing N+1 queries.
+ *
  * Shared by PersonnelLogImportService (writes dtrs) and Form48ExportService
  * (export fallback) so the two always agree on shift boundaries.
  */
@@ -22,11 +28,11 @@ class ShiftPunchGrouper
 {
     /**
      * @param  Collection<int, AttendanceLog>  $logs
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $assignments  pre-loaded per-date schedules
      * @return array<string, Collection<int, Carbon>> shiftDate (Y-m-d) => punch datetimes
      */
-    public function group(User $user, Collection $logs): array
+    public function group(User $user, Collection $logs, ?Collection $assignments = null): array
     {
-        $schedule = WorkSchedule::forUser($user);
         $groups = [];
 
         foreach ($logs as $log) {
@@ -39,6 +45,7 @@ class ShiftPunchGrouper
                 continue;
             }
 
+            $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($logdate), $assignments);
             $shiftDate = $schedule->shiftDateFor($logdate, $logtime);
 
             $groups[$shiftDate] ??= collect();

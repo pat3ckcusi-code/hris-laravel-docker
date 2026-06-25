@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -232,13 +233,19 @@ class PersonnelLogImportService
             return;
         }
 
-        $schedule = WorkSchedule::forUser($user);
+        // Always pad by 1 day: night shifts and per-date schedule variations can
+        // place a punch from calendar day N onto shift date N-1, so we need one
+        // extra day on each side to capture complete first/last shifts.
+        $fetchFrom = Carbon::parse($from)->subDay()->toDateString();
+        $fetchTo = Carbon::parse($to)->addDay()->toDateString();
 
-        // A night shift's punches span two calendar days, so widen the fetch by
-        // one day on each side to complete the first/last shift in the range.
-        $pad = $schedule->crossesMidnight ? 1 : 0;
-        $fetchFrom = Carbon::parse($from)->subDays($pad)->toDateString();
-        $fetchTo = Carbon::parse($to)->addDays($pad)->toDateString();
+        // Pre-load per-date shift assignments for the padded range so every
+        // downstream call (grouper, resolver) is O(1) — no per-date DB queries.
+        $assignments = EmployeeShiftSchedule::where('user_id', $user->id)
+            ->whereBetween('date', [$fetchFrom, $fetchTo])
+            ->with('shift')
+            ->get()
+            ->keyBy(fn ($a) => $a->date->toDateString());
 
         $logs = AttendanceLog::where('user_id', $user->id)
             ->whereBetween('logdate', [$fetchFrom, $fetchTo])
@@ -250,11 +257,17 @@ class PersonnelLogImportService
             return;
         }
 
-        foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
+        foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
             if ($date < $from || $date > $to) {
                 continue;
             }
+
+            // Rest days with no punches won't appear here (grouper only produces
+            // entries when there are actual punches). If someone punched in on a
+            // rest day (voluntary OT), still record the DTR using their assigned
+            // rest-day shift (which falls back to the default if shift_id is null).
+            $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date), $assignments);
 
             $resolved = $this->punchResolver->resolve($punches, $date, $schedule);
 
