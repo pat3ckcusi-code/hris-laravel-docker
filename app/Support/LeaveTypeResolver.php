@@ -10,7 +10,7 @@ namespace App\Support;
 class LeaveTypeResolver
 {
     private const LABEL_MAP = [
-        'VL' => ['vacation', 'vl'],
+        'VL' => ['vacation', 'vl', 'mandatory', 'forced'],
         'SL' => ['sick', 'sl'],
         'WLNS' => ['wellness', 'wlns'],
         'SPL' => ['special privilege', 'special', 'spl', 'privilege'],

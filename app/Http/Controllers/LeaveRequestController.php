@@ -340,6 +340,36 @@ class LeaveRequestController extends Controller
                 return redirect()->back()->withErrors(['leave_dates' => 'Vacation Leave must be filed at least 5 calendar days before these dates: '.implode(', ', $vacationViolations)])->withInput();
             }
 
+            // Enforce Mandatory/Forced Leave: only fileable in November or December
+            if (in_array('Mandatory/Forced Leave', $selectedTypes)) {
+                $filingMonth = (int) $today->format('n');
+                if (! in_array($filingMonth, [11, 12])) {
+                    return redirect()->back()->withErrors(['leave_types' => 'Mandatory/Forced Leave can only be filed in November or December.'])->withInput();
+                }
+            }
+
+            // Enforce Mandatory/Forced Leave: 5-day advance rule and dates must be in November or December
+            $mandatoryLeadViolations = [];
+            $mandatoryMonthViolations = [];
+            foreach ($dates as $d) {
+                $typeForDate = $allocations[$d]['type'] ?? ($selectedTypes[0] ?? null);
+                if ($typeForDate === 'Mandatory/Forced Leave') {
+                    $dt = (new \DateTime($d))->setTime(0, 0, 0);
+                    if ($dt < $minStart) {
+                        $mandatoryLeadViolations[] = $d;
+                    }
+                    if (! in_array((int) (new \DateTime($d))->format('n'), [11, 12])) {
+                        $mandatoryMonthViolations[] = $d;
+                    }
+                }
+            }
+            if (! empty($mandatoryLeadViolations)) {
+                return redirect()->back()->withErrors(['leave_dates' => 'Mandatory/Forced Leave must be filed at least 5 calendar days before these dates: '.implode(', ', $mandatoryLeadViolations)])->withInput();
+            }
+            if (! empty($mandatoryMonthViolations)) {
+                return redirect()->back()->withErrors(['leave_dates' => 'Mandatory/Forced Leave dates must fall in November or December: '.implode(', ', $mandatoryMonthViolations)])->withInput();
+            }
+
             // Block filing if a balance-restricted leave type has zero balance
             $user = Auth::user();
             $lb = $user->leaveBalance;

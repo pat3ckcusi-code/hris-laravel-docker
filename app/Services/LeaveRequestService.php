@@ -814,7 +814,7 @@ class LeaveRequestService
 
         $column = null;
         $label = strtolower($leave->leave_type ?? '');
-        if (str_contains($label, 'vacation') || str_contains($label, 'vl')) {
+        if (str_contains($label, 'vacation') || str_contains($label, 'vl') || str_contains($label, 'mandatory') || str_contains($label, 'forced')) {
             $column = 'VL';
         } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
             $column = 'SL';
@@ -832,7 +832,7 @@ class LeaveRequestService
             $parts = array_map('trim', explode(',', $leave->leave_type));
             foreach ($parts as $p) {
                 $pl = strtolower($p);
-                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl')) {
+                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl') || str_contains($pl, 'mandatory') || str_contains($pl, 'forced')) {
                     $column = 'VL';
                     break;
                 }

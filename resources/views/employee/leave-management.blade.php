@@ -182,6 +182,7 @@
                 <div class="space-y-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <p class="text-sm text-blue-700 font-medium">Select up to 3 leave types in one application. The following must be filed as a separate application: Maternity, Paternity, Adoption, VAWC, Special Leave (Gynecological), Rehabilitation Privilege, Study / Examination Leave, and Mandatory/Forced Leave.</p>
                     <div id="exclusiveNotice" style="display:none;" class="text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-3 py-2"></div>
+                    @php $isMandatoryMonth = in_array(now()->month, [11, 12]); @endphp
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
                             <input type="checkbox" name="leave_types[]" value="Vacation Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
@@ -223,8 +224,12 @@
                             <input type="checkbox" name="leave_types[]" value="Special Privilege Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
                             <span class="text-sm text-slate-700">Special Privilege Leave</span>
                         </label>
-                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
-                            <input type="checkbox" name="leave_types[]" value="Mandatory/Forced Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                        <label class="flex items-center space-x-2 p-2 rounded {{ $isMandatoryMonth ? 'cursor-pointer hover:bg-blue-100' : 'opacity-40 cursor-not-allowed' }}"
+                               title="{{ $isMandatoryMonth ? '' : 'Only available in November and December' }}">
+                            <input type="checkbox" name="leave_types[]" value="Mandatory/Forced Leave"
+                                   class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                                   data-month-restricted="{{ $isMandatoryMonth ? 'false' : 'true' }}"
+                                   {{ $isMandatoryMonth ? '' : 'disabled' }}>
                             <span class="text-sm text-slate-700">Mandatory/Forced Leave</span>
                         </label>
                         <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
@@ -728,12 +733,23 @@
                             const today = new Date(); today.setHours(0,0,0,0);
                             const minStart = new Date(today.getTime()); minStart.setDate(minStart.getDate() + 5);
                             if (d < minStart) {
-                                addDateBtn.disabled = true;
-                                if (datePickerMsg) { datePickerMsg.style.display = ''; datePickerMsg.textContent = 'Vacation Leave must be filed at least 5 calendar days before the start date.'; }
+                                if (datePickerMsg) { datePickerMsg.style.display = 'block'; datePickerMsg.textContent = 'Vacation Leave must be filed at least 5 calendar days before the start date.'; }
                                 return;
                             }
                         }
-                        addDateBtn.disabled = false;
+                        if (checkedTypes.includes('Mandatory/Forced Leave')) {
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            const minStart = new Date(today.getTime()); minStart.setDate(minStart.getDate() + 5);
+                            if (d < minStart) {
+                                if (datePickerMsg) { datePickerMsg.style.display = 'block'; datePickerMsg.textContent = 'Mandatory/Forced Leave must be filed at least 5 calendar days before the start date.'; }
+                                return;
+                            }
+                            const month = d.getMonth(); // 0-indexed: 10 = November, 11 = December
+                            if (month !== 10 && month !== 11) {
+                                if (datePickerMsg) { datePickerMsg.style.display = 'block'; datePickerMsg.textContent = 'Mandatory/Forced Leave dates must fall in November or December.'; }
+                                return;
+                            }
+                        }
                         if (datePickerMsg) { datePickerMsg.style.display = 'none'; }
                     }
 
@@ -763,7 +779,14 @@
                         if (checkedTypes.includes('Vacation Leave')) {
                             const today = new Date(); today.setHours(0,0,0,0);
                             const minStart = new Date(today.getTime()); minStart.setDate(minStart.getDate() + 5);
-                            if (d < minStart) { if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid start date', text: 'Vacation Leave must be filed at least 5 calendar days before the start date.' }); } else { alert('Vacation Leave must be filed at least 5 calendar days before the start date.'); } return; }
+                            if (d < minStart) { if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Vacation Leave must be filed at least 5 calendar days before the start date.' }); } else { alert('Vacation Leave must be filed at least 5 calendar days before the start date.'); } return; }
+                        }
+                        if (checkedTypes.includes('Mandatory/Forced Leave')) {
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            const minStart = new Date(today.getTime()); minStart.setDate(minStart.getDate() + 5);
+                            if (d < minStart) { if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Mandatory/Forced Leave must be filed at least 5 calendar days before the start date.' }); } else { alert('Mandatory/Forced Leave must be filed at least 5 calendar days before the start date.'); } return; }
+                            const month = d.getMonth();
+                            if (month !== 10 && month !== 11) { if (window.Swal) { window.Swal.fire({ icon: 'warning', title: 'Invalid date', text: 'Mandatory/Forced Leave dates must fall in November or December.' }); } else { alert('Mandatory/Forced Leave dates must fall in November or December.'); } return; }
                         }
                         selectedDates.push(val);
                         selectedDates.sort();
@@ -816,8 +839,8 @@
                                     exclusiveNotice.style.display = '';
                                 }
                             } else if (isExclusive && !this.checked) {
-                                // Re-enable all
-                                leaveTypeCheckboxes.forEach(c => c.disabled = false);
+                                // Re-enable all (except month-restricted checkboxes)
+                                leaveTypeCheckboxes.forEach(c => { if (c.dataset.monthRestricted !== 'true') c.disabled = false; });
                                 if (exclusiveNotice) exclusiveNotice.style.display = 'none';
                             } else {
                                 // Regular type: enforce 3-type max
@@ -827,7 +850,7 @@
                                         if (!c.checked) c.disabled = true;
                                     });
                                 } else {
-                                    leaveTypeCheckboxes.forEach(c => { if (!EXCLUSIVE_TYPES.includes(c.value) || !Array.from(leaveTypeCheckboxes).some(x => x.checked && EXCLUSIVE_TYPES.includes(x.value))) c.disabled = false; });
+                                    leaveTypeCheckboxes.forEach(c => { if (c.dataset.monthRestricted !== 'true' && (!EXCLUSIVE_TYPES.includes(c.value) || !Array.from(leaveTypeCheckboxes).some(x => x.checked && EXCLUSIVE_TYPES.includes(x.value)))) c.disabled = false; });
                                 }
                                 if (exclusiveNotice) exclusiveNotice.style.display = 'none';
                             }
