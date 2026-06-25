@@ -339,7 +339,8 @@ class DtrController extends Controller
             $pmOutHm = $slotHm($tPmOut);
             $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd;
             $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd;
-            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $rowSchedule->lunchReturn && $pmOutHm < $rowSchedule->workEnd;
+            $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
+            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd;
 
             $data->push([
                 'date' => Carbon::parse($dtr->date)->format('M d, Y (D)'),

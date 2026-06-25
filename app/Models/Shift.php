@@ -16,10 +16,11 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $name
  * @property string $time_in
- * @property string $break_out
- * @property string $break_in
+ * @property string|null $break_out
+ * @property string|null $break_in
  * @property string $time_out
  * @property bool $crosses_midnight
+ * @property bool $no_break
  * @property bool $is_active
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -35,6 +36,7 @@ class Shift extends Model
         'break_in',
         'time_out',
         'crosses_midnight',
+        'no_break',
         'is_active',
     ];
 
@@ -42,6 +44,7 @@ class Shift extends Model
     {
         return [
             'crosses_midnight' => 'boolean',
+            'no_break' => 'boolean',
             'is_active' => 'boolean',
         ];
     }

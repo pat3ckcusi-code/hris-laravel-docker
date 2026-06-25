@@ -423,7 +423,8 @@ class Form48ExportService
 
         if ($pmOut !== '' && $pmOut !== 'LOCATOR') {
             $hm = substr($pmOut, 0, 5);
-            if ($hm >= $schedule->lunchReturn && $hm < $schedule->workEnd) {
+            $pmOutLower = $schedule->noBreak ? $schedule->workStart : $schedule->lunchReturn;
+            if ($hm >= $pmOutLower && $hm < $schedule->workEnd) {
                 $undertime += (int) Carbon::parse("$date $hm")->diffInMinutes(Carbon::parse("$date $schedule->workEnd"));
             }
         }

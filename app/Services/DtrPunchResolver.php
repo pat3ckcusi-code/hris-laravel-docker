@@ -72,8 +72,11 @@ class DtrPunchResolver
         }
 
         // Undertime — only when the departure is genuinely a shift-end punch.
+        // For no-break shifts pm_out is the only departure punch, so use workStart
+        // as the lower bound instead of breakInRef (which has no meaning without a break).
         $undertime = 0;
-        if ($pmOut !== null && $pmOut->gte($breakInRef)) {
+        $pmOutLower = $schedule->noBreak ? $startRef : $breakInRef;
+        if ($pmOut !== null && $pmOut->gte($pmOutLower)) {
             $undertime = $this->minutesEarly($pmOut, $endRef);
         }
 
@@ -96,6 +99,12 @@ class DtrPunchResolver
     private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule): array
     {
         $count = $sorted->count();
+
+        // No-break shifts: employees only punch IN and OUT (no lunch break).
+        // Map first punch → am_in, last punch → pm_out; middle punches are re-scans.
+        if ($schedule->noBreak) {
+            return [$sorted->get(0), null, null, $count >= 2 ? $sorted->last() : null];
+        }
 
         // 1–4 punches map straight to the four slots in chronological order.
         if ($count <= 4) {

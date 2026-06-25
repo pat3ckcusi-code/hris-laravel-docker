@@ -40,6 +40,7 @@ class WorkSchedule
         public readonly string $morningEnd,
         public readonly string $noonEnd,
         public readonly bool $crossesMidnight = false,
+        public readonly bool $noBreak = false,
     ) {}
 
     /** The system-wide standard-day shift from the settings table (memoized). */
@@ -98,11 +99,12 @@ class WorkSchedule
 
         return new self(
             workStart: self::hm($shift->time_in),
-            lunchReturn: self::hm($shift->break_in),
+            lunchReturn: self::hm($shift->break_in) ?? self::hm($shift->time_out),
             workEnd: self::hm($shift->time_out),
-            morningEnd: self::hm($shift->break_out),
+            morningEnd: self::hm($shift->break_out) ?? self::hm($shift->time_out),
             noonEnd: self::hm($shift->time_out),
             crossesMidnight: (bool) $shift->crosses_midnight,
+            noBreak: (bool) $shift->no_break,
         );
     }
 
@@ -164,11 +166,12 @@ class WorkSchedule
 
         return new self(
             workStart: self::hm($shift->time_in),
-            lunchReturn: self::hm($shift->break_in),
+            lunchReturn: self::hm($shift->break_in) ?? self::hm($shift->time_out),
             workEnd: self::hm($shift->time_out),
-            morningEnd: self::hm($shift->break_out),
+            morningEnd: self::hm($shift->break_out) ?? self::hm($shift->time_out),
             noonEnd: self::hm($shift->time_out),
             crossesMidnight: (bool) $shift->crosses_midnight,
+            noBreak: (bool) $shift->no_break,
         );
     }
 

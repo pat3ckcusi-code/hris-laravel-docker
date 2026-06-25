@@ -78,25 +78,28 @@ class ShiftController extends Controller
     }
 
     /**
-     * @return array{name: string, time_in: string, break_out: string, break_in: string, time_out: string, crosses_midnight: bool, is_active: bool}
+     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool}
      */
     private function validateShift(Request $request): array
     {
+        $noBreak = (bool) $request->input('no_break', false);
+
         $v = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'time_in' => ['required', 'date_format:H:i'],
-            'break_out' => ['required', 'date_format:H:i'],
-            'break_in' => ['required', 'date_format:H:i'],
+            'break_out' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
+            'break_in' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
             'time_out' => ['required', 'date_format:H:i'],
         ]);
 
         return [
             'name' => $v['name'],
             'time_in' => $v['time_in'],
-            'break_out' => $v['break_out'],
-            'break_in' => $v['break_in'],
+            'break_out' => $noBreak ? null : $v['break_out'],
+            'break_in' => $noBreak ? null : $v['break_in'],
             'time_out' => $v['time_out'],
             'crosses_midnight' => Shift::isCrossMidnight($v['time_in'], $v['time_out']),
+            'no_break' => $noBreak,
             'is_active' => true,
         ];
     }
