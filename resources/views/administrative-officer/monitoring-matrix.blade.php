@@ -93,7 +93,7 @@
                     <tr>
                         <td style="{{ $td }}color:#6b7280;">{{ $i + 1 }}</td>
                         <td style="{{ $td }}text-align:left;font-weight:600;">{{ $row['name'] }}</td>
-                        <td style="{{ $td }}">{{ $row['position'] ?: '—' }}</td>
+                        <td style="{{ $td }}">{{ $row['position'] ?: '-' }}</td>
                         @if ($row['is_exempt'])
                             <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
                         @else
@@ -132,7 +132,7 @@
                             {{ $row['personal_locator_minutes'] ? $row['personal_locator_minutes'].' MINS' : 0 }}
                         </td>
                         <td style="{{ $td }}text-align:left;font-size:0.78rem;color:#374151;">
-                            {{ $row['remarks'] ?: '—' }}
+                            {{ $row['remarks'] ?: '-' }}
                         </td>
                     </tr>
                 @endforeach

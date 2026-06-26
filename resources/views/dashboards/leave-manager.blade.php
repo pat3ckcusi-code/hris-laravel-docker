@@ -81,7 +81,7 @@
         <span>
             <strong>Anomaly Detected:</strong>
             <strong>{{ $anomalyDept['name'] }}</strong> recorded
-            <strong>{{ $anomalyDept['count'] }} sick leave requests</strong> in the last 3 months — unusually high.
+            <strong>{{ $anomalyDept['count'] }} sick leave requests</strong> in the last 3 months - unusually high.
             Consider reviewing absenteeism patterns for this department.
         </span>
     </div>

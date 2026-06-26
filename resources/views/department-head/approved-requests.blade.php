@@ -16,7 +16,7 @@
             </div>
             <div class="kpi-meta">Approved leave applications</div>
         </div>
-        <div class="tile-count" id="leave-total">—</div>
+        <div class="tile-count" id="leave-total">-</div>
     </article>
 
     <article class="kpi-card accent-eta tab-card" data-tab="eta">
@@ -27,7 +27,7 @@
             </div>
             <div class="kpi-meta">Approved ETA requests</div>
         </div>
-        <div class="tile-count" id="eta-total">—</div>
+        <div class="tile-count" id="eta-total">-</div>
     </article>
 
     <article class="kpi-card accent-locator tab-card" data-tab="locator">
@@ -38,7 +38,7 @@
             </div>
             <div class="kpi-meta">Approved locator requests</div>
         </div>
-        <div class="tile-count" id="locator-total">—</div>
+        <div class="tile-count" id="locator-total">-</div>
     </article>
 @endsection
 

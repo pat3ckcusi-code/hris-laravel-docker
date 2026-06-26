@@ -59,7 +59,7 @@ class PersonnelLogImportService
             }
         }
 
-        // Users who received new punches — only their DTR rows need recomputing.
+        // Users who received new punches - only their DTR rows need recomputing.
         $affectedUsers = [];
         // Track personnelids with no HRIS match so the audit log can name them.
         $unmatchedNames = [];   // personnelid → "FIRSTNAME LASTNAME"
@@ -95,7 +95,7 @@ class PersonnelLogImportService
                 $logdate = $this->getKey($item, ['logdate', 'LogDate', 'Date', 'date']);
                 $logtime = $this->getKey($item, ['logtime', 'LogTime', 'Time', 'time']);
 
-                // Normalize to HH:MM:SS — API returns HH:MM without seconds.
+                // Normalize to HH:MM:SS - API returns HH:MM without seconds.
                 if ($logtime !== null && substr_count((string) $logtime, ':') === 1) {
                     $logtime .= ':00';
                 }
@@ -137,7 +137,7 @@ class PersonnelLogImportService
                     continue;
                 }
 
-                // Exempt employees never receive biometric/DTR records — drop their punches.
+                // Exempt employees never receive biometric/DTR records - drop their punches.
                 if ($resolvedUser->dtr_exempt) {
                     $skipped++;
 
@@ -197,7 +197,7 @@ class PersonnelLogImportService
 
         // Report biometric employees with no HRIS match so admin can fix EmpNo.
         if (! empty($unmatchedNames)) {
-            $messages[] = count($unmatchedNames).' biometric personnelid(s) have no matching HRIS EmpNo — update the employee\'s EmpNo to import their records:';
+            $messages[] = count($unmatchedNames).' biometric personnelid(s) have no matching HRIS EmpNo - update the employee\'s EmpNo to import their records:';
             foreach ($unmatchedNames as $pid => $name) {
                 $messages[] = "  personnelid={$pid} ({$name})";
             }
@@ -240,7 +240,7 @@ class PersonnelLogImportService
         $fetchTo = Carbon::parse($to)->addDay()->toDateString();
 
         // Pre-load per-date shift assignments for the padded range so every
-        // downstream call (grouper, resolver) is O(1) — no per-date DB queries.
+        // downstream call (grouper, resolver) is O(1) - no per-date DB queries.
         $assignments = EmployeeShiftSchedule::where('user_id', $user->id)
             ->whereBetween('date', [$fetchFrom, $fetchTo])
             ->with('shift')

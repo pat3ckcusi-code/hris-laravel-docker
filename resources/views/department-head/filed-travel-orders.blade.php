@@ -125,7 +125,7 @@ async function openTravelOrderModal(id) {
                 const j = await resp.json();
                 if (!j.success) { body.innerHTML = '<div class="text-danger">Failed to load details</div>'; return; }
                 const d = j.data;
-                const emps = (d.employees || []).map(e => `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">${e.name}${e.designation ? ' — <span class="muted">' + e.designation + '</span>' : ''}</div>`).join('');
+                const emps = (d.employees || []).map(e => `<div style="padding:8px 0;border-bottom:1px solid #f1f5f9">${e.name}${e.designation ? ' - <span class="muted">' + e.designation + '</span>' : ''}</div>`).join('');
                 body.innerHTML = `
                     <div style="display:grid; grid-template-columns: 1fr 340px; gap:18px;">
                         <div>

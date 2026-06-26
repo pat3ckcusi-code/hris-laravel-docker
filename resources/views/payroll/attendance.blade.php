@@ -45,12 +45,12 @@
                 @forelse($records as $rec)
                     <tr id="dtr-row-{{ $rec->id }}"
                         data-id="{{ $rec->id }}"
-                        data-employee="{{ $rec->employee->name ?? '—' }}"
+                        data-employee="{{ $rec->employee->name ?? '-' }}"
                         data-date="{{ $rec->date->format('M d, Y') }}"
-                        data-time-in-am="{{ $rec->time_in_am ?? '—' }}"
-                        data-time-out-am="{{ $rec->time_out_am ?? '—' }}"
-                        data-time-in-pm="{{ $rec->time_in_pm ?? '—' }}"
-                        data-time-out-pm="{{ $rec->time_out_pm ?? '—' }}"
+                        data-time-in-am="{{ $rec->time_in_am ?? '-' }}"
+                        data-time-out-am="{{ $rec->time_out_am ?? '-' }}"
+                        data-time-in-pm="{{ $rec->time_in_pm ?? '-' }}"
+                        data-time-out-pm="{{ $rec->time_out_pm ?? '-' }}"
                         data-late="{{ $rec->late_minutes ?? 0 }}"
                         data-undertime="{{ $rec->undertime_minutes ?? 0 }}"
                         data-is-absent="{{ $rec->is_absent ? '1' : '0' }}"
@@ -59,12 +59,12 @@
                         data-time-out-am-raw="{{ $rec->time_out_am ?? '' }}"
                         data-time-in-pm-raw="{{ $rec->time_in_pm ?? '' }}"
                         data-time-out-pm-raw="{{ $rec->time_out_pm ?? '' }}">
-                        <td>{{ $rec->employee->name ?? '—' }}</td>
+                        <td>{{ $rec->employee->name ?? '-' }}</td>
                         <td>{{ $rec->date->format('M d, Y') }}</td>
-                        <td>{{ $rec->time_in_am ?? '—' }}</td>
-                        <td>{{ $rec->time_out_am ?? '—' }}</td>
-                        <td>{{ $rec->time_in_pm ?? '—' }}</td>
-                        <td>{{ $rec->time_out_pm ?? '—' }}</td>
+                        <td>{{ $rec->time_in_am ?? '-' }}</td>
+                        <td>{{ $rec->time_out_am ?? '-' }}</td>
+                        <td>{{ $rec->time_in_pm ?? '-' }}</td>
+                        <td>{{ $rec->time_out_pm ?? '-' }}</td>
                         <td>{{ $rec->late_minutes ?? 0 }}m</td>
                         <td>{{ $rec->undertime_minutes ?? 0 }}m</td>
                         <td><span class="status-chip">{{ ucfirst($rec->status) }}</span></td>

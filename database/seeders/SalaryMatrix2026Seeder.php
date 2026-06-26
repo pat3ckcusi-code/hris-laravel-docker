@@ -9,7 +9,7 @@ class SalaryMatrix2026Seeder extends Seeder
 {
     public function run(): void
     {
-        // 2026 Third Tranche — Executive Order No. 64, s. 2024 (NBC No. 601)
+        // 2026 Third Tranche - Executive Order No. 64, s. 2024 (NBC No. 601)
         // Effective January 1, 2026. SG 33 has only 2 steps.
         $table = [
             1  => [14634, 14730, 14849, 14968, 15089, 15211, 15333, 15456],

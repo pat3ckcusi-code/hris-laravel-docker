@@ -19,7 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 7. Maintainability
+ * ISO/IEC 25010 - 7. Maintainability
  *
  * Tests: Modularity, Reusability, Analysability, Modifiability, Testability
  */
@@ -66,7 +66,7 @@ class MaintainabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 7.1 MODIFIABILITY — add new earning type (Hazard Pay)
+    // 7.1 MODIFIABILITY - add new earning type (Hazard Pay)
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -146,7 +146,7 @@ class MaintainabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 7.2 MODIFIABILITY — add new deduction type (Loan)
+    // 7.2 MODIFIABILITY - add new deduction type (Loan)
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -271,7 +271,7 @@ class MaintainabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 7.3 MODULARITY — controllers and models are modular
+    // 7.3 MODULARITY - controllers and models are modular
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

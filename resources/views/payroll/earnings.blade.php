@@ -31,7 +31,7 @@
                         data-description="{{ $e->description ?? '' }}"
                         data-recurring="{{ $e->recurring ? '1' : '0' }}">
                         <td>{{ $e->type }}</td>
-                        <td>{{ $e->description ?? '—' }}</td>
+                        <td>{{ $e->description ?? '-' }}</td>
                         <td>{{ $e->recurring ? 'Yes' : 'No' }}</td>
                         <td>{{ $e->employee_earnings_count }} employees</td>
                         <td>

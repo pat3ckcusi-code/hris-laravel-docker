@@ -722,7 +722,7 @@ class HRDashboardService
             ->get()
             ->map(fn ($r) => [
                 'user_id' => $r->id,
-                'emp_no' => $r->EmpNo ?? '—',
+                'emp_no' => $r->EmpNo ?? '-',
                 'name' => $r->name,
                 'department' => $r->Dept_name ?? 'Unknown',
                 'tardiness_count' => (int) $r->tardiness_count,

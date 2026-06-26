@@ -292,7 +292,7 @@ class LeaveBalancesRefactoringTest extends TestCase
 
     public function test_leave_balance_handles_null_values(): void
     {
-        $this->markTestSkipped('leave_balances columns are NOT NULL — null storage is not supported by the schema.');
+        $this->markTestSkipped('leave_balances columns are NOT NULL - null storage is not supported by the schema.');
     }
 
     // ──────────────────────────────────────────────

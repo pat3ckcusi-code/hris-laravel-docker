@@ -140,7 +140,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
             </span>
 
             <div style="margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:14px;">
-                <p class="hint" style="margin-bottom:10px;font-size:.82em;">Placeholder font styles — set how each placeholder value is rendered in the document:</p>
+                <p class="hint" style="margin-bottom:10px;font-size:.82em;">Placeholder font styles - set how each placeholder value is rendered in the document:</p>
                 @php
                 $phLabels = [
                     'employee_name' => ['{employee_name}', 'Employee Name'],
@@ -153,7 +153,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                 @endphp
                 @foreach($phLabels as $phKey => [$phToken, $phLabel])
                 <div style="margin-bottom:8px;">
-                    <span class="sub-label"><code>{{ $phToken }}</code> — {{ $phLabel }}</span>
+                    <span class="sub-label"><code>{{ $phToken }}</code> - {{ $phLabel }}</span>
                     <div class="font-bar">
                         <select name="ph_{{ $phKey }}_font" title="Font family">
                             @foreach($fonts as $f)

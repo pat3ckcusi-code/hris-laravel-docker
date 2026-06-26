@@ -114,7 +114,7 @@ class ExportJobController extends Controller
             return;
         }
 
-        // Employee — own record only
+        // Employee - own record only
         abort_unless(isset($params['target_user_id']) && (int) $params['target_user_id'] === $user->id, 403);
     }
 

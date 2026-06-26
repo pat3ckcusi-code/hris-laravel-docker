@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\LeaveDate;
@@ -205,15 +206,34 @@ class Form48ExportService
     }
 
     /**
+     * Build a day-of-month → DtrExcuse map for the given user and period.
+     *
+     * @return array<int, DtrExcuse>
+     */
+    public function buildExcuseMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+
+        DtrExcuse::where('user_id', $userId)
+            ->whereBetween('date', [$from, $to])
+            ->get()
+            ->each(function ($excuse) use (&$map): void {
+                $map[(int) Carbon::parse($excuse->date)->day] = $excuse;
+            });
+
+        return $map;
+    }
+
+    /**
      * Build a day-of-month → slot-coverage map for approved locators on each day.
      * Multiple locators on the same day are OR-merged; departure/arrival form the
      * union window (earliest departure, latest arrival) used for punch redistribution.
      *
      * Coverage flags (determined by [intended_departure_time, intended_arrival_time]):
-     *   covers_am_in  — departure ≤ 08:00 (employee departs before/at work start)
-     *   covers_am_out — departure ≤ 12:00 AND arrival ≥ 11:00 (spans the noon slot)
-     *   covers_pm_in  — departure ≤ 13:00 AND arrival ≥ 13:00 (spans lunch return)
-     *   covers_pm_out — arrival ≥ 17:00 (returns at or after work end)
+     *   covers_am_in  - departure ≤ 08:00 (employee departs before/at work start)
+     *   covers_am_out - departure ≤ 12:00 AND arrival ≥ 11:00 (spans the noon slot)
+     *   covers_pm_in  - departure ≤ 13:00 AND arrival ≥ 13:00 (spans lunch return)
+     *   covers_pm_out - arrival ≥ 17:00 (returns at or after work end)
      *
      * @return array<int, array{covers_am_in: bool, covers_am_out: bool, covers_pm_in: bool, covers_pm_out: bool, departure: string, arrival: string}>
      */
@@ -369,10 +389,10 @@ class Form48ExportService
             if ($isCovered) {
                 $result[$idx] = 'LOCATOR';
             } elseif ($firstCovered === PHP_INT_MAX || $idx < $firstCovered) {
-                // Before (or no) covered block — draw from before-locator punches.
+                // Before (or no) covered block - draw from before-locator punches.
                 $result[$idx] = $bi < count($before) ? $before[$bi++] : null;
             } else {
-                // After the covered block — draw from after-locator punches.
+                // After the covered block - draw from after-locator punches.
                 $result[$idx] = $ai < count($after) ? $after[$ai++] : null;
             }
         }
@@ -393,7 +413,7 @@ class Form48ExportService
     /**
      * Recompute tardiness + undertime from RESOLVED slot values (after locator redistribution).
      * Mirrors DtrPunchResolver's time-aware penalty logic per slot so that only the
-     * specific slot covered by the locator loses its penalty — not all tardiness at once.
+     * specific slot covered by the locator loses its penalty - not all tardiness at once.
      *
      * @return array{0: int, 1: int} [tardiness_minutes, undertime_minutes]
      */
@@ -407,21 +427,21 @@ class Form48ExportService
         $tardiness = 0;
         $undertime = 0;
 
-        if ($amIn !== '' && $amIn !== 'LOCATOR') {
+        if ($amIn !== '' && $amIn !== 'LOCATOR' && $amIn !== 'EXCUSED') {
             $hm = substr($amIn, 0, 5);
             if ($hm > $schedule->workStart && $hm < $schedule->morningEnd) {
                 $tardiness += (int) Carbon::parse("$date $schedule->workStart")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
-        if ($pmIn !== '' && $pmIn !== 'LOCATOR') {
+        if ($pmIn !== '' && $pmIn !== 'LOCATOR' && $pmIn !== 'EXCUSED') {
             $hm = substr($pmIn, 0, 5);
             if ($hm > $schedule->lunchReturn && $hm < $schedule->noonEnd) {
                 $tardiness += (int) Carbon::parse("$date $schedule->lunchReturn")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
-        if ($pmOut !== '' && $pmOut !== 'LOCATOR') {
+        if ($pmOut !== '' && $pmOut !== 'LOCATOR' && $pmOut !== 'EXCUSED') {
             $hm = substr($pmOut, 0, 5);
             $pmOutLower = $schedule->noBreak ? $schedule->workStart : $schedule->lunchReturn;
             if ($hm >= $pmOutLower && $hm < $schedule->workEnd) {
@@ -449,17 +469,19 @@ class Form48ExportService
         array $etaMap = [],
         array $locatorMap = [],
         array $restDayMap = [],
-        array $fieldWorkMap = []
+        array $fieldWorkMap = [],
+        array $excuseMap = []
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
         $schedule = WorkSchedule::forUser($employee);
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap);
 
         // Exclude rest days, leave days, and ETA days with fewer than 4 punches from the total.
         // For locator days, zero the penalty for each covered slot that lacks a punch.
+        // For excused slots, substitute 'EXCUSED' so computeSlotPenalties() skips them.
         $totalMins = 0;
         foreach ($records as $day => $r) {
             if (isset($restDayMap[$day]) || isset($fieldWorkMap[$day])) {
@@ -476,6 +498,16 @@ class Form48ExportService
                 if ($etaPunches < 4) {
                     continue;
                 }
+            }
+            if (isset($excuseMap[$day])) {
+                $excuse = $excuseMap[$day];
+                $exAmIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? 'EXCUSED' : ($r['am_in'] ?? '');
+                $exPmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? 'EXCUSED' : ($r['pm_in'] ?? '');
+                $exPmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? 'EXCUSED' : ($r['pm_out'] ?? '');
+                [$tardiness, $undertime] = self::computeSlotPenalties($r['date'], $exAmIn, $exPmIn, $exPmOut, $schedule);
+                $totalMins += $tardiness + $undertime;
+
+                continue;
             }
             if (isset($locatorMap[$day])) {
                 [$lAmIn, , $lPmIn, $lPmOut] = self::resolveLocatorSlots(
@@ -518,7 +550,7 @@ class Form48ExportService
     }
 
     /**
-     * Format name as "LASTNAME, Firstname M." — same convention as the rest of HRIS.
+     * Format name as "LASTNAME, Firstname M." - same convention as the rest of HRIS.
      */
     public function formatName(User $employee): string
     {
@@ -574,7 +606,8 @@ class Form48ExportService
         array $locatorMap,
         WorkSchedule $schedule,
         array $restDayMap = [],
-        array $fieldWorkMap = []
+        array $fieldWorkMap = [],
+        array $excuseMap = []
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -658,7 +691,7 @@ class Form48ExportService
 
                 if ($punchCount < 4) {
                     if ($punchCount === 0) {
-                        // No punches at all — merge and label the row "ETA".
+                        // No punches at all - merge and label the row "ETA".
                         foreach (range(0, 3) as $i) {
                             $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
                             try {
@@ -672,7 +705,7 @@ class Form48ExportService
                             $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
                         }
                     } else {
-                        // 1–3 punches — show actual times for filled slots, "ETA" for empty ones.
+                        // 1–3 punches - show actual times for filled slots, "ETA" for empty ones.
                         $amIn = $fmt($rec['am_in'] ?? null) ?: 'ETA';
                         $amOut = $fmt($rec['am_out'] ?? null) ?: 'ETA';
                         $pmIn = $fmt($rec['pm_in'] ?? null) ?: 'ETA';
@@ -700,6 +733,62 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
+            // Approved excuse: suppress penalties for excused slots; show 'EXCUSED' for missing ones.
+            // Priority below ETA, above locator.
+            if (isset($excuseMap[$day])) {
+                $excuse = $excuseMap[$day];
+                $punchCount = $rec ? count(array_filter([
+                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
+                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '')) : 0;
+
+                if ($punchCount === 0) {
+                    // No punches at all - merge and label the row "EXCUSED".
+                    foreach (range(0, 3) as $i) {
+                        $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                        try {
+                            $sheet->mergeCells($range);
+                        } catch (\Throwable) {
+                        }
+                        $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'EXCUSED');
+                        $sheet->getStyle($range)->getAlignment()
+                            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                    }
+                } else {
+                    // Has some punches: show actual times where punched, 'EXCUSED' for missing excused slots.
+                    $amIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? ($fmt($rec['am_in'] ?? null) ?: 'EXCUSED') : $fmt($rec['am_in'] ?? null);
+                    $amOut = ($excuse->excuse_am_out || $excuse->is_full_day) ? ($fmt($rec['am_out'] ?? null) ?: 'EXCUSED') : $fmt($rec['am_out'] ?? null);
+                    $pmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? ($fmt($rec['pm_in'] ?? null) ?: 'EXCUSED') : $fmt($rec['pm_in'] ?? null);
+                    $pmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? ($fmt($rec['pm_out'] ?? null) ?: 'EXCUSED') : $fmt($rec['pm_out'] ?? null);
+
+                    // Recompute penalties with excused slots substituted to suppress their contribution.
+                    [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amIn, $pmIn, $pmOut, $schedule);
+                    $mins = $tardiness + $undertime;
+                    $hVal = (int) floor($mins / 60);
+                    $mVal = $mins % 60;
+
+                    foreach (range(0, 3) as $i) {
+                        $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $amIn);
+                        $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $amOut);
+                        $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $pmIn);
+                        $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $pmOut);
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, $hVal ?: '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, $mVal ?: '');
+                        foreach ([
+                            self::AM_IN_COLS[$i],  self::AM_OUT_COLS[$i],
+                            self::PM_IN_COLS[$i],  self::PM_OUT_COLS[$i],
+                        ] as $col) {
+                            $sheet->getStyle($col.$row)->getAlignment()
+                                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        }
+                    }
+                }
+
+                continue;
+            }
+
             // Locator for this day (may be null).
             $locator = $locatorMap[$day] ?? null;
 
@@ -713,7 +802,7 @@ class Form48ExportService
                     try {
                         $sheet->mergeCells($range);
                     } catch (\Throwable) {
-                        // Cell was already merged — skip.
+                        // Cell was already merged - skip.
                     }
                     $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, $label);
                     $sheet->getStyle($range)->getAlignment()
@@ -774,7 +863,7 @@ class Form48ExportService
                 $undertime = $rec['undertime'] ?? 0;
             }
 
-            // The undertime columns always carry a number — 0 when clean, never blank.
+            // The undertime columns always carry a number - 0 when clean, never blank.
             $mins = $tardiness + $undertime;
             $hVal = (int) floor($mins / 60);
             $mVal = $mins % 60;
@@ -782,7 +871,7 @@ class Form48ExportService
             // Per-cell red font: only the slot that caused the penalty turns red,
             // matching the DataTable behaviour (avoids coloring an early AM In red
             // just because PM In return was late).
-            $cellHm = fn (string $v): ?string => $v !== '' && $v !== 'LOCATOR' && strlen($v) >= 5
+            $cellHm = fn (string $v): ?string => $v !== '' && $v !== 'LOCATOR' && $v !== 'EXCUSED' && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $cellHm($amIn);

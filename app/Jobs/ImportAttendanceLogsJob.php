@@ -13,7 +13,7 @@ class ImportAttendanceLogsJob implements ShouldQueue
 {
     use Queueable;
 
-    // One attempt — the biometric API can be slow and re-runs are safe
+    // One attempt - the biometric API can be slow and re-runs are safe
     // (unique constraint on attendance_logs prevents duplicates), but we
     // don't want automatic retries hammering the external API on failure.
     public int $tries = 1;

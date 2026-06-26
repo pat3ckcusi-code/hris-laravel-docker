@@ -113,7 +113,7 @@
                                 @elseif($leave->cancellation_status)
                                     <span style="font-size:0.82rem;color:#b45309;font-weight:600">{{ $leave->cancellation_status }}</span>
                                 @else
-                                    <span style="color:#94a3b8;font-size:0.82rem">—</span>
+                                    <span style="color:#94a3b8;font-size:0.82rem">-</span>
                                 @endif
                             </td>
                             <td class="text-center">
@@ -168,8 +168,8 @@ $(function () {
         var period  = row.data('period');
         var days    = row.data('days');
         var filed   = row.data('filed');
-        var reason  = row.data('reason') || '—';
-        var cancel  = row.data('cancellation') || '—';
+        var reason  = row.data('reason') || '-';
+        var cancel  = row.data('cancellation') || '-';
 
         if (typeof Swal === 'undefined') {
             alert('Leave #' + id + '\nEmployee: ' + emp + '\nType: ' + type + '\nPeriod: ' + period + '\nDays: ' + days);
@@ -224,7 +224,7 @@ $(function () {
                 $box.empty();
                 if (!rows || !rows.length) { $box.hide(); return; }
                 rows.forEach(function (r) {
-                    var label = (r.FullName || r.EmpNo) + (r.Position ? ' — ' + r.Position : '') + ' (' + r.EmpNo + ')';
+                    var label = (r.FullName || r.EmpNo) + (r.Position ? ' - ' + r.Position : '') + ' (' + r.EmpNo + ')';
                     var $it = $('<a href="#" class="list-group-item list-group-item-action">' + label + '</a>');
                     $it.data('empno', r.EmpNo).data('label', label);
                     $it.on('click', function (e) {

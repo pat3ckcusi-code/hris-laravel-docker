@@ -1,5 +1,5 @@
 /* =========================================================================
-   Auth — Shared styles for login, forgot-password, reset-password,
+   Auth - Shared styles for login, forgot-password, reset-password,
    force-password-change pages (standalone pages, not layout-based).
    Scoped with body.auth-page so they don't leak into dashboard views.
    ========================================================================= */

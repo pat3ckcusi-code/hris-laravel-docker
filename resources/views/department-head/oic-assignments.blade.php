@@ -64,7 +64,7 @@
         <strong style="color:#0c4a6e;font-size:0.92rem;">About OIC Assignments</strong>
         <p style="margin:4px 0 0;font-size:0.875rem;color:#1e3a4c;line-height:1.55;">
             Appoint an Officer-in-Charge when you will be on leave. The designated employee inherits
-            your approval authority — leave, ETA, and locator requests — only during the assigned period.
+            your approval authority - leave, ETA, and locator requests - only during the assigned period.
             Access expires automatically on the end date.
         </p>
     </div>
@@ -97,7 +97,7 @@
                 <label>
                     Department
                     <select class="form-input" id="dept_id" name="dept_id" required>
-                        <option value="">— Select Department —</option>
+                        <option value="">- Select Department -</option>
                         @foreach($departments as $dept)
                             <option value="{{ $dept->Dept_id }}" {{ old('dept_id') == $dept->Dept_id ? 'selected' : '' }}>
                                 {{ $dept->Dept_name }}
@@ -109,14 +109,14 @@
                 <label>
                     OIC Employee
                     <select class="form-input" id="user_id" name="user_id" required>
-                        <option value="">— Select employee —</option>
+                        <option value="">- Select employee -</option>
                         @foreach($departments as $dept)
                             @foreach(($employeesByDept[$dept->Dept_id] ?? []) as $emp)
                                 @php $empName = $emp->name ?: trim(($emp->first_name ?? '') . ' ' . ($emp->last_name ?? '')); @endphp
                                 <option value="{{ $emp->id }}"
                                     data-dept="{{ $dept->Dept_id }}"
                                     {{ old('user_id') == $emp->id ? 'selected' : '' }}>
-                                    {{ $empName }}{{ $emp->designation ? ' — ' . $emp->designation : '' }}
+                                    {{ $empName }}{{ $emp->designation ? ' - ' . $emp->designation : '' }}
                                 </option>
                             @endforeach
                         @endforeach
@@ -166,7 +166,7 @@
 ">
     <i class="fa-solid fa-shield-halved" style="color:#f59e0b;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
     <div>
-        <strong style="color:#78350f;font-size:0.92rem;">View Only — OIC Access</strong>
+        <strong style="color:#78350f;font-size:0.92rem;">View Only - OIC Access</strong>
         <p style="margin:4px 0 0;font-size:0.875rem;color:#451a03;line-height:1.55;">
             You are currently acting as an Officer-in-Charge. Only the original Department Head or
             Administrative Officer can appoint or cancel OIC assignments.
@@ -230,14 +230,14 @@
                                     <i class="fa-solid fa-user"></i>
                                 </div>
                                 <div>
-                                    <div style="font-weight:600;font-size:0.875rem;color:#0f172a;">{{ $a->user?->name ?: '—' }}</div>
+                                    <div style="font-weight:600;font-size:0.875rem;color:#0f172a;">{{ $a->user?->name ?: '-' }}</div>
                                     @if($a->user?->designation)
                                         <div style="font-size:0.78rem;color:#64748b;">{{ $a->user->designation }}</div>
                                     @endif
                                 </div>
                             </div>
                         </td>
-                        <td style="font-size:0.875rem;">{{ $a->department?->Dept_name ?: '—' }}</td>
+                        <td style="font-size:0.875rem;">{{ $a->department?->Dept_name ?: '-' }}</td>
                         <td>
                             <span class="badge {{ $a->role === 'department head' ? 'badge-approved' : 'badge-pending' }}"
                                   style="font-size:0.75rem;">
@@ -269,7 +269,7 @@
                                 <span class="badge badge-cancelled">Expired</span>
                             @endif
                         </td>
-                        <td style="font-size:0.875rem;color:#475569;">{{ $a->appointedBy?->name ?: '—' }}</td>
+                        <td style="font-size:0.875rem;color:#475569;">{{ $a->appointedBy?->name ?: '-' }}</td>
                         <td style="text-align:center;">
                             @if($canAppoint && !$isPast)
                                 <button type="button"
@@ -280,7 +280,7 @@
                                     <i class="fa-solid fa-ban"></i> Cancel
                                 </button>
                             @else
-                                <span style="color:#cbd5e1;font-size:0.8rem;">—</span>
+                                <span style="color:#cbd5e1;font-size:0.8rem;">-</span>
                             @endif
                         </td>
                     </tr>
@@ -315,7 +315,7 @@
         function filterEmployees() {
             const selected = deptSelect.value;
             const current  = empSelect.value;
-            empSelect.innerHTML = '<option value="">— Select employee —</option>';
+            empSelect.innerHTML = '<option value="">- Select employee -</option>';
             allOptions.forEach(opt => {
                 if (!selected || opt.dataset.dept === selected) {
                     empSelect.appendChild(opt.cloneNode(true));

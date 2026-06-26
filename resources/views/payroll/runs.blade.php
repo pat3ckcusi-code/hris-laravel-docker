@@ -36,12 +36,12 @@
                     <tr>
                         <td>{{ $run->id }}</td>
                         <td>{{ $run->period }}</td>
-                        <td>{{ $run->period_start ? $run->period_start->format('M d, Y') : '—' }}</td>
-                        <td>{{ $run->period_end ? $run->period_end->format('M d, Y') : '—' }}</td>
+                        <td>{{ $run->period_start ? $run->period_start->format('M d, Y') : '-' }}</td>
+                        <td>{{ $run->period_end ? $run->period_end->format('M d, Y') : '-' }}</td>
                         <td><span class="status-chip status-{{ $run->status }}">{{ ucfirst($run->status) }}</span></td>
-                        <td>{{ $run->creator->name ?? '—' }}</td>
-                        <td>{{ $run->approver->name ?? '—' }}</td>
-                        <td>{{ $run->locked_at ? $run->locked_at->format('M d, Y H:i') : '—' }}</td>
+                        <td>{{ $run->creator->name ?? '-' }}</td>
+                        <td>{{ $run->approver->name ?? '-' }}</td>
+                        <td>{{ $run->locked_at ? $run->locked_at->format('M d, Y H:i') : '-' }}</td>
                         <td>{{ $run->created_at->format('M d, Y') }}</td>
                         <td>
                             <div class="action-btns">

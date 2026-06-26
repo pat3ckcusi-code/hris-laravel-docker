@@ -56,14 +56,14 @@ class OfficeOrderWordExportService
                 }
             }
         } else {
-            $toCell->addText('—');
+            $toCell->addText('-');
         }
 
         // From
         $row = $table->addRow();
         $row->addCell($labelW)->addText('From', ['bold' => true]);
         $fromCell = $row->addCell($valueW);
-        $fromCell->addText(strtoupper($issuer['name'] ?? '—'), ['bold' => true], ['spaceAfter' => 0]);
+        $fromCell->addText(strtoupper($issuer['name'] ?? '-'), ['bold' => true], ['spaceAfter' => 0]);
         if (! empty($issuer['designation'])) {
             $fromCell->addText($issuer['designation'], ['italic' => true], ['spaceAfter' => 0]);
         }
@@ -71,12 +71,12 @@ class OfficeOrderWordExportService
         // Subject
         $row = $table->addRow();
         $row->addCell($labelW)->addText('Subject', ['bold' => true]);
-        $row->addCell($valueW)->addText($order->subject ?? '—', ['bold' => true]);
+        $row->addCell($valueW)->addText($order->subject ?? '-', ['bold' => true]);
 
         // Date
         $date = ! empty($order->issued_date)
             ? strtoupper(Carbon::parse($order->issued_date)->format('F d, Y'))
-            : '—';
+            : '-';
         $row = $table->addRow();
         $row->addCell($labelW)->addText('Date', ['bold' => true]);
         $row->addCell($valueW)->addText($date, ['bold' => true]);

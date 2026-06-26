@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\Locator;
+use App\Models\UniformInspectionDetail;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Illuminate\Support\Carbon;
@@ -41,7 +43,7 @@ class AttendanceMonitoringExportService
 
         $employeeIds = $employees->pluck('id')->toArray();
 
-        // Bulk-load — no N+1
+        // Bulk-load - no N+1
         $dtrs = Dtr::whereIn('employee_id', $employeeIds)
             ->whereYear('date', $year)
             ->whereMonth('date', $month)
@@ -78,6 +80,21 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id');
 
+        $uniformViolations = UniformInspectionDetail::with('inspection')
+            ->whereIn('employee_id', $employeeIds)
+            ->whereHas('inspection', fn ($q) => $q
+                ->whereYear('inspection_date', $year)
+                ->whereMonth('inspection_date', $month)
+            )
+            ->get()
+            ->groupBy('employee_id');
+
+        $dtrExcuses = DtrExcuse::whereIn('user_id', $employeeIds)
+            ->whereYear('date', $year)
+            ->whereMonth('date', $month)
+            ->get()
+            ->groupBy('user_id');
+
         $periodStart = Carbon::createFromDate($year, $month, 1)->toDateString();
         $periodEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
 
@@ -87,27 +104,56 @@ class AttendanceMonitoringExportService
             ->groupBy('user_id')
             ->map(fn ($group) => $group->keyBy(fn ($a) => $a->date->toDateString()));
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $month, $year, $allAssignments) {
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
             $empEtas = $etas->get($emp->id, collect());
+            $empViolations = $uniformViolations->get($emp->id, collect());
             $empAssignments = $allAssignments->get($emp->id, collect());
+
+            // Keyed by date string for O(1) excuse lookup.
+            $empExcusesByDate = $dtrExcuses->get($emp->id, collect())
+                ->keyBy(fn ($e) => Carbon::parse($e->date)->toDateString());
 
             // Exclude DTR records that fall on rest days (per-date shift schedule).
             $workDtrs = $empDtrs->filter(
                 fn ($d) => ! WorkSchedule::isRestDay($emp, Carbon::parse($d->date), $empAssignments)
             );
 
-            $undertimeCount = $workDtrs->filter(fn ($d) => $d->undertime_minutes > 0)->count();
-            $tardinessCount = $workDtrs->filter(fn ($d) => $d->late_minutes > 0)->count();
-
             $approvedLeaveDateStrings = $empLeaveDates->pluck('leave_date')
                 ->map(fn ($d) => Carbon::parse($d)->toDateString())
                 ->flip();
 
-            $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings) {
-                return $d->is_absent && ! $approvedLeaveDateStrings->has(Carbon::parse($d->date)->toDateString());
+            $undertimeCount = $workDtrs->filter(function ($d) use ($empExcusesByDate) {
+                if ($d->undertime_minutes <= 0) {
+                    return false;
+                }
+                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
+
+                return ! ($excuse && ($excuse->is_full_day || $excuse->excuse_pm_out));
+            })->count();
+
+            $tardinessCount = $workDtrs->filter(function ($d) use ($empExcusesByDate) {
+                if ($d->late_minutes <= 0) {
+                    return false;
+                }
+                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
+
+                return ! ($excuse && ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in));
+            })->count();
+
+            $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings, $empExcusesByDate) {
+                if (! $d->is_absent) {
+                    return false;
+                }
+                $dateStr = Carbon::parse($d->date)->toDateString();
+                if ($approvedLeaveDateStrings->has($dateStr)) {
+                    return false;
+                }
+                $excuse = $empExcusesByDate[$dateStr] ?? null;
+
+                return ! ($excuse && $excuse->is_full_day);
             })->count();
 
             $officialLeaveCount = $empLeaveDates->count();
@@ -115,7 +161,16 @@ class AttendanceMonitoringExportService
             $personalLocators = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'personal');
             $unofficialExitCount = $personalLocators->count();
 
-            $totalMinutes = $workDtrs->sum(fn ($d) => (int) $d->late_minutes + (int) $d->undertime_minutes);
+            $totalMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
+                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
+                if (! $excuse) {
+                    return (int) $d->late_minutes + (int) $d->undertime_minutes;
+                }
+                $late = ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in) ? 0 : (int) $d->late_minutes;
+                $ut = ($excuse->is_full_day || $excuse->excuse_pm_out) ? 0 : (int) $d->undertime_minutes;
+
+                return $late + $ut;
+            });
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
                 if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
@@ -176,7 +231,7 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $label]);
             }
 
-            // ETAs — expand each ETA to individual days within the month
+            // ETAs - expand each ETA to individual days within the month
             foreach ($empEtas as $eta) {
                 $dest = trim((string) ($eta->destination ?? $eta->purpose ?? ''));
                 $start = Carbon::parse($eta->departure_date)->startOfDay();
@@ -193,6 +248,45 @@ class AttendanceMonitoringExportService
                     $remarkEntries->push(['day' => $day, 'label' => $label]);
                     $cursor->addDay();
                 }
+            }
+
+            // Excused days
+            foreach ($empExcusesByDate as $dateStr => $excuse) {
+                $day = Carbon::parse($dateStr)->day;
+
+                $typeLabel = match ($excuse->excuse_type) {
+                    'power_interruption'  => 'Power Interruption',
+                    'system_failure'      => 'System Failure',
+                    'weather_disturbance' => 'Weather Disturbance',
+                    default               => 'Other',
+                };
+
+                if ($excuse->is_full_day) {
+                    $scope = 'Full Day';
+                } else {
+                    $slots = [];
+                    if ($excuse->excuse_am_in)  $slots[] = 'AM In';
+                    if ($excuse->excuse_am_out) $slots[] = 'AM Out';
+                    if ($excuse->excuse_pm_in)  $slots[] = 'PM In';
+                    if ($excuse->excuse_pm_out) $slots[] = 'PM Out';
+                    $scope = $slots ? implode(', ', $slots) : '';
+                }
+
+                $parts = array_filter([$typeLabel, $scope, trim((string) ($excuse->reason ?? ''))]);
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Excused: '.implode(' | ', $parts)]);
+            }
+
+            // Uniform violations
+            foreach ($empViolations as $v) {
+                $day = $v->inspection?->inspection_date?->day;
+                if (! $day) {
+                    continue;
+                }
+                $label = $day.'-Uniform Violation ('.$v->violation_type.')';
+                if (! empty($v->remarks)) {
+                    $label .= ': '.$v->remarks;
+                }
+                $remarkEntries->push(['day' => $day, 'label' => $label]);
             }
 
             $fullRemarks = $remarkEntries
@@ -331,11 +425,11 @@ class AttendanceMonitoringExportService
 
         $dataStyle = [
             'font' => ['size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
         ];
-        $nameStyle = array_merge($dataStyle, ['alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]]);
-        $remarksStyle = array_merge($dataStyle, ['font' => ['size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true]]);
+        $nameStyle = array_merge($dataStyle, ['alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true]]);
+        $remarksStyle = array_merge($dataStyle, ['font' => ['size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true]]);
 
         $rowNum = 5;
         foreach ($rows as $i => $row) {
@@ -356,7 +450,7 @@ class AttendanceMonitoringExportService
             $sheet->getStyle("A{$rowNum}:J{$rowNum}")->applyFromArray($dataStyle);
             $sheet->getStyle("B{$rowNum}")->applyFromArray($nameStyle);
             $sheet->getStyle("K{$rowNum}")->applyFromArray($remarksStyle);
-            $sheet->getRowDimension($rowNum)->setRowHeight(20);
+            $sheet->getRowDimension($rowNum)->setRowHeight(-1);
 
             $rowNum++;
         }

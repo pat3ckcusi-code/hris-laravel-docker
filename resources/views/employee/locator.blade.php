@@ -298,10 +298,10 @@
                 <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee Name</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${employee}</td></tr>
                 <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Date Filed</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${filed}</td></tr>
                 <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Status</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${status}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Detail of Travel</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${detail || '—'}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Purpose of Travel</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${purpose || '—'}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Duration / ETA</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${eta || '—'}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${remarks || '—'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Detail of Travel</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${detail || '-'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Purpose of Travel</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${purpose || '-'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Duration / ETA</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${eta || '-'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${remarks || '-'}</td></tr>
             </tbody></table>`;
 
             actions.innerHTML = '';
@@ -343,7 +343,7 @@
 
             function syncArrivalMin(){
                 if(!dep.value) return;
-                // times in "HH:MM" format — set a simple check
+                // times in "HH:MM" format - set a simple check
                 if(arr.value && arr.value < dep.value){
                     arr.value = '';
                 }

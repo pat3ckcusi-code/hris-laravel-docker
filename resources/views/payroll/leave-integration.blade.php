@@ -45,12 +45,12 @@
         <tbody>
             @foreach($records as $rec)
                 <tr>
-                    <td>{{ $rec->user->name ?? '—' }}</td>
+                    <td>{{ $rec->user->name ?? '-' }}</td>
                     <td>{{ $rec->leave_type }}</td>
-                    <td>{{ $rec->start_date ? \Carbon\Carbon::parse($rec->start_date)->format('M d, Y') : '—' }}</td>
-                    <td>{{ $rec->end_date ? \Carbon\Carbon::parse($rec->end_date)->format('M d, Y') : '—' }}</td>
-                    <td>{{ $rec->total_days ?? '—' }}</td>
-                    <td>{{ $rec->paid_days ?? '—' }}</td>
+                    <td>{{ $rec->start_date ? \Carbon\Carbon::parse($rec->start_date)->format('M d, Y') : '-' }}</td>
+                    <td>{{ $rec->end_date ? \Carbon\Carbon::parse($rec->end_date)->format('M d, Y') : '-' }}</td>
+                    <td>{{ $rec->total_days ?? '-' }}</td>
+                    <td>{{ $rec->paid_days ?? '-' }}</td>
                     <td>
                         @if($rec->lwop_days > 0)
                             <span class="status-chip status-rejected">{{ $rec->lwop_days }}</span>

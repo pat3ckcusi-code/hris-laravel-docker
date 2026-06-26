@@ -22,7 +22,7 @@
 
     <div class="detail-card">
         <div class="detail-row"><strong>Type:</strong> {{ $earning->type }}</div>
-        <div class="detail-row"><strong>Description:</strong> {{ $earning->description ?? '—' }}</div>
+        <div class="detail-row"><strong>Description:</strong> {{ $earning->description ?? '-' }}</div>
         <div class="detail-row"><strong>Recurring:</strong> {{ $earning->recurring ? 'Yes' : 'No' }}</div>
     </div>
 
@@ -42,7 +42,7 @@
                 <tbody>
                     @foreach($earning->employeeEarnings as $ee)
                         <tr>
-                            <td>{{ $ee->employee->name ?? '—' }}</td>
+                            <td>{{ $ee->employee->name ?? '-' }}</td>
                             <td>
                                 @if($ee->amount_type === 'percentage')
                                     {{ $ee->percentage }}% of basic
@@ -89,7 +89,7 @@
             <div class="form-group">
                 <label for="employee_id">Employee</label>
                 <select name="employee_id" id="employee_id" class="form-input" required>
-                    <option value="">— Select employee —</option>
+                    <option value="">- Select employee -</option>
                     @foreach($employees as $emp)
                         <option value="{{ $emp->id }}">{{ $emp->name }}</option>
                     @endforeach

@@ -35,7 +35,7 @@
         <h4 style="margin-top:0">Employees</h4>
         <ul style="padding-left:18px">
           @foreach($employees as $emp)
-            <li>{{ $emp->last_name }}, {{ $emp->first_name }} @if($emp->designation) <span class="muted">— {{ $emp->designation }}</span>@endif</li>
+            <li>{{ $emp->last_name }}, {{ $emp->first_name }} @if($emp->designation) <span class="muted">- {{ $emp->designation }}</span>@endif</li>
           @endforeach
         </ul>
         <div style="margin-top:12px">

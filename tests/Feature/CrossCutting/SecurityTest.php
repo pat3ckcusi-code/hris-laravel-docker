@@ -155,7 +155,7 @@ class SecurityTest extends TestCase
     {
         $user = $this->createEmployee(['password' => Hash::make('TestPass123!')]);
 
-        // Attempt login without CSRF — Laravel should reject
+        // Attempt login without CSRF - Laravel should reject
         $response = $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)
             ->post(route('login.submit'), [
                 'email'    => $user->email,

@@ -41,14 +41,14 @@
                                     @php $empName = trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')); @endphp
                                     <span class="emp-name-text">{{ $empName }}</span>
                                     @if(!empty($departments[$balance->user->Dept_id] ?? ''))
-                                        <div class="dept-italic">— {{ strtoupper($departments[$balance->user->Dept_id]) }}</div>
+                                        <div class="dept-italic">- {{ strtoupper($departments[$balance->user->Dept_id]) }}</div>
                                     @endif
                                 @else
                                     -
                                 @endif
                             </td>
-                            <td data-label="VL" class="text-center current-vl">{{ $balance->VL !== null ? number_format((float)$balance->VL, 3) : '—' }}</td>
-                            <td data-label="SL" class="text-center current-sl">{{ $balance->SL !== null ? number_format((float)$balance->SL, 3) : '—' }}</td>
+                            <td data-label="VL" class="text-center current-vl">{{ $balance->VL !== null ? number_format((float)$balance->VL, 3) : '-' }}</td>
+                            <td data-label="SL" class="text-center current-sl">{{ $balance->SL !== null ? number_format((float)$balance->SL, 3) : '-' }}</td>
                             <td data-label="Tardiness (min)" class="col-tiny text-center"><input type="number" min="0" class="form-control input-small tardiness" step="1"></td>
                             <td data-label="Undertime (min)" class="col-tiny text-center"><input type="number" min="0" class="form-control input-small undertime" step="1"></td>
                             <td data-label="Deduction (days)" class="col-tiny text-center deduction-days">-</td>
@@ -140,7 +140,7 @@
                             if (td.length) {
                                 var display = (raw !== null && raw !== undefined)
                                     ? parseFloat(raw).toFixed(3)
-                                    : '—';
+                                    : '-';
                                 td.text(display);
                             }
                         }

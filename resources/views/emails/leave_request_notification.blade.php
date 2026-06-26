@@ -15,7 +15,7 @@
 </head>
 <body>
     <div class="header">
-        <strong>HRIS — Leave Request</strong>
+        <strong>HRIS - Leave Request</strong>
     </div>
     <div class="container">
         <p>Dear {{ $employee->dept_head_name ?? 'Department Head' }},</p>

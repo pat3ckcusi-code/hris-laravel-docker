@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 4. Usability
+ * ISO/IEC 25010 - 4. Usability
  *
  * Tests: Learnability, Operability, User interface aesthetics, Accessibility
  */
@@ -55,7 +55,7 @@ class UsabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 4.1 SIDEBAR CONSISTENCY — every role dashboard has sidebar
+    // 4.1 SIDEBAR CONSISTENCY - every role dashboard has sidebar
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -104,7 +104,7 @@ class UsabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 4.2 NAVIGATION GROUPING — sections are properly labelled
+    // 4.2 NAVIGATION GROUPING - sections are properly labelled
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -136,7 +136,7 @@ class UsabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 4.3 ACCESSIBILITY — labels, titles, form accessibility
+    // 4.3 ACCESSIBILITY - labels, titles, form accessibility
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

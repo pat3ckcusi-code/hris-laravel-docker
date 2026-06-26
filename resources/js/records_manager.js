@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 fd.set('_method', method);
             }
 
-            // Close any parent <dialog> before opening SweetAlert — otherwise
+            // Close any parent <dialog> before opening SweetAlert - otherwise
             // Swal renders behind the dialog's top-layer stacking context.
             const dialog = form.closest('dialog');
             if (dialog && dialog.open) dialog.close();

@@ -146,42 +146,42 @@
 
                 <div class="hrm-signatory-grid settings-grid">
                     <div class="form-group">
-                        <label for="mayor_name">City Mayor — Name</label>
+                        <label for="mayor_name">City Mayor - Name</label>
                         <input type="text" class="hrm-input" id="mayor_name" name="mayor_name"
                                value="{{ old('mayor_name', $settings->mayor_name ?? '') }}"
                                placeholder="e.g. Juan dela Cruz">
                         @error('mayor_name')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="mayor_designation">City Mayor — Designation</label>
+                        <label for="mayor_designation">City Mayor - Designation</label>
                         <input type="text" class="hrm-input" id="mayor_designation" name="mayor_designation"
                                value="{{ old('mayor_designation', $settings->mayor_designation ?? '') }}"
                                placeholder="e.g. City Mayor">
                         @error('mayor_designation')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="vice_mayor_name">City Vice Mayor — Name</label>
+                        <label for="vice_mayor_name">City Vice Mayor - Name</label>
                         <input type="text" class="hrm-input" id="vice_mayor_name" name="vice_mayor_name"
                                value="{{ old('vice_mayor_name', $settings->vice_mayor_name ?? '') }}"
                                placeholder="e.g. Maria Santos">
                         @error('vice_mayor_name')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="vice_mayor_designation">City Vice Mayor — Designation</label>
+                        <label for="vice_mayor_designation">City Vice Mayor - Designation</label>
                         <input type="text" class="hrm-input" id="vice_mayor_designation" name="vice_mayor_designation"
                                value="{{ old('vice_mayor_designation', $settings->vice_mayor_designation ?? '') }}"
                                placeholder="e.g. City Vice Mayor">
                         @error('vice_mayor_designation')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="hr_manager_name">HR Manager — Name</label>
+                        <label for="hr_manager_name">HR Manager - Name</label>
                         <input type="text" class="hrm-input" id="hr_manager_name" name="hr_manager_name"
                                value="{{ old('hr_manager_name', $settings->hr_manager_name ?? '') }}"
                                placeholder="e.g. Ana Reyes">
                         @error('hr_manager_name')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="hr_manager_designation">HR Manager — Designation</label>
+                        <label for="hr_manager_designation">HR Manager - Designation</label>
                         <input type="text" class="hrm-input" id="hr_manager_designation" name="hr_manager_designation"
                                value="{{ old('hr_manager_designation', $settings->hr_manager_designation ?? '') }}"
                                placeholder="e.g. Human Resource Management Officer">
@@ -280,7 +280,7 @@
                         @error('auto_import_interval_minutes')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                     <div class="form-group">
-                        <label for="auto_import_dept_id">Department <span style="font-weight:400;color:#94a3b8;">— optional, blank = all</span></label>
+                        <label for="auto_import_dept_id">Department <span style="font-weight:400;color:#94a3b8;">- optional, blank = all</span></label>
                         <select class="hrm-input" id="auto_import_dept_id" name="auto_import_dept_id">
                             <option value="">All Departments</option>
                             @foreach($departments as $dept)
@@ -308,7 +308,7 @@
 
             {{-- ── NOTIFICATIONS ── --}}
             <div class="settings-panel" id="tab-notifications">
-                <p class="settings-hint" style="margin-bottom:1rem;">Email notification settings — from address, display name, and default templates.</p>
+                <p class="settings-hint" style="margin-bottom:1rem;">Email notification settings - from address, display name, and default templates.</p>
 
                 <div class="settings-section-title">Email From</div>
                 <div class="settings-grid">
@@ -362,7 +362,7 @@
                     <input type="password" class="hrm-input" id="excel_sheet_password"
                            name="excel_sheet_password"
                            autocomplete="new-password"
-                           placeholder="{{ ($settings->excel_sheet_password ?? '') !== '' ? '(password set — leave blank to keep)' : 'Set a new password' }}">
+                           placeholder="{{ ($settings->excel_sheet_password ?? '') !== '' ? '(password set - leave blank to keep)' : 'Set a new password' }}">
                     <span class="settings-hint">Password required to edit the exported Form 48 spreadsheet.</span>
                     @error('excel_sheet_password')<span class="hrm-error">{{ $message }}</span>@enderror
                 </div>
@@ -409,7 +409,7 @@
             </div>
         </form>
 
-        {{-- ── DATABASE (separate form — needs multipart) ── --}}
+        {{-- ── DATABASE (separate form - needs multipart) ── --}}
         <div class="settings-panel" id="tab-database">
             <p class="settings-hint" style="margin-bottom:1rem;">Download a full SQL backup of the HRIS database or restore from a previously downloaded backup file.</p>
 

@@ -42,7 +42,7 @@
                         data-resolved="{{ $ex->resolved_flag ? '1' : '0' }}"
                         data-run="{{ $ex->payroll_run_id }}"
                         data-run-period="{{ $ex->payrollRun->period ?? '' }}">
-                        <td>Run #{{ $ex->payroll_run_id }} — {{ $ex->payrollRun->period ?? '' }}</td>
+                        <td>Run #{{ $ex->payroll_run_id }} - {{ $ex->payrollRun->period ?? '' }}</td>
                         <td>{{ $ex->type }}</td>
                         <td>{{ Str::limit($ex->description, 80) }}</td>
                         <td>
@@ -87,7 +87,7 @@
             <select name="payroll_run_id" id="c-run" class="form-input" required>
                 <option value="">Select run</option>
                 @foreach($runs as $run)
-                    <option value="{{ $run->id }}" @selected(old('payroll_run_id') == $run->id)>Run #{{ $run->id }} — {{ $run->period }}</option>
+                    <option value="{{ $run->id }}" @selected(old('payroll_run_id') == $run->id)>Run #{{ $run->id }} - {{ $run->period }}</option>
                 @endforeach
             </select>
         </div>
@@ -167,9 +167,9 @@ function openShowException(id) {
     var resolved = row.dataset.resolved === '1' ? 'Resolved' : 'Unresolved';
     document.getElementById('showExceptionBody').innerHTML =
         '<table style="width:100%;border-collapse:collapse"><tbody>' +
-        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Payroll Run</strong></td><td style="padding:8px;border:1px solid #f1f5f9">Run #' + row.dataset.run + ' — ' + row.dataset.runPeriod + '</td></tr>' +
+        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Payroll Run</strong></td><td style="padding:8px;border:1px solid #f1f5f9">Run #' + row.dataset.run + ' - ' + row.dataset.runPeriod + '</td></tr>' +
         '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + row.dataset.type + '</td></tr>' +
-        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Description</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + (row.dataset.description || '—') + '</td></tr>' +
+        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Description</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + (row.dataset.description || '-') + '</td></tr>' +
         '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Status</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + resolved + '</td></tr>' +
         '</tbody></table>';
     document.getElementById('showExceptionModal').showModal();

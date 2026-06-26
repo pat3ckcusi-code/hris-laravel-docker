@@ -1,10 +1,10 @@
 /**
- * layout.js — Global scripts loaded on every dashboard page via Vite.
+ * layout.js - Global scripts loaded on every dashboard page via Vite.
  *
  * Provides:
- *  • showProcessingOverlayFallback()  — full-screen spinner when SweetAlert2 isn't available
- *  • [data-uppercase-input] handler   — uppercases inputs on the fly
- *  • [data-processing-submit] handler — disable-button + overlay on form submit
+ *  • showProcessingOverlayFallback()  - full-screen spinner when SweetAlert2 isn't available
+ *  • [data-uppercase-input] handler   - uppercases inputs on the fly
+ *  • [data-processing-submit] handler - disable-button + overlay on form submit
  */
 
 /* ── Processing overlay (pure DOM fallback for Swal) ──────── */

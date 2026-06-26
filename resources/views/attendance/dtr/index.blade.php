@@ -110,7 +110,7 @@ tr.dtr-row-late,
 tr.dtr-row-undertime              { background: #fff5f5 !important; }
 tr.dtr-row-late td:nth-child(6)       { color: #dc2626; font-weight: 600; }
 tr.dtr-row-undertime td:nth-child(7)  { color: #dc2626; font-weight: 600; }
-/* Per-cell classes set by createdRow — only the slot that caused the penalty turns red */
+/* Per-cell classes set by createdRow - only the slot that caused the penalty turns red */
 td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
 </style>
 @endsection
@@ -146,7 +146,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                             Employee <span style="color:#dc2626;">*</span>
                         </label>
                         <select id="list-emp-select" class="hris-filter-select" style="min-width:220px;">
-                            <option value="">— Select Employee —</option>
+                            <option value="">- Select Employee -</option>
                             @foreach ($employees as $emp)
                                 <option value="{{ $emp->id }}"
                                         data-type="{{ strtolower($emp->employee_type ?? '') }}">
@@ -238,7 +238,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
 
 
     {{-- ════════════════════════════════════════════════════════════════════════
-         DOWNLOAD FORM 48  (all roles — employee downloads their own)
+         DOWNLOAD FORM 48  (all roles - employee downloads their own)
          ════════════════════════════════════════════════════════════════════════ --}}
     <details style="margin-bottom:1.25rem;background:#f9fafb;
                     border:1px solid #e5e7eb;border-radius:.5rem;padding:1rem;">
@@ -331,14 +331,14 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                             @endforeach
                         </select>
                     @elseif ($officerDepts->count() > 1)
-                        {{-- Officer heads multiple departments — show a dropdown --}}
+                        {{-- Officer heads multiple departments - show a dropdown --}}
                         <select id="bulk-dept" class="hris-filter-select" style="min-width:180px;">
                             @foreach ($officerDepts as $dept)
                                 <option value="{{ $dept->Dept_id }}">{{ $dept->Dept_name }}</option>
                             @endforeach
                         </select>
                     @else
-                        {{-- Officer heads a single department — fixed display --}}
+                        {{-- Officer heads a single department - fixed display --}}
                         <input type="hidden" id="bulk-dept" value="{{ $officerDeptId }}">
                         <span style="display:inline-block;padding:.4rem .6rem;font-size:.875rem;
                                      color:#374151;background:#f1f5f9;border:1px solid #cbd5e1;
@@ -418,7 +418,7 @@ $emptyTableMsg = $isAdmin
 
 @section('page_scripts')
 <script>
-// Guard: the layout yields page_scripts twice — prevent double-execution.
+// Guard: the layout yields page_scripts twice - prevent double-execution.
 if (typeof window.__dtrViewReady === 'undefined') {
     window.__dtrViewReady = true;
     window.dtrTable = null;
@@ -462,7 +462,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
 
         var prev = select.value;
         // Rebuild options matching the chosen type (empty = all).
-        var placeholder = prefix === 'dl' ? 'Select Employee' : '— Select Employee —';
+        var placeholder = prefix === 'dl' ? 'Select Employee' : '- Select Employee -';
         select.innerHTML = '<option value="">' + placeholder + '</option>';
 
         allEmployees[prefix].forEach(function (e) {
@@ -493,7 +493,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
         return document.getElementById(id).value;   // dateFormat:'Y-m' → "2026-06"
     }
 
-    // Submit handler — converts form fields to a background export job.
+    // Submit handler - converts form fields to a background export job.
     function setDlMonth() {
         var month = fpMonth('dl-month-fp');
         if (!month) {
@@ -588,7 +588,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
                     @endif
                 },
                 dataSrc: function (json) {
-                    // Exempt employees keep no DTR — inform the user instead of showing an empty table.
+                    // Exempt employees keep no DTR - inform the user instead of showing an empty table.
                     if (json.exempt) {
                         Swal.fire({
                             icon: 'info',

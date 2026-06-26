@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
- * Soak Test Suite — simulates sustained mixed traffic patterns
+ * Soak Test Suite - simulates sustained mixed traffic patterns
  * to verify system stability under extended load.
  *
  * Run: php artisan test --filter=SoakTest

@@ -19,7 +19,7 @@ use Illuminate\Support\Collection;
  * post-midnight departure sort and score correctly across the day boundary.
  *
  * Slot assignment:
- *  - 1–4 punches: SEQUENTIAL — 1st → arrival, 2nd → break-out, 3rd → break-in,
+ *  - 1–4 punches: SEQUENTIAL - 1st → arrival, 2nd → break-out, 3rd → break-in,
  *    4th → departure. Fewer than four fill only the leading slots.
  *  - 5+ punches (re-scans): the bookends anchor arrival (first) and departure
  *    (last), and the midday cluster collapses to the break pair (first/last
@@ -61,17 +61,17 @@ class DtrPunchResolver
         // ── Time-aware penalties ──
         $late = 0;
 
-        // Arrival lateness — only when the arrival is genuinely a shift-start punch.
+        // Arrival lateness - only when the arrival is genuinely a shift-start punch.
         if ($amIn !== null && $amIn->lt($breakOutRef)) {
             $late += $this->minutesLate($amIn, $startRef);
         }
 
-        // Break-return lateness — only when the return lands inside the break window.
+        // Break-return lateness - only when the return lands inside the break window.
         if ($pmIn !== null && $pmIn->gte($breakOutRef) && $pmIn->lt($endRef)) {
             $late += $this->minutesLate($pmIn, $breakInRef);
         }
 
-        // Undertime — only when the departure is genuinely a shift-end punch.
+        // Undertime - only when the departure is genuinely a shift-end punch.
         // For no-break shifts pm_out is the only departure punch, so use workStart
         // as the lower bound instead of breakInRef (which has no meaning without a break).
         $undertime = 0;
@@ -128,7 +128,7 @@ class DtrPunchResolver
             $amOut = $break->first();   // first break-window punch = out for break
             $pmIn = $break->last();     // last break-window punch  = back from break
         } else {
-            // No clear cluster — fall back to the 2nd and 2nd-to-last punch.
+            // No clear cluster - fall back to the 2nd and 2nd-to-last punch.
             $amOut = $sorted->get(1);
             $pmIn = $sorted->get($count - 2);
         }

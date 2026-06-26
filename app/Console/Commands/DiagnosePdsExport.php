@@ -72,7 +72,7 @@ class DiagnosePdsExport extends Command
             : User::whereIn('access_level', ['employee', 'department head', 'hr manager'])->first();
 
         if (! $user) {
-            $this->line('  <fg=yellow>No employee user found — skipping export test</>');
+            $this->line('  <fg=yellow>No employee user found - skipping export test</>');
         } else {
             $this->line("  Testing with user #{$user->id} ({$user->name})");
             $before = memory_get_usage(true);

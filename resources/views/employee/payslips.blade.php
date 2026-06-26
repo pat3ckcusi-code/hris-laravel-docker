@@ -19,7 +19,7 @@
         <tbody>
             @forelse ($payslips as $payslip)
             <tr>
-                <td>{{ $payslip->payrollRun->period ?? '—' }}</td>
+                <td>{{ $payslip->payrollRun->period ?? '-' }}</td>
                 <td class="text-right">₱{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
                 <td class="text-right">₱{{ number_format($payslip->total_earnings ?? 0, 2) }}</td>
                 <td class="text-right">₱{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>

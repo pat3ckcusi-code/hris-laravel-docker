@@ -20,7 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 3. Compatibility
+ * ISO/IEC 25010 - 3. Compatibility
  *
  * Tests: Co-existence, Interoperability between HRIS modules
  */
@@ -67,7 +67,7 @@ class CompatibilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 3.1 INTEROPERABILITY — Leave ↔ Payroll integration
+    // 3.1 INTEROPERABILITY - Leave ↔ Payroll integration
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -157,7 +157,7 @@ class CompatibilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 3.2 CO-EXISTENCE — Plantilla ↔ Employee ↔ Payroll
+    // 3.2 CO-EXISTENCE - Plantilla ↔ Employee ↔ Payroll
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

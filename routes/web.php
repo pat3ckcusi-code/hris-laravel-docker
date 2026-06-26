@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
+use App\Http\Controllers\Attendance\DtrExcuseController;
 use App\Http\Controllers\Attendance\EmployeeScheduleController;
 use App\Http\Controllers\Attendance\ShiftController;
 use App\Http\Controllers\Attendance\ShiftScheduleController;
@@ -42,6 +43,7 @@ use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
 use App\Http\Controllers\RecordsManagerController;
+use App\Http\Controllers\UniformInspectionController;
 use App\Http\Controllers\TravelOrderController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\LimitPayloadSize;
@@ -193,7 +195,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/employee/payslips', [EmployeePayslipController::class, 'index'])
         ->name('dashboard.employee.payslips');
 
-    // Attendance DTR — list view and Form 48 download (role-branching handled in controller)
+    // Attendance DTR - list view and Form 48 download (role-branching handled in controller)
     Route::get('/attendance/dtr', [DtrController::class, 'index'])
         ->name('attendance.dtr');
     Route::get('/attendance/dtr/data', [DtrController::class, 'data'])
@@ -205,7 +207,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/attendance/dtr/download-dept', [DtrController::class, 'downloadDepartmentForm48'])
         ->name('attendance.dtr.download-dept');
 
-    // Work-shift templates + per-employee assignment (Time Keeper / HR Manager — gated in controller)
+    // Work-shift templates + per-employee assignment (Time Keeper / HR Manager - gated in controller)
     Route::get('/attendance/shifts', [ShiftController::class, 'index'])
         ->name('attendance.shifts');
     Route::post('/attendance/shifts', [ShiftController::class, 'store'])
@@ -345,7 +347,7 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
 
 // Department Head and Administrative Officer shared actions
 Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
-    // Office order page / file routes (not under throttle:api — a 429 here would be
+    // Office order page / file routes (not under throttle:api - a 429 here would be
     // saved by the browser as the .docx download and open as a "corrupted" file)
     Route::get('/office-orders/{id}/edit', [OfficeOrderController::class, 'edit'])->name('office-orders.edit');
     Route::get('/office-orders/{id}/print', [OfficeOrderController::class, 'print'])->name('office-orders.print');
@@ -402,6 +404,25 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
 
     Route::get('/leave-manager/leave-card/download', [LeaveManagerController::class, 'downloadLeaveCard'])
         ->name('leave-manager.leave-card.download');
+
+    // Uniform Inspection Management
+    Route::get('/leave-manager/uniform-inspections', [UniformInspectionController::class, 'index'])
+        ->name('leave-manager.uniform-inspections.index');
+    Route::get('/leave-manager/uniform-inspections/create', [UniformInspectionController::class, 'create'])
+        ->name('leave-manager.uniform-inspections.create');
+    Route::post('/leave-manager/uniform-inspections', [UniformInspectionController::class, 'store'])
+        ->name('leave-manager.uniform-inspections.store');
+    Route::get('/leave-manager/uniform-inspections/{uniformInspection}', [UniformInspectionController::class, 'show'])
+        ->name('leave-manager.uniform-inspections.show');
+    Route::get('/leave-manager/uniform-inspections/{uniformInspection}/edit', [UniformInspectionController::class, 'edit'])
+        ->name('leave-manager.uniform-inspections.edit');
+    Route::put('/leave-manager/uniform-inspections/{uniformInspection}', [UniformInspectionController::class, 'update'])
+        ->name('leave-manager.uniform-inspections.update');
+    Route::delete('/leave-manager/uniform-inspections/{uniformInspection}', [UniformInspectionController::class, 'destroy'])
+        ->name('leave-manager.uniform-inspections.destroy');
+
+    Route::get('/api/uniform-inspection/employee-history', [UniformInspectionController::class, 'apiEmployeeViolationHistory'])
+        ->name('api.uniform-inspection.employee-history');
 });
 
 Route::middleware(['auth', 'role:leave-manager,hr-manager'])->group(function () {
@@ -503,6 +524,18 @@ Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {
         ->name('hr-manager.attendance.import');
     Route::post('/dashboard/hr-manager/attendance/import', [AttendanceImportController::class, 'store'])
         ->name('hr-manager.attendance.import.store');
+});
+
+// DTR Excuse management (HR Manager, Administrative Officer, Department Head)
+Route::middleware(['auth', 'role:hr-manager,administrative-officer,department-head'])->group(function () {
+    Route::get('/attendance/dtr-excuse', [DtrExcuseController::class, 'index'])
+        ->name('attendance.dtr-excuse.index');
+    Route::post('/attendance/dtr-excuse', [DtrExcuseController::class, 'store'])
+        ->name('attendance.dtr-excuse.store');
+    Route::post('/attendance/dtr-excuse/check', [DtrExcuseController::class, 'check'])
+        ->name('attendance.dtr-excuse.check');
+    Route::delete('/attendance/dtr-excuse/{dtrExcuse}', [DtrExcuseController::class, 'destroy'])
+        ->name('attendance.dtr-excuse.destroy');
 });
 
 // Mayor's Office routes

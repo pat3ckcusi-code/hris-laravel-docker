@@ -9,7 +9,7 @@
             <select name="payroll_run_id" class="form-input">
                 <option value="">All Runs</option>
                 @foreach($runs as $run)
-                    <option value="{{ $run->id }}" @selected(request('payroll_run_id') == $run->id)>Run #{{ $run->id }} — {{ $run->period }}</option>
+                    <option value="{{ $run->id }}" @selected(request('payroll_run_id') == $run->id)>Run #{{ $run->id }} - {{ $run->period }}</option>
                 @endforeach
             </select>
             <button type="submit" class="btn btn-sm">Filter</button>
@@ -38,13 +38,13 @@
             <tbody>
                 @forelse($payslips as $ps)
                     <tr id="payslip-row-{{ $ps->id }}"
-                        data-employee="{{ $ps->employee->name ?? '—' }}"
-                        data-run="Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}"
+                        data-employee="{{ $ps->employee->name ?? '-' }}"
+                        data-run="Run #{{ $ps->payroll_run_id }} - {{ $ps->payrollRun->period ?? '' }}"
                         data-pdf="{{ $ps->pdf_path ? asset($ps->pdf_path) : '' }}"
                         data-date="{{ $ps->created_at->format('M d, Y H:i') }}">
                         <td>{{ $ps->id }}</td>
-                        <td>{{ $ps->employee->name ?? '—' }}</td>
-                        <td>Run #{{ $ps->payroll_run_id }} — {{ $ps->payrollRun->period ?? '' }}</td>
+                        <td>{{ $ps->employee->name ?? '-' }}</td>
+                        <td>Run #{{ $ps->payroll_run_id }} - {{ $ps->payrollRun->period ?? '' }}</td>
                         <td>
                             @if($ps->pdf_path)
                                 <a href="{{ asset($ps->pdf_path) }}" target="_blank" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-download"></i></a>
@@ -83,7 +83,7 @@
             <select name="payroll_run_id" id="c-run" class="form-input" required>
                 <option value="">Select run</option>
                 @foreach($approvedRuns as $run)
-                    <option value="{{ $run->id }}">Run #{{ $run->id }} — {{ $run->period }}</option>
+                    <option value="{{ $run->id }}">Run #{{ $run->id }} - {{ $run->period }}</option>
                 @endforeach
             </select>
         </div>

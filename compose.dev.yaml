@@ -1,5 +1,5 @@
 # =============================================================================
-# HRIS — Local Development Stack  (standalone)
+# HRIS - Local Development Stack  (standalone)
 # =============================================================================
 # Usage:
 #   docker compose -f compose.dev.yaml up --build

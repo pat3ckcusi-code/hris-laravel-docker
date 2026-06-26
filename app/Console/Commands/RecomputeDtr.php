@@ -22,7 +22,7 @@ class RecomputeDtr extends Command
         $to = $this->option('to') ?: AttendanceLog::max('logdate');
 
         if (! $from || ! $to) {
-            $this->warn('No attendance_logs found — nothing to recompute.');
+            $this->warn('No attendance_logs found - nothing to recompute.');
 
             return self::SUCCESS;
         }

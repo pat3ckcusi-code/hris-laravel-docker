@@ -290,7 +290,7 @@
                             <input type="date" id="rangeEnd" name="range_end" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
-                    <p class="mt-3 text-sm text-slate-600">Estimated working days (Mon–Fri): <span id="rangeDaysCount" class="font-semibold text-blue-700">—</span></p>
+                    <p class="mt-3 text-sm text-slate-600">Estimated working days (Mon–Fri): <span id="rangeDaysCount" class="font-semibold text-blue-700">-</span></p>
                     <input type="hidden" name="extended_leave_mode" id="extendedLeaveModeInput" value="0">
                 </div>
 
@@ -860,14 +860,14 @@
                         });
                     });
 
-                    // Range date pickers — compute weekday count live
+                    // Range date pickers - compute weekday count live
                     const rangeStart = document.getElementById('rangeStart');
                     const rangeEnd = document.getElementById('rangeEnd');
                     const rangeDaysCount = document.getElementById('rangeDaysCount');
 
                     function computeRangeDays() {
                         if (!rangeStart || !rangeEnd || !rangeStart.value || !rangeEnd.value) {
-                            if (rangeDaysCount) rangeDaysCount.textContent = '—';
+                            if (rangeDaysCount) rangeDaysCount.textContent = '-';
                             return;
                         }
                         let s = new Date(rangeStart.value); s.setHours(0,0,0,0);
@@ -950,11 +950,11 @@
                                 $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
                             @endphp
                             <tr id="leave-row-{{ $leave->id }}"
-                                data-employee="{{ $leave->user->name ?? '—' }}"
+                                data-employee="{{ $leave->user->name ?? '-' }}"
                                 data-type="{{ $leave->leave_type }}"
                                 data-period="{{ $s }}@if($e) to {{ $e }}@endif"
-                                data-total="{{ $leave->total_days ?? '—' }}"
-                                data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '—' }}"
+                                data-total="{{ $leave->total_days ?? '-' }}"
+                                data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '-' }}"
                                 data-reason="{{ $leave->reason ?? '' }}"
                                 data-status="{{ $leave->status }}"
                                 data-remarks="{{ $leave->remarks ?? '' }}"
@@ -1150,8 +1150,8 @@ function openLeaveModal(id) {
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${total}</td></tr>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${filed}</td></tr>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Status</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${status}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${remarks || '—'}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Reason</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${reason || '—'}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Remarks</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${remarks || '-'}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Reason</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${reason || '-'}</td></tr>
     </tbody></table>`;
 
     // Populate action buttons

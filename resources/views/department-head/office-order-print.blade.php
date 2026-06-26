@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Office Order — {{ $order->office_order_num ?? $order->id }}</title>
+    <title>Office Order - {{ $order->office_order_num ?? $order->id }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -83,25 +83,25 @@
                         @if (!empty($emp['designation']))<br><span class="memo-desig">{{ $emp['designation'] }}</span>@endif
                     </div>
                 @empty
-                    <span class="memo-name">—</span>
+                    <span class="memo-name">-</span>
                 @endforelse
             </div>
         </div>
         <div class="memo-row">
             <div class="memo-label">From</div>
             <div class="memo-value">
-                <span class="memo-name">{{ $issuer['name'] ?? '—' }}</span>
+                <span class="memo-name">{{ $issuer['name'] ?? '-' }}</span>
                 @if (!empty($issuer['designation']))<br><span class="memo-desig">{{ $issuer['designation'] }}</span>@endif
             </div>
         </div>
         <div class="memo-row">
             <div class="memo-label">Subject</div>
-            <div class="memo-value"><strong>{{ $order->subject ?? '—' }}</strong></div>
+            <div class="memo-value"><strong>{{ $order->subject ?? '-' }}</strong></div>
         </div>
         <div class="memo-row">
             <div class="memo-label">Date</div>
             <div class="memo-value">
-                <strong>{{ !empty($order->issued_date) ? strtoupper(\Illuminate\Support\Carbon::parse($order->issued_date)->format('F d, Y')) : '—' }}</strong>
+                <strong>{{ !empty($order->issued_date) ? strtoupper(\Illuminate\Support\Carbon::parse($order->issued_date)->format('F d, Y')) : '-' }}</strong>
             </div>
         </div>
     </div>

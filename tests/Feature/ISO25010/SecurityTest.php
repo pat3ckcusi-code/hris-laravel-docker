@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 6. Security
+ * ISO/IEC 25010 - 6. Security
  *
  * Tests: Confidentiality, Integrity, Non-repudiation, Accountability, Authenticity
  */
@@ -56,7 +56,7 @@ class SecurityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 6.1 AUTHENTICATION — login/logout/session
+    // 6.1 AUTHENTICATION - login/logout/session
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -234,7 +234,7 @@ class SecurityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 6.4 CONFIDENTIALITY — sensitive data protection
+    // 6.4 CONFIDENTIALITY - sensitive data protection
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -286,7 +286,7 @@ class SecurityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 6.5 ACCOUNTABILITY — audit trails for security events
+    // 6.5 ACCOUNTABILITY - audit trails for security events
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

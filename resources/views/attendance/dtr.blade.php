@@ -105,14 +105,14 @@
                     <tr>
                         @if ($isAdmin)
                             <td>
-                                {{ trim((optional($record->employee)->last_name ?? optional($record->employee)->lastname ?? '') . ', ' . (optional($record->employee)->first_name ?? optional($record->employee)->firstname ?? '')) ?: '—' }}
+                                {{ trim((optional($record->employee)->last_name ?? optional($record->employee)->lastname ?? '') . ', ' . (optional($record->employee)->first_name ?? optional($record->employee)->firstname ?? '')) ?: '-' }}
                             </td>
                         @endif
                         <td>{{ \Carbon\Carbon::parse($record->date)->format('M d, Y (D)') }}</td>
-                        <td class="text-center">{{ $record->time_in_am ?? '—' }}</td>
-                        <td class="text-center">{{ $record->time_out_am ?? '—' }}</td>
-                        <td class="text-center">{{ $record->time_in_pm ?? '—' }}</td>
-                        <td class="text-center">{{ $record->time_out_pm ?? '—' }}</td>
+                        <td class="text-center">{{ $record->time_in_am ?? '-' }}</td>
+                        <td class="text-center">{{ $record->time_out_am ?? '-' }}</td>
+                        <td class="text-center">{{ $record->time_in_pm ?? '-' }}</td>
+                        <td class="text-center">{{ $record->time_out_pm ?? '-' }}</td>
                         <td class="text-center">{{ $record->late_minutes ?? 0 }}</td>
                         <td class="text-center">{{ $record->undertime_minutes ?? 0 }}</td>
                         <td class="text-center">
@@ -121,7 +121,7 @@
                             @elseif ($record->source === 'manual')
                                 <span class="hris-badge" style="background:#e5e7eb;color:#374151;">Manual</span>
                             @else
-                                <span style="color:#9ca3af;">—</span>
+                                <span style="color:#9ca3af;">-</span>
                             @endif
                         </td>
                         <td class="text-center">

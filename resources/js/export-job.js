@@ -78,7 +78,7 @@ window.startExport = function startExport(createUrl, params, label = 'Generating
                                         confirmButtonColor: '#3b82f6',
                                     });
                                 }
-                                // 'pending' / 'processing' — keep polling
+                                // 'pending' / 'processing' - keep polling
                             })
                             .catch(() => {
                                 clearInterval(pollTimer);

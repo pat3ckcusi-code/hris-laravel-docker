@@ -6,8 +6,8 @@
 @section('content')
     <div class="detail-card">
         <div class="detail-row"><strong>Type:</strong> {{ $deduction->type }}</div>
-        <div class="detail-row"><strong>Description:</strong> {{ $deduction->description ?? '—' }}</div>
-        <div class="detail-row"><strong>Formula:</strong> {{ $deduction->formula ?? '—' }}</div>
+        <div class="detail-row"><strong>Description:</strong> {{ $deduction->description ?? '-' }}</div>
+        <div class="detail-row"><strong>Formula:</strong> {{ $deduction->formula ?? '-' }}</div>
     </div>
 
     <section class="payroll-section">
@@ -18,7 +18,7 @@
                 <tbody>
                     @foreach($deduction->employeeDeductions as $ed)
                         <tr>
-                            <td>{{ $ed->employee->name ?? '—' }}</td>
+                            <td>{{ $ed->employee->name ?? '-' }}</td>
                             <td>₱{{ number_format($ed->amount, 2) }}</td>
                             <td>{{ $ed->recurring ? 'Yes' : 'No' }}</td>
                         </tr>
@@ -38,7 +38,7 @@
                 <tbody>
                     @foreach($deduction->loans as $loan)
                         <tr>
-                            <td>{{ $loan->employee->name ?? '—' }}</td>
+                            <td>{{ $loan->employee->name ?? '-' }}</td>
                             <td>₱{{ number_format($loan->balance, 2) }}</td>
                             <td>₱{{ number_format($loan->monthly_payment, 2) }}</td>
                             <td><span class="status-chip status-{{ $loan->status }}">{{ ucfirst($loan->status) }}</span></td>

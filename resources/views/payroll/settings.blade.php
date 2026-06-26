@@ -151,7 +151,7 @@ function openShowSetting(id) {
     document.getElementById('showSettingBody').innerHTML =
         '<table style="width:100%;border-collapse:collapse"><tbody>' +
         '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Key</strong></td><td style="padding:8px;border:1px solid #f1f5f9"><code>' + row.dataset.key + '</code></td></tr>' +
-        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Value</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + (row.dataset.value || '—') + '</td></tr>' +
+        '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Value</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + (row.dataset.value || '-') + '</td></tr>' +
         '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Last Updated</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + row.dataset.updated + '</td></tr>' +
         '</tbody></table>';
     document.getElementById('showSettingModal').showModal();

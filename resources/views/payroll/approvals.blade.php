@@ -64,14 +64,14 @@
             <tbody>
                 @forelse($logs as $log)
                     <tr id="approval-row-{{ $log->id }}"
-                        data-run="#{{ $log->payroll_run_id }} — {{ $log->payrollRun->period ?? '' }}"
-                        data-approver="{{ $log->approver->name ?? '—' }}"
+                        data-run="#{{ $log->payroll_run_id }} - {{ $log->payrollRun->period ?? '' }}"
+                        data-approver="{{ $log->approver->name ?? '-' }}"
                         data-status="{{ $log->status }}"
-                        data-date="{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '—' }}">
-                        <td>Run #{{ $log->payroll_run_id }} — {{ $log->payrollRun->period ?? '' }}</td>
-                        <td>{{ $log->approver->name ?? '—' }}</td>
+                        data-date="{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '-' }}">
+                        <td>Run #{{ $log->payroll_run_id }} - {{ $log->payrollRun->period ?? '' }}</td>
+                        <td>{{ $log->approver->name ?? '-' }}</td>
                         <td><span class="status-chip status-{{ $log->status }}">{{ ucfirst($log->status) }}</span></td>
-                        <td>{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '—' }}</td>
+                        <td>{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '-' }}</td>
                         <td><button type="button" class="btn btn-sm btn-outline" onclick="openShowApproval({{ $log->id }})">View</button></td>
                     </tr>
                 @empty

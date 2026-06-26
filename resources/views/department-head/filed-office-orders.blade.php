@@ -117,15 +117,15 @@ async function openOfficeOrderModal(id) {
                 const d = j.data;
                 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
                 const fmtDate = (s) => {
-                    if (!s) return '—';
+                    if (!s) return '-';
                     const dt = new Date(s + 'T00:00:00');
                     if (isNaN(dt)) return esc(s);
                     return dt.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }).toUpperCase();
                 };
-                const party = (p) => p ? `<span style="font-weight:bold;text-transform:uppercase">${esc(p.name)}</span>${p.designation ? `<br><span style="font-style:italic">${esc(p.designation)}</span>` : ''}` : '—';
+                const party = (p) => p ? `<span style="font-weight:bold;text-transform:uppercase">${esc(p.name)}</span>${p.designation ? `<br><span style="font-style:italic">${esc(p.designation)}</span>` : ''}` : '-';
                 const toBlock = (d.employees && d.employees.length)
                     ? d.employees.map(e => `<div style="margin-bottom:8px">${party(e)}</div>`).join('')
-                    : '—';
+                    : '-';
                 const conformed = (d.employees && d.employees.length)
                     ? d.employees.map(e => `<div style="font-weight:bold;text-transform:uppercase;margin-bottom:16px">${esc(e.name)}</div>`).join('')
                     : '<div style="font-weight:bold">_______________________</div>';
@@ -135,7 +135,7 @@ async function openOfficeOrderModal(id) {
                         <div style="font-weight:bold;font-size:13pt;margin-bottom:22px">Office Order No. <span style="text-decoration:underline">${esc(d.office_order_num || d.id)}</span></div>
                         ${row('To', toBlock)}
                         ${row('From', party(d.issued_by))}
-                        ${row('Subject', `<strong>${esc(d.subject || '—')}</strong>`)}
+                        ${row('Subject', `<strong>${esc(d.subject || '-')}</strong>`)}
                         ${row('Date', `<strong>${fmtDate(d.issued_date)}</strong>`)}
                         <hr style="border:none;border-top:2px solid #000;margin:16px 0 20px">
                         <div style="text-align:justify;white-space:pre-line;margin-bottom:22px">${esc(d.details || '')}</div>

@@ -78,7 +78,7 @@
             </div>
 
             <div id="ledger-balance-summary" style="display:none;padding:0.6rem 1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;margin-bottom:1rem;font-size:0.88rem;color:#0369a1;">
-                Current balance — <strong>VL: <span id="summary-vl">—</span></strong> &nbsp;|&nbsp; <strong>SL: <span id="summary-sl">—</span></strong>
+                Current balance - <strong>VL: <span id="summary-vl">-</span></strong> &nbsp;|&nbsp; <strong>SL: <span id="summary-sl">-</span></strong>
             </div>
 
             <div class="table-responsive">
@@ -208,7 +208,7 @@ $(function () {
             { data: 'sl_balance_after', className: 'text-right', render: function (v) { return '<strong>'+v+'</strong>'; }},
             { data: 'days_present' },
             { data: 'abs_wop_days' },
-            { data: 'remarks', defaultContent: '—' },
+            { data: 'remarks', defaultContent: '-' },
             { data: 'posted_by' },
         ],
         order: [[0, 'desc']],
@@ -232,7 +232,7 @@ $(function () {
         $box.empty();
         if (!items.length) { $box.hide(); return; }
         items.forEach(function (e) {
-            var label = e.name + (e.empno ? ' (' + e.empno + ')' : '') + (e.dept ? ' — ' + e.dept : '');
+            var label = e.name + (e.empno ? ' (' + e.empno + ')' : '') + (e.dept ? ' - ' + e.dept : '');
             $('<div>').text(label)
                 .css({ padding: '0.45rem 0.75rem', cursor: 'pointer', fontSize: '0.86rem', borderBottom: '1px solid #f1f5f9' })
                 .on('mouseenter', function () { $(this).css('background', '#f0f9ff'); })
@@ -328,8 +328,8 @@ $(function () {
             { data: 'month' },
             { data: 'days_present', className: 'text-right' },
             { data: 'abs_wop_days', className: 'text-right' },
-            { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '—' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '—'; }},
-            { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '—' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '—'; }},
+            { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
+            { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
             { data: 'processed_at' },
         ],
         order: [[3, 'desc'], [4, 'desc'], [1, 'asc']],

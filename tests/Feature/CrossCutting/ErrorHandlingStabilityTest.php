@@ -276,7 +276,7 @@ class ErrorHandlingStabilityTest extends TestCase
             ]);
         }
 
-        // Verify data integrity — each employee's leave should be distinct
+        // Verify data integrity - each employee's leave should be distinct
         $leaveCount = LeaveRequest::count();
         $uniqueUsers = LeaveRequest::distinct('user_id')->count('user_id');
 

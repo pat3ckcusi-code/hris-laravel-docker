@@ -73,7 +73,7 @@
                     <option value="">-- Select Department Head --</option>
                     @foreach ($departmentHeadUsers as $deptHead)
                         <option value="{{ $deptHead->EmpNo }}" @selected(old('EmpNo') === $deptHead->EmpNo)>
-                            {{ $deptHead->EmpNo }} — {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
+                            {{ $deptHead->EmpNo }} - {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
                         </option>
                     @endforeach
                 </select>
@@ -82,10 +82,10 @@
             <label>
                 Administrative Officer
                 <select name="ao_emp_no">
-                    <option value="">— None —</option>
+                    <option value="">- None -</option>
                     @foreach ($adminOfficerUsers as $aoUser)
                         <option value="{{ $aoUser->EmpNo }}" @selected(old('ao_emp_no') === $aoUser->EmpNo)>
-                            {{ $aoUser->EmpNo }} — {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
+                            {{ $aoUser->EmpNo }} - {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
                         </option>
                     @endforeach
                 </select>
@@ -153,7 +153,7 @@
                     <option value="">-- Select Department Head --</option>
                     @foreach ($departmentHeadUsers as $deptHead)
                         <option value="{{ $deptHead->EmpNo }}" @selected(old('EmpNo') === $deptHead->EmpNo)>
-                            {{ $deptHead->EmpNo }} — {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
+                            {{ $deptHead->EmpNo }} - {{ $deptHead->last_name }}, {{ $deptHead->first_name }} {{ $deptHead->middle_name }}
                         </option>
                     @endforeach
                 </select>
@@ -162,10 +162,10 @@
             <label>
                 Administrative Officer
                 <select name="ao_emp_no" id="updateDeptAoEmpNo">
-                    <option value="">— None —</option>
+                    <option value="">- None -</option>
                     @foreach ($adminOfficerUsers as $aoUser)
                         <option value="{{ $aoUser->EmpNo }}" @selected(old('ao_emp_no') === $aoUser->EmpNo)>
-                            {{ $aoUser->EmpNo }} — {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
+                            {{ $aoUser->EmpNo }} - {{ $aoUser->last_name }}, {{ $aoUser->first_name }} {{ $aoUser->middle_name }}
                         </option>
                     @endforeach
                 </select>
@@ -240,7 +240,7 @@
                         <td>{{ $department->DeptCode ?: '-' }}</td>
                         <td>{{ $department->Dept_name }}</td>
                         <td>{{ $department->EmpNo ?: '-' }}</td>
-                        <td>{{ $department->ao_emp_no ?: '—' }}</td>
+                        <td>{{ $department->ao_emp_no ?: '-' }}</td>
                         <td>{{ $department->Designation ?: '-' }}</td>
                         <td>{{ $parentDepartmentName ?: 'None' }}</td>
                         <td>{{ $count }}</td>

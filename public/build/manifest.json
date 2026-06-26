@@ -13,7 +13,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/css/app-B5H5Vg1F.css",
+    "file": "assets/css/app-BgzBQGUu.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -22,7 +22,7 @@
     ]
   },
   "resources/css/front_desk.css": {
-    "file": "assets/css/front_desk-CJAi_ymX.css",
+    "file": "assets/css/front_desk-CoXyx6Af.css",
     "src": "resources/css/front_desk.css",
     "isEntry": true,
     "name": "front_desk",
@@ -40,7 +40,7 @@
     ]
   },
   "resources/css/hris-table.css": {
-    "file": "assets/css/hris-table-BKpVGs32.css",
+    "file": "assets/css/hris-table-Dv8I1_Hi.css",
     "src": "resources/css/hris-table.css",
     "isEntry": true,
     "name": "hris-table",
@@ -88,7 +88,7 @@
     ]
   },
   "resources/js/export-job.js": {
-    "file": "assets/js/export-job-DY-xt04i.js",
+    "file": "assets/js/export-job-DTw3IQaq.js",
     "name": "export-job",
     "src": "resources/js/export-job.js",
     "isEntry": true,
@@ -103,7 +103,7 @@
     "isEntry": true
   },
   "resources/js/hr_manager.js": {
-    "file": "assets/js/hr_manager-C355I3bI.js",
+    "file": "assets/js/hr_manager-BbL1xfbM.js",
     "name": "hr_manager",
     "src": "resources/js/hr_manager.js",
     "isEntry": true,
@@ -133,6 +133,12 @@
     "file": "assets/js/request_documents-B5QNhm7B.js",
     "name": "request_documents",
     "src": "resources/js/request_documents.js",
+    "isEntry": true
+  },
+  "resources/js/uniform_inspection.js": {
+    "file": "assets/js/uniform_inspection-B_rzgQlS.js",
+    "name": "uniform_inspection",
+    "src": "resources/js/uniform_inspection.js",
     "isEntry": true
   }
 }

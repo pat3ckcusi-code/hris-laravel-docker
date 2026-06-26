@@ -25,7 +25,7 @@
                     </div>
                     <div class="kpi-title">Workforce & Attendance</div>
                 </div>
-                <div class="kpi-value" id="val-workforce">—</div>
+                <div class="kpi-value" id="val-workforce">-</div>
                 <div class="kpi-meta">Active employees / monitored today</div>
             </div>
         </div>
@@ -38,7 +38,7 @@
                     </div>
                     <div class="kpi-title">Daily Attendance & Tardiness</div>
                 </div>
-                <div class="kpi-value" id="val-attendance">—</div>
+                <div class="kpi-value" id="val-attendance">-</div>
                 <div class="kpi-meta">Present / Late today</div>
             </div>
         </div>
@@ -51,7 +51,7 @@
                     </div>
                     <div class="kpi-title">Leave Requests</div>
                 </div>
-                <div class="kpi-value" id="val-leave">—</div>
+                <div class="kpi-value" id="val-leave">-</div>
                 <div class="kpi-meta">Pending / Approved</div>
             </div>
         </div>
@@ -64,7 +64,7 @@
                     </div>
                     <div class="kpi-title">Locator Requests</div>
                 </div>
-                <div class="kpi-value" id="val-locator">—</div>
+                <div class="kpi-value" id="val-locator">-</div>
                 <div class="kpi-meta">Pending / Resolved</div>
             </div>
         </div>
@@ -77,7 +77,7 @@
                     </div>
                     <div class="kpi-title">ETA Requests</div>
                 </div>
-                <div class="kpi-value" id="val-eta">—</div>
+                <div class="kpi-value" id="val-eta">-</div>
                 <div class="kpi-meta">Pending / Approved</div>
             </div>
         </div>
@@ -90,7 +90,7 @@
                     </div>
                     <div class="kpi-title">Overtime & Shift Schedules</div>
                 </div>
-                <div class="kpi-value" id="val-overtime">—</div>
+                <div class="kpi-value" id="val-overtime">-</div>
                 <div class="kpi-meta">Overtime hours / Open shifts</div>
             </div>
         </div>
@@ -240,12 +240,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         const m = d.metrics || {};
                         let html = '';
                         if (type === 'attendance') {
-                            html += `<p><strong>Present:</strong> ${m.present_today ?? '—'}</p>`;
-                            html += `<p><strong>Late:</strong> ${m.late_today ?? '—'}</p>`;
+                            html += `<p><strong>Present:</strong> ${m.present_today ?? '-'}</p>`;
+                            html += `<p><strong>Late:</strong> ${m.late_today ?? '-'}</p>`;
                             html += `<p>For full attendance details, go to the Attendance page.</p>`;
                         } else if (type === 'overtime') {
-                            html += `<p><strong>Overtime hours:</strong> ${m.overtime_hours ?? '—'}</p>`;
-                            html += `<p>Open shifts: —</p>`;
+                            html += `<p><strong>Overtime hours:</strong> ${m.overtime_hours ?? '-'}</p>`;
+                            html += `<p>Open shifts: -</p>`;
                         } else {
                             html += '<p>No details available.</p>';
                         }
@@ -286,12 +286,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const d = j.data || {};
             const m = d.metrics || {};
 
-            mapping.workforce.textContent = (m.workforce_today !== undefined) ? m.workforce_today : (d.workforce_today ?? '—');
-            mapping.attendance.textContent = (m.present_today !== undefined) ? (m.present_today + ' / ' + (m.late_today||0)) : (d.present_today ? (d.present_today + ' / ' + (d.late_today||0)) : '—');
-            mapping.leave.textContent = (m.leave_pending !== undefined) ? (m.leave_pending + ' pending') : (d.leave_pending !== undefined ? (d.leave_pending + ' pending') : '—');
-            mapping.locator.textContent = (m.locator_pending !== undefined) ? (m.locator_pending + ' pending') : (d.locator_pending !== undefined ? (d.locator_pending + ' pending') : '—');
-            mapping.eta.textContent = (m.eta_pending !== undefined) ? (m.eta_pending + ' pending') : (d.eta_pending !== undefined ? (d.eta_pending + ' pending') : '—');
-            mapping.overtime.textContent = (m.overtime_hours !== undefined) ? (m.overtime_hours + ' hrs') : (d.overtime_hours !== undefined ? (d.overtime_hours + ' hrs') : '—');
+            mapping.workforce.textContent = (m.workforce_today !== undefined) ? m.workforce_today : (d.workforce_today ?? '-');
+            mapping.attendance.textContent = (m.present_today !== undefined) ? (m.present_today + ' / ' + (m.late_today||0)) : (d.present_today ? (d.present_today + ' / ' + (d.late_today||0)) : '-');
+            mapping.leave.textContent = (m.leave_pending !== undefined) ? (m.leave_pending + ' pending') : (d.leave_pending !== undefined ? (d.leave_pending + ' pending') : '-');
+            mapping.locator.textContent = (m.locator_pending !== undefined) ? (m.locator_pending + ' pending') : (d.locator_pending !== undefined ? (d.locator_pending + ' pending') : '-');
+            mapping.eta.textContent = (m.eta_pending !== undefined) ? (m.eta_pending + ' pending') : (d.eta_pending !== undefined ? (d.eta_pending + ' pending') : '-');
+            mapping.overtime.textContent = (m.overtime_hours !== undefined) ? (m.overtime_hours + ' hrs') : (d.overtime_hours !== undefined ? (d.overtime_hours + ' hrs') : '-');
         } catch (e) {
             // leave placeholders
         }
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
 
-                // measure the rendered size of the <i> glyph — if very small, assume font/glyph missing
+                // measure the rendered size of the <i> glyph - if very small, assume font/glyph missing
                 const rect = fa.getBoundingClientRect();
                 const hasGlyph = rect.width > 6 && rect.height > 6;
                 if (hasGlyph) {

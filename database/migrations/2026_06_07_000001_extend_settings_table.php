@@ -21,7 +21,7 @@ return new class extends Migration
             $table->boolean('attendance_enabled')->default(true);
             $table->boolean('eta_enabled')->default(true);
 
-            // Attendance — shift schedule
+            // Attendance - shift schedule
             $table->string('work_start')->default('08:00');
             $table->string('lunch_return')->default('13:00');
             $table->string('work_end')->default('17:00');

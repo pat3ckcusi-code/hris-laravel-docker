@@ -1,6 +1,6 @@
-# HRIS — LGU Calapan
+# HRIS - LGU Calapan
 
-Human Resource Information System for LGU Calapan. Manages employee records, leave requests, travel orders, document requests, payroll, and biometric attendance — built on Laravel 12 / PHP 8.4, running entirely in Docker.
+Human Resource Information System for LGU Calapan. Manages employee records, leave requests, travel orders, document requests, payroll, and biometric attendance - built on Laravel 12 / PHP 8.4, running entirely in Docker.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ cp .env.example .env
 docker exec hris-dev-app php artisan key:generate
 ```
 
-## Database connection — inside vs outside Docker
+## Database connection - inside vs outside Docker
 
 The `DB_HOST` value depends on **where the code runs**, not where MySQL runs.
 
@@ -45,7 +45,7 @@ The `DB_HOST` value depends on **where the code runs**, not where MySQL runs.
 The app container and the MySQL container share a Docker network. MySQL is reachable via its service name. `compose.dev.yaml` injects this directly into the container environment, overriding whatever `.env` says:
 
 ```dotenv
-DB_HOST=db      # injected by compose.dev.yaml — no .env change needed
+DB_HOST=db      # injected by compose.dev.yaml - no .env change needed
 DB_PORT=3306
 ```
 
@@ -58,13 +58,13 @@ DB_HOST=127.0.0.1
 DB_PORT=3306
 ```
 
-`.env` ships with `DB_HOST=127.0.0.1` for this reason. `compose.dev.yaml` injects `DB_HOST=db` directly into the container environment, overriding `.env` for container runs — so the file value is only ever used by host-side tools.
+`.env` ships with `DB_HOST=127.0.0.1` for this reason. `compose.dev.yaml` injects `DB_HOST=db` directly into the container environment, overriding `.env` for container runs - so the file value is only ever used by host-side tools.
 
 ## Running artisan commands
 
-Two workflows — pick the one that matches where your terminal is:
+Two workflows - pick the one that matches where your terminal is:
 
-**Option A — inside the container (recommended)**
+**Option A - inside the container (recommended)**
 
 ```bash
 # compose.dev.yaml sets DB_HOST=db automatically; no .env change needed.
@@ -73,7 +73,7 @@ docker exec hris-dev-app php artisan queue:work
 docker exec hris-dev-app php artisan tinker
 ```
 
-**Option B — directly on the host machine**
+**Option B - directly on the host machine**
 
 ```bash
 # .env already has DB_HOST=127.0.0.1 and DB_PORT=3306, which routes through

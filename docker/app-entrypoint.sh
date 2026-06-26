@@ -17,7 +17,7 @@ if [ -d /opt/app-templates ] && [ -n "$(ls -A /opt/app-templates 2>/dev/null)" ]
     cp -r /opt/app-templates/. storage/app/templates/ 2>/dev/null || true
     echo "[entrypoint] Seeded templates into empty storage/app/templates/"
   else
-    echo "[entrypoint] storage/app/templates/ already has files — skipping seed"
+    echo "[entrypoint] storage/app/templates/ already has files - skipping seed"
   fi
 fi
 
@@ -35,7 +35,7 @@ if [ -z "$APP_KEY" ]; then
     export APP_KEY
     echo "[entrypoint] Loaded persisted APP_KEY from volume"
   else
-    echo "[entrypoint] APP_KEY is empty — generating one..."
+    echo "[entrypoint] APP_KEY is empty - generating one..."
     APP_KEY=$(php artisan key:generate --show)
     export APP_KEY
     echo "$APP_KEY" > "$APP_KEY_FILE"
@@ -46,18 +46,18 @@ if [ -z "$APP_KEY" ]; then
 fi
 
 if [ "${APP_ENV:-production}" = "local" ]; then
-  echo "[entrypoint] Dev mode — clearing caches and running migrations..."
+  echo "[entrypoint] Dev mode - clearing caches and running migrations..."
   php artisan optimize:clear >/dev/null 2>&1 || true
   php artisan migrate --force 2>&1 || true
 else
-  echo "[entrypoint] Production mode — running migrations..."
+  echo "[entrypoint] Production mode - running migrations..."
   # Migrations must succeed before caches are built.  An exit here is intentional:
   # a failed migration means the schema is wrong and the app must not start.
   if ! php artisan migrate --force 2>&1; then
-    echo "[entrypoint] ERROR: Migrations failed — aborting startup." >&2
+    echo "[entrypoint] ERROR: Migrations failed - aborting startup." >&2
     exit 1
   fi
-  echo "[entrypoint] Production mode — building caches..."
+  echo "[entrypoint] Production mode - building caches..."
   php artisan config:clear  >/dev/null 2>&1 || true
   php artisan optimize      >/dev/null 2>&1 || true
 fi

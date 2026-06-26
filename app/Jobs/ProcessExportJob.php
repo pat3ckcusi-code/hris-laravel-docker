@@ -89,7 +89,7 @@ class ProcessExportJob implements ShouldQueue
         return [$path, $filename, $mime];
     }
 
-    // ── FORM 48 — INDIVIDUAL ─────────────────────────────────────────────────
+    // ── FORM 48 - INDIVIDUAL ─────────────────────────────────────────────────
 
     private function handleForm48(ExportJob $job, Form48ExportService $exportService): array
     {
@@ -135,7 +135,7 @@ class ProcessExportJob implements ShouldQueue
         return [$path, $filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
     }
 
-    // ── FORM 48 — DEPARTMENT ZIP ─────────────────────────────────────────────
+    // ── FORM 48 - DEPARTMENT ZIP ─────────────────────────────────────────────
 
     private function handleForm48DeptZip(ExportJob $job, Form48ExportService $exportService): array
     {
@@ -225,7 +225,7 @@ class ProcessExportJob implements ShouldQueue
         return [$path, $filename, 'application/zip'];
     }
 
-    // ── FORM 48 — DEPARTMENT MULTI-SHEET ─────────────────────────────────────
+    // ── FORM 48 - DEPARTMENT MULTI-SHEET ─────────────────────────────────────
 
     private function handleForm48Dept(ExportJob $job, Form48ExportService $exportService): array
     {

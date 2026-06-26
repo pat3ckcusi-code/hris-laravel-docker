@@ -22,6 +22,7 @@ export default defineConfig({
                 'resources/css/hris-table.css',
                 'resources/js/hris-table.js',
                 'resources/js/export-job.js',
+                'resources/js/uniform_inspection.js',
             ],
             refresh: true,
         }),
@@ -35,7 +36,7 @@ export default defineConfig({
                  * CSS-entry loaders (tiny wrappers Vite creates for
                  * each CSS entry-point) go into a separate folder so
                  * they never collide with JS entries of the same name.
-                 * [hash] is appended for content-based cache-busting —
+                 * [hash] is appended for content-based cache-busting -
                  * the @vite() manifest resolves the hashed names, so
                  * browsers/CDN always fetch fresh assets after a deploy.
                  */

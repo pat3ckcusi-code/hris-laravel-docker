@@ -1105,7 +1105,7 @@ class LeaveRequestController extends Controller
             return redirect()->back()->withErrors(['leave_dates' => 'Duplicate dates detected. Please remove duplicates.'])->withInput();
         }
 
-        // 5-day advance rule — applies to all reschedulable leave types
+        // 5-day advance rule - applies to all reschedulable leave types
         $firstDate = Carbon::parse($dates[0])->startOfDay();
         $today = Carbon::today();
         if ($firstDate->diffInDays($today, false) > -5) {

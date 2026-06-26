@@ -36,7 +36,7 @@
             </div>
 
             <div class="hrm-chart-card" style="margin-bottom:1.5rem;">
-                <h4>Upcoming Service Milestones <span style="font-size:0.8rem;font-weight:400;color:#64748b;">(10, 15, 20, 25, 30+ years — within 90 days)</span></h4>
+                <h4>Upcoming Service Milestones <span style="font-size:0.8rem;font-weight:400;color:#64748b;">(10, 15, 20, 25, 30+ years - within 90 days)</span></h4>
                 <div id="milestonesTable">
                     <p style="color:#94a3b8;font-style:italic;padding:1rem 0;">Loading&hellip;</p>
                 </div>

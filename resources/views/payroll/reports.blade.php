@@ -13,7 +13,7 @@
             <select name="payroll_run_id" class="form-input">
                 <option value="">Select Payroll Run</option>
                 @foreach($runs as $run)
-                    <option value="{{ $run->id }}" @selected(request('payroll_run_id') == $run->id)>Run #{{ $run->id }} — {{ $run->period }}</option>
+                    <option value="{{ $run->id }}" @selected(request('payroll_run_id') == $run->id)>Run #{{ $run->id }} - {{ $run->period }}</option>
                 @endforeach
             </select>
             <button type="submit" class="btn btn-sm">View Report</button>
@@ -45,7 +45,7 @@
         </section>
 
         <section class="payroll-section">
-            <h2>Run #{{ $selectedRun->id }} — {{ $selectedRun->period }}</h2>
+            <h2>Run #{{ $selectedRun->id }} - {{ $selectedRun->period }}</h2>
             <table class="hris-table">
                 <thead>
                     <tr>
@@ -59,7 +59,7 @@
                 <tbody>
                     @foreach($selectedRun->details as $d)
                         <tr>
-                            <td>{{ $d->employee->name ?? '—' }}</td>
+                            <td>{{ $d->employee->name ?? '-' }}</td>
                             <td>₱{{ number_format($d->basic_salary, 2) }}</td>
                             <td>₱{{ number_format($d->earnings, 2) }}</td>
                             <td>₱{{ number_format($d->deductions, 2) }}</td>

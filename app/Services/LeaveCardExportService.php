@@ -74,7 +74,7 @@ class LeaveCardExportService
             $openSl = (float) ($lb?->SL ?? 0);
         }
 
-        // Row 7 — Balance Brought Forward
+        // Row 7 - Balance Brought Forward
         $ws->setCellValue('B7', 'BALANCE BROUGHT FWD');
         $ws->setCellValue('C7', 0);
         $ws->setCellValue('D7', 0);

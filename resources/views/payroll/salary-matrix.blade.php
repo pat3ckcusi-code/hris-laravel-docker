@@ -47,7 +47,7 @@
                                         ₱{{ number_format($entry->amount, 2) }}
                                     </span>
                                 @else
-                                    —
+                                    -
                                 @endif
                             </td>
                         @endfor

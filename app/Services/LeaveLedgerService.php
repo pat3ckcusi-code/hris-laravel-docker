@@ -132,7 +132,7 @@ class LeaveLedgerService
             return [(float) $last->vl_balance_after, (float) $last->sl_balance_after];
         }
 
-        // No ledger history — seed from the existing leave_balances table.
+        // No ledger history - seed from the existing leave_balances table.
         $balance = LeaveBalance::where('user_id', $userId)->first();
 
         return [

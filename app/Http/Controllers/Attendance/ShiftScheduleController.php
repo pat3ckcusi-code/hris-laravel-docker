@@ -19,7 +19,7 @@ use Illuminate\Http\Request;
  *
  * An employee's "shift schedule" overrides their default shift_id on specific
  * dates. A null shift_id in an assignment means the employee is scheduled off
- * (rest day) — the DTR pipeline skips them, and payroll does not count the
+ * (rest day) - the DTR pipeline skips them, and payroll does not count the
  * day as absent.
  */
 class ShiftScheduleController extends Controller
@@ -117,7 +117,7 @@ class ShiftScheduleController extends Controller
             }
 
             if ($value === 'default' || $value === '') {
-                // Remove the override — employee reverts to their default shift.
+                // Remove the override - employee reverts to their default shift.
                 $deleted = EmployeeShiftSchedule::where('user_id', $employee->id)
                     ->where('date', $dateStr)
                     ->delete();

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -40,7 +41,9 @@ class AppServiceProvider extends ServiceProvider
 
         // Rate limiting: login attempts
         RateLimiter::for('login', function (Request $request) {
-            return Limit::perMinute(5)->by($request->ip())->response(function () {
+            $key = Str::transliterate(Str::lower((string) $request->input('email')).'|'.$request->ip());
+
+            return Limit::perMinute(5)->by($key)->response(function () {
                 return response('Too many login attempts. Please try again later.', 429);
             });
         });

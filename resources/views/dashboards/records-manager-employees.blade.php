@@ -503,7 +503,7 @@
             @endif
         })();
 
-        // Add New Employee — confirmation + AJAX submit
+        // Add New Employee - confirmation + AJAX submit
         (function ($) {
             var form = document.getElementById('addEmployeeForm');
             if (!form) return;

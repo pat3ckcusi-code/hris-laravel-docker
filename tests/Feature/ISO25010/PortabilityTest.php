@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 8. Portability
+ * ISO/IEC 25010 - 8. Portability
  *
  * Tests: Adaptability, Installability, Replaceability
  */
@@ -56,7 +56,7 @@ class PortabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 8.1 INSTALLABILITY — migrations run cleanly on fresh database
+    // 8.1 INSTALLABILITY - migrations run cleanly on fresh database
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -159,7 +159,7 @@ class PortabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 8.2 ADAPTABILITY — no environment-specific hard-coding
+    // 8.2 ADAPTABILITY - no environment-specific hard-coding
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -191,7 +191,7 @@ class PortabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 8.3 REPLACEABILITY — core data operations work on any supported DB
+    // 8.3 REPLACEABILITY - core data operations work on any supported DB
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

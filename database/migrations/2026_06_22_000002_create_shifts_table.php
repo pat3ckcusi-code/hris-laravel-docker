@@ -12,10 +12,10 @@ return new class extends Migration
      * global standard-day shift from the settings table.
      *
      * The four times follow the four CSC Form 48 slots:
-     *   time_in   — shift start (Form 48 AM In)
-     *   break_out — leave for meal break (AM Out)
-     *   break_in  — return from meal break (PM In)
-     *   time_out  — shift end (PM Out)
+     *   time_in   - shift start (Form 48 AM In)
+     *   break_out - leave for meal break (AM Out)
+     *   break_in  - return from meal break (PM In)
+     *   time_out  - shift end (PM Out)
      *
      * crosses_midnight is true when the shift ends on the following day
      * (time_out <= time_in), e.g. a 22:00–06:00 night shift.

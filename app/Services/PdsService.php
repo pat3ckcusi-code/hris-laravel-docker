@@ -47,7 +47,7 @@ class PdsService
 
         $templateVersion = md5_file($templatePath);
 
-        // Load template via IOFactory — this preserves all cell formatting,
+        // Load template via IOFactory - this preserves all cell formatting,
         // merged cells, styles, and sheet structure from the .xlsx file.
         $spreadsheet = IOFactory::load($templatePath);
         $this->removeInvalidDefinedNames($spreadsheet);
@@ -897,7 +897,7 @@ class PdsService
      *   C1 → A1:AC77   C2 → A1:L61   C3 → A1:L61   C4 → A1:O80
      *
      * Why not getStyle($range)->setLocked():
-     *   PhpSpreadsheet creates a Style object per cell — O(rows×cols).
+     *   PhpSpreadsheet creates a Style object per cell - O(rows×cols).
      *   Benchmarks on the PDS template: 6.5 s for the four ranges above,
      *   which causes a 504 timeout in production.
      *
@@ -907,7 +907,7 @@ class PdsService
      *   only affect cells with PROTECTION_INHERIT; those 190 styles override
      *   it and remain editable.
      *
-     * Correct approach — two O(1)/O(distinct styles) operations:
+     * Correct approach - two O(1)/O(distinct styles) operations:
      *   1. Set the workbook default style to locked → covers INHERIT cells.
      *   2. Iterate getCellXfCollection() (859 shared styles, ~0.4 ms) and
      *      flip any remaining UNPROTECTED entries to PROTECTED → covers every
@@ -921,12 +921,12 @@ class PdsService
         $last = $user->last_name ?? ($user->lastname ?? '');
         $password = strtoupper($first.substr((string) $last, 0, 1));
 
-        // Step 1 — cover cells with PROTECTION_INHERIT via the default xf entry (O(1)).
+        // Step 1 - cover cells with PROTECTION_INHERIT via the default xf entry (O(1)).
         $spreadsheet->getDefaultStyle()->getProtection()->setLocked(
             Protection::PROTECTION_PROTECTED
         );
 
-        // Step 2 — iterate the shared xf style table (859 entries, ~0.4 ms) and lock
+        // Step 2 - iterate the shared xf style table (859 entries, ~0.4 ms) and lock
         // any style that explicitly has locked=0.  Every cell pointing to those styles
         // is locked without touching individual cell Style objects.
         foreach ($spreadsheet->getCellXfCollection() as $xf) {
@@ -935,7 +935,7 @@ class PdsService
             }
         }
 
-        // Step 3 — enable sheet-level protection with password on every sheet.
+        // Step 3 - enable sheet-level protection with password on every sheet.
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             $protection = $sheet->getProtection();
             $protection->setSheet(true);

@@ -3,7 +3,7 @@
 // phpcs:ignoreFile
 
 /**
- * Laravel IDE Helper — Generated stub for Intelephense.
+ * Laravel IDE Helper - Generated stub for Intelephense.
  *
  * Provides type information for Laravel facades, helpers, and Eloquent
  * so that static analysers (Intelephense, PHPStan, etc.) resolve symbols

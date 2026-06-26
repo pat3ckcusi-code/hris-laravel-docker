@@ -401,7 +401,7 @@
             $.getJSON('{{ route('api.employee.search') }}', { q: q }, function(rows){
                 const $box = $('#claEmployee_suggestions'); $box.empty(); if (!rows || !rows.length) { $box.hide(); return; }
                 rows.forEach(r=>{
-                    const label = (r.FullName || r.EmpNo) + (r.Position ? (' — ' + r.Position) : '') + ' (' + r.EmpNo + ')';
+                    const label = (r.FullName || r.EmpNo) + (r.Position ? (' - ' + r.Position) : '') + ' (' + r.EmpNo + ')';
                     const $it = $(`<a href="#" class="list-group-item list-group-item-action">${label}</a>`);
                     $it.data('empno', r.EmpNo); $it.data('label', label);
                     $it.on('click', function(e){ e.preventDefault(); $('#claEmployee').val($(this).data('empno')); $('#claEmployeeSearch').val($(this).data('label')); $box.hide(); applyFilters(); });

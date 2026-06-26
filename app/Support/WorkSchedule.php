@@ -20,7 +20,7 @@ use Illuminate\Support\Collection;
  * The five threshold fields map to the four CSC Form 48 slots plus the break
  * classification window:
  *   workStart   = shift start            (Form 48 AM In)
- *   morningEnd  = leave for meal break   (AM Out) — upper bound for "is an arrival punch"
+ *   morningEnd  = leave for meal break   (AM Out) - upper bound for "is an arrival punch"
  *   lunchReturn = return from meal break (PM In)
  *   noonEnd     = upper bound of the break-return window
  *   workEnd     = shift end              (PM Out)
@@ -184,7 +184,7 @@ class WorkSchedule
     /**
      * The midpoint of the off-period (the non-working gap from workEnd to the
      * next workStart), as 'HH:MM'. This is the single boundary that splits any
-     * punch into the shift it belongs to — see shiftDateFor().
+     * punch into the shift it belongs to - see shiftDateFor().
      */
     public function offPeriodMidpoint(): string
     {

@@ -19,7 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 5. Reliability
+ * ISO/IEC 25010 - 5. Reliability
  *
  * Tests: Maturity, Availability, Fault tolerance, Recoverability
  */
@@ -66,7 +66,7 @@ class ReliabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 5.1 FAULT TOLERANCE — missing data creates exceptions, not crashes
+    // 5.1 FAULT TOLERANCE - missing data creates exceptions, not crashes
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -86,7 +86,7 @@ class ReliabilityTest extends TestCase
         $service = new PayrollComputationService();
         $result = $service->compute($run, $admin);
 
-        // Should not crash — should create an exception record
+        // Should not crash - should create an exception record
         $exception = PayrollException::where('payroll_run_id', $run->id)
             ->where('type', 'no_assignments')
             ->first();
@@ -127,7 +127,7 @@ class ReliabilityTest extends TestCase
         $service = new PayrollComputationService();
         $result = $service->compute($run, $admin);
 
-        // Should not crash — error should be reported
+        // Should not crash - error should be reported
         $this->assertNotEmpty($result['errors']);
         $this->assertStringContainsString('SG-33', $result['errors'][0]);
 
@@ -170,7 +170,7 @@ class ReliabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 5.2 PAYROLL LOCKING — no modifications after lock
+    // 5.2 PAYROLL LOCKING - no modifications after lock
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -295,7 +295,7 @@ class ReliabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 5.4 RECOVERABILITY — data integrity after failure
+    // 5.4 RECOVERABILITY - data integrity after failure
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

@@ -177,16 +177,16 @@ class AdministrativeOfficerController extends Controller
         $data = $records->map(function ($r) {
             $leaveTypeLabel = $r->leave_type ?? '';
             $isWellness = stripos((string) $leaveTypeLabel, 'wlns') !== false || stripos((string) $leaveTypeLabel, 'wellness') !== false;
-            $reason = $isWellness ? 'Wellness' : ($r->reason ?? '—');
+            $reason = $isWellness ? 'Wellness' : ($r->reason ?? '-');
 
             return [
                 'id' => $r->id,
-                'employee' => $r->user->name ?? '—',
+                'employee' => $r->user->name ?? '-',
                 'leave_type' => $r->leave_type,
                 'reason' => $reason,
-                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '—').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '—'),
-                'total_days' => $r->total_days ?? '—',
-                'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '—',
+                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
+                'total_days' => $r->total_days ?? '-',
+                'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
                 'status' => $r->status,
                 'printing_allowed' => (bool) $r->printing_allowed,
             ];
@@ -240,12 +240,12 @@ class AdministrativeOfficerController extends Controller
 
         $data = $records->map(fn ($e) => [
             'id' => $e->id,
-            'employee' => optional($e->user)->name ?? '—',
-            'departure' => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '—',
-            'arrival' => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '—',
+            'employee' => optional($e->user)->name ?? '-',
+            'departure' => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '-',
+            'arrival' => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '-',
             'destination' => $e->destination,
-            'purpose' => $e->purpose ?? '—',
-            'filed_at' => $e->created_at ? $e->created_at->format('M d, Y') : '—',
+            'purpose' => $e->purpose ?? '-',
+            'filed_at' => $e->created_at ? $e->created_at->format('M d, Y') : '-',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -296,12 +296,12 @@ class AdministrativeOfficerController extends Controller
 
         $data = $records->map(fn ($l) => [
             'id' => $l->id,
-            'employee' => optional($l->user)->name ?? '—',
+            'employee' => optional($l->user)->name ?? '-',
             'application_type' => $l->application_type,
-            'travel_date' => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '—',
+            'travel_date' => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '-',
             'location' => $l->location,
-            'detail' => $l->detail ?? '—',
-            'filed_at' => $l->created_at ? $l->created_at->format('M d, Y') : '—',
+            'detail' => $l->detail ?? '-',
+            'filed_at' => $l->created_at ? $l->created_at->format('M d, Y') : '-',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -482,11 +482,11 @@ class AdministrativeOfficerController extends Controller
 
         $data = $records->map(fn ($r) => [
             'id' => $r->id,
-            'employee' => $r->user->name ?? '—',
+            'employee' => $r->user->name ?? '-',
             'leave_type' => $r->leave_type,
             'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
-            'total_days' => $r->total_days ?? '—',
-            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '—',
+            'total_days' => $r->total_days ?? '-',
+            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
             'vl' => optional($r->user->leaveBalance)->VL ?? '0',
             'sl' => optional($r->user->leaveBalance)->SL ?? '0',
         ]);
@@ -539,12 +539,12 @@ class AdministrativeOfficerController extends Controller
 
         $data = $records->map(fn ($e) => [
             'id' => $e->id,
-            'employee' => optional($e->user)->name ?? '—',
+            'employee' => optional($e->user)->name ?? '-',
             'departure' => Carbon::parse($e->departure_date)->format('M d, Y'),
             'arrival' => Carbon::parse($e->arrival_date)->format('M d, Y'),
             'destination' => $e->destination,
             'purpose' => $e->purpose ?? '',
-            'approved_at' => $e->updated_at ? $e->updated_at->format('M d, Y') : '—',
+            'approved_at' => $e->updated_at ? $e->updated_at->format('M d, Y') : '-',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -595,12 +595,12 @@ class AdministrativeOfficerController extends Controller
 
         $data = $records->map(fn ($l) => [
             'id' => $l->id,
-            'employee' => optional($l->user)->name ?? '—',
+            'employee' => optional($l->user)->name ?? '-',
             'application_type' => $l->application_type,
             'travel_date' => Carbon::parse($l->travel_date)->format('M d, Y'),
             'location' => $l->location,
             'purpose' => $l->purpose ?? '',
-            'approved_at' => $l->updated_at ? $l->updated_at->format('M d, Y') : '—',
+            'approved_at' => $l->updated_at ? $l->updated_at->format('M d, Y') : '-',
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);

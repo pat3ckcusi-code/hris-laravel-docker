@@ -262,7 +262,7 @@ const initializeWorkforceCharts = (root, initialData) => {
     // initial attach
     attachChartClickHandlers();
 
-    // Clickable summary cards — award recipients and 60+ employees
+    // Clickable summary cards - award recipients and 60+ employees
     root.querySelectorAll('.hrm-summary-card[data-filter]').forEach((card) => {
         card.addEventListener('click', () => {
             const filter = card.dataset.filter;
@@ -837,14 +837,14 @@ const bindWorkforcePlanning = (root) => {
 
                 const hiredEl = document.getElementById('planHired');
                 if (hiredEl) {
-                    hiredEl.querySelector('h3').textContent = hc.hired_30d ?? '—';
+                    hiredEl.querySelector('h3').textContent = hc.hired_30d ?? '-';
                     hiredEl.querySelector('small').textContent = `${pctSign(hc.hired_pct_change ?? 0)}% vs last month`;
                     hiredEl.querySelector('small').style.color = (hc.hired_pct_change ?? 0) >= 0 ? '#28a745' : '#dc3545';
                 }
 
                 const sepEl = document.getElementById('planSeparated');
                 if (sepEl) {
-                    sepEl.querySelector('h3').textContent = hc.separated_30d ?? '—';
+                    sepEl.querySelector('h3').textContent = hc.separated_30d ?? '-';
                     sepEl.querySelector('small').textContent = `${pctSign(hc.separated_pct_change ?? 0)}% vs last month`;
                     sepEl.querySelector('small').style.color = (hc.separated_pct_change ?? 0) > 0 ? '#dc3545' : '#28a745';
                 }
@@ -918,10 +918,10 @@ const bindAttendanceOverview = () => {
 
     const render = (data) => {
         // Summary cards
-        document.getElementById('attTotalEmployees').querySelector('h3').textContent = data.summary?.total_employees ?? '—';
-        document.getElementById('attAvgTardiness').querySelector('h3').textContent = data.summary?.avg_tardiness_minutes ?? '—';
-        document.getElementById('attAvgUndertime').querySelector('h3').textContent = data.summary?.avg_undertime_minutes ?? '—';
-        document.getElementById('attTotalAbsences').querySelector('h3').textContent = data.summary?.total_absences ?? '—';
+        document.getElementById('attTotalEmployees').querySelector('h3').textContent = data.summary?.total_employees ?? '-';
+        document.getElementById('attAvgTardiness').querySelector('h3').textContent = data.summary?.avg_tardiness_minutes ?? '-';
+        document.getElementById('attAvgUndertime').querySelector('h3').textContent = data.summary?.avg_undertime_minutes ?? '-';
+        document.getElementById('attTotalAbsences').querySelector('h3').textContent = data.summary?.total_absences ?? '-';
 
         // 3-month trend multi-line chart
         const trend = data.trend || [];
@@ -961,7 +961,7 @@ const bindAttendanceOverview = () => {
             deptChart.update();
         }
 
-        // Drilldown table — employees with >10 tardiness or undertime days
+        // Drilldown table - employees with >10 tardiness or undertime days
         const tbody = document.querySelector('#attDrillTable tbody');
         if (tbody) {
             const rows = data.drilldown || [];
@@ -972,7 +972,7 @@ const bindAttendanceOverview = () => {
                     const tarBadge = e.tardiness_count > 10 ? badge(e.tardiness_count, 'danger') : e.tardiness_count;
                     const utBadge = e.undertime_count > 10 ? badge(e.undertime_count, 'warning') : e.undertime_count;
                     return `<tr>
-                        <td>${e.emp_no ?? '—'}</td>
+                        <td>${e.emp_no ?? '-'}</td>
                         <td>${e.name ?? ''}</td>
                         <td>${e.department ?? ''}</td>
                         <td>${tarBadge}</td>

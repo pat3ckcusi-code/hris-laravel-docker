@@ -58,7 +58,7 @@ class ShiftController extends Controller
         $data = $this->validateShift($request);
         $shift->update($data);
 
-        // Times changed — recompute every employee currently on this shift.
+        // Times changed - recompute every employee currently on this shift.
         $shift->employees()->each(fn (User $u) => $this->recomputeEmployee($u));
 
         return back()->with('shift_status', "Shift template \"{$shift->name}\" updated and affected DTRs recomputed.");
@@ -69,7 +69,7 @@ class ShiftController extends Controller
         $this->authorizeManager($request->user());
 
         if ($shift->employees()->exists()) {
-            return back()->with('shift_error', "Cannot delete \"{$shift->name}\" — employees are still assigned to it.");
+            return back()->with('shift_error', "Cannot delete \"{$shift->name}\" - employees are still assigned to it.");
         }
 
         $shift->delete();

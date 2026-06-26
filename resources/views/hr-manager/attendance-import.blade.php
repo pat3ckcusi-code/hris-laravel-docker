@@ -311,7 +311,7 @@
                     </button>
                     <span class="import-submit-note">
                         <i class="fa-solid fa-circle-info"></i>
-                        Runs in the background — page won't wait.
+                        Runs in the background - page won't wait.
                     </span>
                 </div>
             </form>
@@ -320,7 +320,7 @@
         {{-- ── INFO PANEL ── --}}
         <aside class="import-info-panel">
 
-            {{-- Auto-import status chip — HR Manager only --}}
+            {{-- Auto-import status chip - HR Manager only --}}
             @if(\App\Support\RoleNormalizer::normalize((string) auth()->user()->access_level) === 'hr manager')
                 @if($setting?->auto_import_enabled)
                     @php

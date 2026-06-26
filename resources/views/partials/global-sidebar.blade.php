@@ -1,10 +1,10 @@
 {{--
-    Global Sidebar — self-contained, role-aware, icon-consistent.
+    Global Sidebar - self-contained, role-aware, icon-consistent.
     ─────────────────────────────────────────────────────────────
     To add a new sidebar item:
       1. Add its icon to $icons below (if new).
       2. Append ['label', 'icon', 'route', ...] to the role(s) in $menus.
-      That's it — no other files need editing.
+      That's it - no other files need editing.
 
     Optional keys on link items:
       'permission' => 'methodName'   auth()->user()->methodName() must return true
@@ -16,7 +16,7 @@
     $activeRole = strtolower(trim(str_replace(['_', '-'], ' ', (string) (auth()->user()->access_level ?? ''))));
 
     // ══════════════════════════════════════════════════════════
-    //  ICON MAP — change an icon here and it updates everywhere
+    //  ICON MAP - change an icon here and it updates everywhere
     // ══════════════════════════════════════════════════════════
     $icons = [
         // Navigation
@@ -37,6 +37,7 @@
         'cancel_leave'        => 'fas fa-calendar-xmark fa-fw',
         'leave_approvals'     => 'fas fa-clipboard-check fa-fw',
         'leave_integration'   => 'fas fa-calendar-alt fa-fw',
+        'uniform_inspection'  => 'fas fa-shirt fa-fw',
 
         // Department / Requests
         'pending_requests'    => 'fas fa-hourglass-half fa-fw',
@@ -88,7 +89,7 @@
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  ROLE MENUS — each role's ordered list of sidebar items
+    //  ROLE MENUS - each role's ordered list of sidebar items
     // ══════════════════════════════════════════════════════════
     $menus = [
 
@@ -128,6 +129,7 @@
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                       'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'DTR Excuses',        'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',           'active' => ['attendance.dtr-excuse.*']],
         ],
 
         // ─── Administrative Officer ────────────────────────
@@ -155,6 +157,7 @@
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                   'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'DTR Excuses',        'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',       'active' => ['attendance.dtr-excuse.*']],
         ],
 
         // ─── HR Manager ───────────────────────────────────
@@ -171,6 +174,7 @@
             ['section' => 'Attendance'],
             ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'DTR Excuses',        'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',     'active' => ['attendance.dtr-excuse.*']],
             ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',                   'active' => ['attendance.shifts*']],
             ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',                'active' => ['attendance.schedules*']],
             ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',     'active' => ['attendance.shift-schedule*']],
@@ -198,6 +202,7 @@
             ['label' => 'Leave Ledger',        'icon' => 'audit',           'route' => 'leave-manager.leave-ledger',      'active' => ['leave-manager.leave-ledger']],
             ['label' => 'Approved Leaves',    'icon' => 'approved_leaves',  'route' => 'leave-manager.approved-leaves',   'active' => ['leave-manager.approved-leaves']],
             ['label' => 'Employee Cancellation Requests', 'icon' => 'leave', 'route' => 'leave-manager.employee-cancellation-requests', 'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
+            ['label' => 'Uniform Inspections', 'icon' => 'uniform_inspection', 'route' => 'leave-manager.uniform-inspections.index', 'active' => ['leave-manager.uniform-inspections.*']],
         ],
 
         // ─── Payroll Manager ──────────────────────────────
@@ -280,7 +285,7 @@
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  BADGE RESOLVERS — centralized, computed once per request
+    //  BADGE RESOLVERS - centralized, computed once per request
     // ══════════════════════════════════════════════════════════
     //  Each key matches a 'badge' value on a menu item above.
     //  Closures are only called when the current role's menu
@@ -297,7 +302,7 @@
             ->where('status', 'Pending')
             ->count(),
 
-        // Add new badges here — they'll work for any role that references them:
+        // Add new badges here - they'll work for any role that references them:
         // 'pending_documents' => fn () => \App\Models\DocumentRequest::where('status', 'pending')->count(),
         'pending_requests_dept' => function () {
             $user = auth()->user();
@@ -435,7 +440,7 @@
                 @continue
             @endif
 
-            {{-- Permission gate — skip when user method returns false --}}
+            {{-- Permission gate - skip when user method returns false --}}
             @if (isset($item['permission']) && !auth()->user()->{$item['permission']}())
                 @continue
             @endif

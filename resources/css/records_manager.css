@@ -61,7 +61,7 @@ table.employee-table td {
     white-space: normal;
 }
 
-/* Column widths — action col gets more room for 3 stacked buttons */
+/* Column widths - action col gets more room for 3 stacked buttons */
 table.employee-table th:nth-child(1),
 table.employee-table td:nth-child(1),
 table.employee-table th:nth-child(2),

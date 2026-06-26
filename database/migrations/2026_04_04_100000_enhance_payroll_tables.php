@@ -57,9 +57,9 @@ return new class extends Migration
 
         // ── EmployeeEarning: add recurring_flag (alias-safe) ──
         // Column 'amount' and 'recurring' already exist from original migration.
-        // No changes needed — schema already has amount + recurring.
+        // No changes needed - schema already has amount + recurring.
 
-        // ── EmployeeDeduction: same — already has amount + recurring ──
+        // ── EmployeeDeduction: same - already has amount + recurring ──
 
         // ── EmployeeAssignment: add pds_id for linkage to user_pds ──
         if (! Schema::hasColumn('employee_assignments', 'pds_id')) {

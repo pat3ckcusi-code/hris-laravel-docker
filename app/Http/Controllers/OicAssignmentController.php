@@ -64,7 +64,7 @@ class OicAssignmentController extends Controller
             abort(403, 'OIC users cannot appoint further OICs.');
         }
 
-        // Role is always the appointing user's own role — never trust the submitted value.
+        // Role is always the appointing user's own role - never trust the submitted value.
         $appointingRole = $this->normalizeRole($user);
 
         $depts = $this->resolveUserDepts($user);

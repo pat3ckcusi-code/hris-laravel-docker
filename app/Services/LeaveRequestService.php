@@ -100,7 +100,7 @@ class LeaveRequestService
                 ->exists();
         }
 
-        // Administrative officer and HR manager may print any approved leave — mirrors ETA/locator behaviour.
+        // Administrative officer and HR manager may print any approved leave - mirrors ETA/locator behaviour.
         if ($leave->status === 'approved' && $isAoOrHrm) {
             return true;
         }

@@ -188,7 +188,7 @@
 
 @section('page_scripts')
 <script>
-// Confirm before toggling exemption — explain the consequence in plain language.
+// Confirm before toggling exemption - explain the consequence in plain language.
 document.querySelectorAll('.sched-exempt-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
         e.preventDefault();

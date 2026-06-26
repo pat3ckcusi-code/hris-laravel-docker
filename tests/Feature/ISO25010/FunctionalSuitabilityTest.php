@@ -30,7 +30,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 1. Functional Suitability
+ * ISO/IEC 25010 - 1. Functional Suitability
  *
  * Tests: Functional completeness, Functional correctness, Functional appropriateness
  */
@@ -104,7 +104,7 @@ class FunctionalSuitabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 1.1 FUNCTIONAL COMPLETENESS — every module delivers intended functions
+    // 1.1 FUNCTIONAL COMPLETENESS - every module delivers intended functions
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -273,7 +273,7 @@ class FunctionalSuitabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 1.2 FUNCTIONAL CORRECTNESS — accurate data mapping & computation
+    // 1.2 FUNCTIONAL CORRECTNESS - accurate data mapping & computation
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */
@@ -477,7 +477,7 @@ class FunctionalSuitabilityTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 1.3 FUNCTIONAL APPROPRIATENESS — correct module behavior
+    // 1.3 FUNCTIONAL APPROPRIATENESS - correct module behavior
     // ═══════════════════════════════════════════════════════════════════════
 
     /** @test */

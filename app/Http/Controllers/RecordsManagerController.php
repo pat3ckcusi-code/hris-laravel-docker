@@ -370,7 +370,7 @@ class RecordsManagerController extends Controller
             if ($deptName !== '') {
                 $deptId = $departmentLookup->get(strtolower($deptName));
                 if ($deptId === null) {
-                    $warnings[] = ['row' => $rowNumber, 'message' => "Department '{$deptName}' was not found — employee created without department assignment."];
+                    $warnings[] = ['row' => $rowNumber, 'message' => "Department '{$deptName}' was not found - employee created without department assignment."];
                 }
             }
 

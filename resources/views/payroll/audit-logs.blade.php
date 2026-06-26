@@ -32,13 +32,13 @@
                 @forelse($logs as $log)
                     <tr id="audit-row-{{ $log->id }}"
                         data-action="{{ $log->action }}"
-                        data-user="{{ $log->user->name ?? '—' }}"
-                        data-run="{{ $log->payroll_run_id ? 'Run #' . $log->payroll_run_id . ' — ' . ($log->payrollRun->period ?? '') : '—' }}"
-                        data-details="{{ $log->details ?? '—' }}"
+                        data-user="{{ $log->user->name ?? '-' }}"
+                        data-run="{{ $log->payroll_run_id ? 'Run #' . $log->payroll_run_id . ' - ' . ($log->payrollRun->period ?? '') : '-' }}"
+                        data-details="{{ $log->details ?? '-' }}"
                         data-date="{{ $log->created_at->format('M d, Y H:i:s') }}">
                         <td><span class="status-chip">{{ $log->action }}</span></td>
-                        <td>{{ $log->user->name ?? '—' }}</td>
-                        <td>{{ $log->payroll_run_id ?? '—' }}</td>
+                        <td>{{ $log->user->name ?? '-' }}</td>
+                        <td>{{ $log->payroll_run_id ?? '-' }}</td>
                         <td>{{ Str::limit($log->details, 80) }}</td>
                         <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
                         <td>

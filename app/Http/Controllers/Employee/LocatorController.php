@@ -331,7 +331,7 @@ class LocatorController extends Controller
         return redirect()->route('dashboard.employee.locator')->with('success', 'Locator updated successfully.');
     }
 
-    // Cancel locator (by owner) — accepts AJAX or form POST
+    // Cancel locator (by owner) - accepts AJAX or form POST
     public function cancel(Request $request, Locator $locator)
     {
         $user = Auth::user();

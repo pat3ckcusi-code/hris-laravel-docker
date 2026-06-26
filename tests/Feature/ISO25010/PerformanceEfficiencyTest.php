@@ -17,7 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ISO/IEC 25010 — 2. Performance Efficiency
+ * ISO/IEC 25010 - 2. Performance Efficiency
  *
  * Tests: Time behaviour, Resource utilisation, Capacity
  */
@@ -130,7 +130,7 @@ class PerformanceEfficiencyTest extends TestCase
         $elapsed = microtime(true) - $start;
 
         $response->assertStatus(200);
-        $this->assertLessThan(2, $elapsed, "Dashboard loaded in {$elapsed}s — too slow");
+        $this->assertLessThan(2, $elapsed, "Dashboard loaded in {$elapsed}s - too slow");
     }
 
     /**
@@ -146,7 +146,7 @@ class PerformanceEfficiencyTest extends TestCase
         $elapsed = microtime(true) - $start;
 
         $response->assertStatus(200);
-        $this->assertLessThan(3, $elapsed, "HR Manager dashboard loaded in {$elapsed}s — too slow");
+        $this->assertLessThan(3, $elapsed, "HR Manager dashboard loaded in {$elapsed}s - too slow");
     }
 
     /**
@@ -162,7 +162,7 @@ class PerformanceEfficiencyTest extends TestCase
         $elapsed = microtime(true) - $start;
 
         $response->assertStatus(200);
-        $this->assertLessThan(3, $elapsed, "Payroll dashboard loaded in {$elapsed}s — too slow");
+        $this->assertLessThan(3, $elapsed, "Payroll dashboard loaded in {$elapsed}s - too slow");
     }
 
     /**

@@ -31,16 +31,7 @@ class LeaveManagerController extends Controller
      */
     public function manageBalance(Request $request)
     {
-        $allowed = self::BALANCE_ACCESS_LEVELS;
-
         $balances = LeaveBalance::with('user')
-            ->whereHas('user', function ($query) use ($allowed) {
-                $query->whereRaw(
-                    "LOWER(REPLACE(REPLACE(access_level, '_', ' '), '-', ' ')) IN (".
-                    implode(',', array_fill(0, count($allowed), '?')).')',
-                    $allowed
-                );
-            })
             ->join('users', 'leave_balances.user_id', '=', 'users.id')
             ->orderBy('users.EmpNo')
             ->select('leave_balances.*')
@@ -796,7 +787,8 @@ class LeaveManagerController extends Controller
         }
 
         $rows = User::query()
-            ->select(['id', 'EmpNo', 'first_name', 'last_name', 'designation'])
+            ->with(['department:Dept_id,Dept_name'])
+            ->select(['id', 'EmpNo', 'first_name', 'last_name', 'designation', 'Dept_id'])
             ->where(function ($w) use ($q) {
                 $w->where('EmpNo', 'like', "%{$q}%")
                     ->orWhere('first_name', 'like', "%{$q}%")
@@ -806,9 +798,13 @@ class LeaveManagerController extends Controller
             ->get()
             ->map(function ($u) {
                 return [
+                    'id' => $u->id,
                     'EmpNo' => $u->EmpNo,
+                    'first_name' => $u->first_name,
+                    'last_name' => $u->last_name,
                     'FullName' => trim((($u->last_name ?? '').', '.($u->first_name ?? ''))),
                     'Position' => $u->designation ?? '',
+                    'department' => $u->department ? ['Dept_id' => $u->department->Dept_id, 'Dept_name' => $u->department->Dept_name] : null,
                 ];
             });
 
@@ -897,7 +893,7 @@ class LeaveManagerController extends Controller
 
         $deptHead->notify(new HrisTransactionNotification(
             requestType: 'Leave Balance Alert',
-            status: 'Critical Balance — Action Required',
+            status: 'Critical Balance - Action Required',
             details: [
                 'Employee' => $empName,
                 'Department' => $deptName,
@@ -983,8 +979,8 @@ class LeaveManagerController extends Controller
             'date' => $e->transaction_date?->toDateString(),
             'type' => $e->transaction_type,
             'leave_type' => $e->leave_type,
-            'days_present' => $e->days_present !== null ? number_format($e->days_present, 3) : '—',
-            'abs_wop_days' => $e->abs_wop_days !== null ? number_format($e->abs_wop_days, 3) : '—',
+            'days_present' => $e->days_present !== null ? number_format($e->days_present, 3) : '-',
+            'abs_wop_days' => $e->abs_wop_days !== null ? number_format($e->abs_wop_days, 3) : '-',
             'credit_vl' => number_format($e->credit_vl ?? 0, 3),
             'credit_sl' => number_format($e->credit_sl ?? 0, 3),
             'debit_vl' => number_format($e->debit_vl ?? 0, 3),
@@ -992,7 +988,7 @@ class LeaveManagerController extends Controller
             'vl_balance_after' => number_format($e->vl_balance_after, 3),
             'sl_balance_after' => number_format($e->sl_balance_after, 3),
             'remarks' => $e->remarks,
-            'posted_by' => $e->is_system ? 'System' : ($e->createdBy ? trim(($e->createdBy->last_name ?? '').', '.($e->createdBy->first_name ?? '')) : '—'),
+            'posted_by' => $e->is_system ? 'System' : ($e->createdBy ? trim(($e->createdBy->last_name ?? '').', '.($e->createdBy->first_name ?? '')) : '-'),
         ])->values();
 
         return response()->json(['data' => $data]);
@@ -1020,16 +1016,16 @@ class LeaveManagerController extends Controller
         $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
 
         $data = $records->map(fn ($r) => [
-            'emp_no' => $r->user?->EmpNo ?? '—',
-            'name' => $r->user ? trim(($r->user->last_name ?? '').', '.($r->user->first_name ?? '')) : '—',
-            'department' => $r->user ? ($departments[$r->user->Dept_id] ?? '—') : '—',
+            'emp_no' => $r->user?->EmpNo ?? '-',
+            'name' => $r->user ? trim(($r->user->last_name ?? '').', '.($r->user->first_name ?? '')) : '-',
+            'department' => $r->user ? ($departments[$r->user->Dept_id] ?? '-') : '-',
             'year' => $r->year,
             'month' => Carbon::create($r->year, $r->month, 1)->format('F'),
             'days_present' => number_format((float) $r->days_present, 3),
             'abs_wop_days' => number_format((float) $r->abs_wop_days, 3),
-            'computed_vl' => $r->computed_vl !== null ? number_format($r->computed_vl, 3) : '—',
-            'computed_sl' => $r->computed_sl !== null ? number_format($r->computed_sl, 3) : '—',
-            'processed_at' => $r->processed_at ? $r->processed_at->format('Y-m-d H:i') : '—',
+            'computed_vl' => $r->computed_vl !== null ? number_format($r->computed_vl, 3) : '-',
+            'computed_sl' => $r->computed_sl !== null ? number_format($r->computed_sl, 3) : '-',
+            'processed_at' => $r->processed_at ? $r->processed_at->format('Y-m-d H:i') : '-',
         ])->values();
 
         return response()->json(['data' => $data]);

@@ -58,6 +58,6 @@ class AttendanceImportController extends Controller
 
         return redirect()
             ->route('hr-manager.attendance.import')
-            ->with('success', "Attendance import queued: {$fromFormatted} to {$toFormatted} — {$deptLabel}. {$dayCount} job(s) dispatched. Results will be recorded in the audit log.");
+            ->with('success', "Attendance import queued: {$fromFormatted} to {$toFormatted} - {$deptLabel}. {$dayCount} job(s) dispatched. Results will be recorded in the audit log.");
     }
 }

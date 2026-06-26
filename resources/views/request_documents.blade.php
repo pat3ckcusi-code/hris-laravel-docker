@@ -33,7 +33,7 @@
                                 @forelse ($documentTypes as $docType)
                                     <option value="{{ $docType->name }}">{{ $docType->name }}</option>
                                 @empty
-                                    <option value="" disabled>No document types available — contact Front Desk</option>
+                                    <option value="" disabled>No document types available - contact Front Desk</option>
                                 @endforelse
                             </select>
                         </label>

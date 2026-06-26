@@ -717,8 +717,8 @@ class HRManagerController extends Controller
                 [
                     'Employee' => $employee->name,
                     'Department' => $dept?->Dept_name ?? 'N/A',
-                    'Tardiness Days' => ($payload['tardiness_count'] ?? '—').' day(s)',
-                    'Undertime Days' => ($payload['undertime_count'] ?? '—').' day(s)',
+                    'Tardiness Days' => ($payload['tardiness_count'] ?? '-').' day(s)',
+                    'Undertime Days' => ($payload['undertime_count'] ?? '-').' day(s)',
                 ],
                 $request->user()->name,
                 'This employee has exceeded the tardiness/undertime threshold this month. Please take appropriate action.'
@@ -859,7 +859,7 @@ class HRManagerController extends Controller
         $validated['email_template_subject'] = $validated['email_template_subject'] ?? '';
         $validated['email_template_body'] = $validated['email_template_body'] ?? '';
 
-        // Never overwrite the stored password with blank — only update when a new value is provided
+        // Never overwrite the stored password with blank - only update when a new value is provided
         if (($validated['excel_sheet_password'] ?? '') === '') {
             unset($validated['excel_sheet_password']);
         }

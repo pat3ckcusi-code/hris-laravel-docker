@@ -74,8 +74,8 @@
                 <tbody>
                     @foreach($run->details as $detail)
                         <tr>
-                            <td>{{ $detail->employee->name ?? '—' }}</td>
-                            <td>{{ $detail->days_worked ?? '—' }}</td>
+                            <td>{{ $detail->employee->name ?? '-' }}</td>
+                            <td>{{ $detail->days_worked ?? '-' }}</td>
                             <td>{{ $detail->late_minutes ?? 0 }}</td>
                             <td>{{ $detail->undertime_minutes ?? 0 }}</td>
                             <td>{{ $detail->absent_days ?? 0 }}</td>
@@ -108,9 +108,9 @@
                 <tbody>
                     @foreach($run->approvalLogs as $log)
                         <tr>
-                            <td>{{ $log->approver->name ?? '—' }}</td>
+                            <td>{{ $log->approver->name ?? '-' }}</td>
                             <td><span class="status-chip status-{{ $log->status }}">{{ ucfirst($log->status) }}</span></td>
-                            <td>{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '—' }}</td>
+                            <td>{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '-' }}</td>
                         </tr>
                     @endforeach
                 </tbody>

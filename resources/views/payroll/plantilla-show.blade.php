@@ -43,9 +43,9 @@
                             data-id="{{ $a->id }}"
                             data-start="{{ $a->start_date->format('Y-m-d') }}"
                             data-end="{{ $a->end_date ? $a->end_date->format('Y-m-d') : '' }}">
-                            <td>{{ $a->employee->name ?? '—' }}</td>
+                            <td>{{ $a->employee->name ?? '-' }}</td>
                             <td>{{ $a->start_date->format('M d, Y') }}</td>
-                            <td>{{ $a->end_date ? $a->end_date->format('M d, Y') : '—' }}</td>
+                            <td>{{ $a->end_date ? $a->end_date->format('M d, Y') : '-' }}</td>
                             <td>
                                 @if(!$a->end_date || $a->end_date->isFuture())
                                     <span class="status-chip status-approved">Active</span>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\LeaveDate;
@@ -72,10 +73,10 @@ class DtrController extends Controller
      * Resolve the acting user's access tier.
      *
      * Returns:
-     *   isAdmin   — full cross-department access (ADMIN_ROLES)
-     *   isOfficer — department head or administrative officer: admin-like UI scoped to their department(s)
-     *   deptId    — first dept ID (for view backward compat); null for full admins and plain employees
-     *   deptIds   — all dept IDs the officer manages; empty for admins/employees
+     *   isAdmin   - full cross-department access (ADMIN_ROLES)
+     *   isOfficer - department head or administrative officer: admin-like UI scoped to their department(s)
+     *   deptId    - first dept ID (for view backward compat); null for full admins and plain employees
+     *   deptIds   - all dept IDs the officer manages; empty for admins/employees
      *
      * Aborts 403 for any role outside these three tiers.
      *
@@ -165,7 +166,7 @@ class DtrController extends Controller
             ]));
             $employee = User::findOrFail($request->integer('employee_id'));
 
-            // Officers are locked to their managed departments — reject cross-dept requests.
+            // Officers are locked to their managed departments - reject cross-dept requests.
             if ($isOfficer && ! in_array((int) $employee->Dept_id, $officerDeptIds)) {
                 abort(403, 'You may only view DTR records for employees in your own department.');
             }
@@ -176,7 +177,7 @@ class DtrController extends Controller
 
         $draw = $request->integer('draw', 1);
 
-        // Exempt employees keep no DTR — surface the exempt state instead of rows.
+        // Exempt employees keep no DTR - surface the exempt state instead of rows.
         if ($employee->dtr_exempt) {
             return response()->json([
                 'draw' => $draw,
@@ -274,6 +275,12 @@ class DtrController extends Controller
                 $locatorDateMap[$dateStr] = $cur;
             });
 
+        // Build excuse map: 'Y-m-d' → DtrExcuse for the period.
+        $excuseMap = DtrExcuse::where('user_id', $employee->id)
+            ->whereBetween('date', [$from, $to])
+            ->get()
+            ->keyBy(fn ($e) => Carbon::parse($e->date)->format('Y-m-d'));
+
         // Dates already covered by a DTR row.
         $dtrDates = $dtrRows->map(fn (Dtr $d) => Carbon::parse($d->date)->format('Y-m-d'))->flip()->toArray();
 
@@ -292,8 +299,9 @@ class DtrController extends Controller
 
             $showEta = $isEtaDay && $etaPunchCount < 4;
 
-            // Locator applies only when leave and ETA do not take priority.
-            $loc = (! $leaveCode && ! $isEtaDay) ? ($locatorDateMap[$dateStr] ?? null) : null;
+            // Excuse and locator apply only when leave and ETA do not take priority.
+            $excuse = (! $leaveCode && ! $isEtaDay) ? ($excuseMap[$dateStr] ?? null) : null;
+            $loc = (! $leaveCode && ! $isEtaDay && ! $excuse) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
             // Resolve effective display values for each slot.
             if ($leaveCode) {
@@ -305,33 +313,40 @@ class DtrController extends Controller
                 $tPmIn = $dtr->time_in_pm ?: 'ETA';
                 $tPmOut = $dtr->time_out_pm ?: 'ETA';
                 $lateMin = $utMin = 0;
+            } elseif ($excuse) {
+                $tAmIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? ($dtr->time_in_am ?: 'EXCUSED') : ($dtr->time_in_am ?? '-');
+                $tAmOut = ($excuse->excuse_am_out || $excuse->is_full_day) ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
+                $tPmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
+                $tPmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
+                $lateMin = ($excuse->excuse_am_in || $excuse->excuse_pm_in || $excuse->is_full_day) ? 0 : ($dtr->late_minutes ?? 0);
+                $utMin = ($excuse->excuse_pm_out || $excuse->is_full_day) ? 0 : ($dtr->undertime_minutes ?? 0);
             } elseif ($loc) {
                 [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] = Form48ExportService::resolveLocatorSlots(
                     $dtr->time_in_am, $dtr->time_out_am,
                     $dtr->time_in_pm, $dtr->time_out_pm,
                     $loc
                 );
-                $tAmIn = $rawAmIn ?? '—';
-                $tAmOut = $rawAmOut ?? '—';
-                $tPmIn = $rawPmIn ?? '—';
-                $tPmOut = $rawPmOut ?? '—';
+                $tAmIn = $rawAmIn ?? '-';
+                $tAmOut = $rawAmOut ?? '-';
+                $tPmIn = $rawPmIn ?? '-';
+                $tPmOut = $rawPmOut ?? '-';
                 // Recompute per-slot: the old OR logic zeroed all tardiness whenever
                 // any covered slot was LOCATOR, hiding genuine late AM In punches.
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
                     $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $rowSchedule
                 );
             } else {
-                $tAmIn = $dtr->time_in_am ?? '—';
-                $tAmOut = $dtr->time_out_am ?? '—';
-                $tPmIn = $dtr->time_in_pm ?? '—';
-                $tPmOut = $dtr->time_out_pm ?? '—';
+                $tAmIn = $dtr->time_in_am ?? '-';
+                $tAmOut = $dtr->time_out_am ?? '-';
+                $tPmIn = $dtr->time_in_pm ?? '-';
+                $tPmOut = $dtr->time_out_pm ?? '-';
                 $lateMin = $dtr->late_minutes ?? 0;
                 $utMin = $dtr->undertime_minutes ?? 0;
             }
 
             // Per-cell late/undertime flags: only highlight the slot that actually caused the penalty.
             // Using the row-level is_late class to color AM In was wrong when lateness came from PM In.
-            $slotHm = fn (string $v): ?string => ! in_array($v, ['—', 'LOCATOR', 'ETA'], true) && strlen($v) >= 5
+            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'LOCATOR', 'ETA', 'EXCUSED'], true) && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $slotHm($tAmIn);
@@ -358,17 +373,19 @@ class DtrController extends Controller
                 'source_badge' => match ($dtr->source) {
                     'biometric' => '<span class="hris-badge badge-approved">Biometric</span>',
                     'manual' => '<span class="hris-badge" style="background:#e5e7eb;color:#374151;">Manual</span>',
-                    default => '<span style="color:#9ca3af;">—</span>',
+                    default => '<span style="color:#9ca3af;">-</span>',
                 },
                 'status_badge' => $leaveCode
                     ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">On Leave ('.$leaveCode.')</span>'
                     : ($showEta
                         ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">On Official Travel</span>'
-                        : ($loc
-                            ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
-                            : ($dtr->is_absent
-                                ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                : '<span class="hris-badge badge-approved">Present</span>'))),
+                        : ($excuse
+                            ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
+                            : ($loc
+                                ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
+                                : ($dtr->is_absent
+                                    ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                    : '<span class="hris-badge badge-approved">Present</span>')))),
             ]);
         }
 
@@ -418,6 +435,29 @@ class DtrController extends Controller
             ]);
         }
 
+        // Add excuse-only rows: excused days with no biometric/leave/ETA record.
+        foreach ($excuseMap as $dateStr => $excuse) {
+            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])) {
+                continue;
+            }
+            $data->push([
+                'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                'time_in_am' => ($excuse->excuse_am_in || $excuse->is_full_day) ? 'EXCUSED' : '-',
+                'time_out_am' => ($excuse->excuse_am_out || $excuse->is_full_day) ? 'EXCUSED' : '-',
+                'time_in_pm' => ($excuse->excuse_pm_in || $excuse->is_full_day) ? 'EXCUSED' : '-',
+                'time_out_pm' => ($excuse->excuse_pm_out || $excuse->is_full_day) ? 'EXCUSED' : '-',
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'is_late' => false,
+                'is_undertime' => false,
+                'is_am_in_late' => false,
+                'is_pm_in_late' => false,
+                'is_pm_out_undertime' => false,
+                'source_badge' => '',
+                'status_badge' => '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>',
+            ]);
+        }
+
         // Add locator-only rows: approved locator days with no biometric/leave/ETA record.
         foreach ($locatorDateMap as $dateStr => $loc) {
             if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])) {
@@ -425,10 +465,10 @@ class DtrController extends Controller
             }
             $data->push([
                 'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
-                'time_in_am' => $loc['covers_am_in'] ? 'LOCATOR' : '—',
-                'time_out_am' => $loc['covers_am_out'] ? 'LOCATOR' : '—',
-                'time_in_pm' => $loc['covers_pm_in'] ? 'LOCATOR' : '—',
-                'time_out_pm' => $loc['covers_pm_out'] ? 'LOCATOR' : '—',
+                'time_in_am' => $loc['covers_am_in'] ? 'LOCATOR' : '-',
+                'time_out_am' => $loc['covers_am_out'] ? 'LOCATOR' : '-',
+                'time_in_pm' => $loc['covers_pm_in'] ? 'LOCATOR' : '-',
+                'time_out_pm' => $loc['covers_pm_out'] ? 'LOCATOR' : '-',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
                 'is_late' => false,
@@ -453,23 +493,23 @@ class DtrController extends Controller
             if ($assignment->type === 'field_work') {
                 $data->push([
                     'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
-                    'time_in_am' => '—', 'time_out_am' => '—',
-                    'time_in_pm' => '—', 'time_out_pm' => '—',
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
-                    'source_badge' => '<span style="color:#9ca3af;">—</span>',
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>',
                 ]);
             } else {
                 $data->push([
                     'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
-                    'time_in_am' => '—', 'time_out_am' => '—',
-                    'time_in_pm' => '—', 'time_out_pm' => '—',
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
-                    'source_badge' => '<span style="color:#9ca3af;">—</span>',
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>',
                 ]);
             }
@@ -531,10 +571,11 @@ class DtrController extends Controller
         $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
         $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
         $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+        $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
         $spreadsheet = IOFactory::load($templatePath);
         $sheet = $spreadsheet->getActiveSheet();
 
-        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap);
 
         $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'DTR';
         $downloadName = "CSC_Form_48_({$safe}).xlsx";
@@ -550,7 +591,7 @@ class DtrController extends Controller
         );
     }
 
-    // ── DEPARTMENT BULK — ZIP (one xlsx per employee) ─────────────────────────
+    // ── DEPARTMENT BULK - ZIP (one xlsx per employee) ─────────────────────────
 
     public function downloadDepartmentZip(Request $request, Form48ExportService $exportService): BinaryFileResponse|RedirectResponse
     {
@@ -604,13 +645,14 @@ class DtrController extends Controller
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
             $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+            $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
 
             $spreadsheet = IOFactory::load($templatePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap);
 
             $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'Employee_'.$employee->id;
             $tmpPath = tempnam(sys_get_temp_dir(), 'dtr_');
@@ -653,7 +695,7 @@ class DtrController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
-    // ── DEPARTMENT BULK — MULTI-SHEET WORKBOOK ────────────────────────────────
+    // ── DEPARTMENT BULK - MULTI-SHEET WORKBOOK ────────────────────────────────
 
     public function downloadDepartmentForm48(Request $request, Form48ExportService $exportService): StreamedResponse|JsonResponse
     {
@@ -709,6 +751,7 @@ class DtrController extends Controller
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
             $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+            $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
@@ -722,7 +765,7 @@ class DtrController extends Controller
 
             // addSheet before fill so merged-cell operations resolve against the workbook.
             $workbook->addSheet($clone);
-            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap);
             $filled++;
         }
 

@@ -56,7 +56,7 @@
                             <td>{{ $run->id }}</td>
                             <td>{{ $run->period }}</td>
                             <td><span class="status-chip status-{{ $run->status }}">{{ ucfirst($run->status) }}</span></td>
-                            <td>{{ $run->creator->name ?? '—' }}</td>
+                            <td>{{ $run->creator->name ?? '-' }}</td>
                             <td>{{ $run->created_at->format('M d, Y') }}</td>
                             <td><a href="{{ route('payroll.runs.show', $run->id) }}" class="btn btn-sm btn-outline">View</a></td>
                         </tr>
@@ -87,8 +87,8 @@
                     @foreach($recentAudit as $log)
                         <tr>
                             <td><span class="status-chip">{{ $log->action }}</span></td>
-                            <td>{{ $log->user->name ?? '—' }}</td>
-                            <td>{{ $log->payroll_run_id ?? '—' }}</td>
+                            <td>{{ $log->user->name ?? '-' }}</td>
+                            <td>{{ $log->payroll_run_id ?? '-' }}</td>
                             <td>{{ str($log->details)->limit(60) }}</td>
                             <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
                         </tr>

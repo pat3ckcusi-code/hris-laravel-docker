@@ -32,8 +32,8 @@
                         data-description="{{ $d->description ?? '' }}"
                         data-formula="{{ $d->formula ?? '' }}">
                         <td>{{ $d->type }}</td>
-                        <td>{{ $d->description ?? '—' }}</td>
-                        <td>{{ $d->formula ?? '—' }}</td>
+                        <td>{{ $d->description ?? '-' }}</td>
+                        <td>{{ $d->formula ?? '-' }}</td>
                         <td>{{ $d->employee_deductions_count }}</td>
                         <td>{{ $d->loans_count }}</td>
                         <td>
