@@ -168,7 +168,7 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(function ($r) {
             $leaveTypeLabel = $r->leave_type ?? '';
@@ -176,16 +176,19 @@ class DepartmentHeadController extends Controller
             $reason = $isWellness ? 'Wellness' : ($r->reason ?? '-');
 
             return [
-                'id' => $r->id,
-                'employee' => $r->user->name ?? '-',
-                'leave_type' => $r->leave_type,
-                'reason' => $reason,
-                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
-                'total_days' => $r->total_days ?? '-',
-                'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
-                'status' => $r->status,
-                'printing_allowed' => (bool) $r->printing_allowed,
-                'rescheduled_from_id' => $r->rescheduled_from_id,
+                'id'                   => $r->id,
+                'employee'             => $r->user->name ?? '-',
+                'leave_type'           => $r->leave_type,
+                'reason'               => $reason,
+                'period'               => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
+                'total_days'           => $r->total_days ?? '-',
+                'filed_at'             => $r->created_at ? $r->created_at->format('M d, Y') : '-',
+                'status'               => $r->status,
+                'printing_allowed'     => (bool) $r->printing_allowed,
+                'rescheduled_from_id'  => $r->rescheduled_from_id,
+                'print_count'          => (int) ($r->print_count ?? 0),
+                'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+                'last_printed_by_name' => optional($r->lastPrintedBy)->name,
             ];
         });
 
@@ -367,17 +370,19 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($r) => [
-            'id' => $r->id,
-            'employee' => $r->user->name ?? '-',
-            'leave_type' => $r->leave_type,
-            'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
-            'total_days' => $r->total_days ?? '-',
-            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
-            'vl' => optional($r->user->leaveBalance)->VL ?? '0',
-            'sl' => optional($r->user->leaveBalance)->SL ?? '0',
+            'id'                   => $r->id,
+            'employee'             => $r->user->name ?? '-',
+            'leave_type'           => $r->leave_type,
+            'period'               => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
+            'total_days'           => $r->total_days ?? '-',
+            'approved_at'          => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
+            'vl'                   => optional($r->user->leaveBalance)->VL ?? '0',
+            'sl'                   => optional($r->user->leaveBalance)->SL ?? '0',
+            'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+            'last_printed_by_name' => optional($r->lastPrintedBy)->name,
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);

@@ -58,7 +58,7 @@ class LeaveRequestController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        $leaveRequests = $query->paginate(10)->withQueryString();
+        $leaveRequests = $query->with('lastPrintedBy')->paginate(10)->withQueryString();
 
         return view('employee.leave-management', compact('leaveRequests', 'user'));
     }
@@ -94,6 +94,12 @@ class LeaveRequestController extends Controller
             abort(403);
         }
 
+        if (! $leave->last_printed_at) {
+            $leave->last_printed_at = now();
+            $leave->last_printed_by = $user->id;
+            $leave->save();
+        }
+
         return $this->leaveRequestService->generateExcelResponse($leave);
     }
 
@@ -112,10 +118,14 @@ class LeaveRequestController extends Controller
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
+        $leave->loadMissing('lastPrintedBy');
+
         return response()->json([
-            'id' => $leave->id,
-            'status' => $leave->status,
-            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+            'id'                   => $leave->id,
+            'status'               => $leave->status,
+            'printing_allowed'     => (bool) ($leave->printing_allowed ?? false),
+            'last_printed_at'      => $leave->last_printed_at ? $leave->last_printed_at->format('M d, Y') : null,
+            'last_printed_by_name' => optional($leave->lastPrintedBy)->name,
         ]);
     }
 

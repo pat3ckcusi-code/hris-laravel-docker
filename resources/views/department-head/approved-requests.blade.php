@@ -347,8 +347,31 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('approvedModal').showModal();
     };
 
+    function confirmLeavePrint(url, printedAt, printedBy) {
+        if (!printedAt) {
+            window.open(url, '_blank');
+            return;
+        }
+        var msg = 'This leave form was already printed on <strong>' + printedAt + '</strong>';
+        if (printedBy) msg += ' by <strong>' + printedBy + '</strong>';
+        msg += '.<br>Do you still want to print a copy?';
+        Swal.fire({
+            title: 'Already Printed',
+            html: msg,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, print anyway',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#2563eb',
+        }).then(function (result) {
+            if (result.isConfirmed) window.open(url, '_blank');
+        });
+    }
+
     window.printLeave = function (id) {
-        window.open('{{ url('dashboard/employee/leave') }}/' + id + '/print', '_blank');
+        var row = leaveRows[id];
+        var url = '{{ url('dashboard/employee/leave') }}/' + id + '/print';
+        confirmLeavePrint(url, row ? (row.last_printed_at || null) : null, row ? (row.last_printed_by_name || null) : null);
     };
 });
 </script>

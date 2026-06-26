@@ -93,9 +93,18 @@ class LeaveRequest extends Model
         // printing deduction tracking
         'printing_deduction_applied',
         'printing_deduction_details',
+        // print history tracking
+        'print_count',
+        'last_printed_at',
+        'last_printed_by',
         // reschedule tracking
         'reschedule_status',
         'rescheduled_from_id',
+    ];
+
+    protected $casts = [
+        'print_count'     => 'integer',
+        'last_printed_at' => 'datetime',
     ];
 
     public function user()
@@ -106,6 +115,11 @@ class LeaveRequest extends Model
     public function leaveDates()
     {
         return $this->hasMany(LeaveDate::class);
+    }
+
+    public function lastPrintedBy()
+    {
+        return $this->belongsTo(User::class, 'last_printed_by');
     }
 
     public function rescheduledFrom()

@@ -221,13 +221,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>'
                                   + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')"><i class="fa fa-unlock"></i> Allow Printing</button>';
                         } else {
-                            btns += '<a href="/dashboard/employee/leave/' + row.id + '/print" class="hris-btn hris-btn-primary hris-btn-sm" target="_blank"><i class="fa fa-print"></i> Print</a>'
+                            btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>'
                                   + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApprove(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
                                   + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>';
                         }
                     } else if (row.status === 'approved') {
                         if (row.printing_allowed) {
-                            btns += '<a href="/dashboard/employee/leave/' + row.id + '/print" class="hris-btn hris-btn-primary hris-btn-sm" target="_blank"><i class="fa fa-print"></i> Print</a>';
+                            btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>';
                         } else {
                             btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing not allowed until approved."><i class="fa fa-print"></i> Print</button>';
                         }
@@ -372,6 +372,34 @@ function openPendingLocatorModal(id) {
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.filed_at + '</td></tr>'
         + '</tbody></table>';
     document.getElementById('pendingModal').showModal();
+}
+
+// ── Print confirmation ────────────────────────────────────────────────────────
+function confirmLeavePrint(url, printedAt, printedBy) {
+    if (!printedAt) {
+        window.open(url, '_blank');
+        return;
+    }
+    var msg = 'This leave form was already printed on <strong>' + printedAt + '</strong>';
+    if (printedBy) msg += ' by <strong>' + printedBy + '</strong>';
+    msg += '.<br>Do you still want to print a copy?';
+    Swal.fire({
+        title: 'Already Printed',
+        html: msg,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, print anyway',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#2563eb',
+    }).then(function (result) {
+        if (result.isConfirmed) window.open(url, '_blank');
+    });
+}
+
+function printLeave(id) {
+    var row = leaveRows[id];
+    var url = '/dashboard/employee/leave/' + id + '/print';
+    confirmLeavePrint(url, row ? (row.last_printed_at || null) : null, row ? (row.last_printed_by_name || null) : null);
 }
 
 // ── Leave actions ─────────────────────────────────────────────────────────────

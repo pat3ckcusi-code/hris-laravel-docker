@@ -976,8 +976,13 @@
                                     <div class="action-btns">
                                         <button type="button" class="hris-btn hris-btn-secondary" onclick="openLeaveModal({{ $leave->id }})">View</button>
                                         @if(!in_array($leave->status, ['cancelled','rejected','declined']))
+                                            @php
+                                                $_printedAt = $leave->last_printed_at?->format('M d, Y');
+                                                $_printedBy = optional($leave->lastPrintedBy)->name;
+                                            @endphp
                                             @if(!empty($leave->printing_allowed) || ($canPrintOnApproval && $leave->status === 'approved'))
-                                                <a href="{{ route('employee.leave.print.single', $leave->id) }}" class="hris-btn hris-btn-primary" target="_blank" id="print-btn-{{ $leave->id }}">Print</a>
+                                                <button class="hris-btn hris-btn-primary" id="print-btn-{{ $leave->id }}"
+                                                    onclick="confirmLeavePrint('{{ route('employee.leave.print.single', $leave->id) }}', {{ json_encode($_printedAt) }}, {{ json_encode($_printedBy) }})">Print</button>
                                             @else
                                                 <button class="hris-btn hris-btn-secondary" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}">Print</button>
                                             @endif
@@ -1126,6 +1131,27 @@
 
 @section('page_scripts_after')
 <script>
+function confirmLeavePrint(url, printedAt, printedBy) {
+    if (!printedAt) {
+        window.open(url, '_blank');
+        return;
+    }
+    var msg = 'This leave form was already printed on <strong>' + printedAt + '</strong>';
+    if (printedBy) msg += ' by <strong>' + printedBy + '</strong>';
+    msg += '.<br>Do you still want to print a copy?';
+    Swal.fire({
+        title: 'Already Printed',
+        html: msg,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, print anyway',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#2563eb',
+    }).then(function (result) {
+        if (result.isConfirmed) window.open(url, '_blank');
+    });
+}
+
 function openLeaveModal(id) {
     const row = document.getElementById(`leave-row-${id}`);
     if (!row) return alert('Details not available');
@@ -1408,19 +1434,19 @@ function rsUpdateTotal() {
                     if (!res.ok) return;
                     const data = await res.json();
                     if (data && data.printing_allowed) {
-                        // replace disabled button with real print link
+                        // replace disabled button with live print button
                         const old = document.getElementById('print-btn-' + id);
                         if (old) {
-                            const a = document.createElement('a');
-                            a.className = old.className.replace(/btn-secondary|btn-disabled-print/, 'btn-primary');
-                            a.id = old.id;
-                            a.target = '_blank';
-                            a.href = `/dashboard/employee/leave/${id}/print`;
-                            a.title = 'Print Leave Form';
-                            a.innerHTML = '<i class="fa fa-print"></i> Print';
-                            old.replaceWith(a);
+                            const btn = document.createElement('button');
+                            btn.className = old.className.replace(/btn-secondary|btn-disabled-print/, 'btn-primary');
+                            btn.id = old.id;
+                            btn.innerHTML = 'Print';
+                            const url = `/dashboard/employee/leave/${id}/print`;
+                            const printedAt = data.last_printed_at || null;
+                            const printedBy = data.last_printed_by_name || null;
+                            btn.onclick = function () { confirmLeavePrint(url, printedAt, printedBy); };
+                            old.replaceWith(btn);
                         }
-                        // stop watching
                         watches.delete(id);
                     }
                 } catch (e) {
