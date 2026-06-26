@@ -153,6 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const leaveDataUrl   = @json($leaveDataUrl);
     const etaDataUrl     = @json($etaDataUrl);
     const locatorDataUrl = @json($locatorDataUrl);
+    const locatorRecordArrivalBaseUrl = @json($locatorRecordArrivalBaseUrl);
 
     // Tab switching
     document.querySelectorAll('.tab-card').forEach(function (card) {
@@ -274,9 +275,13 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
+                    var recordBtn = !row.actual_arrival_time
+                        ? '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="recordLocatorArrival(' + row.id + ')">Record Arrival</button>'
+                        : '';
                     return '<div class="action-btns">'
                         + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLocatorModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
                         + '<a class="hris-btn hris-btn-primary hris-btn-sm" href="{{ url('dashboard/employee/locator') }}/' + row.id + '/print" target="_blank"><i class="fa fa-print"></i> Print</a>'
+                        + recordBtn
                         + '</div>';
                 },
             },
@@ -340,6 +345,7 @@ document.addEventListener('DOMContentLoaded', function () {
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Location</strong></td><td style="padding:6px;border:1px solid #eee">' + r.location + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Purpose</strong></td><td style="padding:6px;border:1px solid #eee">' + r.purpose + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Approved At</strong></td><td style="padding:6px;border:1px solid #eee">' + r.approved_at + '</td></tr>'
+            + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Actual Arrival</strong></td><td style="padding:6px;border:1px solid #eee">' + (r.actual_arrival_time || '<em style="color:#94a3b8">Not yet recorded</em>') + '</td></tr>'
             + '</tbody></table>';
         document.getElementById('approved-modal-print').onclick = function () {
             window.open('{{ url('dashboard/employee/locator') }}/' + id + '/print', '_blank');
@@ -372,6 +378,38 @@ document.addEventListener('DOMContentLoaded', function () {
         var row = leaveRows[id];
         var url = '{{ url('dashboard/employee/leave') }}/' + id + '/print';
         confirmLeavePrint(url, row ? (row.last_printed_at || null) : null, row ? (row.last_printed_by_name || null) : null);
+    };
+
+    window.recordLocatorArrival = function (id) {
+        var token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        Swal.fire({
+            title: 'Record Actual Arrival Time',
+            html: '<input id="swal-arrival-time" type="time" class="swal2-input" style="max-width:180px">',
+            showCancelButton: true,
+            confirmButtonText: 'Save',
+            cancelButtonText: 'Cancel',
+            preConfirm: function () {
+                var val = document.getElementById('swal-arrival-time').value;
+                if (!val) { Swal.showValidationMessage('Please select an arrival time.'); return false; }
+                return val;
+            }
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            fetch(locatorRecordArrivalBaseUrl + '/' + id + '/record-arrival', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+                body: new URLSearchParams({ _token: token, actual_arrival_time: result.value })
+            }).then(function (response) {
+                return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+            }).then(function (res) {
+                if (!res.ok) throw new Error(res.data.message || 'Failed to record arrival.');
+                Swal.fire('Saved!', res.data.message || 'Arrival time recorded.', 'success').then(function () {
+                    if (typeof locatorTable !== 'undefined') locatorTable.ajax.reload(null, false);
+                });
+            }).catch(function (error) {
+                Swal.fire('Error', error.message || 'Failed to record arrival.', 'error');
+            });
+        });
     };
 });
 </script>

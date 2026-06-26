@@ -324,6 +324,7 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::post('/admin-officer/eta/{id}/reject', [AdministrativeOfficerController::class, 'rejectEta'])->name('admin-officer.eta.reject');
     Route::post('/admin-officer/locator/{id}/approve', [AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
     Route::post('/admin-officer/locator/{id}/reject', [AdministrativeOfficerController::class, 'rejectLocator'])->name('admin-officer.locator.reject');
+    Route::post('/admin-officer/locator/{id}/record-arrival', [AdministrativeOfficerController::class, 'recordLocatorArrival'])->name('admin-officer.locator.record-arrival');
 });
 
 // Shared dashboard API endpoints (accessible by both department-head and administrative-officer)
@@ -364,6 +365,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
 
     Route::post('/department-head/locator/{id}/approve', [DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
     Route::post('/department-head/locator/{id}/reject', [DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');
+    Route::post('/department-head/locator/{id}/record-arrival', [DepartmentHeadController::class, 'recordLocatorArrival'])->name('department-head.locator.record-arrival');
 });
 
 // Leave Manager pages

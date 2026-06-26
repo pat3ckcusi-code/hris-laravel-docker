@@ -435,8 +435,9 @@ class AdministrativeOfficerController extends Controller
         $leaveDataUrl = route('admin-officer.approved-requests.leave-data');
         $etaDataUrl = route('admin-officer.approved-requests.eta-data');
         $locatorDataUrl = route('admin-officer.approved-requests.locator-data');
+        $locatorRecordArrivalBaseUrl = url('admin-officer/locator');
 
-        return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl'));
+        return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl', 'locatorRecordArrivalBaseUrl'));
     }
 
     public function approvedRequestsLeaveData(Request $request)
@@ -606,6 +607,7 @@ class AdministrativeOfficerController extends Controller
             'location' => $l->location,
             'purpose' => $l->purpose ?? '',
             'approved_at' => $l->updated_at ? $l->updated_at->format('M d, Y') : '-',
+            'actual_arrival_time' => $l->actual_arrival_time,
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
@@ -1393,6 +1395,28 @@ class AdministrativeOfficerController extends Controller
         }
 
         return redirect()->back()->with('success', 'Locator request rejected.');
+    }
+
+    public function recordLocatorArrival(Request $request, $id)
+    {
+        $user = Auth::user();
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $locator = Locator::findOrFail($id);
+
+        $employee = $locator->user;
+        if ($depts->isEmpty() || ! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+            return response()->json(['success' => false, 'message' => 'Not authorized.'], 403);
+        }
+
+        if (strtolower((string) $locator->status) !== 'approved') {
+            return response()->json(['success' => false, 'message' => 'Only approved locators can record arrival.'], 400);
+        }
+
+        $validated = $request->validate(['actual_arrival_time' => 'required|date_format:H:i']);
+        $locator->actual_arrival_time = $validated['actual_arrival_time'];
+        $locator->save();
+
+        return response()->json(['success' => true, 'message' => 'Actual arrival time recorded.']);
     }
 
     public function reject(Request $request, $id)
