@@ -1190,7 +1190,11 @@ class LeaveRequestService
             $normalized = strtolower(trim($type));
             $row = $leaveTypeRowMap[$normalized] ?? null;
             if ($row) {
-                $sheet->setCellValue("B{$row}", $checkMark);
+                if ($row === 39 && ($normalized === 'wellness leave' || $normalized === 'wlns')) {
+                    $sheet->setCellValue('C40', 'Wellness');
+                } else {
+                    $sheet->setCellValue("B{$row}", $checkMark);
+                }
                 if ($row === 39) {
                     $matchedOthers = true;
                 }
@@ -1275,14 +1279,6 @@ class LeaveRequestService
 
         $vlBalance = $vlCurrent - $vlRequested;
         $slBalance = $slCurrent - $slRequested;
-        // Compute printable reason, with Wellness override when WLNS is present in preview or leave type
-        $reasonText = (string) ($leave->reason ?? '');
-        $isWellnessPreview = (isset($preview['WLNS']) && floatval($preview['WLNS']) > 0);
-        if ($isWellnessPreview || stripos($lt, 'wellness') !== false || stripos($lt, 'wlns') !== false) {
-            $reasonText = 'Wellness';
-        }
-        // Write reason into cell C40 as requested
-        $sheet->setCellValue('C40', $reasonText ?: '');
         // As of date
         $sheet->setCellValue('D53', $dateFiled);
         $sheet->setCellValue('D56', $this->formatBalance($vlCurrent));
