@@ -32,19 +32,19 @@ class LeaveRequestController extends Controller
         $user = Auth::user();
         $query = LeaveRequest::where('user_id', $user->id);
 
-        $month = $request->query('month');
-        if ($month === null) {
-            $month = now()->month;
+        $month = $request->query('month', '');
+        $year = (int) $request->query('year', now()->year);
+        if ($year < 2000 || $year > 2100) {
+            $year = now()->year;
         }
-        if (is_numeric($month) && $month >= 1 && $month <= 12) {
-            $query->whereMonth('start_date', $month)->whereYear('start_date', now()->year);
+        if (is_numeric($month) && (int) $month >= 1 && (int) $month <= 12) {
+            $query->whereMonth('start_date', (int) $month)->whereYear('start_date', $year);
         }
 
         $search = $request->query('search');
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('leave_type', 'like', '%'.$search.'%')
-                    ->orWhere('remarks', 'like', '%'.$search.'%')
                     ->orWhere('reason', 'like', '%'.$search.'%');
             });
         }

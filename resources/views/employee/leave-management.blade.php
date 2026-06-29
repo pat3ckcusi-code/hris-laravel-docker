@@ -916,6 +916,32 @@
                 :scrollableTable="true"
                 :showTopPagination="true"
             >
+                <x-slot:filters>
+                    <div class="hris-filter-left" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                        <x-hris.month-filter name="month" />
+                        @php
+                            $currentYear = (int) request('year', date('Y'));
+                        @endphp
+                        <div class="hris-filter-group">
+                            <label class="hris-filter-label">Year</label>
+                            <form id="year-filter-form" method="GET">
+                                <select name="year" class="hris-filter-select" onchange="document.getElementById('year-filter-form').submit()">
+                                    @for($y = date('Y'); $y >= 2024; $y--)
+                                        <option value="{{ $y }}" {{ $currentYear === $y ? 'selected' : '' }}>{{ $y }}</option>
+                                    @endfor
+                                </select>
+                                @foreach(request()->query() as $key => $value)
+                                    @if($key !== 'year' && $key !== 'page')
+                                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                    @endif
+                                @endforeach
+                            </form>
+                        </div>
+                    </div>
+                    <div class="hris-filter-right">
+                        <x-hris.search-bar />
+                    </div>
+                </x-slot:filters>
                 @php
                     $currentSort = request('sort');
                     $currentDir = strtolower(request('dir', 'desc')) === 'asc' ? 'asc' : 'desc';

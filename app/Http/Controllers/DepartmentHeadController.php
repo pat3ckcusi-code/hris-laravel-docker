@@ -149,8 +149,8 @@ class DepartmentHeadController extends Controller
             ->whereIn('user_id', $employeeIds)
             ->where('status', 'pending')
             ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
-            ->whereMonth('created_at', $month)
-            ->whereYear('created_at', $year);
+            ->whereMonth('start_date', $month)
+            ->whereYear('start_date', $year);
 
         $recordsTotal = $query->count();
 
@@ -352,8 +352,8 @@ class DepartmentHeadController extends Controller
             ->whereIn('user_id', $employeeIds)
             ->where('status', 'approved')
             ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
-            ->whereMonth('created_at', $month)
-            ->whereYear('created_at', $year);
+            ->whereMonth('start_date', $month)
+            ->whereYear('start_date', $year);
 
         $recordsTotal = $query->count();
 
