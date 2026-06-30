@@ -100,7 +100,17 @@ class EtaController extends Controller
     {
         $data = $request->validate([
             'departure_date' => 'required|date|after_or_equal:today',
-            'arrival_date' => 'nullable|date|after_or_equal:departure_date',
+            'arrival_date' => [
+                'nullable',
+                'date',
+                'after_or_equal:departure_date',
+                function ($attribute, $value, $fail) use ($request) {
+                    $departure = Carbon::parse($request->input('departure_date'));
+                    if (abs(Carbon::parse($value)->diffInDays($departure)) > 1) {
+                        $fail('Arrival date can be at most one day after the departure date.');
+                    }
+                },
+            ],
             'destination' => 'required|string|max:255',
             'purpose' => ['required', 'string', 'in:Audit-Inspection-Licensing,Client Support,Conference,Construction Repair Maintenance,Economic Development,Legal-Law Enforcement,Legislator,Meeting,Training,Seminar,General Expense/Other'],
             'purpose_details' => 'nullable|string|max:1000',

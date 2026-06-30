@@ -33,7 +33,8 @@
 
                         <label class="block space-y-2">
                             <span class="text-sm font-medium text-slate-700">Date of Arrival</span>
-                            <input id="arrival_date" class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" type="date" name="arrival_date" min="{{ date('Y-m-d') }}">
+                            <input id="arrival_date" class="block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm shadow-sm text-gray-600 cursor-not-allowed focus:outline-none" type="date" name="arrival_date" readonly>
+                            <span class="text-slate-500 text-sm mt-1">Automatically set to one day after departure (overnight travel).</span>
                             @error('arrival_date') <div class="text-red-500 text-sm mt-1">{{ $message }}</div> @enderror
                         </label>
                     </div>
@@ -175,18 +176,19 @@
 
             const today = new Date().toISOString().slice(0,10);
             dep.setAttribute('min', today);
-            if(!arr.getAttribute('min')) arr.setAttribute('min', today);
 
-            function syncArrivalMin(){
-                const depVal = dep.value || today;
-                arr.setAttribute('min', depVal);
-                if(arr.value && arr.value < depVal){
+            function syncArrival(){
+                if(!dep.value){
                     arr.value = '';
+                    return;
                 }
+                const arrivalDate = new Date(dep.value + 'T00:00:00Z');
+                arrivalDate.setUTCDate(arrivalDate.getUTCDate() + 1);
+                arr.value = arrivalDate.toISOString().slice(0,10);
             }
 
-            dep.addEventListener('change', syncArrivalMin);
-            syncArrivalMin();
+            dep.addEventListener('change', syncArrival);
+            syncArrival();
         })();
     </script>
     @if(session('success'))
