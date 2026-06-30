@@ -32,9 +32,12 @@ class DtrPunchResolver
 {
     /**
      * @param  iterable<int, Carbon|string>  $punches  full punch datetimes for ONE shift
+     * @param  array<int, string>  $excludedSlots  slot keys ('am_in'|'am_out'|'pm_in'|'pm_out') known to
+     *                                             have no real punch (e.g. covered by a DtrExcuse), so the
+     *                                             1-4 punch case doesn't mis-slot a later punch into them
      * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string, late_minutes:int, undertime_minutes:int}
      */
-    public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule): array
+    public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
     {
         // Normalize to Carbon, de-duplicate (repeated scans within a minute), sort ascending.
         $sorted = collect($punches)
@@ -50,7 +53,7 @@ class DtrPunchResolver
             }
         }
 
-        [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($deduped, $shiftDate, $schedule);
+        [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($deduped, $shiftDate, $schedule, $excludedSlots);
 
         // ── Reference datetimes (rolled past midnight for crossing shifts) ──
         $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart);
@@ -94,9 +97,10 @@ class DtrPunchResolver
      * Map sorted, de-duplicated punch datetimes to the four slots.
      *
      * @param  Collection<int, Carbon>  $sorted  ascending punch datetimes
+     * @param  array<int, string>  $excludedSlots  slot keys known to have no real punch
      * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon} [am_in, am_out, pm_in, pm_out]
      */
-    private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule): array
+    private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
     {
         $count = $sorted->count();
 
@@ -106,8 +110,27 @@ class DtrPunchResolver
             return [$sorted->get(0), null, null, $count >= 2 ? $sorted->last() : null];
         }
 
-        // 1–4 punches map straight to the four slots in chronological order.
+        // 1–4 punches map straight to the four slots in chronological order, unless
+        // some slots are known excused (no real punch expected there) - then skip
+        // those slots so later punches land in their correct slot instead of being
+        // pushed into the excused one. Only applies when there are few enough
+        // punches that the exclusion is plausible; if punches exist for every slot
+        // anyway, trust the data and keep the full positional assignment.
         if ($count <= 4) {
+            if ($excludedSlots !== []) {
+                $slotOrder = ['am_in', 'am_out', 'pm_in', 'pm_out'];
+                $eligibleSlots = array_values(array_diff($slotOrder, $excludedSlots));
+
+                if ($count <= count($eligibleSlots)) {
+                    $values = array_fill_keys($slotOrder, null);
+                    foreach ($eligibleSlots as $i => $slotKey) {
+                        $values[$slotKey] = $sorted->get($i);
+                    }
+
+                    return [$values['am_in'], $values['am_out'], $values['pm_in'], $values['pm_out']];
+                }
+            }
+
             return [$sorted->get(0), $sorted->get(1), $sorted->get(2), $sorted->get(3)];
         }
 

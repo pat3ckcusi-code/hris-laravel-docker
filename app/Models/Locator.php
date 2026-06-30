@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\WorkSchedule;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -60,5 +61,29 @@ class Locator extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * DTR slot keys ('am_in'|'am_out'|'pm_in'|'pm_out') this travel window covers,
+     * relative to the employee's actual work schedule for that date. Single source
+     * of truth for the DTR display map (web + Excel export) AND DtrPunchResolver's
+     * excluded-slot exclusion at write time - both sides must agree, or a slot can
+     * end up marked "covered" for display while the resolver didn't exclude it (or
+     * vice versa), causing a real punch to be hidden behind "LOCATOR" or shown in
+     * the wrong column.
+     *
+     * @return array<int, string>
+     */
+    public static function coveredSlotKeys(string $departure, string $arrival, WorkSchedule $schedule): array
+    {
+        $dep = substr($departure, 0, 5);
+        $arr = substr($arrival, 0, 5);
+
+        return array_values(array_filter([
+            $dep <= $schedule->workStart ? 'am_in' : null,
+            ($dep <= '12:00' && $arr >= $schedule->morningEnd) ? 'am_out' : null,
+            ($dep <= $schedule->lunchReturn && $arr >= $schedule->lunchReturn) ? 'pm_in' : null,
+            $arr >= $schedule->workEnd ? 'pm_out' : null,
+        ]));
     }
 }

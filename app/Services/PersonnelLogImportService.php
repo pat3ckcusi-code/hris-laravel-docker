@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
+use App\Models\Locator;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -257,6 +259,32 @@ class PersonnelLogImportService
             return;
         }
 
+        // Excused slots have no real punch expected - the resolver uses this to
+        // avoid mis-slotting a later punch into an excused slot.
+        $excuseMap = DtrExcuse::where('user_id', $user->id)
+            ->whereBetween('date', [$fetchFrom, $fetchTo])
+            ->get()
+            ->keyBy(fn (DtrExcuse $e) => Carbon::parse($e->date)->format('Y-m-d'));
+
+        // Approved-locator-covered slots also have no real punch expected -
+        // merge their coverage in the same way, unioning multiple locators
+        // on the same date.
+        $locatorSlotMap = [];
+        Locator::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereBetween('travel_date', [$fetchFrom, $fetchTo])
+            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->each(function (Locator $locator) use (&$locatorSlotMap, $user, $assignments): void {
+                $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
+                $locatorSchedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
+                $slots = Locator::coveredSlotKeys(
+                    (string) $locator->intended_departure_time,
+                    (string) $locator->intended_arrival_time,
+                    $locatorSchedule
+                );
+                $locatorSlotMap[$dateStr] = array_unique(array_merge($locatorSlotMap[$dateStr] ?? [], $slots));
+            });
+
         foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
             if ($date < $from || $date > $to) {
@@ -268,8 +296,12 @@ class PersonnelLogImportService
             // rest day (voluntary OT), still record the DTR using their assigned
             // rest-day shift (which falls back to the default if shift_id is null).
             $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date), $assignments);
+            $excludedSlots = array_values(array_unique(array_merge(
+                $excuseMap->get($date)?->excludedSlotKeys() ?? [],
+                $locatorSlotMap[$date] ?? []
+            )));
 
-            $resolved = $this->punchResolver->resolve($punches, $date, $schedule);
+            $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);
 
             Dtr::updateOrCreate(
                 ['employee_id' => $user->id, 'date' => $date],

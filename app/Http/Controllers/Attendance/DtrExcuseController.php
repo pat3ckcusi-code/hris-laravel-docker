@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DtrExcuse;
 use App\Models\User;
 use App\Services\DepartmentService;
+use App\Services\PersonnelLogImportService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +21,7 @@ class DtrExcuseController extends Controller
 
     public function __construct(
         private DepartmentService $departmentService,
+        private PersonnelLogImportService $importService,
     ) {}
 
     /**
@@ -62,9 +64,9 @@ class DtrExcuseController extends Controller
         }
         $employees = $employeesQuery->get(['id', 'first_name', 'last_name', 'Dept_id']);
 
-        $search     = trim($request->input('search', ''));
-        $dateFrom   = $request->input('date_from');
-        $dateTo     = $request->input('date_to');
+        $search = trim($request->input('search', ''));
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
         $excuseType = $request->input('excuse_type');
 
         $excusesQuery = DtrExcuse::with(['user', 'filedBy'])
@@ -77,7 +79,7 @@ class DtrExcuseController extends Controller
         if ($search !== '') {
             $excusesQuery->whereHas('user', function ($q) use ($search) {
                 $q->where('last_name', 'like', "%{$search}%")
-                  ->orWhere('first_name', 'like', "%{$search}%");
+                    ->orWhere('first_name', 'like', "%{$search}%");
             });
         }
 
@@ -108,7 +110,7 @@ class DtrExcuseController extends Controller
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'date' => ['required', 'date'],
-            'excuse_type' => ['required', Rule::in(['power_interruption', 'system_failure', 'weather_disturbance', 'other'])],
+            'excuse_type' => ['required', Rule::in(['power_interruption', 'system_failure', 'weather_disturbance', 'emergency', 'other'])],
             'is_full_day' => ['nullable', 'boolean'],
             'excuse_am_in' => ['nullable', 'boolean'],
             'excuse_am_out' => ['nullable', 'boolean'],
@@ -127,9 +129,9 @@ class DtrExcuseController extends Controller
         }
 
         $isFullDay = ! empty($validated['is_full_day']);
-        $newAmIn  = $isFullDay || ! empty($validated['excuse_am_in']);
+        $newAmIn = $isFullDay || ! empty($validated['excuse_am_in']);
         $newAmOut = $isFullDay || ! empty($validated['excuse_am_out']);
-        $newPmIn  = $isFullDay || ! empty($validated['excuse_pm_in']);
+        $newPmIn = $isFullDay || ! empty($validated['excuse_pm_in']);
         $newPmOut = $isFullDay || ! empty($validated['excuse_pm_out']);
 
         foreach ($userIds as $userId) {
@@ -140,29 +142,34 @@ class DtrExcuseController extends Controller
             if ($existing) {
                 $mergedFullDay = $isFullDay || $existing->is_full_day;
                 $existing->update([
-                    'excuse_type'      => $validated['excuse_type'],
-                    'reason'           => $validated['reason'] ?? null,
+                    'excuse_type' => $validated['excuse_type'],
+                    'reason' => $validated['reason'] ?? null,
                     'filed_by_user_id' => $user->id,
-                    'is_full_day'      => $mergedFullDay,
-                    'excuse_am_in'     => $mergedFullDay || $newAmIn  || $existing->excuse_am_in,
-                    'excuse_am_out'    => $mergedFullDay || $newAmOut || $existing->excuse_am_out,
-                    'excuse_pm_in'     => $mergedFullDay || $newPmIn  || $existing->excuse_pm_in,
-                    'excuse_pm_out'    => $mergedFullDay || $newPmOut || $existing->excuse_pm_out,
+                    'is_full_day' => $mergedFullDay,
+                    'excuse_am_in' => $mergedFullDay || $newAmIn || $existing->excuse_am_in,
+                    'excuse_am_out' => $mergedFullDay || $newAmOut || $existing->excuse_am_out,
+                    'excuse_pm_in' => $mergedFullDay || $newPmIn || $existing->excuse_pm_in,
+                    'excuse_pm_out' => $mergedFullDay || $newPmOut || $existing->excuse_pm_out,
                 ]);
             } else {
                 DtrExcuse::create([
-                    'user_id'          => $userId,
-                    'date'             => $validated['date'],
-                    'excuse_type'      => $validated['excuse_type'],
-                    'reason'           => $validated['reason'] ?? null,
+                    'user_id' => $userId,
+                    'date' => $validated['date'],
+                    'excuse_type' => $validated['excuse_type'],
+                    'reason' => $validated['reason'] ?? null,
                     'filed_by_user_id' => $user->id,
-                    'is_full_day'      => $isFullDay,
-                    'excuse_am_in'     => $newAmIn,
-                    'excuse_am_out'    => $newAmOut,
-                    'excuse_pm_in'     => $newPmIn,
-                    'excuse_pm_out'    => $newPmOut,
+                    'is_full_day' => $isFullDay,
+                    'excuse_am_in' => $newAmIn,
+                    'excuse_am_out' => $newAmOut,
+                    'excuse_pm_in' => $newPmIn,
+                    'excuse_pm_out' => $newPmOut,
                 ]);
             }
+
+            // Re-derive this day's slots now that the resolver knows which slot(s)
+            // have no real punch, so an already-imported punch shifts into its
+            // correct slot instead of staying mis-assigned.
+            $this->importService->recomputeDtr(User::find($userId), $validated['date'], $validated['date']);
         }
 
         $count = count($userIds);
@@ -195,16 +202,24 @@ class DtrExcuseController extends Controller
                 if ($e->is_full_day) {
                     $slots[] = 'Full Day';
                 } else {
-                    if ($e->excuse_am_in)  $slots[] = 'AM In';
-                    if ($e->excuse_am_out) $slots[] = 'AM Out';
-                    if ($e->excuse_pm_in)  $slots[] = 'PM In';
-                    if ($e->excuse_pm_out) $slots[] = 'PM Out';
+                    if ($e->excuse_am_in) {
+                        $slots[] = 'AM In';
+                    }
+                    if ($e->excuse_am_out) {
+                        $slots[] = 'AM Out';
+                    }
+                    if ($e->excuse_pm_in) {
+                        $slots[] = 'PM In';
+                    }
+                    if ($e->excuse_pm_out) {
+                        $slots[] = 'PM Out';
+                    }
                 }
 
                 return [
-                    'id'             => $e->user_id,
-                    'name'           => trim(($e->user?->last_name ?? '') . ', ' . ($e->user?->first_name ?? '')),
-                    'excused_slots'  => $slots,
+                    'id' => $e->user_id,
+                    'name' => trim(($e->user?->last_name ?? '').', '.($e->user?->first_name ?? '')),
+                    'excused_slots' => $slots,
                 ];
             })
             ->values();
@@ -221,7 +236,14 @@ class DtrExcuseController extends Controller
             abort(403, 'You may only remove excuses for employees in your department.');
         }
 
+        $excusedUser = $dtrExcuse->user;
+        $excusedDate = $dtrExcuse->date->format('Y-m-d');
+
         $dtrExcuse->delete();
+
+        // Re-derive the day's slots without this excuse's exclusions in case the
+        // punch should move back to its originally-resolved slot.
+        $this->importService->recomputeDtr($excusedUser, $excusedDate, $excusedDate);
 
         return back()->with('success', 'Excuse removed.');
     }

@@ -248,27 +248,19 @@ class DtrController extends Controller
             ->where('status', 'approved')
             ->whereBetween('travel_date', [$from, $to])
             ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
-            ->each(function ($locator) use (&$locatorDateMap): void {
+            ->each(function ($locator) use (&$locatorDateMap, $employee, $shiftAssignments): void {
                 $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
                 $dep = substr((string) $locator->intended_departure_time, 0, 5);
                 $arr = substr((string) $locator->intended_arrival_time, 0, 5);
+                $locatorSchedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($locator->travel_date), $shiftAssignments);
 
                 $cur = $locatorDateMap[$dateStr] ?? [
                     'covers_am_in' => false, 'covers_am_out' => false,
                     'covers_pm_in' => false, 'covers_pm_out' => false,
                     'departure' => $dep,  'arrival' => $arr,
                 ];
-                if ($dep <= '08:00') {
-                    $cur['covers_am_in'] = true;
-                }
-                if ($dep <= '12:00' && $arr >= '11:00') {
-                    $cur['covers_am_out'] = true;
-                }
-                if ($dep <= '13:00' && $arr >= '13:00') {
-                    $cur['covers_pm_in'] = true;
-                }
-                if ($arr >= '17:00') {
-                    $cur['covers_pm_out'] = true;
+                foreach (Locator::coveredSlotKeys($dep, $arr, $locatorSchedule) as $slotKey) {
+                    $cur["covers_{$slotKey}"] = true;
                 }
                 $cur['departure'] = min($cur['departure'], $dep);
                 $cur['arrival'] = max($cur['arrival'], $arr);
@@ -304,6 +296,7 @@ class DtrController extends Controller
             $loc = (! $leaveCode && ! $isEtaDay && ! $excuse) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
             // Resolve effective display values for each slot.
+            $coversAmIn = $coversAmOut = $coversPmIn = $coversPmOut = false;
             if ($leaveCode) {
                 [$tAmIn, $tAmOut, $tPmIn, $tPmOut] = array_fill(0, 4, $leaveCode);
                 $lateMin = $utMin = 0;
@@ -314,12 +307,16 @@ class DtrController extends Controller
                 $tPmOut = $dtr->time_out_pm ?: 'ETA';
                 $lateMin = $utMin = 0;
             } elseif ($excuse) {
-                $tAmIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? ($dtr->time_in_am ?: 'EXCUSED') : ($dtr->time_in_am ?? '-');
-                $tAmOut = ($excuse->excuse_am_out || $excuse->is_full_day) ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
-                $tPmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
-                $tPmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
-                $lateMin = ($excuse->excuse_am_in || $excuse->excuse_pm_in || $excuse->is_full_day) ? 0 : ($dtr->late_minutes ?? 0);
-                $utMin = ($excuse->excuse_pm_out || $excuse->is_full_day) ? 0 : ($dtr->undertime_minutes ?? 0);
+                $coversAmIn = $excuse->excuse_am_in || $excuse->is_full_day;
+                $coversAmOut = $excuse->excuse_am_out || $excuse->is_full_day;
+                $coversPmIn = $excuse->excuse_pm_in || $excuse->is_full_day;
+                $coversPmOut = $excuse->excuse_pm_out || $excuse->is_full_day;
+                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'EXCUSED') : ($dtr->time_in_am ?? '-');
+                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
+                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
+                $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
+                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($dtr->late_minutes ?? 0);
+                $utMin = $coversPmOut ? 0 : ($dtr->undertime_minutes ?? 0);
             } elseif ($loc) {
                 [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] = Form48ExportService::resolveLocatorSlots(
                     $dtr->time_in_am, $dtr->time_out_am,
@@ -344,6 +341,15 @@ class DtrController extends Controller
                 $utMin = $dtr->undertime_minutes ?? 0;
             }
 
+            // Display every punch as HH:MM - some branches above (e.g. Locator)
+            // already trim seconds, others still carry the raw HH:MM:SS column
+            // value, so normalize here once for a consistent table.
+            $fmt = fn (string $v): string => preg_match('/^\d{2}:\d{2}:\d{2}$/', $v) ? substr($v, 0, 5) : $v;
+            $tAmIn = $fmt($tAmIn);
+            $tAmOut = $fmt($tAmOut);
+            $tPmIn = $fmt($tPmIn);
+            $tPmOut = $fmt($tPmOut);
+
             // Per-cell late/undertime flags: only highlight the slot that actually caused the penalty.
             // Using the row-level is_late class to color AM In was wrong when lateness came from PM In.
             $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'LOCATOR', 'ETA', 'EXCUSED'], true) && strlen($v) >= 5
@@ -357,12 +363,32 @@ class DtrController extends Controller
             $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
             $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd;
 
+            // Decorate excused slots with the excuse type/reason so the cause is visible
+            // without leaving this page; only applies to slots an excuse actually covers.
+            $decorateSlot = function (string $raw, bool $covered) use ($excuse): string {
+                if (! $excuse || ! $covered) {
+                    return $raw;
+                }
+                $cfg = DtrExcuse::typeConfig($excuse->excuse_type);
+                $tooltip = e($excuse->reason ?: $cfg['label']);
+                $badge = '<span class="hris-badge" style="background:'.$cfg['bg'].';color:'.$cfg['color'].';font-size:.65rem;padding:.15rem .5rem;" title="'.$tooltip.'"><i class="fas '.$cfg['icon'].'" style="font-size:.6rem;"></i> '.$cfg['label'].'</span>';
+
+                if ($raw === 'EXCUSED') {
+                    return $badge;
+                }
+
+                // Stack the punch time above the badge instead of placing them inline:
+                // a narrow auto-sized DataTables column wraps "time badge" onto two
+                // independently-centered lines, making the badge look detached/misplaced.
+                return '<div style="display:flex;flex-direction:column;align-items:center;gap:.2rem;line-height:1.2;"><span>'.e($raw).'</span>'.$badge.'</div>';
+            };
+
             $data->push([
                 'date' => Carbon::parse($dtr->date)->format('M d, Y (D)'),
-                'time_in_am' => $tAmIn,
-                'time_out_am' => $tAmOut,
-                'time_in_pm' => $tPmIn,
-                'time_out_pm' => $tPmOut,
+                'time_in_am' => $decorateSlot($tAmIn, $coversAmIn),
+                'time_out_am' => $decorateSlot($tAmOut, $coversAmOut),
+                'time_in_pm' => $decorateSlot($tPmIn, $coversPmIn),
+                'time_out_pm' => $decorateSlot($tPmOut, $coversPmOut),
                 'late_minutes' => $lateMin,
                 'undertime_minutes' => $utMin,
                 'is_late' => $lateMin > 0,
@@ -440,12 +466,15 @@ class DtrController extends Controller
             if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])) {
                 continue;
             }
+            $excuseCfg = DtrExcuse::typeConfig($excuse->excuse_type);
+            $excuseTooltip = e($excuse->reason ?: $excuseCfg['label']);
+            $excuseBadge = '<span class="hris-badge" style="background:'.$excuseCfg['bg'].';color:'.$excuseCfg['color'].';font-size:.65rem;padding:.15rem .5rem;" title="'.$excuseTooltip.'"><i class="fas '.$excuseCfg['icon'].'" style="font-size:.6rem;"></i> '.$excuseCfg['label'].'</span>';
             $data->push([
                 'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
-                'time_in_am' => ($excuse->excuse_am_in || $excuse->is_full_day) ? 'EXCUSED' : '-',
-                'time_out_am' => ($excuse->excuse_am_out || $excuse->is_full_day) ? 'EXCUSED' : '-',
-                'time_in_pm' => ($excuse->excuse_pm_in || $excuse->is_full_day) ? 'EXCUSED' : '-',
-                'time_out_pm' => ($excuse->excuse_pm_out || $excuse->is_full_day) ? 'EXCUSED' : '-',
+                'time_in_am' => ($excuse->excuse_am_in || $excuse->is_full_day) ? $excuseBadge : '-',
+                'time_out_am' => ($excuse->excuse_am_out || $excuse->is_full_day) ? $excuseBadge : '-',
+                'time_in_pm' => ($excuse->excuse_pm_in || $excuse->is_full_day) ? $excuseBadge : '-',
+                'time_out_pm' => ($excuse->excuse_pm_out || $excuse->is_full_day) ? $excuseBadge : '-',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
                 'is_late' => false,

@@ -15,6 +15,7 @@ use App\Services\ApprovalNotificationService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
 use App\Services\LeaveRequestService;
+use App\Services\PersonnelLogImportService;
 use App\Support\LeaveTypeResolver;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
@@ -35,16 +36,20 @@ class DepartmentHeadController extends Controller
 
     private ApprovalNotificationService $approvalNotificationService;
 
+    private PersonnelLogImportService $importService;
+
     public function __construct(
         DepartmentService $departmentService,
         DepartmentHeadService $departmentHeadService,
         LeaveRequestService $leaveRequestService,
         ApprovalNotificationService $approvalNotificationService,
+        PersonnelLogImportService $importService,
     ) {
         $this->departmentService = $departmentService;
         $this->departmentHeadService = $departmentHeadService;
         $this->leaveRequestService = $leaveRequestService;
         $this->approvalNotificationService = $approvalNotificationService;
+        $this->importService = $importService;
     }
 
     public function index(Request $request)
@@ -176,18 +181,18 @@ class DepartmentHeadController extends Controller
             $reason = $isWellness ? 'Wellness' : ($r->reason ?? '-');
 
             return [
-                'id'                   => $r->id,
-                'employee'             => $r->user->name ?? '-',
-                'leave_type'           => $r->leave_type,
-                'reason'               => $reason,
-                'period'               => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
-                'total_days'           => $r->total_days ?? '-',
-                'filed_at'             => $r->created_at ? $r->created_at->format('M d, Y') : '-',
-                'status'               => $r->status,
-                'printing_allowed'     => (bool) $r->printing_allowed,
-                'rescheduled_from_id'  => $r->rescheduled_from_id,
-                'print_count'          => (int) ($r->print_count ?? 0),
-                'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+                'id' => $r->id,
+                'employee' => $r->user->name ?? '-',
+                'leave_type' => $r->leave_type,
+                'reason' => $reason,
+                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
+                'total_days' => $r->total_days ?? '-',
+                'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
+                'status' => $r->status,
+                'printing_allowed' => (bool) $r->printing_allowed,
+                'rescheduled_from_id' => $r->rescheduled_from_id,
+                'print_count' => (int) ($r->print_count ?? 0),
+                'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
                 'last_printed_by_name' => optional($r->lastPrintedBy)->name,
             ];
         });
@@ -374,15 +379,15 @@ class DepartmentHeadController extends Controller
         $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($r) => [
-            'id'                   => $r->id,
-            'employee'             => $r->user->name ?? '-',
-            'leave_type'           => $r->leave_type,
-            'period'               => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
-            'total_days'           => $r->total_days ?? '-',
-            'approved_at'          => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
-            'vl'                   => optional($r->user->leaveBalance)->VL ?? '0',
-            'sl'                   => optional($r->user->leaveBalance)->SL ?? '0',
-            'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+            'id' => $r->id,
+            'employee' => $r->user->name ?? '-',
+            'leave_type' => $r->leave_type,
+            'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
+            'total_days' => $r->total_days ?? '-',
+            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
+            'vl' => optional($r->user->leaveBalance)->VL ?? '0',
+            'sl' => optional($r->user->leaveBalance)->SL ?? '0',
+            'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
             'last_printed_by_name' => optional($r->lastPrintedBy)->name,
         ]);
 
@@ -1271,6 +1276,11 @@ class DepartmentHeadController extends Controller
         $locator->status = 'approved';
         $locator->save();
 
+        // Now that this slot's coverage is known, re-derive the day's punch
+        // slots so biometric punches don't stay mis-assigned by positional
+        // resolution that didn't know about the travel window.
+        $this->importService->recomputeDtr($employee, $locator->travel_date->format('Y-m-d'), $locator->travel_date->format('Y-m-d'));
+
         $depts->each(fn ($d) => Cache::forget("dept_stats_{$d->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}"));
         $depts->each(fn ($d) => Cache::forget("dh_metrics_{$d->Dept_id}"));
 
@@ -1641,13 +1651,13 @@ class DepartmentHeadController extends Controller
             // For reschedule rejections, also notify AO and Leave Manager
             if ($isReschedule) {
                 $rejDetails = [
-                    'Employee'   => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',
+                    'Employee' => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',
                     'Leave Type' => $leave->leave_type ?? 'N/A',
                     'Start Date' => $formatted['start'],
-                    'End Date'   => $formatted['end'],
+                    'End Date' => $formatted['end'],
                 ];
-                $ao = \App\Models\User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
-                $lm = \App\Models\User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
+                $ao = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
+                $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
                 foreach (array_filter([$ao, $lm]) as $recipient) {
                     try {
                         $recipient->notify(new HrisTransactionNotification(
@@ -1657,7 +1667,8 @@ class DepartmentHeadController extends Controller
                             actor: Auth::user()->name,
                             notes: $leave->rejection_notes ?? null,
                         ));
-                    } catch (\Exception $ex) { /* swallow */ }
+                    } catch (\Exception $ex) { /* swallow */
+                    }
                 }
             }
         } catch (\Exception $e) {

@@ -102,6 +102,11 @@ class Form48ExportService
             ->orderBy('logtime')
             ->get();
 
+        // Excused/locator-covered slots have no real punch expected - keeps this
+        // fallback in agreement with PersonnelLogImportService's resolution.
+        $excuseMap = $this->buildExcuseMap($userId, $from, $to);
+        $locatorMap = $this->buildLocatorMap($userId, $from, $to);
+
         foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
             if ($date < $from || $date > $to) {
                 continue;   // shift outside the requested range
@@ -111,7 +116,17 @@ class Form48ExportService
                 continue;   // DTR entry already covers this shift
             }
 
-            $resolved = $this->punchResolver->resolve($punches, $date, $schedule);
+            $locatorSlots = [];
+            foreach (['am_in', 'am_out', 'pm_in', 'pm_out'] as $slotKey) {
+                if ($locatorMap[$day]["covers_{$slotKey}"] ?? false) {
+                    $locatorSlots[] = $slotKey;
+                }
+            }
+            $excludedSlots = array_values(array_unique(array_merge(
+                $excuseMap[$day]?->excludedSlotKeys() ?? [],
+                $locatorSlots
+            )));
+            $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);
 
             $records[$day] = [
                 'date' => $date,
@@ -229,27 +244,33 @@ class Form48ExportService
      * Multiple locators on the same day are OR-merged; departure/arrival form the
      * union window (earliest departure, latest arrival) used for punch redistribution.
      *
-     * Coverage flags (determined by [intended_departure_time, intended_arrival_time]):
-     *   covers_am_in  - departure ≤ 08:00 (employee departs before/at work start)
-     *   covers_am_out - departure ≤ 12:00 AND arrival ≥ 11:00 (spans the noon slot)
-     *   covers_pm_in  - departure ≤ 13:00 AND arrival ≥ 13:00 (spans lunch return)
-     *   covers_pm_out - arrival ≥ 17:00 (returns at or after work end)
+     * Coverage is resolved per-date via Locator::coveredSlotKeys() against that
+     * date's actual WorkSchedule - the same function and schedule resolution
+     * PersonnelLogImportService uses when excluding slots at DTR-write time, so
+     * the export and the underlying dtrs row can never disagree on which slot is
+     * "covered".
      *
      * @return array<int, array{covers_am_in: bool, covers_am_out: bool, covers_pm_in: bool, covers_pm_out: bool, departure: string, arrival: string}>
      */
     public function buildLocatorMap(int $userId, string $from, string $to): array
     {
         $map = [];
-        $sc = WorkSchedule::forUser(User::find($userId));
+        $user = User::find($userId);
+        $assignments = EmployeeShiftSchedule::where('user_id', $userId)
+            ->whereBetween('date', [$from, $to])
+            ->with('shift')
+            ->get()
+            ->keyBy(fn ($a) => $a->date->toDateString());
 
         Locator::where('user_id', $userId)
             ->where('status', 'approved')
             ->whereBetween('travel_date', [$from, $to])
             ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
-            ->each(function ($locator) use (&$map, $sc): void {
+            ->each(function ($locator) use (&$map, $user, $assignments): void {
                 $day = (int) Carbon::parse($locator->travel_date)->day;
                 $dep = substr((string) $locator->intended_departure_time, 0, 5);
                 $arr = substr((string) $locator->intended_arrival_time, 0, 5);
+                $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
 
                 $cur = $map[$day] ?? [
                     'covers_am_in' => false,
@@ -260,17 +281,8 @@ class Form48ExportService
                     'arrival' => $arr,
                 ];
 
-                if ($dep <= $sc->workStart) {
-                    $cur['covers_am_in'] = true;
-                }
-                if ($dep <= '12:00' && $arr >= $sc->morningEnd) {
-                    $cur['covers_am_out'] = true;
-                }
-                if ($dep <= $sc->lunchReturn && $arr >= $sc->lunchReturn) {
-                    $cur['covers_pm_in'] = true;
-                }
-                if ($arr >= $sc->workEnd) {
-                    $cur['covers_pm_out'] = true;
+                foreach (Locator::coveredSlotKeys($dep, $arr, $schedule) as $slotKey) {
+                    $cur["covers_{$slotKey}"] = true;
                 }
 
                 // Union the travel window so punch redistribution spans all locators for the day.
@@ -321,15 +333,13 @@ class Form48ExportService
     }
 
     /**
-     * Redistribute a day's biometric punches around a locator's travel window.
+     * Resolve a day's display slots against a locator's coverage.
      *
-     * DtrPunchResolver assigns punches sequentially (1st→AM-in, 2nd→AM-out, …)
-     * without knowing that a locator covers certain slots.  This method corrects
-     * that: punches that occurred BEFORE the locator's departure go to uncovered
-     * slots that precede the covered block; punches that occurred AFTER the
-     * locator's arrival go to uncovered slots that follow it.  Punches during the
-     * travel window are discarded (the employee was officially away).  Covered
-     * slots always display "LOCATOR".
+     * Biometric punches always take priority: a slot shows its real punch when
+     * one exists, regardless of locator coverage. "LOCATOR" is only a fallback
+     * for a covered slot that has no real punch - DtrPunchResolver is locator-aware
+     * (see PersonnelLogImportService::upsertDtrRecords()) so punches are already
+     * in their correct slot by the time they reach here.
      *
      * Made public static so DtrController can call it for the DataTable preview.
      *
@@ -343,9 +353,7 @@ class Form48ExportService
         ?string $rawPmOut,
         array $locator
     ): array {
-        $dep = $locator['departure'];
-        $arr = $locator['arrival'];
-
+        $raw = [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut];
         $covered = [
             $locator['covers_am_in'],
             $locator['covers_am_out'],
@@ -353,61 +361,13 @@ class Form48ExportService
             $locator['covers_pm_out'],
         ];
 
-        // Collect and normalise all non-empty slot values to HH:MM, then sort.
-        $punches = [];
-        foreach ([$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] as $v) {
-            if ($v !== null && $v !== '') {
-                $punches[] = substr((string) $v, 0, 5);
-            }
-        }
-        sort($punches);
-
-        // Split by the locator window; punches during travel are discarded.
-        $before = array_values(array_filter($punches, fn ($p) => $p < $dep));
-        $after = array_values(array_filter($punches, fn ($p) => $p > $arr));
-
-        // Find the first and last covered slot indices so we know which
-        // uncovered slots are "before" vs "after" the official-travel block.
-        $firstCovered = PHP_INT_MAX;
-        $lastCovered = -1;
-        foreach ($covered as $idx => $isCovered) {
-            if ($isCovered) {
-                if ($idx < $firstCovered) {
-                    $firstCovered = $idx;
-                }
-                if ($idx > $lastCovered) {
-                    $lastCovered = $idx;
-                }
-            }
-        }
-
-        $result = [null, null, null, null];
-        $bi = 0;
-        $ai = 0;
-
-        foreach ($covered as $idx => $isCovered) {
-            if ($isCovered) {
-                $result[$idx] = 'LOCATOR';
-            } elseif ($firstCovered === PHP_INT_MAX || $idx < $firstCovered) {
-                // Before (or no) covered block - draw from before-locator punches.
-                $result[$idx] = $bi < count($before) ? $before[$bi++] : null;
-            } else {
-                // After the covered block - draw from after-locator punches.
-                $result[$idx] = $ai < count($after) ? $after[$ai++] : null;
-            }
-        }
-
-        // Safety net: fill any remaining null uncovered slots with leftover punches
-        // (edge case: no covered block, or more punches than expected slots).
-        $extra = [...array_slice($before, $bi), ...array_slice($after, $ai)];
-        $ei = 0;
-        foreach ($covered as $idx => $isCovered) {
-            if (! $isCovered && $result[$idx] === null && $ei < count($extra)) {
-                $result[$idx] = $extra[$ei++];
-            }
-        }
-
-        return $result;
+        return array_map(
+            fn (?string $v, bool $isCovered) => ($v !== null && $v !== '')
+                ? substr($v, 0, 5)
+                : ($isCovered ? 'LOCATOR' : null),
+            $raw,
+            $covered
+        );
     }
 
     /**

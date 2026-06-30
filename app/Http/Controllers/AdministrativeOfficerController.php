@@ -15,6 +15,7 @@ use App\Services\AttendanceMonitoringExportService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
 use App\Services\LeaveRequestService;
+use App\Services\PersonnelLogImportService;
 use App\Support\LeaveTypeResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -36,18 +37,22 @@ class AdministrativeOfficerController extends Controller
 
     private AttendanceMonitoringExportService $monitoringExportService;
 
+    private PersonnelLogImportService $importService;
+
     public function __construct(
         DepartmentService $departmentService,
         DepartmentHeadService $departmentHeadService,
         LeaveRequestService $leaveRequestService,
         ApprovalNotificationService $approvalNotificationService,
         AttendanceMonitoringExportService $monitoringExportService,
+        PersonnelLogImportService $importService,
     ) {
         $this->departmentService = $departmentService;
         $this->departmentHeadService = $departmentHeadService;
         $this->leaveRequestService = $leaveRequestService;
         $this->approvalNotificationService = $approvalNotificationService;
         $this->monitoringExportService = $monitoringExportService;
+        $this->importService = $importService;
     }
 
     public function index(Request $request)
@@ -187,10 +192,10 @@ class AdministrativeOfficerController extends Controller
                 'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
                 'total_days' => $r->total_days ?? '-',
                 'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
-                'status'               => $r->status,
-                'printing_allowed'     => (bool) $r->printing_allowed,
-                'print_count'          => (int) ($r->print_count ?? 0),
-                'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+                'status' => $r->status,
+                'printing_allowed' => (bool) $r->printing_allowed,
+                'print_count' => (int) ($r->print_count ?? 0),
+                'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
                 'last_printed_by_name' => optional($r->lastPrintedBy)->name,
             ];
         });
@@ -485,15 +490,15 @@ class AdministrativeOfficerController extends Controller
         $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($r) => [
-            'id'                   => $r->id,
-            'employee'             => $r->user->name ?? '-',
-            'leave_type'           => $r->leave_type,
-            'period'               => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
-            'total_days'           => $r->total_days ?? '-',
-            'approved_at'          => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
-            'vl'                   => optional($r->user->leaveBalance)->VL ?? '0',
-            'sl'                   => optional($r->user->leaveBalance)->SL ?? '0',
-            'last_printed_at'      => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+            'id' => $r->id,
+            'employee' => $r->user->name ?? '-',
+            'leave_type' => $r->leave_type,
+            'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
+            'total_days' => $r->total_days ?? '-',
+            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
+            'vl' => optional($r->user->leaveBalance)->VL ?? '0',
+            'sl' => optional($r->user->leaveBalance)->SL ?? '0',
+            'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
             'last_printed_by_name' => optional($r->lastPrintedBy)->name,
         ]);
 
@@ -973,12 +978,12 @@ class AdministrativeOfficerController extends Controller
 
     public function monitoringMatrix(Request $request)
     {
-        $user  = $request->user();
+        $user = $request->user();
         $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
-        $dept  = $depts->first();
+        $dept = $depts->first();
 
         $month = (int) $request->query('month', (int) date('n'));
-        $year  = (int) $request->query('year', (int) date('Y'));
+        $year = (int) $request->query('year', (int) date('Y'));
         if ($month < 1 || $month > 12) {
             $month = (int) date('n');
         }
@@ -1238,6 +1243,11 @@ class AdministrativeOfficerController extends Controller
 
         $locator->status = 'approved';
         $locator->save();
+
+        // Now that this slot's coverage is known, re-derive the day's punch
+        // slots so biometric punches don't stay mis-assigned by positional
+        // resolution that didn't know about the travel window.
+        $this->importService->recomputeDtr($employee, $locator->travel_date->format('Y-m-d'), $locator->travel_date->format('Y-m-d'));
 
         foreach ($depts as $d) {
             Cache::forget("dept_stats_{$d->Dept_id}_{$locator->created_at->month}_{$locator->created_at->year}");
@@ -1544,14 +1554,14 @@ class AdministrativeOfficerController extends Controller
             if ($isReschedule) {
                 $empDept = $employee?->Dept_id ? Department::find($employee->Dept_id) : null;
                 $dh = ($empDept && ! empty($empDept->EmpNo) && $empDept->EmpNo !== 'UNASSIGNED')
-                    ? \App\Models\User::where('EmpNo', $empDept->EmpNo)->first()
+                    ? User::where('EmpNo', $empDept->EmpNo)->first()
                     : null;
-                $lm = \App\Models\User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
+                $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
                 $rejDetails = [
-                    'Employee'   => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',
+                    'Employee' => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',
                     'Leave Type' => $leave->leave_type ?? 'N/A',
                     'Start Date' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                    'End Date'   => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                    'End Date' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
                 ];
                 foreach (array_filter([$dh, $lm]) as $recipient) {
                     try {
@@ -1562,7 +1572,8 @@ class AdministrativeOfficerController extends Controller
                             actor: Auth::user()->name,
                             notes: $leave->rejection_notes ?? null,
                         ));
-                    } catch (\Exception $ex) { /* swallow */ }
+                    } catch (\Exception $ex) { /* swallow */
+                    }
                 }
             }
         } catch (\Exception $e) {

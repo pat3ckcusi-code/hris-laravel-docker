@@ -258,6 +258,7 @@ class AttendanceMonitoringExportService
                     'power_interruption'  => 'Power Interruption',
                     'system_failure'      => 'System Failure',
                     'weather_disturbance' => 'Weather Disturbance',
+                    'emergency'           => 'Emergency',
                     default               => 'Other',
                 };
 

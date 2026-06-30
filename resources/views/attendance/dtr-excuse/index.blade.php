@@ -54,6 +54,7 @@
                             <option value="power_interruption"  @selected($filters['excuseType'] === 'power_interruption')>Power Interruption</option>
                             <option value="system_failure"      @selected($filters['excuseType'] === 'system_failure')>System Failure</option>
                             <option value="weather_disturbance" @selected($filters['excuseType'] === 'weather_disturbance')>Force Majeure / Weather</option>
+                            <option value="emergency"           @selected($filters['excuseType'] === 'emergency')>Emergency</option>
                             <option value="other"               @selected($filters['excuseType'] === 'other')>Other</option>
                         </select>
                     </div>
@@ -97,12 +98,7 @@
                 <tbody>
                     @forelse ($excuses as $excuse)
                         @php
-                            $typeConfig = match($excuse->excuse_type) {
-                                'power_interruption'  => ['icon' => 'fa-bolt',                 'color' => '#d97706', 'bg' => '#fef3c7', 'label' => 'Power Interruption'],
-                                'system_failure'      => ['icon' => 'fa-server',               'color' => '#dc2626', 'bg' => '#fee2e2', 'label' => 'System Failure'],
-                                'weather_disturbance' => ['icon' => 'fa-cloud-showers-heavy',  'color' => '#2563eb', 'bg' => '#dbeafe', 'label' => 'Force Majeure / Weather'],
-                                default               => ['icon' => 'fa-ellipsis-h',           'color' => '#6b7280', 'bg' => '#f3f4f6', 'label' => 'Other'],
-                            };
+                            $typeConfig = \App\Models\DtrExcuse::typeConfig($excuse->excuse_type);
                         @endphp
                         <tr>
                             <td>
@@ -346,6 +342,7 @@
                                 <option value="power_interruption" @selected(old('excuse_type', 'power_interruption') === 'power_interruption')>Power Interruption</option>
                                 <option value="system_failure"     @selected(old('excuse_type') === 'system_failure')>System Failure</option>
                                 <option value="weather_disturbance" @selected(old('excuse_type') === 'weather_disturbance')>Force Majeure / Weather</option>
+                                <option value="emergency"          @selected(old('excuse_type') === 'emergency')>Emergency</option>
                                 <option value="other"              @selected(old('excuse_type') === 'other')>Other</option>
                             </select>
                         </div>
