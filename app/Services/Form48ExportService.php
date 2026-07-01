@@ -13,6 +13,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
@@ -333,6 +334,42 @@ class Form48ExportService
     }
 
     /**
+     * Build a day-of-month → office_order_num map for office orders covering this user.
+     * Matches on effective_date when set, otherwise falls back to issued_date.
+     *
+     * @return array<int, string>  e.g. [15 => '2026 - 003']
+     */
+    public function buildOfficeOrderMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+        $user = User::find($userId);
+        if (! $user || ! $user->EmpNo) {
+            return $map;
+        }
+
+        DB::table('office_orders')
+            ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
+            ->where('office_order_employees.emp_no', $user->EmpNo)
+            ->where(function ($q) use ($from, $to): void {
+                $q->whereBetween('office_orders.effective_date', [$from, $to])
+                    ->orWhere(function ($q2) use ($from, $to): void {
+                        $q2->whereNull('office_orders.effective_date')
+                            ->whereBetween('office_orders.issued_date', [$from, $to]);
+                    });
+            })
+            ->select('office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
+            ->get()
+            ->each(function ($o) use (&$map): void {
+                $date = $o->effective_date ?? $o->issued_date;
+                if ($date) {
+                    $map[(int) Carbon::parse($date)->day] = $o->office_order_num;
+                }
+            });
+
+        return $map;
+    }
+
+    /**
      * Resolve a day's display slots against a locator's coverage.
      *
      * Biometric punches always take priority: a slot shows its real punch when
@@ -430,14 +467,15 @@ class Form48ExportService
         array $locatorMap = [],
         array $restDayMap = [],
         array $fieldWorkMap = [],
-        array $excuseMap = []
+        array $excuseMap = [],
+        array $officeOrderMap = []
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
         $schedule = WorkSchedule::forUser($employee);
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
 
         // Exclude rest days, leave days, and ETA days with fewer than 4 punches from the total.
         // For locator days, zero the penalty for each covered slot that lacks a punch.
@@ -456,6 +494,15 @@ class Form48ExportService
                     $r['pm_in'] ?? null, $r['pm_out'] ?? null,
                 ], fn ($v) => $v !== null && $v !== ''));
                 if ($etaPunches < 4) {
+                    continue;
+                }
+            }
+            if (isset($officeOrderMap[$day])) {
+                $ooPunches = count(array_filter([
+                    $r['am_in'] ?? null, $r['am_out'] ?? null,
+                    $r['pm_in'] ?? null, $r['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== ''));
+                if ($ooPunches < 4) {
                     continue;
                 }
             }
@@ -567,7 +614,8 @@ class Form48ExportService
         WorkSchedule $schedule,
         array $restDayMap = [],
         array $fieldWorkMap = [],
-        array $excuseMap = []
+        array $excuseMap = [],
+        array $officeOrderMap = []
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -693,8 +741,58 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
+            // Office Order: same rules as ETA — missing punches show "OO", penalties zeroed.
+            // Priority below ETA, above Excuse.
+            if (isset($officeOrderMap[$day])) {
+                $punchCount = $rec ? count(array_filter([
+                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
+                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '')) : 0;
+
+                if ($punchCount < 4) {
+                    if ($punchCount === 0) {
+                        foreach (range(0, 3) as $i) {
+                            $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                            try {
+                                $sheet->mergeCells($range);
+                            } catch (\Throwable) {
+                            }
+                            $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Office Order');
+                            $sheet->getStyle($range)->getAlignment()
+                                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                            $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                            $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                        }
+                    } else {
+                        $amIn  = $fmt($rec['am_in']  ?? null) ?: 'Office Order';
+                        $amOut = $fmt($rec['am_out'] ?? null) ?: 'Office Order';
+                        $pmIn  = $fmt($rec['pm_in']  ?? null) ?: 'Office Order';
+                        $pmOut = $fmt($rec['pm_out'] ?? null) ?: 'Office Order';
+
+                        foreach (range(0, 3) as $i) {
+                            $sheet->setCellValue(self::AM_IN_COLS[$i].$row,  $amIn);
+                            $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $amOut);
+                            $sheet->setCellValue(self::PM_IN_COLS[$i].$row,  $pmIn);
+                            $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $pmOut);
+                            $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                            $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                            foreach ([
+                                self::AM_IN_COLS[$i],  self::AM_OUT_COLS[$i],
+                                self::PM_IN_COLS[$i],  self::PM_OUT_COLS[$i],
+                            ] as $col) {
+                                $sheet->getStyle($col.$row)->getAlignment()
+                                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+                // punchCount === 4: fall through to normal write below.
+            }
+
             // Approved excuse: suppress penalties for excused slots; show 'EXCUSED' for missing ones.
-            // Priority below ETA, above locator.
+            // Priority below ETA and OO, above locator.
             if (isset($excuseMap[$day])) {
                 $excuse = $excuseMap[$day];
                 $punchCount = $rec ? count(array_filter([

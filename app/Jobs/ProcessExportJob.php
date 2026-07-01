@@ -118,10 +118,12 @@ class ProcessExportJob implements ShouldQueue
         $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
         $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
         $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+        $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
+        $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
 
         $spreadsheet = IOFactory::load($templatePath);
         $sheet = $spreadsheet->getActiveSheet();
-        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
 
         $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'DTR';
         $filename = "CSC_Form_48_({$safe}).xlsx";
@@ -176,6 +178,8 @@ class ProcessExportJob implements ShouldQueue
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
             $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+            $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
+            $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
 
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
@@ -183,7 +187,7 @@ class ProcessExportJob implements ShouldQueue
 
             $spreadsheet = IOFactory::load($templatePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
 
             $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'Employee_'.$employee->id;
             $tmpPath = tempnam(sys_get_temp_dir(), 'dtr_');
@@ -268,6 +272,8 @@ class ProcessExportJob implements ShouldQueue
             $locatorMap = $exportService->buildLocatorMap($employee->id, $from, $to);
             $restDayMap = $exportService->buildRestDayMap($employee->id, $from, $to);
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
+            $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
+            $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
 
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
@@ -280,7 +286,7 @@ class ProcessExportJob implements ShouldQueue
             ) ?: "Employee_{$employee->id}";
             $clone->setTitle($sheetName);
             $workbook->addSheet($clone);
-            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap);
+            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
             $filled++;
         }
 

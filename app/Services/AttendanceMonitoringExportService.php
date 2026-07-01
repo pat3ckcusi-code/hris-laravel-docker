@@ -16,6 +16,7 @@ use App\Support\WorkSchedule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -104,7 +105,22 @@ class AttendanceMonitoringExportService
             ->groupBy('user_id')
             ->map(fn ($group) => $group->keyBy(fn ($a) => $a->date->toDateString()));
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments) {
+        $empNos = $employees->pluck('EmpNo')->filter()->values()->toArray();
+        $officeOrdersByEmpNo = empty($empNos) ? collect() : DB::table('office_orders')
+            ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
+            ->whereIn('office_order_employees.emp_no', $empNos)
+            ->where(function ($q) use ($periodStart, $periodEnd): void {
+                $q->whereBetween('office_orders.effective_date', [$periodStart, $periodEnd])
+                    ->orWhere(function ($q2) use ($periodStart, $periodEnd): void {
+                        $q2->whereNull('office_orders.effective_date')
+                            ->whereBetween('office_orders.issued_date', [$periodStart, $periodEnd]);
+                    });
+            })
+            ->select('office_order_employees.emp_no', 'office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
+            ->get()
+            ->groupBy('emp_no');
+
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
@@ -288,6 +304,16 @@ class AttendanceMonitoringExportService
                     $label .= ': '.$v->remarks;
                 }
                 $remarkEntries->push(['day' => $day, 'label' => $label]);
+            }
+
+            // Office orders
+            foreach ($officeOrdersByEmpNo->get($emp->EmpNo, collect()) as $oo) {
+                $date = $oo->effective_date ?? $oo->issued_date;
+                if (! $date) {
+                    continue;
+                }
+                $day = Carbon::parse($date)->day;
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Office Order No. '.$oo->office_order_num]);
             }
 
             $fullRemarks = $remarkEntries
