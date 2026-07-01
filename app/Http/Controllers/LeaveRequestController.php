@@ -121,10 +121,10 @@ class LeaveRequestController extends Controller
         $leave->loadMissing('lastPrintedBy');
 
         return response()->json([
-            'id'                   => $leave->id,
-            'status'               => $leave->status,
-            'printing_allowed'     => (bool) ($leave->printing_allowed ?? false),
-            'last_printed_at'      => $leave->last_printed_at ? $leave->last_printed_at->format('M d, Y') : null,
+            'id' => $leave->id,
+            'status' => $leave->status,
+            'printing_allowed' => (bool) ($leave->printing_allowed ?? false),
+            'last_printed_at' => $leave->last_printed_at ? $leave->last_printed_at->format('M d, Y') : null,
             'last_printed_by_name' => optional($leave->lastPrintedBy)->name,
         ]);
     }
@@ -135,11 +135,11 @@ class LeaveRequestController extends Controller
         // Extended leave types use a date-range path instead of individual-date allocation
         if ($request->boolean('extended_leave_mode')) {
             $request->validate([
-                'leave_types'   => 'required|array|min:1|max:1',
+                'leave_types' => 'required|array|min:1|max:1',
                 'leave_types.*' => 'string|max:100',
-                'range_start'   => 'required|date',
-                'range_end'     => 'required|date|after_or_equal:range_start',
-                'reason'        => 'nullable|string|max:2000',
+                'range_start' => 'required|date',
+                'range_end' => 'required|date|after_or_equal:range_start',
+                'reason' => 'nullable|string|max:2000',
             ]);
 
             $rangeTypes = [
@@ -154,7 +154,7 @@ class LeaveRequestController extends Controller
             }
 
             $start = Carbon::parse($request->range_start)->startOfDay();
-            $end   = Carbon::parse($request->range_end)->startOfDay();
+            $end = Carbon::parse($request->range_end)->startOfDay();
             if ($end->diffInDays($start) > 184) {
                 return redirect()->back()
                     ->withErrors(['range_end' => 'Leave duration cannot exceed 6 months.'])
@@ -185,8 +185,8 @@ class LeaveRequestController extends Controller
                 ->where('is_cancelled', false)
                 ->whereHas('leaveRequest', function ($q) use ($employee) {
                     $q->where('user_id', $employee->id)
-                      ->whereIn('status', ['pending', 'approved']);
-                })->pluck('leave_date')->map(fn($d) => (string) $d)->toArray();
+                        ->whereIn('status', ['pending', 'approved']);
+                })->pluck('leave_date')->map(fn ($d) => (string) $d)->toArray();
 
             if (! empty($conflicts)) {
                 return redirect()->back()
@@ -195,32 +195,32 @@ class LeaveRequestController extends Controller
             }
 
             $leave = LeaveRequest::create([
-                'user_id'                    => $employee->id,
-                'leave_type'                 => $type,
-                'start_date'                 => $start->toDateString(),
-                'end_date'                   => $end->toDateString(),
-                'total_days'                 => $totalDays,
-                'paid_days'                  => $totalDays,
-                'lwop_days'                  => 0,
-                'reason'                     => $request->reason ? strtoupper(trim($request->reason)) : null,
-                'balance_vacation_leave'     => optional($employee->leaveBalance)->VL ?? 0,
-                'balance_sick_leave'         => optional($employee->leaveBalance)->SL ?? 0,
-                'balance_wellness_leave'     => optional($employee->leaveBalance)->WLNS ?? 0,
-                'balance_solo_parent_leave'  => optional($employee->leaveBalance)->SP ?? 0,
+                'user_id' => $employee->id,
+                'leave_type' => $type,
+                'start_date' => $start->toDateString(),
+                'end_date' => $end->toDateString(),
+                'total_days' => $totalDays,
+                'paid_days' => $totalDays,
+                'lwop_days' => 0,
+                'reason' => $request->reason ? strtoupper(trim($request->reason)) : null,
+                'balance_vacation_leave' => optional($employee->leaveBalance)->VL ?? 0,
+                'balance_sick_leave' => optional($employee->leaveBalance)->SL ?? 0,
+                'balance_wellness_leave' => optional($employee->leaveBalance)->WLNS ?? 0,
+                'balance_solo_parent_leave' => optional($employee->leaveBalance)->SP ?? 0,
                 'balance_special_leave_privilege' => optional($employee->leaveBalance)->SPL ?? 0,
                 'printing_deduction_details' => json_encode([]),
                 'printing_deduction_applied' => false,
-                'status'                     => 'pending',
-                'date_filed'                 => now()->toDateString(),
+                'status' => 'pending',
+                'date_filed' => now()->toDateString(),
             ]);
 
-            LeaveDate::insert(array_map(fn($d) => [
+            LeaveDate::insert(array_map(fn ($d) => [
                 'leave_request_id' => $leave->id,
-                'leave_date'       => $d,
-                'is_cancelled'     => false,
-                'is_lwop'          => false,
-                'created_at'       => now(),
-                'updated_at'       => now(),
+                'leave_date' => $d,
+                'is_cancelled' => false,
+                'is_lwop' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
             ], $dates));
 
             // Notify approver
@@ -243,13 +243,13 @@ class LeaveRequestController extends Controller
                         requestType: 'Leave Request',
                         status: 'Filed',
                         details: [
-                            'Employee'   => $empName,
+                            'Employee' => $empName,
                             'Department' => $departmentName ?? 'N/A',
                             'Leave Type' => $type,
                             'Start Date' => $start->format('l, F j, Y'),
-                            'End Date'   => $end->format('l, F j, Y'),
+                            'End Date' => $end->format('l, F j, Y'),
                             'Date Filed' => Carbon::parse($leave->created_at)->format('l, F j, Y'),
-                            'Reason'     => $leave->reason ?? 'N/A',
+                            'Reason' => $leave->reason ?? 'N/A',
                         ],
                         actor: $empName,
                     ));
@@ -917,6 +917,10 @@ class LeaveRequestController extends Controller
             return redirect()->back()->with('error', 'A reschedule request is already pending for this leave. You cannot request cancellation while a reschedule is in progress.');
         }
 
+        if (in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'], true)) {
+            return redirect()->back()->with('error', 'A cancellation request is already in progress for this leave.');
+        }
+
         $request->validate(['reason' => 'required|string|max:2000']);
 
         if (trim($request->reason) === 'Reported to work') {
@@ -1089,17 +1093,17 @@ class LeaveRequestController extends Controller
         }
 
         $request->validate([
-            'leave_types'   => 'required|array|min:1|max:1',
+            'leave_types' => 'required|array|min:1|max:1',
             'leave_types.*' => 'string|max:100',
-            'leave_dates'   => 'required|string|max:2000',
-            'reason'        => 'nullable|string|max:2000',
-            'allocation'    => 'nullable|array|max:90',
+            'leave_dates' => 'required|string|max:2000',
+            'reason' => 'nullable|string|max:2000',
+            'allocation' => 'nullable|array|max:90',
             'allocation.*.type' => 'nullable|string|max:100',
             'allocation.*.days' => 'nullable|numeric|min:0|max:1',
-            'details_location'         => 'nullable|string|max:50',
+            'details_location' => 'nullable|string|max:50',
             'details_location_specify' => 'nullable|string|max:255',
-            'details_sick_illness'     => 'nullable|string|max:255',
-            'details_sick_treatment'   => 'nullable|string|max:50',
+            'details_sick_illness' => 'nullable|string|max:255',
+            'details_sick_treatment' => 'nullable|string|max:50',
         ]);
 
         $type = $request->input('leave_types')[0];
@@ -1123,14 +1127,14 @@ class LeaveRequestController extends Controller
         }
 
         // Conflict check (exclude the original leave's own dates from conflict detection)
-        $originalDateIds = $original->leaveDates()->pluck('leave_date')->map(fn($d) => (string) $d)->toArray();
+        $originalDateIds = $original->leaveDates()->pluck('leave_date')->map(fn ($d) => (string) $d)->toArray();
         $existing = LeaveDate::whereIn('leave_date', $dates)
             ->where('is_cancelled', false)
             ->whereHas('leaveRequest', function ($q) use ($user, $original) {
                 $q->where('user_id', $user->id)
-                  ->whereIn('status', ['pending', 'approved'])
-                  ->where('id', '!=', $original->id);
-            })->pluck('leave_date')->map(fn($d) => (string) $d)->toArray();
+                    ->whereIn('status', ['pending', 'approved'])
+                    ->where('id', '!=', $original->id);
+            })->pluck('leave_date')->map(fn ($d) => (string) $d)->toArray();
         if (! empty($existing)) {
             return redirect()->back()->withErrors(['leave_dates' => 'You already have leave requests covering: '.implode(', ', $existing)])->withInput();
         }
@@ -1153,47 +1157,47 @@ class LeaveRequestController extends Controller
                 ->withInput();
         }
 
-        $paidDays  = $totalDays;
-        $lwopDays  = 0;
+        $paidDays = $totalDays;
+        $lwopDays = 0;
 
         // Balance snapshot at time of reschedule filing
         $lb = $user->leaveBalance;
 
         $newLeave = DB::transaction(function () use ($original, $user, $type, $dates, $allocations, $totalDays, $paidDays, $lwopDays, $lb, $request) {
             $leave = LeaveRequest::create([
-                'user_id'                         => $user->id,
-                'leave_type'                      => $type,
-                'start_date'                      => $dates[0],
-                'end_date'                        => end($dates),
-                'total_days'                      => $totalDays,
-                'paid_days'                       => $paidDays,
-                'lwop_days'                       => $lwopDays,
-                'reason'                          => $request->reason ? strtoupper(trim($request->reason)) : null,
-                'details_location'                => $request->details_location,
-                'details_location_specify'        => $request->details_location_specify,
-                'details_sick_illness'            => $request->details_sick_illness,
-                'details_sick_treatment'          => $request->details_sick_treatment,
-                'balance_vacation_leave'          => optional($lb)->VL ?? 0,
-                'balance_sick_leave'              => optional($lb)->SL ?? 0,
-                'balance_wellness_leave'          => optional($lb)->WLNS ?? 0,
-                'balance_solo_parent_leave'       => optional($lb)->SP ?? 0,
+                'user_id' => $user->id,
+                'leave_type' => $type,
+                'start_date' => $dates[0],
+                'end_date' => end($dates),
+                'total_days' => $totalDays,
+                'paid_days' => $paidDays,
+                'lwop_days' => $lwopDays,
+                'reason' => $request->reason ? strtoupper(trim($request->reason)) : null,
+                'details_location' => $request->details_location,
+                'details_location_specify' => $request->details_location_specify,
+                'details_sick_illness' => $request->details_sick_illness,
+                'details_sick_treatment' => $request->details_sick_treatment,
+                'balance_vacation_leave' => optional($lb)->VL ?? 0,
+                'balance_sick_leave' => optional($lb)->SL ?? 0,
+                'balance_wellness_leave' => optional($lb)->WLNS ?? 0,
+                'balance_solo_parent_leave' => optional($lb)->SP ?? 0,
                 'balance_special_leave_privilege' => optional($lb)->SPL ?? 0,
-                'printing_deduction_details'      => json_encode([]),
-                'printing_deduction_applied'      => false,
-                'status'                          => 'pending',
-                'date_filed'                      => now()->toDateString(),
-                'rescheduled_from_id'             => $original->id,
+                'printing_deduction_details' => json_encode([]),
+                'printing_deduction_applied' => false,
+                'status' => 'pending',
+                'date_filed' => now()->toDateString(),
+                'rescheduled_from_id' => $original->id,
             ]);
 
-            LeaveDate::insert(array_map(fn($d) => [
+            LeaveDate::insert(array_map(fn ($d) => [
                 'leave_request_id' => $leave->id,
-                'leave_date'       => $d,
-                'leave_type'       => $allocations[$d]['type'],
-                'days'             => $allocations[$d]['days'],
-                'is_cancelled'     => false,
-                'is_lwop'          => false,
-                'created_at'       => now(),
-                'updated_at'       => now(),
+                'leave_date' => $d,
+                'leave_type' => $allocations[$d]['type'],
+                'days' => $allocations[$d]['days'],
+                'is_cancelled' => false,
+                'is_lwop' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
             ], $dates));
 
             $original->reschedule_status = 'Pending Reschedule';
@@ -1222,14 +1226,14 @@ class LeaveRequestController extends Controller
             $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
 
             $notifDetails = [
-                'Employee'    => $empName,
-                'Department'  => $departmentName,
-                'Leave Type'  => $type,
+                'Employee' => $empName,
+                'Department' => $departmentName,
+                'Leave Type' => $type,
                 'New Start Date' => Carbon::parse($newLeave->start_date)->format('l, F j, Y'),
-                'New End Date'   => Carbon::parse($newLeave->end_date)->format('l, F j, Y'),
+                'New End Date' => Carbon::parse($newLeave->end_date)->format('l, F j, Y'),
                 'Original Leave' => '#'.$original->id.' ('.Carbon::parse($original->start_date)->format('M j').' – '.Carbon::parse($original->end_date)->format('M j, Y').')',
-                'Date Filed'  => Carbon::parse($newLeave->created_at)->format('l, F j, Y'),
-                'Reason'      => $newLeave->reason ?? 'N/A',
+                'Date Filed' => Carbon::parse($newLeave->created_at)->format('l, F j, Y'),
+                'Reason' => $newLeave->reason ?? 'N/A',
             ];
 
             // Employee confirmation

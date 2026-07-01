@@ -140,17 +140,7 @@ class LeaveManagerController extends Controller
     {
         $query = LeaveRequest::with(['user', 'leaveDates'])
             ->where('status', 'approved')
-            ->where('cancellation_status', 'Pending Cancellation');
-
-        $month = $request->query('month', date('Y-m'));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = date('Y-m');
-        }
-        $start = $month.'-01';
-        $end = date('Y-m-t', strtotime($start));
-        $query->whereHas('leaveDates', function ($q) use ($start, $end) {
-            $q->whereBetween('leave_date', [$start, $end]);
-        });
+            ->where('cancellation_status', 'AO Endorsed');
 
         $emp = $request->query('emp');
         if ($emp) {
@@ -172,11 +162,21 @@ class LeaveManagerController extends Controller
                     ? $departments[$item->user->Dept_id]
                     : '-',
                 'leave_type' => strtoupper($item->leave_type ?? ''),
+                'start_date' => $item->start_date ? Carbon::parse($item->start_date)->format('M d, Y') : '-',
+                'end_date' => $item->end_date ? Carbon::parse($item->end_date)->format('M d, Y') : '-',
+                'start_date_raw' => $item->start_date ?? '',
+                'end_date_raw' => $item->end_date ?? '',
+                'designation' => $item->user?->designation ?? '',
                 'cancellation_reason' => $item->cancellation_reason ?? '-',
                 'status' => ucfirst($item->status ?? '-'),
                 'requested_at' => $item->cancellation_requested_at
                     ? Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i')
                     : '-',
+                'requested_human' => $item->cancellation_requested_at
+                    ? Carbon::parse($item->cancellation_requested_at)->diffForHumans()
+                    : '-',
+                'dh_remarks' => $item->cancellation_dh_remarks ?? '-',
+                'ao_remarks' => $item->cancellation_ao_remarks ?? '-',
             ]);
 
             return response()->json(['rows' => $rows]);
@@ -187,7 +187,6 @@ class LeaveManagerController extends Controller
         return view('leave-manager.employee-cancellation-requests', [
             'requests' => $requests,
             'departments' => $departments,
-            'currentMonth' => $month,
         ]);
     }
 
@@ -197,7 +196,7 @@ class LeaveManagerController extends Controller
     public function apiPendingCancellationCount(): JsonResponse
     {
         $count = LeaveRequest::where('status', 'approved')
-            ->where('cancellation_status', 'Pending Cancellation')
+            ->where('cancellation_status', 'AO Endorsed')
             ->count();
 
         return response()->json(['count' => $count]);
@@ -214,8 +213,8 @@ class LeaveManagerController extends Controller
             return response()->json(['error' => 'Leave not found'], 404);
         }
 
-        if ($leave->cancellation_status !== 'Pending Cancellation') {
-            return response()->json(['error' => 'No pending cancellation request for this leave'], 422);
+        if ($leave->cancellation_status !== 'AO Endorsed') {
+            return response()->json(['error' => 'Leave cancellation must be endorsed by the Administrative Officer first'], 422);
         }
 
         if ($leave->status !== 'approved') {
@@ -357,7 +356,7 @@ class LeaveManagerController extends Controller
 
             $leave->status = 'cancelled';
             $leave->detailed_status = 'Cancelled';
-            $leave->cancellation_status = 'Cancelled by applicant';
+            $leave->cancellation_status = 'Cancelled';
             $leave->cancellation_reviewed_by = Auth::id();
             $leave->cancellation_reviewed_at = now();
             $leave->cancellation_remarks = $request->input('remarks') ?? null;
@@ -415,8 +414,8 @@ class LeaveManagerController extends Controller
             return response()->json(['error' => 'Leave not found'], 404);
         }
 
-        if ($leave->cancellation_status !== 'Pending Cancellation') {
-            return response()->json(['error' => 'No pending cancellation request for this leave'], 422);
+        if ($leave->cancellation_status !== 'AO Endorsed') {
+            return response()->json(['error' => 'Leave cancellation must be endorsed by the Administrative Officer first'], 422);
         }
 
         DB::beginTransaction();
@@ -518,8 +517,8 @@ class LeaveManagerController extends Controller
 
                 continue;
             }
-            if ($leave->cancellation_status !== 'Pending Cancellation') {
-                $errors[] = "Leave #{$leaveId}: no pending cancellation";
+            if ($leave->cancellation_status !== 'AO Endorsed') {
+                $errors[] = "Leave #{$leaveId}: cancellation not yet endorsed by AO";
 
                 continue;
             }
@@ -643,7 +642,7 @@ class LeaveManagerController extends Controller
 
                 $leave->status = 'cancelled';
                 $leave->detailed_status = 'Cancelled';
-                $leave->cancellation_status = 'Cancelled by applicant';
+                $leave->cancellation_status = 'Cancelled';
                 $leave->cancellation_reviewed_by = Auth::id();
                 $leave->cancellation_reviewed_at = now();
                 $leave->save();
@@ -704,8 +703,8 @@ class LeaveManagerController extends Controller
 
                 continue;
             }
-            if ($leave->cancellation_status !== 'Pending Cancellation') {
-                $errors[] = "Leave #{$leaveId}: no pending cancellation";
+            if ($leave->cancellation_status !== 'AO Endorsed') {
+                $errors[] = "Leave #{$leaveId}: cancellation not yet endorsed by AO";
 
                 continue;
             }

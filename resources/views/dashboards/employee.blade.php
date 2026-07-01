@@ -10,7 +10,7 @@
 
 @section('tiles')
     <article class="tile metric-tile">
-        <span class="metric-label">Employee No.</span>
+        <span class="metric-label">Agency Employee No.</span>
         <strong>{{ $user->EmpNo ?: 'NOT SET' }}</strong>
         <small>{{ $user->designation ?: 'Designation pending' }}</small>
     </article>

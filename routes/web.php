@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdministrativeOfficerCancellationController;
 use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentHeadCancellationController;
 use App\Http\Controllers\DepartmentHeadController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DocumentRequestController;
@@ -43,8 +45,8 @@ use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
 use App\Http\Controllers\RecordsManagerController;
-use App\Http\Controllers\UniformInspectionController;
 use App\Http\Controllers\TravelOrderController;
+use App\Http\Controllers\UniformInspectionController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\LimitPayloadSize;
 use Illuminate\Support\Facades\Auth;
@@ -366,6 +368,30 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     Route::post('/department-head/locator/{id}/approve', [DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
     Route::post('/department-head/locator/{id}/reject', [DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');
     Route::post('/department-head/locator/{id}/record-arrival', [DepartmentHeadController::class, 'recordLocatorArrival'])->name('department-head.locator.record-arrival');
+});
+
+// Department Head — Leave Cancellation
+Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
+    Route::get('/department-head/leave-cancellation-requests', [DepartmentHeadCancellationController::class, 'leaveCancellationRequests'])
+        ->name('department-head.leave-cancellation-requests');
+    Route::post('/department-head/leave/{id}/recommend-cancellation', [DepartmentHeadCancellationController::class, 'recommend'])
+        ->name('department-head.leave.recommend-cancellation');
+    Route::post('/department-head/leave/{id}/reject-cancellation-dh', [DepartmentHeadCancellationController::class, 'reject'])
+        ->name('department-head.leave.reject-cancellation');
+    Route::get('/api/department-head/pending-cancellation-count', [DepartmentHeadCancellationController::class, 'pendingCancellationCount'])
+        ->name('api.department-head.pending-cancellation-count');
+});
+
+// Administrative Officer — Leave Cancellation
+Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
+    Route::get('/admin-officer/leave-cancellation-requests', [AdministrativeOfficerCancellationController::class, 'leaveCancellationRequests'])
+        ->name('admin-officer.leave-cancellation-requests');
+    Route::post('/admin-officer/leave/{id}/endorse-cancellation', [AdministrativeOfficerCancellationController::class, 'endorse'])
+        ->name('admin-officer.leave.endorse-cancellation');
+    Route::post('/admin-officer/leave/{id}/reject-cancellation', [AdministrativeOfficerCancellationController::class, 'reject'])
+        ->name('admin-officer.leave.reject-cancellation');
+    Route::get('/api/admin-officer/pending-cancellation-count', [AdministrativeOfficerCancellationController::class, 'pendingCancellationCount'])
+        ->name('api.admin-officer.pending-cancellation-count');
 });
 
 // Leave Manager pages

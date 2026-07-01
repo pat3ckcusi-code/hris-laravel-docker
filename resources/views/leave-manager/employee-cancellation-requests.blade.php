@@ -1,228 +1,425 @@
 @extends('dashboards.layout', [
-        'title' => 'Employee Cancellation Requests',
-        'subtitle' => 'Review pending employee leave cancellation requests'
+    'title'    => 'Employee Cancellation Requests',
+    'subtitle' => 'Step 3 of 3 — Final approval for leave cancellation requests',
 ])
 
 @section('page_head')
-<style>
-/* Bulk action toolbar */
-.bulk-toolbar {
-    display: none;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-}
-.bulk-toolbar.visible { display: flex; }
-.bulk-selected-label { font-weight: 600; color: #1d4ed8; font-size: 0.9rem; }
-.bulk-clear-btn { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 0.85rem; text-decoration: underline; padding: 0; }
-</style>
+    @include('partials.table-styles')
 @endsection
 
 @section('content')
-<section class="card">
-        <header>
-                <h2>Employee Cancellation Requests</h2>
-        </header>
 
-        <div class="card-body">
-                <p class="muted">Pending cancellation requests submitted by employees. Approve to cancel the leave and refund credits, or reject to keep the approved leave intact.</p>
+{{-- Workflow banner --}}
+<div style="display:flex;align-items:flex-start;gap:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
+    <i class="fa-solid fa-circle-info" style="color:#16a34a;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
+    <div>
+        <strong style="color:#14532d;font-size:0.92rem;">3-Step Cancellation Workflow — You are the Final Approver</strong>
+        <p style="margin:4px 0 0;font-size:0.875rem;color:#166534;line-height:1.55;">
+            Department Head
+            &nbsp;→&nbsp;Administrative Officer
+            &nbsp;→&nbsp;<span style="font-weight:600;color:#15803d;">You (Leave Manager)</span>
+        </p>
+        <p style="margin:4px 0 0;font-size:0.8rem;color:#14532d;line-height:1.5;">
+            These requests have been recommended by the DH and endorsed by the AO. Approving cancels the leave and refunds credits.
+        </p>
+    </div>
+</div>
 
-                <div class="filter-bar">
-                    <div class="filter-field">
-                        <label for="filter-month" class="small mb-1">Filter by month</label>
-                        @php
-                            $monthOptions = [];
-                            for ($i = 0; $i < 12; $i++) {
-                                $m = date('Y-m', strtotime("-{$i} months"));
-                                $label = date('F Y', strtotime($m . '-01'));
-                                $monthOptions[$m] = $label;
-                            }
-                        @endphp
-                        <select id="filter-month" name="month" class="form-control form-control-sm">
-                            @foreach($monthOptions as $val => $lbl)
-                                <option value="{{ $val }}" @if($val === $currentMonth) selected @endif>{{ $lbl }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="filter-field" style="flex:1">
-                        <div class="filter-emp-row">
-                            <label for="claEmployeeSearch" class="filter-label-emp mb-0">Employee</label>
-                            <input type="text" id="claEmployeeSearch" class="form-control form-control-lg filter-input-emp" placeholder="Type name or EmpNo to search" autocomplete="off">
-                            <input type="hidden" id="claEmployee" name="claEmployee" value="">
-                            <div id="claEmployee_suggestions" class="list-group" style="position:absolute;z-index:1050;top:100%;left:0;right:0;display:none;max-height:240px;overflow:auto"></div>
-                        </div>
-                    </div>
-                </div>
-
-                {{-- Bulk action toolbar (visible when ≥1 row selected) --}}
-                <div class="bulk-toolbar" id="bulk-toolbar">
-                    <span class="bulk-selected-label" id="bulk-count-label">0 selected</span>
-                    <button type="button" class="hris-btn hris-btn-sm hris-btn-success" id="bulk-approve-btn">
-                        <i class="fas fa-check"></i> Bulk Approve
-                    </button>
-                    <button type="button" class="hris-btn hris-btn-sm hris-btn-danger" id="bulk-reject-btn">
-                        <i class="fas fa-times"></i> Bulk Reject
-                    </button>
-                    <button type="button" class="bulk-clear-btn" id="bulk-clear-btn">Clear selection</button>
-                </div>
-
-                {{-- Top pagination bar --}}
-                @if($requests->total() > 0)
-                <div class="paginate-bar paginate-bar--top">
-                    <span class="paginate-summary">
-                        Showing {{ $requests->firstItem() }}–{{ $requests->lastItem() }} of {{ $requests->total() }} requests
-                    </span>
-                    {{ $requests->appends(request()->query())->links() }}
-                </div>
-                @endif
-
-                <div class="table-responsive">
-                    <table id="employee-requests-table" class="hris-table">
-                        <thead>
-                            <tr>
-                                <th style="width:36px"><input type="checkbox" id="select-all-cb" title="Select all visible rows"></th>
-                                <th>Request ID</th>
-                                <th>Employee</th>
-                                <th>Department</th>
-                                <th>Leave Type</th>
-                                <th>Reason</th>
-                                <th>Original Status</th>
-                                <th>Requested At</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($requests as $requestItem)
-                                <tr>
-                                    <td class="text-center"><input type="checkbox" class="row-select" value="{{ $requestItem->id }}"></td>
-                                    <td class="text-center">{{ $requestItem->id }}</td>
-                                    <td>
-                                        @if($requestItem->user)
-                                            {{ trim(($requestItem->user->last_name ?? '') . ', ' . ($requestItem->user->first_name ?? '')) }}
-                                        @else
-                                            -
-                                        @endif
-                                    </td>
-                                    <td class="text-center">
-                                        @if($requestItem->user && !empty($departments[$requestItem->user->Dept_id] ?? ''))
-                                            {{ $departments[$requestItem->user->Dept_id] }}
-                                        @else
-                                            -
-                                        @endif
-                                    </td>
-                                    <td class="text-center">{{ strtoupper($requestItem->leave_type ?? '') }}</td>
-                                    <td>
-                                        @if(($requestItem->cancellation_reason ?? '') === 'Reported to work')
-                                            <span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:600">Reported to work ✓</span>
-                                        @else
-                                            {{ $requestItem->cancellation_reason ?? '-' }}
-                                        @endif
-                                    </td>
-                                    <td class="text-center">{{ ucfirst($requestItem->status ?? '-') }}</td>
-                                    <td class="text-center">{{ $requestItem->cancellation_requested_at ? \Carbon\Carbon::parse($requestItem->cancellation_requested_at)->format('M d, Y H:i') : '-' }}</td>
-                                    <td>
-                                        <button class="hris-btn hris-btn-primary hris-btn-sm approve-cancellation-btn" data-id="{{ $requestItem->id }}">Approve</button>
-                                        <button class="hris-btn hris-btn-secondary hris-btn-sm reject-cancellation-btn" data-id="{{ $requestItem->id }}">Reject</button>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td></td>
-                                    <td class="text-center">-</td>
-                                    <td>-</td>
-                                    <td class="text-center">-</td>
-                                    <td class="text-center">-</td>
-                                    <td>-</td>
-                                    <td class="text-center">-</td>
-                                    <td class="text-center">-</td>
-                                    <td class="text-center">No employee cancellation requests found.</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                    @if($requests->total() > 0)
-                    <div class="paginate-bar paginate-bar--bottom">
-                        <span class="paginate-summary">
-                            Showing {{ $requests->firstItem() }}–{{ $requests->lastItem() }} of {{ $requests->total() }} requests
-                        </span>
-                        {{ $requests->appends(request()->query())->links() }}
-                    </div>
-                    @endif
-                </div>
+{{-- Table card --}}
+<div class="hris-table-card">
+    <div class="hris-table-header" style="background:linear-gradient(90deg,#f0fdf4,#fff);">
+        <div class="hris-table-header-title">
+            <h2 class="hris-table-title" style="font-size:1.05rem;">
+                <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:8px;"></i>
+                Pending Final Approval
+            </h2>
+            <p class="hris-table-subtitle">DH-recommended and AO-endorsed cancellation requests</p>
         </div>
-</section>
+        {{-- Employee search --}}
+        <div style="position:relative;min-width:260px;">
+            <input type="text" id="claEmployeeSearch"
+                placeholder="Search employee..."
+                autocomplete="off"
+                style="width:100%;padding:7px 12px 7px 34px;border:1px solid #d1d5db;border-radius:8px;font-size:0.875rem;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:0.8rem;pointer-events:none;"></i>
+            <input type="hidden" id="claEmployee" value="">
+            <div id="claEmployee_suggestions" class="list-group" style="position:absolute;z-index:1050;top:100%;left:0;right:0;display:none;max-height:240px;overflow:auto;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        </div>
+    </div>
+
+    {{-- Bulk toolbar --}}
+    <div id="bulk-toolbar" style="display:none;align-items:center;gap:10px;padding:10px 16px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;flex-wrap:wrap;">
+        <span id="bulk-count-label" style="font-weight:600;color:#15803d;font-size:0.875rem;"></span>
+        <button class="hris-btn hris-btn-success hris-btn-sm" id="bulk-approve-btn">
+            <i class="fa-solid fa-check"></i> Bulk Approve
+        </button>
+        <button class="hris-btn hris-btn-danger hris-btn-sm" id="bulk-reject-btn">
+            <i class="fa-solid fa-xmark"></i> Bulk Reject
+        </button>
+        <button id="bulk-clear-btn" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:0.8rem;text-decoration:underline;padding:0;">
+            Clear selection
+        </button>
+    </div>
+
+    <div class="hris-table-wrapper">
+        <table id="cancellation-table" class="hris-table" style="width:100%">
+            <thead>
+                <tr>
+                    <th style="width:36px"><input type="checkbox" id="select-all-cb" title="Select all"></th>
+                    <th style="width:44px">#</th>
+                    <th>Employee</th>
+                    <th>Leave Type</th>
+                    <th>Leave Period</th>
+                    <th>Cancellation Reason</th>
+                    <th>DH Remarks</th>
+                    <th>AO Remarks</th>
+                    <th>Requested</th>
+                    <th style="width:150px">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($requests as $item)
+                    @php
+                        $leaveType = strtoupper($item->leave_type ?? '');
+                        $typeColors = [
+                            'VL'   => ['bg'=>'#dbeafe','color'=>'#1e40af','border'=>'#93c5fd'],
+                            'SL'   => ['bg'=>'#fee2e2','color'=>'#991b1b','border'=>'#fca5a5'],
+                            'WLNS' => ['bg'=>'#dcfce7','color'=>'#166534','border'=>'#86efac'],
+                            'SPL'  => ['bg'=>'#ede9fe','color'=>'#5b21b6','border'=>'#c4b5fd'],
+                            'CTO'  => ['bg'=>'#fff7ed','color'=>'#9a3412','border'=>'#fdba74'],
+                            'SP'   => ['bg'=>'#ccfbf1','color'=>'#134e4a','border'=>'#5eead4'],
+                        ];
+                        $tc = $typeColors[$leaveType] ?? ['bg'=>'#f1f5f9','color'=>'#475569','border'=>'#cbd5e1'];
+                        $empName = $item->user ? trim(($item->user->last_name ?? '').', '.($item->user->first_name ?? '')) : '-';
+                        $dept = !empty($departments[$item->user?->Dept_id] ?? '') ? $departments[$item->user->Dept_id] : '';
+                        $sameDay = $item->end_date && $item->end_date === $item->start_date;
+                        $period = $item->start_date ? \Carbon\Carbon::parse($item->start_date)->format('M d, Y') : '-';
+                        if (!$sameDay && $item->end_date) $period .= ' – '.\Carbon\Carbon::parse($item->end_date)->format('M d, Y');
+                        $requestedAt   = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->diffForHumans() : '-';
+                        $requestedFull = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i') : '-';
+                        $dhRemarks = $item->cancellation_dh_remarks ?? '-';
+                        $aoRemarks = $item->cancellation_ao_remarks ?? '-';
+                    @endphp
+                    <tr class="cancellation-row" style="cursor:pointer;"
+                        data-id="{{ $item->id }}"
+                        data-employee="{{ $empName }}"
+                        data-dept="{{ $dept }}"
+                        data-leave-type="{{ $leaveType }}"
+                        data-period="{{ $period }}"
+                        data-reason="{{ e($item->cancellation_reason ?? '-') }}"
+                        data-dh-remarks="{{ e($dhRemarks) }}"
+                        data-ao-remarks="{{ e($aoRemarks) }}"
+                        data-requested="{{ $requestedFull }}"
+                    >
+                        <td class="text-center" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="row-select" value="{{ $item->id }}">
+                        </td>
+                        <td class="text-center" style="color:#94a3b8;font-size:0.8rem;">{{ $item->id }}</td>
+                        <td>
+                            <div style="font-weight:600;font-size:0.9rem;">{{ $empName }}</div>
+                            @if($dept)
+                                <div style="font-size:0.75rem;color:#94a3b8;">{{ $dept }}</div>
+                            @endif
+                        </td>
+                        <td class="text-center">
+                            <span style="background:{{ $tc['bg'] }};color:{{ $tc['color'] }};border:1px solid {{ $tc['border'] }};padding:2px 10px;border-radius:12px;font-size:0.78rem;font-weight:700;white-space:nowrap;">
+                                {{ $leaveType }}
+                            </span>
+                        </td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $period }}</td>
+                        <td style="max-width:180px;">
+                            @if(($item->cancellation_reason ?? '') === 'Reported to work')
+                                <span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">
+                                    <i class="fa-solid fa-check" style="margin-right:3px;"></i>Reported to work
+                                </span>
+                            @else
+                                <span style="font-size:0.85rem;">{{ $item->cancellation_reason ?? '-' }}</span>
+                            @endif
+                        </td>
+                        <td style="max-width:140px;font-size:0.82rem;color:#475569;">
+                            {{ $dhRemarks !== '-' ? \Illuminate\Support\Str::limit($dhRemarks, 45) : '—' }}
+                        </td>
+                        <td style="max-width:140px;font-size:0.82rem;color:#475569;">
+                            {{ $aoRemarks !== '-' ? \Illuminate\Support\Str::limit($aoRemarks, 45) : '—' }}
+                        </td>
+                        <td style="font-size:0.8rem;color:#64748b;white-space:nowrap;" title="{{ $requestedFull }}">
+                            <i class="fa-regular fa-clock" style="margin-right:4px;"></i>{{ $requestedAt }}
+                        </td>
+                        <td class="action-cell">
+                            <div style="display:flex;gap:6px;flex-wrap:nowrap;">
+                                <button class="hris-btn hris-btn-success hris-btn-sm approve-btn" data-id="{{ $item->id }}">
+                                    <i class="fa-solid fa-check"></i> Approve
+                                </button>
+                                <button class="hris-btn hris-btn-danger hris-btn-sm reject-btn" data-id="{{ $item->id }}">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="10">
+                            <div style="text-align:center;padding:48px 24px;color:#94a3b8;">
+                                <i class="fa-regular fa-circle-check" style="font-size:2.5rem;color:#d1d5db;margin-bottom:12px;display:block;"></i>
+                                <div style="font-size:1rem;font-weight:600;color:#6b7280;margin-bottom:4px;">No pending cancellation requests</div>
+                                <div style="font-size:0.85rem;">All cancellation requests have been processed.</div>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    @if($requests->total() > 0)
+    <div class="paginate-bar paginate-bar--bottom" style="padding:10px 16px;">
+        <span class="paginate-summary">Showing {{ $requests->firstItem() }}–{{ $requests->lastItem() }} of {{ $requests->total() }}</span>
+        {{ $requests->appends(request()->query())->links() }}
+    </div>
+    @endif
+</div>
+
+@endsection
+
+@section('modals')
+
+{{-- Detail modal --}}
+<dialog id="detail-modal" class="employee-modal" style="max-width:520px;width:100%;">
+    <div class="dialog-header">
+        <h3 class="dialog-title">
+            <i class="fa-solid fa-circle-xmark" style="color:#16a34a;margin-right:6px;"></i>Cancellation Request
+        </h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body" id="detail-body" style="line-height:1.7;font-size:0.9rem;"></div>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+        <form method="dialog"><button class="hris-btn hris-btn-secondary" type="submit">Close</button></form>
+        <button class="hris-btn hris-btn-danger" id="detail-reject-btn"><i class="fa-solid fa-xmark"></i> Reject</button>
+        <button class="hris-btn hris-btn-success" id="detail-approve-btn"><i class="fa-solid fa-check"></i> Approve</button>
+    </div>
+</dialog>
+
+{{-- Approve confirmation modal --}}
+<dialog id="approve-modal" class="employee-modal" style="max-width:420px;width:100%;">
+    <div class="dialog-header">
+        <h3 class="dialog-title" style="color:#15803d;">
+            <i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>Approve Cancellation?
+        </h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.87rem;color:#166534;">
+            <i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>
+            The leave will be <strong>cancelled</strong> and the employee's credits will be <strong>refunded</strong>.
+        </div>
+        <div id="approve-summary" style="margin-bottom:16px;font-size:0.87rem;color:#374151;line-height:1.6;"></div>
+        <div>
+            <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
+                Remarks <span style="font-weight:400;color:#94a3b8;">(optional)</span>
+            </label>
+            <textarea id="approve-remarks" rows="3"
+                placeholder="Add a note for this approval..."
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+        <form method="dialog"><button class="hris-btn hris-btn-secondary" type="submit">Cancel</button></form>
+        <button class="hris-btn hris-btn-success" id="approve-confirm-btn">
+            <i class="fa-solid fa-check"></i> Yes, Approve
+        </button>
+    </div>
+</dialog>
+
+{{-- Reject confirmation modal --}}
+<dialog id="reject-modal" class="employee-modal" style="max-width:420px;width:100%;">
+    <div class="dialog-header">
+        <h3 class="dialog-title" style="color:#dc2626;">
+            <i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>Reject Cancellation?
+        </h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.87rem;color:#991b1b;">
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
+            The employee will be <strong>notified</strong> that their cancellation was denied. The leave remains approved.
+        </div>
+        <div id="reject-summary" style="margin-bottom:16px;font-size:0.87rem;color:#374151;line-height:1.6;"></div>
+        <div>
+            <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
+                Remarks <span style="color:#ef4444;">*</span>
+            </label>
+            <textarea id="reject-remarks" rows="3"
+                placeholder="Required — explain why this request is being rejected..."
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
+            <p id="reject-remarks-error" style="color:#ef4444;font-size:0.8rem;margin:4px 0 0;display:none;">Remarks are required.</p>
+        </div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+        <form method="dialog"><button class="hris-btn hris-btn-secondary" type="submit">Cancel</button></form>
+        <button class="hris-btn hris-btn-danger" id="reject-confirm-btn">
+            <i class="fa-solid fa-xmark"></i> Yes, Reject
+        </button>
+    </div>
+</dialog>
+
+{{-- Bulk approve confirmation modal --}}
+<dialog id="bulk-approve-modal" class="employee-modal" style="max-width:400px;width:100%;">
+    <div class="dialog-header">
+        <h3 class="dialog-title" style="color:#15803d;">
+            <i class="fa-solid fa-check-double" style="margin-right:6px;"></i>Bulk Approve?
+        </h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:0.87rem;color:#166534;">
+            <i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>
+            <span id="bulk-approve-count-label"></span> — each leave will be cancelled and credits refunded.
+        </div>
+    </div>
+    <div class="modal-actions" style="margin-top:4px;display:flex;gap:8px;justify-content:flex-end;">
+        <form method="dialog"><button class="hris-btn hris-btn-secondary" type="submit">Cancel</button></form>
+        <button class="hris-btn hris-btn-success" id="bulk-approve-confirm-btn">
+            <i class="fa-solid fa-check-double"></i> Yes, Approve All
+        </button>
+    </div>
+</dialog>
+
+{{-- Bulk reject confirmation modal --}}
+<dialog id="bulk-reject-modal" class="employee-modal" style="max-width:420px;width:100%;">
+    <div class="dialog-header">
+        <h3 class="dialog-title" style="color:#dc2626;">
+            <i class="fa-solid fa-xmark" style="margin-right:6px;"></i>Bulk Reject?
+        </h3>
+        <form method="dialog">
+            <button type="submit" class="dialog-close" aria-label="Close">&#x2715;</button>
+        </form>
+    </div>
+    <div class="dialog-body">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.87rem;color:#991b1b;">
+            <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
+            <span id="bulk-reject-count-label"></span> — all selected employees will be notified.
+        </div>
+        <div>
+            <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
+                Remarks <span style="color:#ef4444;">*</span>
+            </label>
+            <textarea id="bulk-reject-remarks" rows="3"
+                placeholder="Required — applies to all selected rejections..."
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
+            <p id="bulk-reject-remarks-error" style="color:#ef4444;font-size:0.8rem;margin:4px 0 0;display:none;">Remarks are required.</p>
+        </div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+        <form method="dialog"><button class="hris-btn hris-btn-secondary" type="submit">Cancel</button></form>
+        <button class="hris-btn hris-btn-danger" id="bulk-reject-confirm-btn">
+            <i class="fa-solid fa-xmark"></i> Yes, Reject All
+        </button>
+    </div>
+</dialog>
+
 @endsection
 
 @section('page_scripts_after')
 <script>
 (function($){
-    function pollPendingCancellationBadge() {
-        const badge = $('.sidebar-badge[data-badge-key="pending_employee_cancellation_requests"]');
+    var pendingLeaveId = null;
+
+    // ── Helpers ────────────────────────────────────────────────────────
+    function escapeHtml(str) {
+        if (!str && str !== 0) return '';
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str)));
+        return d.innerHTML;
+    }
+
+    var typeColorMap = {
+        'VL':   { bg:'#dbeafe', color:'#1e40af', border:'#93c5fd' },
+        'SL':   { bg:'#fee2e2', color:'#991b1b', border:'#fca5a5' },
+        'WLNS': { bg:'#dcfce7', color:'#166534', border:'#86efac' },
+        'SPL':  { bg:'#ede9fe', color:'#5b21b6', border:'#c4b5fd' },
+        'CTO':  { bg:'#fff7ed', color:'#9a3412', border:'#fdba74' },
+        'SP':   { bg:'#ccfbf1', color:'#134e4a', border:'#5eead4' },
+    };
+
+    function typeBadge(type) {
+        var tc = typeColorMap[type] || { bg:'#f1f5f9', color:'#475569', border:'#cbd5e1' };
+        return '<span style="background:'+tc.bg+';color:'+tc.color+';border:1px solid '+tc.border+';padding:2px 10px;border-radius:12px;font-size:0.78rem;font-weight:700;white-space:nowrap;">'+escapeHtml(type)+'</span>';
+    }
+
+    function reasonHtml(reason) {
+        return reason === 'Reported to work'
+            ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;"><i class="fa-solid fa-check" style="margin-right:3px;"></i>Reported to work</span>'
+            : escapeHtml(reason || '-');
+    }
+
+    function summaryHtml(data) {
+        return '<strong>' + escapeHtml(data.employee) + '</strong>' +
+               (data.leaveType ? ' &mdash; ' + escapeHtml(data.leaveType) : '') +
+               (data.period ? '<br><span style="color:#64748b;font-size:0.82rem;">' + escapeHtml(data.period) + '</span>' : '');
+    }
+
+    function dRow(label, value) {
+        return '<tr><td style="padding:6px 10px 6px 0;color:#64748b;white-space:nowrap;vertical-align:top;font-size:0.82rem;width:38%;">'+label+'</td>'+
+               '<td style="padding:6px 0;font-weight:500;">'+value+'</td></tr>';
+    }
+
+    function showToast(msg, type) {
+        var c = type === 'success'
+            ? { bg:'#f0fdf4', border:'#86efac', color:'#166534', icon:'fa-circle-check' }
+            : { bg:'#fef2f2', border:'#fca5a5', color:'#991b1b', icon:'fa-circle-xmark' };
+        var $t = $('<div>').css({ position:'fixed', bottom:'24px', right:'24px', zIndex:9999, maxWidth:'360px',
+            background:c.bg, border:'1px solid '+c.border, borderLeft:'4px solid '+c.border, borderRadius:'8px',
+            padding:'12px 16px', display:'flex', alignItems:'center', gap:'10px',
+            boxShadow:'0 4px 12px rgba(0,0,0,0.1)', fontSize:'0.875rem', color:c.color, opacity:0, transition:'opacity 0.2s' })
+            .html('<i class="fa-solid '+c.icon+'" style="font-size:1.1rem;flex-shrink:0;"></i><span>'+escapeHtml(msg)+'</span>')
+            .appendTo('body');
+        setTimeout(function(){ $t.css('opacity',1); }, 10);
+        setTimeout(function(){ $t.css('opacity',0); setTimeout(function(){ $t.remove(); }, 250); }, 2800);
+    }
+
+    // ── Badge polling ──────────────────────────────────────────────────
+    function pollBadge() {
+        var badge = $('.sidebar-badge[data-badge-key="pending_employee_cancellation_requests"]');
         if (!badge.length) return;
         $.getJSON('{{ route('api.leave-manager.pending-cancellation-count') }}')
             .done(function(resp){
-                const count = parseInt(resp.count || 0, 10);
-                badge.text(count);
-                if (count <= 0) { badge.hide(); } else { badge.show(); }
+                var count = parseInt(resp.count || 0, 10);
+                badge.text(count).toggle(count > 0);
             });
     }
 
-    var dt = null;
-    var dtConfig = {
-        paging: false,
-        pageLength: 25,
-        lengthChange: true,
-        lengthMenu: [10, 25, 50, 100],
-        autoWidth: false,
-        order: [[2, 'asc']],
-        columnDefs: [
-            { orderable: false, targets: [0, 5, 8] },
-            { width: '36px', targets: 0 },
-            { width: '10%', targets: 1 },
-            { width: '8%', targets: 6 },
-            { width: '14%', targets: 7 }
-        ],
-        dom: 'rt<"bottom"ip>',
-        language: { emptyTable: 'No employee cancellation requests found.' }
-    };
-
-    function initDt() {
-        if ($.fn.dataTable && !$.fn.dataTable.isDataTable('#employee-requests-table')) {
-            try { dt = $('#employee-requests-table').DataTable(dtConfig); } catch(e) {}
-        }
-    }
-
-    // ── Checkbox / selection management ───────────────────────────────
+    // ── Checkbox / bulk toolbar ────────────────────────────────────────
     function getSelectedIds() {
         return $('.row-select:checked').map(function(){ return parseInt($(this).val(), 10); }).get();
     }
 
     function updateBulkToolbar() {
-        const count = getSelectedIds().length;
+        var count = getSelectedIds().length;
         if (count > 0) {
             $('#bulk-count-label').text(count + ' selected');
-            $('#bulk-toolbar').addClass('visible');
+            $('#bulk-toolbar').css('display', 'flex');
         } else {
-            $('#bulk-toolbar').removeClass('visible');
+            $('#bulk-toolbar').hide();
         }
     }
 
     $(document).on('change', '#select-all-cb', function(){
-        const checked = $(this).is(':checked');
-        $('.row-select').prop('checked', checked);
+        $('.row-select').prop('checked', $(this).is(':checked'));
         updateBulkToolbar();
     });
 
     $(document).on('change', '.row-select', function(){
-        const total = $('.row-select').length;
-        const checked = $('.row-select:checked').length;
-        $('#select-all-cb').prop('indeterminate', checked > 0 && checked < total);
-        $('#select-all-cb').prop('checked', checked === total && total > 0);
+        var total = $('.row-select').length, checked = $('.row-select:checked').length;
+        $('#select-all-cb').prop('indeterminate', checked > 0 && checked < total)
+                           .prop('checked', checked === total && total > 0);
         updateBulkToolbar();
     });
 
@@ -232,29 +429,147 @@
         updateBulkToolbar();
     });
 
-    // ── Bulk Approve ───────────────────────────────────────────────────
-    $(document).on('click', '#bulk-approve-btn', function(){
-        const ids = getSelectedIds();
-        if (!ids.length) return;
-        if (typeof Swal === 'undefined') {
-            if (!confirm('Approve ' + ids.length + ' cancellation request(s)?')) return;
-            doBulkApprove(ids);
-            return;
-        }
-        Swal.fire({
-            title: 'Approve ' + ids.length + ' request(s)?',
-            text: 'Each selected leave will be cancelled and credits refunded.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, approve all',
-            confirmButtonColor: '#16a34a'
-        }).then(function(res){
-            if (!res.isConfirmed) return;
-            doBulkApprove(ids);
+    // ── Row click → detail modal ───────────────────────────────────────
+    $(document).on('click', '.cancellation-row', function(e){
+        if ($(e.target).closest('.action-cell, td:first-child').length) return;
+        var $r = $(this);
+        pendingLeaveId = $r.data('id');
+        var dhR = $r.data('dh-remarks'), aoR = $r.data('ao-remarks');
+
+        $('#detail-body').html(
+            '<table style="width:100%;border-collapse:collapse;">' +
+            dRow('Employee',            escapeHtml($r.data('employee'))) +
+            dRow('Department',          escapeHtml($r.data('dept') || '—')) +
+            dRow('Leave Type',          typeBadge($r.data('leave-type'))) +
+            dRow('Leave Period',        escapeHtml($r.data('period'))) +
+            dRow('Cancellation Reason', reasonHtml($r.data('reason'))) +
+            dRow('DH Remarks',          dhR && dhR !== '-' ? escapeHtml(dhR) : '<span style="color:#d1d5db;">—</span>') +
+            dRow('AO Remarks',          aoR && aoR !== '-' ? escapeHtml(aoR) : '<span style="color:#d1d5db;">—</span>') +
+            dRow('Requested At',        escapeHtml($r.data('requested'))) +
+            '</table>'
+        );
+        $('#detail-approve-btn, #detail-reject-btn').data('row', {
+            employee: $r.data('employee'), leaveType: $r.data('leave-type'), period: $r.data('period'),
+        });
+        document.getElementById('detail-modal').showModal();
+    });
+
+    $(document).on('click', '#detail-approve-btn', function(){
+        var row = $(this).data('row');
+        document.getElementById('detail-modal').close();
+        openApproveModal(pendingLeaveId, row);
+    });
+
+    $(document).on('click', '#detail-reject-btn', function(){
+        var row = $(this).data('row');
+        document.getElementById('detail-modal').close();
+        openRejectModal(pendingLeaveId, row);
+    });
+
+    // ── Inline action buttons ──────────────────────────────────────────
+    $(document).on('click', '.approve-btn', function(){
+        var $tr = $(this).closest('tr');
+        openApproveModal($(this).data('id'), {
+            employee: $tr.data('employee'), leaveType: $tr.data('leave-type'), period: $tr.data('period'),
         });
     });
 
-    function doBulkApprove(ids) {
+    $(document).on('click', '.reject-btn', function(){
+        var $tr = $(this).closest('tr');
+        openRejectModal($(this).data('id'), {
+            employee: $tr.data('employee'), leaveType: $tr.data('leave-type'), period: $tr.data('period'),
+        });
+    });
+
+    // ── Approve modal ──────────────────────────────────────────────────
+    function openApproveModal(id, row) {
+        pendingLeaveId = id;
+        $('#approve-summary').html(summaryHtml(row));
+        $('#approve-remarks').val('');
+        document.getElementById('approve-modal').showModal();
+        setTimeout(function(){ document.getElementById('approve-remarks').focus(); }, 80);
+    }
+
+    $(document).on('click', '#approve-confirm-btn', function(){
+        var remarks = $('#approve-remarks').val().trim();
+        document.getElementById('approve-modal').close();
+        submitApprove(pendingLeaveId, remarks);
+    });
+
+    function submitApprove(id, remarks) {
+        var $btn = $('#approve-confirm-btn').prop('disabled', true);
+        $.post('{{ url('/api/leave') }}/' + id + '/approve-cancellation', { _token: '{{ csrf_token() }}', remarks: remarks })
+            .done(function(resp){
+                if (resp && resp.success) {
+                    showToast('Leave cancelled and credits refunded.', 'success');
+                    setTimeout(function(){ window.location.reload(); }, 1400);
+                } else {
+                    showToast(resp && resp.error ? resp.error : 'Failed to approve.', 'error');
+                }
+            })
+            .fail(function(xhr){
+                var msg = 'Failed to approve cancellation.';
+                try { var j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
+                showToast(msg, 'error');
+            })
+            .always(function(){ $btn.prop('disabled', false); });
+    }
+
+    // ── Reject modal ───────────────────────────────────────────────────
+    function openRejectModal(id, row) {
+        pendingLeaveId = id;
+        $('#reject-summary').html(summaryHtml(row));
+        $('#reject-remarks').val('');
+        $('#reject-remarks-error').hide();
+        $('#reject-remarks').css('border-color', '#d1d5db');
+        document.getElementById('reject-modal').showModal();
+        setTimeout(function(){ document.getElementById('reject-remarks').focus(); }, 80);
+    }
+
+    $(document).on('click', '#reject-confirm-btn', function(){
+        var remarks = $('#reject-remarks').val().trim();
+        if (!remarks) {
+            $('#reject-remarks-error').show();
+            $('#reject-remarks').css('border-color', '#ef4444').focus();
+            return;
+        }
+        document.getElementById('reject-modal').close();
+        submitReject(pendingLeaveId, remarks);
+    });
+
+    $(document).on('input', '#reject-remarks', function(){
+        if ($(this).val().trim()) { $('#reject-remarks-error').hide(); $(this).css('border-color', '#d1d5db'); }
+    });
+
+    function submitReject(id, remarks) {
+        $.post('{{ url('/api/leave') }}/' + id + '/reject-cancellation', { _token: '{{ csrf_token() }}', remarks: remarks })
+            .done(function(resp){
+                if (resp && resp.success) {
+                    showToast('Cancellation rejected. Employee notified.', 'success');
+                    setTimeout(function(){ window.location.reload(); }, 1400);
+                } else {
+                    showToast(resp && resp.error ? resp.error : 'Failed to reject.', 'error');
+                }
+            })
+            .fail(function(xhr){
+                var msg = 'Failed to reject cancellation.';
+                try { var j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
+                showToast(msg, 'error');
+            });
+    }
+
+    // ── Bulk approve ───────────────────────────────────────────────────
+    $(document).on('click', '#bulk-approve-btn', function(){
+        var ids = getSelectedIds();
+        if (!ids.length) return;
+        $('#bulk-approve-count-label').text('Approving ' + ids.length + ' cancellation request' + (ids.length > 1 ? 's' : ''));
+        document.getElementById('bulk-approve-modal').showModal();
+    });
+
+    $(document).on('click', '#bulk-approve-confirm-btn', function(){
+        var ids = getSelectedIds();
+        document.getElementById('bulk-approve-modal').close();
+        var $btn = $(this).prop('disabled', true);
         $.ajax({
             url: '{{ route('api.leave.bulk-approve-cancellations') }}',
             method: 'POST',
@@ -262,47 +577,42 @@
             dataType: 'json'
         }).done(function(resp){
             if (resp && resp.success) {
-                const msg = resp.processed + ' request(s) approved.' + (resp.errors && resp.errors.length ? ' ' + resp.errors.length + ' failed.' : '');
-                if (typeof Swal !== 'undefined') Swal.fire('Done', msg, resp.errors && resp.errors.length ? 'warning' : 'success').then(()=>window.location.reload());
-                else { alert(msg); window.location.reload(); }
+                var msg = resp.processed + ' request' + (resp.processed !== 1 ? 's' : '') + ' approved.';
+                if (resp.errors && resp.errors.length) msg += ' ' + resp.errors.length + ' failed.';
+                showToast(msg, resp.errors && resp.errors.length ? 'error' : 'success');
+                setTimeout(function(){ window.location.reload(); }, 1400);
             } else {
-                const msg = (resp && resp.error) ? resp.error : 'Bulk approve failed.';
-                if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg);
+                showToast(resp && resp.error ? resp.error : 'Bulk approve failed.', 'error');
             }
         }).fail(function(xhr){
-            let msg = 'Bulk approve failed.';
-            try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
-            if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg);
-        });
-    }
-
-    // ── Bulk Reject ────────────────────────────────────────────────────
-    $(document).on('click', '#bulk-reject-btn', function(){
-        const ids = getSelectedIds();
-        if (!ids.length) return;
-        if (typeof Swal === 'undefined') {
-            const remarks = prompt('Remarks for rejection (required):'); if (!remarks) return;
-            doBulkReject(ids, remarks);
-            return;
-        }
-        Swal.fire({
-            title: 'Reject ' + ids.length + ' request(s)?',
-            html: '<p>Enter remarks for all rejections:</p><input type="text" id="swal-bulk-remarks" class="swal2-input" placeholder="Manager remarks (required)">',
-            showCancelButton: true,
-            confirmButtonText: 'Reject all',
-            confirmButtonColor: '#ef4444',
-            preConfirm: function(){
-                const val = document.getElementById('swal-bulk-remarks').value;
-                if (!val || !val.trim()) { Swal.showValidationMessage('Remarks are required'); return false; }
-                return val.trim();
-            }
-        }).then(function(res){
-            if (!res.isConfirmed) return;
-            doBulkReject(ids, res.value);
-        });
+            var msg = 'Bulk approve failed.';
+            try { var j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
+            showToast(msg, 'error');
+        }).always(function(){ $btn.prop('disabled', false); });
     });
 
-    function doBulkReject(ids, remarks) {
+    // ── Bulk reject ────────────────────────────────────────────────────
+    $(document).on('click', '#bulk-reject-btn', function(){
+        var ids = getSelectedIds();
+        if (!ids.length) return;
+        $('#bulk-reject-count-label').text('Rejecting ' + ids.length + ' cancellation request' + (ids.length > 1 ? 's' : ''));
+        $('#bulk-reject-remarks').val('');
+        $('#bulk-reject-remarks-error').hide();
+        $('#bulk-reject-remarks').css('border-color', '#d1d5db');
+        document.getElementById('bulk-reject-modal').showModal();
+        setTimeout(function(){ document.getElementById('bulk-reject-remarks').focus(); }, 80);
+    });
+
+    $(document).on('click', '#bulk-reject-confirm-btn', function(){
+        var remarks = $('#bulk-reject-remarks').val().trim();
+        if (!remarks) {
+            $('#bulk-reject-remarks-error').show();
+            $('#bulk-reject-remarks').css('border-color', '#ef4444').focus();
+            return;
+        }
+        var ids = getSelectedIds();
+        document.getElementById('bulk-reject-modal').close();
+        var $btn = $(this).prop('disabled', true);
         $.ajax({
             url: '{{ route('api.leave.bulk-reject-cancellations') }}',
             method: 'POST',
@@ -310,173 +620,75 @@
             dataType: 'json'
         }).done(function(resp){
             if (resp && resp.success) {
-                const msg = resp.processed + ' request(s) rejected.' + (resp.errors && resp.errors.length ? ' ' + resp.errors.length + ' failed.' : '');
-                if (typeof Swal !== 'undefined') Swal.fire('Done', msg, resp.errors && resp.errors.length ? 'warning' : 'success').then(()=>window.location.reload());
-                else { alert(msg); window.location.reload(); }
+                var msg = resp.processed + ' request' + (resp.processed !== 1 ? 's' : '') + ' rejected.';
+                if (resp.errors && resp.errors.length) msg += ' ' + resp.errors.length + ' failed.';
+                showToast(msg, 'success');
+                setTimeout(function(){ window.location.reload(); }, 1400);
             } else {
-                const msg = (resp && resp.error) ? resp.error : 'Bulk reject failed.';
-                if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg);
+                showToast(resp && resp.error ? resp.error : 'Bulk reject failed.', 'error');
             }
         }).fail(function(xhr){
-            let msg = 'Bulk reject failed.';
-            try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
-            if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error'); else alert(msg);
-        });
-    }
-
-    // ── DataTable and filters ──────────────────────────────────────────
-    function escapeHtml(str) {
-        if (str === null || str === undefined) return '';
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(String(str)));
-        return div.innerHTML;
-    }
-
-    function fetchRows(month, emp) {
-        var params = { month: month };
-        if (emp) params.emp = emp;
-
-        var url = new URL(window.location.href);
-        url.searchParams.set('month', month);
-        if (emp) url.searchParams.set('emp', emp); else url.searchParams.delete('emp');
-        window.history.replaceState({}, '', url.toString());
-
-        $.ajax({
-            url: '{{ route('leave-manager.employee-cancellation-requests') }}',
-            data: params,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            success: function(resp) {
-                if (dt) { dt.destroy(); dt = null; }
-                var tbody = $('#employee-requests-table tbody');
-                tbody.empty();
-                // Reset selection
-                $('#select-all-cb').prop('checked', false).prop('indeterminate', false);
-                $('#bulk-toolbar').removeClass('visible');
-
-                if (resp.rows && resp.rows.length) {
-                    resp.rows.forEach(function(row) {
-                        tbody.append(
-                            '<tr>' +
-                            '<td class="text-center"><input type="checkbox" class="row-select" value="' + escapeHtml(row.id) + '"></td>' +
-                            '<td class="text-center">' + escapeHtml(row.id) + '</td>' +
-                            '<td>' + escapeHtml(row.employee) + '</td>' +
-                            '<td class="text-center">' + escapeHtml(row.department) + '</td>' +
-                            '<td class="text-center">' + escapeHtml(row.leave_type) + '</td>' +
-                            '<td>' + (row.cancellation_reason === 'Reported to work' ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:600">Reported to work ✓</span>' : escapeHtml(row.cancellation_reason || '-')) + '</td>' +
-                            '<td class="text-center">' + escapeHtml(row.status) + '</td>' +
-                            '<td class="text-center">' + escapeHtml(row.requested_at) + '</td>' +
-                            '<td>' +
-                                '<button class="hris-btn hris-btn-primary hris-btn-sm approve-cancellation-btn" data-id="' + row.id + '">Approve</button> ' +
-                                '<button class="hris-btn hris-btn-secondary hris-btn-sm reject-cancellation-btn" data-id="' + row.id + '">Reject</button>' +
-                            '</td>' +
-                            '</tr>'
-                        );
-                    });
-                }
-
-                initDt();
-            },
-            error: function() {
-                window.location.href = '{{ route('leave-manager.employee-cancellation-requests') }}?month=' + encodeURIComponent(month);
-            }
-        });
-    }
-
-    $(function(){
-        initDt();
-        pollPendingCancellationBadge();
-        setInterval(pollPendingCancellationBadge, 20000);
+            var msg = 'Bulk reject failed.';
+            try { var j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
+            showToast(msg, 'error');
+        }).always(function(){ $btn.prop('disabled', false); });
     });
 
-    $(document).on('change', '#filter-month', function(){
-        fetchRows($(this).val(), $('#claEmployee').val() || '');
+    $(document).on('input', '#bulk-reject-remarks', function(){
+        if ($(this).val().trim()) { $('#bulk-reject-remarks-error').hide(); $(this).css('border-color', '#d1d5db'); }
     });
 
-    var claEmpTimer = null, claSuggestionIndex = -1;
-    function resetClaSuggestions() { claSuggestionIndex = -1; $('#claEmployee_suggestions').hide().empty(); }
+    // ── Employee search ────────────────────────────────────────────────
+    var claTimer = null, claIdx = -1;
+    function resetSuggestions() { claIdx = -1; $('#claEmployee_suggestions').hide().empty(); }
+
     $('#claEmployeeSearch').on('input', function(){
-        const q = $(this).val(); $('#claEmployee').val(''); if (claEmpTimer) clearTimeout(claEmpTimer);
-        if (!q || q.length < 2) { resetClaSuggestions(); return; }
-        claEmpTimer = setTimeout(()=>{
+        var q = $(this).val(); $('#claEmployee').val('');
+        if (claTimer) clearTimeout(claTimer);
+        if (!q || q.length < 2) { resetSuggestions(); return; }
+        claTimer = setTimeout(function(){
             $.getJSON('{{ route('api.employee.search') }}', { q: q }, function(rows){
-                const $box = $('#claEmployee_suggestions'); $box.empty(); if (!rows || !rows.length) { $box.hide(); return; }
-                rows.forEach(r=>{
-                    const label = (r.FullName || r.EmpNo) + (r.Position ? (' - ' + r.Position) : '') + ' (' + r.EmpNo + ')';
-                    const $it = $(`<a href="#" class="list-group-item list-group-item-action">${label}</a>`);
-                    $it.data('empno', r.EmpNo); $it.data('label', label);
-                    $it.on('click', function(e){ e.preventDefault(); $('#claEmployee').val($(this).data('empno')); $('#claEmployeeSearch').val($(this).data('label')); $box.hide(); applyFilters(); });
-                    $box.append($it);
-                }); $box.show(); claSuggestionIndex = -1;
+                var $box = $('#claEmployee_suggestions'); $box.empty();
+                if (!rows || !rows.length) { $box.hide(); return; }
+                rows.forEach(function(r){
+                    var label = (r.FullName || r.EmpNo) + (r.Position ? ' - ' + r.Position : '') + ' (' + r.EmpNo + ')';
+                    $('<a href="#" class="list-group-item list-group-item-action">').text(label)
+                        .data({ empno: r.EmpNo, label: label })
+                        .on('click', function(e){
+                            e.preventDefault();
+                            $('#claEmployee').val($(this).data('empno'));
+                            $('#claEmployeeSearch').val($(this).data('label'));
+                            $box.hide();
+                            applyFilters();
+                        })
+                        .appendTo($box);
+                });
+                $box.show(); claIdx = -1;
             });
         }, 200);
     });
 
     $('#claEmployeeSearch').on('keydown', function(e){
-        const $box = $('#claEmployee_suggestions'); const $items = $box.children('.list-group-item'); if (!$items.length) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); claSuggestionIndex = Math.min(claSuggestionIndex+1, $items.length-1); $items.removeClass('active').eq(claSuggestionIndex).addClass('active')[0].scrollIntoView({block:'nearest'}); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); claSuggestionIndex = Math.max(claSuggestionIndex-1, 0); $items.removeClass('active').eq(claSuggestionIndex).addClass('active')[0].scrollIntoView({block:'nearest'}); }
-        else if (e.key === 'Enter') { e.preventDefault(); if (claSuggestionIndex >= 0) $items.eq(claSuggestionIndex).trigger('click'); else { const empVal = $('#claEmployee').val()||''; if (empVal) { applyFilters(); return; } const txt = $('#claEmployeeSearch').val()||''; const m = txt.match(/\((\d+)\)\s*$/); if (m && m[1]) { $('#claEmployee').val(m[1]); applyFilters(); return; } $('#claEmployeeSearch').trigger('input'); } }
+        var $box = $('#claEmployee_suggestions'), $items = $box.children('.list-group-item');
+        if (!$items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); claIdx = Math.min(claIdx+1, $items.length-1); $items.removeClass('active').eq(claIdx).addClass('active')[0].scrollIntoView({block:'nearest'}); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); claIdx = Math.max(claIdx-1, 0); $items.removeClass('active').eq(claIdx).addClass('active')[0].scrollIntoView({block:'nearest'}); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (claIdx >= 0) $items.eq(claIdx).trigger('click'); else applyFilters(); }
         else if (e.key === 'Escape') { $box.hide(); }
     });
 
-    $(document).on('click', function(e){ if (!$(e.target).closest('#claEmployee_suggestions, #claEmployeeSearch').length) $('#claEmployee_suggestions').hide(); });
-
-    function applyFilters(){ const month = $('#filter-month').val()||''; const emp = $('#claEmployee').val()||''; const params = []; if (month) params.push('month='+encodeURIComponent(month)); if (emp) params.push('emp='+encodeURIComponent(emp)); const url = '{{ route('leave-manager.employee-cancellation-requests') }}' + (params.length ? ('?'+params.join('&')) : ''); window.location.href = url; }
-
-    // ── Single row approve/reject ──────────────────────────────────────
-    function doApproveCancellation(id) {
-        $.post(`{{ url('/api/leave') }}/${id}/approve-cancellation`, { _token: '{{ csrf_token() }}' })
-            .done(function(resp){
-                if (resp && resp.success) {
-                    if (typeof Swal !== 'undefined') Swal.fire('Approved', 'Cancellation approved and credits refunded.', 'success').then(()=>window.location.reload());
-                    else { window.location.reload(); }
-                } else {
-                    const msg = resp && resp.error ? resp.error : 'Failed to approve';
-                    if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                }
-            })
-            .fail(function(xhr){
-                let msg = 'Failed to approve cancellation.';
-                try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
-                if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-            });
-    }
-
-    function doRejectCancellation(id, remarks) {
-        $.post(`{{ url('/api/leave') }}/${id}/reject-cancellation`, { remarks: remarks, _token: '{{ csrf_token() }}' })
-            .done(function(resp){
-                if (resp && resp.success) {
-                    if (typeof Swal !== 'undefined') Swal.fire('Rejected', 'Cancellation request rejected.', 'success').then(()=>window.location.reload());
-                    else { window.location.reload(); }
-                } else {
-                    const msg = resp && resp.error ? resp.error : 'Failed to reject';
-                    if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-                }
-            })
-            .fail(function(xhr){
-                let msg = 'Failed to reject cancellation.';
-                try { const j = JSON.parse(xhr.responseText); if (j && j.error) msg = j.error; } catch(e){}
-                if (typeof Swal !== 'undefined') Swal.fire('Error', msg, 'error');
-            });
-    }
-
-    $(document).on('click', '.approve-cancellation-btn', function(){
-        const leaveId = $(this).data('id');
-        if (!leaveId) return;
-        if (typeof Swal === 'undefined' || typeof Swal.fire !== 'function') { if (!confirm('Approve cancellation request?')) return; doApproveCancellation(leaveId); return; }
-        Swal.fire({ title: 'Approve cancellation?', text: 'This will cancel the approved leave and refund credits.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Yes, approve', confirmButtonColor: '#16a34a' })
-            .then(function(res){ if (!res.isConfirmed) return; doApproveCancellation(leaveId); });
+    $(document).on('click', function(e){
+        if (!$(e.target).closest('#claEmployee_suggestions, #claEmployeeSearch').length) resetSuggestions();
     });
 
-    $(document).on('click', '.reject-cancellation-btn', function(){
-        const leaveId = $(this).data('id');
-        if (!leaveId) return;
-        if (typeof Swal === 'undefined' || typeof Swal.fire !== 'function') {
-            const remarks = prompt('Enter remarks for rejection:'); if (!remarks) return; doRejectCancellation(leaveId, remarks);
-            return;
-        }
-        Swal.fire({ title: 'Reject cancellation?', input: 'text', inputPlaceholder: 'Manager remarks (required)', showCancelButton: true, confirmButtonText: 'Reject', inputValidator: (v) => { if (!v || !v.trim()) return 'Remarks required'; } })
-            .then(function(res){ if (!res.isConfirmed) return; doRejectCancellation(leaveId, res.value); });
+    function applyFilters(){
+        var emp = $('#claEmployee').val() || '';
+        window.location.href = '{{ route('leave-manager.employee-cancellation-requests') }}' + (emp ? '?emp=' + encodeURIComponent(emp) : '');
+    }
+
+    $(function(){
+        pollBadge();
+        setInterval(pollBadge, 20000);
     });
 })(jQuery);
 </script>

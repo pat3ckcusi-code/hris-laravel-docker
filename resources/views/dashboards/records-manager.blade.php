@@ -72,7 +72,7 @@
 
             <ul class="watchlist">
                 <li>
-                    <span>Missing Employee No.</span>
+                    <span>Missing Agency Employee No.</span>
                     <strong>{{ $dataQuality['missing_emp_no'] }}</strong>
                 </li>
                 <li>

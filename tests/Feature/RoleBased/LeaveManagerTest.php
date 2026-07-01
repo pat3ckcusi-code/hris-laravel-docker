@@ -159,90 +159,129 @@ class LeaveManagerTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_lm_only_sees_ao_endorsed_cancellations(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+
+        // Pending Cancellation — should NOT appear on LM page
+        $pendingLeave = LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+        LeaveDate::create(['leave_request_id' => $pendingLeave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
+
+        // AO Endorsed — SHOULD appear
+        $endorsedLeave = LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->addDays(3)->toDateString(),
+            'end_date'            => now()->addWeek()->addDays(3)->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'AO Endorsed',
+        ]);
+        LeaveDate::create(['leave_request_id' => $endorsedLeave->id, 'leave_date' => now()->addWeek()->addDays(3)->toDateString(), 'is_cancelled' => false]);
+
+        $response = $this->actingAs($lm)
+            ->withHeaders(['X-Requested-With' => 'XMLHttpRequest'])
+            ->getJson(route('leave-manager.employee-cancellation-requests'));
+        $response->assertStatus(200);
+        $ids = collect($response->json('rows'))->pluck('id')->toArray();
+
+        $this->assertContains($endorsedLeave->id, $ids, 'AO Endorsed leave should appear for LM');
+        $this->assertNotContains($pendingLeave->id, $ids, 'Pending Cancellation should not appear for LM');
+    }
+
+    public function test_lm_approve_cancellation_requires_ao_endorsed(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp, ['VL' => 10.000]);
+
+        $leave = LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($lm)->postJson(route('api.leave.approve-cancellation', $leave->id));
+        $response->assertStatus(422);
+    }
+
     public function test_cancel_leave_date_with_refund(): void
     {
-        $this->markTestSkipped('api.leave.cancel-date route removed; cancellation is now employee-initiated via request-cancellation flow.');
-
         $lm = $this->createLeaveManager();
         $emp = $this->createEmployee();
         $this->createLeaveBalance($emp, ['VL' => 14.000]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $emp->id,
-            'leave_type' => 'VL',
-            'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'Cancel test',
-            'status'     => 'approved',
+            'user_id'                   => $emp->id,
+            'leave_type'                => 'VL',
+            'start_date'                => now()->addWeek()->toDateString(),
+            'end_date'                  => now()->addWeek()->toDateString(),
+            'reason'                    => 'Cancel test',
+            'status'                    => 'approved',
+            'cancellation_status'       => 'AO Endorsed',
+            'printing_deduction_details' => json_encode(['VL' => 1.0]),
+            'printing_deduction_applied' => true,
         ]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
 
-        $leaveDate = LeaveDate::create([
-            'leave_request_id' => $leave->id,
-            'leave_date'       => now()->addWeek()->toDateString(),
-            'is_cancelled'     => false,
-        ]);
+        $response = $this->actingAs($lm)->postJson(route('api.leave.approve-cancellation', $leave->id));
+        $response->assertStatus(200)->assertJson(['success' => true]);
 
-        $response = $this->actingAs($lm)->post(route('api.leave.cancel-date'), [
-            'leave_id' => $leave->id,
-            'date'     => now()->addWeek()->toDateString(),
-            'reason'   => 'Test cancellation',
-        ]);
+        $leave->refresh();
+        $this->assertEquals('Cancelled', $leave->cancellation_status);
+        $this->assertEquals('cancelled', $leave->status);
 
-        $this->assertTrue(
-            $response->isSuccessful(),
-            "Cancel leave date failed: HTTP {$response->getStatusCode()}"
-        );
-
-        // Verify balance was refunded
         $emp->refresh();
         $balance = $emp->leaveBalance;
         if ($balance) {
-            $this->assertGreaterThanOrEqual(14.000, (float) $balance->VL,
-                "Leave balance was not refunded after cancellation");
+            $this->assertGreaterThanOrEqual(14.0, (float) $balance->VL,
+                'VL balance should be restored after cancellation approval');
         }
     }
 
     public function test_cancel_leave_rollback_integrity(): void
     {
-        $this->markTestSkipped('api.leave.cancel-date route removed; cancellation is now employee-initiated via request-cancellation flow.');
-
         $lm = $this->createLeaveManager();
         $emp = $this->createEmployee();
         $originalVL = 14.000;
         $this->createLeaveBalance($emp, ['VL' => $originalVL]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $emp->id,
-            'leave_type' => 'VL',
-            'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->addDays(2)->toDateString(),
-            'reason'     => 'Rollback test',
-            'status'     => 'approved',
+            'user_id'                    => $emp->id,
+            'leave_type'                 => 'VL',
+            'start_date'                 => now()->addWeek()->toDateString(),
+            'end_date'                   => now()->addWeek()->addDays(2)->toDateString(),
+            'reason'                     => 'Rollback test',
+            'status'                     => 'approved',
+            'cancellation_status'        => 'AO Endorsed',
+            'printing_deduction_details' => json_encode(['VL' => 3.0]),
+            'printing_deduction_applied' => true,
         ]);
-
-        $dates = [];
         for ($i = 0; $i < 3; $i++) {
-            $dates[] = LeaveDate::create([
-                'leave_request_id' => $leave->id,
-                'leave_date'       => now()->addWeek()->addDays($i)->toDateString(),
-                'is_cancelled'     => false,
-            ]);
+            LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->addDays($i)->toDateString(), 'is_cancelled' => false]);
         }
 
-        // Cancel all dates
-        foreach ($dates as $idx => $date) {
-            $this->actingAs($lm)->post(route('api.leave.cancel-date'), [
-                'leave_id' => $leave->id,
-                'date'     => now()->addWeek()->addDays($idx)->toDateString(),
-                'reason'   => 'Rollback test cancellation',
-            ]);
-        }
+        $response = $this->actingAs($lm)->postJson(route('api.leave.approve-cancellation', $leave->id));
+        $response->assertStatus(200)->assertJson(['success' => true]);
 
         $emp->refresh();
         $balance = $emp->leaveBalance;
         if ($balance) {
             $this->assertGreaterThanOrEqual($originalVL, (float) $balance->VL,
-                "After cancelling 3 days, VL balance should be >= {$originalVL}");
+                'After cancelling 3 days, VL balance should be >= original');
         }
     }
 

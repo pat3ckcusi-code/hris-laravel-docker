@@ -416,4 +416,90 @@ class DepartmentHeadTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    public function test_dh_cancellation_requests_page_loads(): void
+    {
+        $dh = $this->createDepartmentHead();
+
+        $response = $this->actingAs($dh)->get(route('department-head.leave-cancellation-requests'));
+
+        $response->assertStatus(200);
+    }
+
+    public function test_dh_can_recommend_cancellation_for_own_dept(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'Personal reasons',
+            'cancellation_requested_at' => now(),
+            'cancellation_requested_by' => $emp->id,
+        ]);
+        \App\Models\LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.leave.recommend-cancellation', $leave->id), [
+            'remarks' => 'Looks valid, recommend.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $leave->refresh();
+        $this->assertEquals('DH Recommended', $leave->cancellation_status);
+        $this->assertEquals('recommended', $leave->cancellation_dh_action);
+        $this->assertEquals($dh->id, $leave->cancellation_dh_by);
+    }
+
+    public function test_dh_can_reject_cancellation(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.leave.reject-cancellation', $leave->id), [
+            'remarks' => 'Not valid.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $leave->refresh();
+        $this->assertEquals('Rejected', $leave->cancellation_status);
+        $this->assertEquals('rejected', $leave->cancellation_dh_action);
+    }
+
+    public function test_dh_cannot_recommend_already_dh_recommended(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'DH Recommended',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.leave.recommend-cancellation', $leave->id));
+
+        $response->assertStatus(422);
+    }
 }

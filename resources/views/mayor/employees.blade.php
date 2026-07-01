@@ -61,7 +61,7 @@
                         <th>Department</th>
                         <th>Date Hired</th>
                         <th>Email</th>
-                        <th>Employee No.</th>
+                        <th>Agency Employee No.</th>
                         <th>Access Level</th>
                         <th>Status</th>
                     </tr>

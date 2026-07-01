@@ -126,6 +126,7 @@
             ['label' => 'Filed T.O.s',        'icon' => 'filed_travel',      'route' => 'department-head.filed-travel-orders',  'active' => ['department-head.filed-travel-orders']],
             ['label' => 'Filed Office Order', 'icon' => 'filed_office',      'route' => 'department-head.filed-office-orders',  'active' => ['department-head.filed-office-orders']],
             ['label' => 'OIC Assignments',    'icon' => 'oic',               'route' => 'department-head.oic-assignments.index', 'active' => ['department-head.oic-assignments.index']],
+            ['label' => 'Cancellation Requests', 'icon' => 'leave',         'route' => 'department-head.leave-cancellation-requests', 'active' => ['department-head.leave-cancellation-requests'], 'badge' => 'pending_cancellation_dh'],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                       'active' => ['attendance.dtr', 'attendance.dtr.download']],
@@ -154,6 +155,7 @@
             ['label' => 'Filed Office Order', 'icon' => 'filed_office',        'route' => 'admin-officer.filed-office-orders',   'active' => ['admin-officer.filed-office-orders']],
             ['label' => 'OIC Assignments',    'icon' => 'oic',               'route' => 'department-head.oic-assignments.index', 'active' => ['department-head.oic-assignments.index']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'admin-officer.monitoring-matrix',      'active' => ['admin-officer.monitoring-matrix']],
+            ['label' => 'Cancellation Requests', 'icon' => 'leave',         'route' => 'admin-officer.leave-cancellation-requests', 'active' => ['admin-officer.leave-cancellation-requests'], 'badge' => 'pending_cancellation_ao'],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                   'active' => ['attendance.dtr', 'attendance.dtr.download']],
@@ -323,8 +325,30 @@
             return $leave + $eta + $locator;
         },
         'pending_employee_cancellation_requests' => fn () => \App\Models\LeaveRequest::where('status', 'approved')
-            ->where('cancellation_status', 'Pending Cancellation')
+            ->where('cancellation_status', 'AO Endorsed')
             ->count(),
+        'pending_cancellation_dh' => function () {
+            $user = auth()->user();
+            if (!$user) return 0;
+            $depts = app(\App\Services\DepartmentService::class)->resolveAllDepartmentsForUser($user);
+            if ($depts->isEmpty()) return 0;
+            $ids = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
+            return \App\Models\LeaveRequest::whereIn('user_id', $ids)
+                ->where('status', 'approved')
+                ->where('cancellation_status', 'Pending Cancellation')
+                ->count();
+        },
+        'pending_cancellation_ao' => function () {
+            $user = auth()->user();
+            if (!$user) return 0;
+            $depts = app(\App\Services\DepartmentService::class)->resolveAllDepartmentsForAdminOfficer($user);
+            if ($depts->isEmpty()) return 0;
+            $ids = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
+            return \App\Models\LeaveRequest::whereIn('user_id', $ids)
+                ->where('status', 'approved')
+                ->where('cancellation_status', 'DH Recommended')
+                ->count();
+        },
         'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),
         'approved_document_requests' => fn () => \App\Models\DocumentRequest::whereIn('status', ['Accepted', 'Completed'])->count(),
         'hr_alerts' => function () {

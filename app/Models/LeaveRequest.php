@@ -68,6 +68,14 @@ class LeaveRequest extends Model
         'cancellation_reviewed_at',
         'cancellation_requested_by',
         'cancellation_reviewed_by',
+        'cancellation_dh_action',
+        'cancellation_dh_at',
+        'cancellation_dh_by',
+        'cancellation_dh_remarks',
+        'cancellation_ao_action',
+        'cancellation_ao_at',
+        'cancellation_ao_by',
+        'cancellation_ao_remarks',
         'reason',
         'status',
         'detailed_status',
@@ -103,7 +111,7 @@ class LeaveRequest extends Model
     ];
 
     protected $casts = [
-        'print_count'     => 'integer',
+        'print_count' => 'integer',
         'last_printed_at' => 'datetime',
     ];
 
@@ -130,6 +138,16 @@ class LeaveRequest extends Model
     public function rescheduledLeaves()
     {
         return $this->hasMany(LeaveRequest::class, 'rescheduled_from_id');
+    }
+
+    public function cancellationDhBy()
+    {
+        return $this->belongsTo(User::class, 'cancellation_dh_by');
+    }
+
+    public function cancellationAoBy()
+    {
+        return $this->belongsTo(User::class, 'cancellation_ao_by');
     }
 
     public function approver()

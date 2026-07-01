@@ -279,4 +279,91 @@ class AdministrativeOfficerTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    public function test_ao_cancellation_requests_page_loads(): void
+    {
+        $ao = $this->createAdminOfficer();
+
+        $response = $this->actingAs($ao)->get(route('admin-officer.leave-cancellation-requests'));
+
+        $response->assertStatus(200);
+    }
+
+    public function test_ao_can_endorse_dh_recommended_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'DH Recommended',
+            'cancellation_dh_action' => 'recommended',
+            'cancellation_dh_at' => now(),
+        ]);
+        \App\Models\LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.leave.endorse-cancellation', $leave->id), [
+            'remarks' => 'Endorsed by AO.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $leave->refresh();
+        $this->assertEquals('AO Endorsed', $leave->cancellation_status);
+        $this->assertEquals('endorsed', $leave->cancellation_ao_action);
+        $this->assertEquals($ao->id, $leave->cancellation_ao_by);
+    }
+
+    public function test_ao_cannot_endorse_pending_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.leave.endorse-cancellation', $leave->id), [
+            'remarks' => 'Trying to endorse without DH step.',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_ao_can_reject_dh_recommended_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee();
+
+        $leave = \App\Models\LeaveRequest::create([
+            'user_id'             => $emp->id,
+            'leave_type'          => 'VL',
+            'start_date'          => now()->addWeek()->toDateString(),
+            'end_date'            => now()->addWeek()->toDateString(),
+            'reason'              => 'Test',
+            'status'              => 'approved',
+            'cancellation_status' => 'DH Recommended',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.leave.reject-cancellation', $leave->id), [
+            'remarks' => 'Rejected at AO level.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $leave->refresh();
+        $this->assertEquals('Rejected', $leave->cancellation_status);
+        $this->assertEquals('rejected', $leave->cancellation_ao_action);
+    }
 }

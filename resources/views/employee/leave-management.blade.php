@@ -1016,7 +1016,24 @@
                                                 <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
                                             @endif
                                             @if($leave->status === 'approved')
-                                                <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
+                                                @if(in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed']))
+                                                    @php
+                                                        $chipMap = [
+                                                            'Pending Cancellation' => ['text' => 'Awaiting DH Review',        'bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047'],
+                                                            'DH Recommended'       => ['text' => 'Awaiting AO Endorsement',   'bg' => '#dbeafe', 'color' => '#1e40af', 'border' => '#93c5fd'],
+                                                            'AO Endorsed'          => ['text' => 'Awaiting Leave Manager',    'bg' => '#ede9fe', 'color' => '#5b21b6', 'border' => '#c4b5fd'],
+                                                        ];
+                                                        $chip = $chipMap[$leave->cancellation_status] ?? null;
+                                                    @endphp
+                                                    @if($chip)
+                                                        <span style="background:{{ $chip['bg'] }};color:{{ $chip['color'] }};border:1px solid {{ $chip['border'] }};padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;white-space:nowrap">{{ $chip['text'] }}</span>
+                                                    @endif
+                                                @elseif($leave->cancellation_status === 'Rejected')
+                                                    <span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;white-space:nowrap">Cancellation Rejected</span>
+                                                    <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
+                                                @else
+                                                    <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
+                                                @endif
                                             @endif
                                             @if($leave->status === 'approved' && in_array($leave->leave_type, ['Vacation Leave', 'Sick Leave', 'Wellness Leave']) && !$leave->rescheduled_from_id)
                                                 @if($leave->reschedule_status === 'Pending Reschedule')
@@ -1060,7 +1077,7 @@
     <form id="cancellationRequestForm" method="POST" class="modal-body" style="min-width:320px;">
         @csrf
         <h3 style="margin-top:0">Request Leave Cancellation</h3>
-        <p class="muted">Provide a reason for cancelling your approved leave. This request will be reviewed by the leave manager.</p>
+        <p class="muted">Provide a reason for cancelling your approved leave. Your request will be reviewed by the Department Head, then the Administrative Officer, then the Leave Manager.</p>
         <div style="margin-top:8px">
             <label style="font-weight:600; display:block; margin-bottom:8px">Reason for Cancellation</label>
             <div id="cancelReasonChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">

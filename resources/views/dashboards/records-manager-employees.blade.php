@@ -71,7 +71,7 @@
             </label>
 
             <label>
-                Employee No.
+                Agency Employee No.
                 <input type="text" id="addEmpNo" name="EmpNo" value="{{ old('EmpNo') }}"
                        readonly data-next-sequential-by-type="{{ json_encode($nextSequentialByType) }}">
             </label>
@@ -208,7 +208,7 @@
                         <th>Department</th>
                         <th>Date Hired</th>
                         <th>Email</th>
-                        <th>Employee No.</th>
+                        <th>Agency Employee No.</th>
                         <th>Access Level</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -317,7 +317,7 @@
             </label>
 
             <label>
-                Employee No.
+                Agency Employee No.
                 <input type="text" name="EmpNo" id="updateEmpNo" value="{{ old('EmpNo') }}" data-uppercase-input>
             </label>
 
