@@ -1,7 +1,7 @@
-@props(['name' => 'month', 'label' => 'Filter by Month'])
+@props(['name' => 'month', 'label' => 'Filter by Month', 'default' => null])
 
 @php
-    $currentMonth = request($name, '');
+    $currentMonth = request($name, $default !== null ? (string) $default : '');
     $currentYear = request('year', date('Y'));
 @endphp
 

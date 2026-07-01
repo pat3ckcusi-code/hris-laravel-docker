@@ -12,6 +12,10 @@
         <div class="notice success">{{ session('status') }}</div>
     @endif
 
+    @if (session('error'))
+        <div class="notice error">{{ session('error') }}</div>
+    @endif
+
     <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$records">
         <x-slot:filters>
             <form method="GET" action="{{ route('payroll.attendance.index') }}" class="filter-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">

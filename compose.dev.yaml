@@ -84,7 +84,7 @@ services:
       <<: *php-env
     volumes:
       - .:/var/www/html                          # live source mount
-      - /var/www/html/vendor                     # keep image vendor/
+      - vendor_data:/var/www/html/vendor          # shared across app/queue/scheduler
       - /var/www/html/node_modules               # keep image node_modules/
       - /var/www/html/public/build               # keep compiled assets
       - ./storage/app/templates:/var/www/html/storage/app/templates   # host-bind: templates
@@ -188,7 +188,7 @@ services:
       <<: *php-env
     volumes:
       - .:/var/www/html
-      - /var/www/html/vendor
+      - vendor_data:/var/www/html/vendor
       - /var/www/html/node_modules
       - ./storage/app/templates:/var/www/html/storage/app/templates
       - ./storage/app/pds:/var/www/html/storage/app/pds
@@ -226,7 +226,7 @@ services:
       <<: *php-env
     volumes:
       - .:/var/www/html
-      - /var/www/html/vendor
+      - vendor_data:/var/www/html/vendor
       - /var/www/html/node_modules
       - ./storage/app/templates:/var/www/html/storage/app/templates
       - ./storage/app/pds:/var/www/html/storage/app/pds
@@ -239,6 +239,12 @@ services:
         limits:
           cpus: "0.25"
           memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan --version || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # ── Frontend: Vite Dev Server (HMR) ──────────────────────────────────────
   #
@@ -306,3 +312,5 @@ volumes:
     name: hris-dev-storage-logs
   vite_node_modules:
     name: hris-dev-vite-node-modules
+  vendor_data:
+    name: hris-dev-vendor

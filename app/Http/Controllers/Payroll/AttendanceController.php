@@ -45,6 +45,15 @@ class AttendanceController extends Controller
             'status' => 'required|string|max:50',
         ]);
 
+        $exists = Dtr::where('employee_id', $request->employee_id)
+            ->whereDate('date', $request->date)
+            ->exists();
+
+        if ($exists) {
+            return back()->withInput()
+                ->with('error', 'A DTR record already exists for this employee on this date. Edit the existing record instead.');
+        }
+
         Dtr::create($request->only('employee_id', 'date', 'time_in_am', 'time_out_am', 'time_in_pm', 'time_out_pm', 'status'));
 
         return redirect()->route('payroll.attendance.index')
