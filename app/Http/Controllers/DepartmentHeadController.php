@@ -1656,7 +1656,8 @@ class DepartmentHeadController extends Controller
                     'Start Date' => $formatted['start'],
                     'End Date' => $formatted['end'],
                 ];
-                $ao = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
+                $empDept = $employee?->Dept_id ? Department::find($employee->Dept_id) : null;
+                $ao = $empDept ? $this->departmentService->getAdminOfficerUser($empDept) : null;
                 $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
                 foreach (array_filter([$ao, $lm]) as $recipient) {
                     try {

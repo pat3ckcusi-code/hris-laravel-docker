@@ -6,9 +6,51 @@ use App\Models\Department;
 use App\Models\OicAssignment;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class DepartmentService
 {
+    /**
+     * Return the department's current department head, but only if that user
+     * still holds the department head role. Prevents a stale FK (left behind by
+     * a role change) from silently misdirecting a notification.
+     */
+    public function getDepartmentHeadUser(Department $dept): ?User
+    {
+        $user = $dept->departmentHead;
+        if (! $user || $this->normalizeRole($user->access_level) !== 'department head') {
+            if ($user) {
+                Log::warning('Stale department head reference ignored', ['dept_id' => $dept->Dept_id, 'user_id' => $user->id]);
+            }
+
+            return null;
+        }
+
+        return $user;
+    }
+
+    /**
+     * Return the department's current administrative officer, but only if that
+     * user still holds the administrative officer role.
+     */
+    public function getAdminOfficerUser(Department $dept): ?User
+    {
+        $user = $dept->adminOfficer;
+        if (! $user || $this->normalizeRole($user->access_level) !== 'administrative officer') {
+            if ($user) {
+                Log::warning('Stale admin officer reference ignored', ['dept_id' => $dept->Dept_id, 'user_id' => $user->id]);
+            }
+
+            return null;
+        }
+
+        return $user;
+    }
+
+    private function normalizeRole(?string $role): string
+    {
+        return strtolower(trim(str_replace(['-', '_'], ' ', (string) $role)));
+    }
     /**
      * Resolve a Department model for the given user.
      */

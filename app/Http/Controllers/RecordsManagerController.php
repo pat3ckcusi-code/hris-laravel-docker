@@ -231,6 +231,16 @@ class RecordsManagerController extends Controller
             'date_hired' => $validated['date_hired'],
         ])->save();
 
+        // A user who no longer holds the department head / administrative officer
+        // role must not keep being the notification recipient for a department.
+        $newRole = strtolower(trim((string) $validated['access_level']));
+        if ($newRole !== 'department head') {
+            Department::where('department_head_id', $user->id)->update(['department_head_id' => null]);
+        }
+        if ($newRole !== 'administrative officer') {
+            Department::where('admin_officer_id', $user->id)->update(['admin_officer_id' => null]);
+        }
+
         if ($request->expectsJson()) {
             return response()->json(['status' => 'success', 'message' => 'Employee record updated successfully.']);
         }

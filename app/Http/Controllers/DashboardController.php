@@ -485,6 +485,7 @@ class DashboardController extends Controller
 
         // Verify the selected admin officer has administrative officer role
         $aoEmpNo = $validated['ao_emp_no'] ?? null;
+        $aoUserId = null;
         if ($aoEmpNo !== null && $aoEmpNo !== '') {
             $aoEmpNoUpper = mb_strtoupper(trim($aoEmpNo));
             $aoUser = User::query()->where('EmpNo', $aoEmpNoUpper)->first(['id', 'access_level']);
@@ -495,6 +496,7 @@ class DashboardController extends Controller
                         'ao_emp_no' => 'Invalid Admin Officer EmpNo: must belong to a user with administrative officer role.',
                     ]);
                 }
+                $aoUserId = $aoUser->id;
             }
             $aoEmpNo = $aoEmpNoUpper;
         } else {
@@ -512,6 +514,8 @@ class DashboardController extends Controller
             'Dept_name' => $validated['Dept_name'],
             'EmpNo' => $validated['EmpNo'],
             'ao_emp_no' => $aoEmpNo,
+            'department_head_id' => $storeUser?->id,
+            'admin_officer_id' => $aoUserId,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,
         ]);
@@ -548,6 +552,7 @@ class DashboardController extends Controller
 
         // Validate EmpNo against users table when provided
         $empNo = $validated['EmpNo'] ?? null;
+        $headUserId = null;
         if ($empNo !== null && $empNo !== '') {
             $empNoUpper = mb_strtoupper(trim($empNo));
             $matchingUser = User::query()
@@ -569,12 +574,14 @@ class DashboardController extends Controller
                         'EmpNo' => 'Invalid EmpNo: must belong to a valid user with department head role.',
                     ]);
             }
+            $headUserId = $matchingUser->id;
         } else {
             $empNo = null;
         }
 
         // Validate ao_emp_no against users table when provided
         $aoEmpNo = $validated['ao_emp_no'] ?? null;
+        $aoUserId = null;
         if ($aoEmpNo !== null && $aoEmpNo !== '') {
             $aoEmpNoUpper = mb_strtoupper(trim($aoEmpNo));
             $aoUser = User::query()->where('EmpNo', $aoEmpNoUpper)->first(['id', 'access_level']);
@@ -590,6 +597,7 @@ class DashboardController extends Controller
                 ]);
             }
             $aoEmpNo = $aoEmpNoUpper;
+            $aoUserId = $aoUser->id;
         } else {
             $aoEmpNo = null;
         }
@@ -625,6 +633,8 @@ class DashboardController extends Controller
             'Dept_name' => $validated['Dept_name'],
             'EmpNo' => $empNo !== null ? mb_strtoupper(trim($empNo)) : null,
             'ao_emp_no' => $aoEmpNo,
+            'department_head_id' => $headUserId,
+            'admin_officer_id' => $aoUserId,
             'Designation' => $validated['Designation'],
             'parent_dept_id' => $validated['parent_dept_id'] ?? null,
         ])->save();

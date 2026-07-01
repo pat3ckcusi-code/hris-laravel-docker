@@ -1553,9 +1553,7 @@ class AdministrativeOfficerController extends Controller
             // For reschedule rejections, also notify DH and Leave Manager
             if ($isReschedule) {
                 $empDept = $employee?->Dept_id ? Department::find($employee->Dept_id) : null;
-                $dh = ($empDept && ! empty($empDept->EmpNo) && $empDept->EmpNo !== 'UNASSIGNED')
-                    ? User::where('EmpNo', $empDept->EmpNo)->first()
-                    : null;
+                $dh = $empDept ? $this->departmentService->getDepartmentHeadUser($empDept) : null;
                 $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
                 $rejDetails = [
                     'Employee' => $employee ? (trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: $employee->name) : 'N/A',

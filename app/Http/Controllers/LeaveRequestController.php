@@ -9,6 +9,7 @@ use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\DepartmentService;
 use App\Services\LeaveRequestService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -22,9 +23,12 @@ class LeaveRequestController extends Controller
 {
     private LeaveRequestService $leaveRequestService;
 
-    public function __construct(LeaveRequestService $leaveRequestService)
+    private DepartmentService $departmentService;
+
+    public function __construct(LeaveRequestService $leaveRequestService, DepartmentService $departmentService)
     {
         $this->leaveRequestService = $leaveRequestService;
+        $this->departmentService = $departmentService;
     }
 
     public function index(Request $request)
@@ -232,8 +236,8 @@ class LeaveRequestController extends Controller
                 $approver = null;
                 if (in_array($filerRole, ['department head', 'hr manager'])) {
                     $approver = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
-                } elseif ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $approver = User::where('EmpNo', $department->EmpNo)->first();
+                } elseif ($department) {
+                    $approver = $this->departmentService->getDepartmentHeadUser($department);
                 }
 
                 $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
@@ -641,10 +645,8 @@ class LeaveRequestController extends Controller
                 $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
                 if (in_array($filerRole, ['department head', 'hr manager'])) {
                     $approver = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
-                } else {
-                    if (isset($department) && $department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                        $approver = User::where('EmpNo', $department->EmpNo)->first();
-                    }
+                } elseif (isset($department) && $department) {
+                    $approver = $this->departmentService->getDepartmentHeadUser($department);
                 }
 
                 if ($employee) {
@@ -825,10 +827,8 @@ class LeaveRequestController extends Controller
                 $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
                 if (in_array($filerRole, ['department head', 'hr manager'])) {
                     $approver = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
-                } else {
-                    if (isset($department) && $department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                        $approver = User::where('EmpNo', $department->EmpNo)->first();
-                    }
+                } elseif (isset($department) && $department) {
+                    $approver = $this->departmentService->getDepartmentHeadUser($department);
                 }
 
                 if ($employee) {
@@ -952,8 +952,8 @@ class LeaveRequestController extends Controller
             $approver = null;
             if ($employee && ! empty($employee->Dept_id)) {
                 $department = Department::find($employee->Dept_id);
-                if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                    $approver = User::where('EmpNo', $department->EmpNo)->first();
+                if ($department) {
+                    $approver = $this->departmentService->getDepartmentHeadUser($department);
                 }
             }
             if ($approver) {
@@ -1214,13 +1214,14 @@ class LeaveRequestController extends Controller
 
             $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
             $dh = null;
+            $ao = null;
             if (in_array($filerRole, ['department head', 'hr manager'])) {
                 $dh = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
-            } elseif ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                $dh = User::where('EmpNo', $department->EmpNo)->first();
+            } elseif ($department) {
+                $dh = $this->departmentService->getDepartmentHeadUser($department);
+                $ao = $this->departmentService->getAdminOfficerUser($department);
             }
 
-            $ao = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
             $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
 
             $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');

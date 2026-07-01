@@ -761,12 +761,13 @@ class LeaveRequestService
 
                     $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
                     $dh = null;
+                    $ao = null;
                     if (in_array($filerRole, ['department head', 'hr manager'])) {
                         $dh = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'mayor'")->first();
-                    } elseif ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                        $dh = User::where('EmpNo', $department->EmpNo)->first();
+                    } elseif ($department) {
+                        $dh = $this->departmentService->getDepartmentHeadUser($department);
+                        $ao = $this->departmentService->getAdminOfficerUser($department);
                     }
-                    $ao = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")->first();
                     $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
 
                     $notifDetails = [
