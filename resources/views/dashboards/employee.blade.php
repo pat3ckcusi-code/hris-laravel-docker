@@ -17,8 +17,8 @@
 
     <article class="tile metric-tile">
         <span class="metric-label">Department</span>
-        <strong>{{ $user->Dept_id ? 'Assigned' : 'Unassigned' }}</strong>
-        <small>{{ $user->Dept_id ? 'Department ID: ' . $user->Dept_id : 'Contact records office for assignment' }}</small>
+        <strong>{{ $user->department?->Dept_name ?? 'Unassigned' }}</strong>
+        <small>{{ $user->Dept_id ? '' : 'Contact records office for assignment' }}</small>
     </article>
 
     <article class="tile metric-tile">

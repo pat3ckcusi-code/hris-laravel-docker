@@ -88,7 +88,7 @@ class DtrController extends Controller
         $isAdmin = in_array($role, self::ADMIN_ROLES, true);
         $isOfficer = in_array($role, ['administrative officer', 'department head'], true);
 
-        if (! $isAdmin && ! $isOfficer && $role !== 'employee') {
+        if (! $isAdmin && ! $isOfficer && ! in_array($role, ['employee', 'leave manager'], true)) {
             abort(403);
         }
 

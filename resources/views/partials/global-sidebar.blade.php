@@ -198,13 +198,26 @@
 
         // ─── Leave Manager ─────────────────────────────────
         'leave manager' => [
-            ['label' => 'Leave Manager',       'icon' => 'dashboard',       'route' => 'dashboard',                       'active' => ['dashboard']],
-            ['label' => 'Manage Leave Balance','icon' => 'leave_balance',   'route' => 'leave-manager.manage-balance',    'active' => ['leave-manager.manage-balance']],
-            ['label' => 'Manage Leave Credits','icon' => 'leave_credits',   'route' => 'leave-manager.manage-credits',    'active' => ['leave-manager.manage-credits']],
-            ['label' => 'Leave Ledger',        'icon' => 'audit',           'route' => 'leave-manager.leave-ledger',      'active' => ['leave-manager.leave-ledger']],
-            ['label' => 'Approved Leaves',    'icon' => 'approved_leaves',  'route' => 'leave-manager.approved-leaves',   'active' => ['leave-manager.approved-leaves']],
-            ['label' => 'Employee Cancellation Requests', 'icon' => 'leave', 'route' => 'leave-manager.employee-cancellation-requests', 'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
-            ['label' => 'Uniform Inspections', 'icon' => 'uniform_inspection', 'route' => 'leave-manager.uniform-inspections.index', 'active' => ['leave-manager.uniform-inspections.*']],
+            ['label' => 'Dashboard',             'icon' => 'dashboard',  'route' => 'dashboard', 'active' => ['dashboard']],
+
+            ['section' => 'Self-Service'],
+            ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',               'active' => ['dashboard.employee.pds']],
+            ['label' => 'ETA',               'icon' => 'eta',       'route' => 'dashboard.employee.eta',               'active' => ['dashboard.employee.eta']],
+            ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
+            ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+
+            ['section' => 'Leave Management'],
+            ['label' => 'Manage Leave Balance',               'icon' => 'leave_balance',      'route' => 'leave-manager.manage-balance',                    'active' => ['leave-manager.manage-balance']],
+            ['label' => 'Manage Leave Credits',               'icon' => 'leave_credits',      'route' => 'leave-manager.manage-credits',                    'active' => ['leave-manager.manage-credits']],
+            ['label' => 'Leave Ledger',                       'icon' => 'audit',              'route' => 'leave-manager.leave-ledger',                      'active' => ['leave-manager.leave-ledger']],
+            ['label' => 'Approved Leaves',                    'icon' => 'approved_leaves',    'route' => 'leave-manager.approved-leaves',                   'active' => ['leave-manager.approved-leaves']],
+            ['label' => 'Employee Cancellation Requests',     'icon' => 'leave',              'route' => 'leave-manager.employee-cancellation-requests',    'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
+            ['label' => 'Uniform Inspections',                'icon' => 'uniform_inspection', 'route' => 'leave-manager.uniform-inspections.index',         'active' => ['leave-manager.uniform-inspections.*']],
+
+            ['section' => 'Attendance'],
+            ['label' => 'My DTR',            'icon' => 'attendance', 'route' => 'attendance.dtr', 'active' => ['attendance.dtr', 'attendance.dtr.download']],
         ],
 
         // ─── Payroll Manager ──────────────────────────────
