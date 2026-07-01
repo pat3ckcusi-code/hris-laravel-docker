@@ -5,6 +5,7 @@
     'showSearch' => true,
     'showMonthFilter' => true,
     'monthFilterName' => 'month',
+    'monthFilterDefault' => null,
     'paginator' => null,
     'showTopPagination' => false,
     'scrollableTable' => false,
@@ -49,7 +50,7 @@
             <div class="hris-table-filters{{ $stickyFilters ? ' hris-filters-sticky' : '' }}">
                 @if($showMonthFilter)
                     <div class="hris-filter-left">
-                        <x-hris.month-filter :name="$monthFilterName" />
+                        <x-hris.month-filter :name="$monthFilterName" :default="$monthFilterDefault" />
                     </div>
                 @endif
                 @if($showSearch)

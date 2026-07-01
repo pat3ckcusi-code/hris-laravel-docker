@@ -87,6 +87,7 @@
                 subtitle="Your submitted ETA records are listed below."
                 :paginator="$etas"
                 :showExport="false"
+                :monthFilterDefault="now()->month"
             >
                 <div class="hris-table-wrapper">
                     @php

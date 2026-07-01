@@ -105,6 +105,7 @@
                 subtitle="Your locator submissions are listed below."
                 :paginator="$locators"
                 :showExport="false"
+                :monthFilterDefault="now()->month"
             >
                 @php
                     $currentSort = request('sort');

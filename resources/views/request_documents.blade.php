@@ -69,6 +69,7 @@
                 subtitle="Track your document requests and statuses."
                 :paginator="$requests"
                 :showExport="false"
+                :monthFilterDefault="now()->month"
             >
                 @php
                     $currentSort = request('sort');
