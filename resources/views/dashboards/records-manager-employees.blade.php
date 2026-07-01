@@ -46,6 +46,7 @@
             method="POST"
             action="{{ route('dashboard.records-manager.users.store') }}"
             class="record-form"
+            data-custom-submit="true"
         >
             @csrf
             <input type="hidden" name="create_form" value="1">
@@ -147,7 +148,7 @@
             <span style="font-size:0.8rem; color:#6b7280; margin-left:0.5rem;">Fill in the template then upload it below.</span>
         </div>
 
-        <form id="importEmployeeForm" class="record-form">
+        <form id="importEmployeeForm" class="record-form" data-custom-submit="true">
             @csrf
             <label>
                 Excel / CSV File

@@ -5,6 +5,10 @@ function serializeFormData(form) {
 
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.record-form').forEach(function (form) {
+        if (form.dataset.customSubmit === 'true') {
+            return;
+        }
+
         form.addEventListener('submit', async function (e) {
             e.preventDefault();
 
