@@ -741,8 +741,13 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
-            // Office Order: same rules as ETA — missing punches show "OO", penalties zeroed.
-            // Priority below ETA, above Excuse.
+            // Office Order: priority below ETA, above Excuse.
+            // Slots fill sequentially (am_in → am_out → pm_in → pm_out).
+            // 0 punches → merge all 4 cells, write "Office Order".
+            // 1 punch   → show am_in; merge remaining 3 cells, write "Office Order".
+            // 2 punches → show am_in + am_out; merge remaining 2 cells, write "Office Order".
+            // 3 punches → show am_in + am_out + pm_in; pm_out cell = "Office Order".
+            // 4 punches → fall through to normal write below.
             if (isset($officeOrderMap[$day])) {
                 $punchCount = $rec ? count(array_filter([
                     $rec['am_in'] ?? null, $rec['am_out'] ?? null,
@@ -750,40 +755,53 @@ class Form48ExportService
                 ], fn ($v) => $v !== null && $v !== '')) : 0;
 
                 if ($punchCount < 4) {
-                    if ($punchCount === 0) {
-                        foreach (range(0, 3) as $i) {
-                            $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
-                            try {
-                                $sheet->mergeCells($range);
-                            } catch (\Throwable) {
-                            }
-                            $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Office Order');
-                            $sheet->getStyle($range)->getAlignment()
-                                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                            $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
-                            $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
-                        }
-                    } else {
-                        $amIn  = $fmt($rec['am_in']  ?? null) ?: 'Office Order';
-                        $amOut = $fmt($rec['am_out'] ?? null) ?: 'Office Order';
-                        $pmIn  = $fmt($rec['pm_in']  ?? null) ?: 'Office Order';
-                        $pmOut = $fmt($rec['pm_out'] ?? null) ?: 'Office Order';
+                    foreach (range(0, 3) as $i) {
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
 
-                        foreach (range(0, 3) as $i) {
-                            $sheet->setCellValue(self::AM_IN_COLS[$i].$row,  $amIn);
-                            $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $amOut);
-                            $sheet->setCellValue(self::PM_IN_COLS[$i].$row,  $pmIn);
-                            $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $pmOut);
-                            $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
-                            $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
-                            foreach ([
-                                self::AM_IN_COLS[$i],  self::AM_OUT_COLS[$i],
-                                self::PM_IN_COLS[$i],  self::PM_OUT_COLS[$i],
-                            ] as $col) {
-                                $sheet->getStyle($col.$row)->getAlignment()
-                                    ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                            }
-                        }
+                        match ($punchCount) {
+                            0 => (function () use ($sheet, $i, $row): void {
+                                $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Office Order');
+                                $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                            })(),
+
+                            1 => (function () use ($sheet, $i, $row, $rec, $fmt): void {
+                                $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
+                                $sheet->getStyle(self::AM_IN_COLS[$i].$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                                $range = self::AM_OUT_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
+                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, 'Office Order');
+                                $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                            })(),
+
+                            2 => (function () use ($sheet, $i, $row, $rec, $fmt): void {
+                                $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
+                                $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $fmt($rec['am_out'] ?? null));
+                                foreach ([self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i]] as $col) {
+                                    $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                                }
+                                $range = self::PM_IN_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
+                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                $sheet->setCellValue(self::PM_IN_COLS[$i].$row, 'Office Order');
+                                $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                            })(),
+
+                            default => (function () use ($sheet, $i, $row, $rec, $fmt): void {
+                                // 3 punches: show am_in, am_out, pm_in; pm_out = "Office Order"
+                                $sheet->setCellValue(self::AM_IN_COLS[$i].$row,  $fmt($rec['am_in']  ?? null));
+                                $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $fmt($rec['am_out'] ?? null));
+                                $sheet->setCellValue(self::PM_IN_COLS[$i].$row,  $fmt($rec['pm_in']  ?? null));
+                                $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, 'Office Order');
+                                foreach ([
+                                    self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i],
+                                    self::PM_IN_COLS[$i], self::PM_OUT_COLS[$i],
+                                ] as $col) {
+                                    $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                                }
+                            })(),
+                        };
                     }
 
                     continue;
