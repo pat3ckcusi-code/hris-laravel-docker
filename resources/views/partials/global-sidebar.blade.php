@@ -118,7 +118,7 @@
             ['label' => 'Leave Management',   'icon' => 'leave',             'route' => 'employee.leave.management',         'active' => ['employee.leave.management']],
 
             ['section' => 'Department Management'],
-            ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'department-head.pending-requests',  'active' => ['department-head.pending-requests'], 'badge' => 'pending_requests_dept'],
+            ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'department-head.pending-requests',  'active' => ['department-head.pending-requests'], 'badge' => 'pending_requests_dept_dh'],
             ['label' => 'Approved Requests',  'icon' => 'approved_requests', 'route' => 'department-head.approved-requests', 'active' => ['department-head.approved-requests']],
             ['label' => 'Statistics',         'icon' => 'statistics',        'route' => 'department-head.statistics',        'active' => ['department-head.statistics']],
             ['label' => 'Travel Order',       'icon' => 'travel_order',      'route' => 'department-head.travel-orders',     'active' => ['department-head.travel-orders']],
@@ -146,7 +146,7 @@
             ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
 
             ['section' => 'Department Management'],
-            ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'admin-officer.pending-requests',   'active' => ['admin-officer.pending-requests'], 'badge' => 'pending_requests_dept'],
+            ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'admin-officer.pending-requests',   'active' => ['admin-officer.pending-requests'], 'badge' => 'pending_requests_dept_ao'],
             ['label' => 'Approved Requests',  'icon' => 'approved_requests', 'route' => 'admin-officer.approved-requests',  'active' => ['admin-officer.approved-requests']],
             ['label' => 'Statistics',         'icon' => 'statistics',        'route' => 'admin-officer.statistics',         'active' => ['admin-officer.statistics']],
             ['label' => 'Travel Order',       'icon' => 'travel_order',      'route' => 'admin-officer.travel-orders',      'active' => ['admin-officer.travel-orders']],
@@ -319,13 +319,29 @@
 
         // Add new badges here - they'll work for any role that references them:
         // 'pending_documents' => fn () => \App\Models\DocumentRequest::where('status', 'pending')->count(),
-        'pending_requests_dept' => function () {
+        'pending_requests_dept_dh' => function () {
             $user = auth()->user();
-            if (!$user || empty($user->Dept_id)) return 0;
-            $deptId = $user->Dept_id;
+            if (!$user) return 0;
+            $depts = app(\App\Services\DepartmentService::class)->resolveAllDepartmentsForUser($user);
+            if ($depts->isEmpty()) return 0;
+            $employeeIds = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
 
-            $employeeIds = \App\Models\User::where('Dept_id', $deptId)->pluck('id')->toArray();
-            if (empty($employeeIds)) return 0;
+            // Exclude leave requests filed by Department Heads (Mayor handles those)
+            $leave = \App\Models\LeaveRequest::whereIn('user_id', $employeeIds)
+                ->where('status', 'pending')
+                ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
+                ->count();
+            $eta = \App\Models\Eta::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+            $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+
+            return $leave + $eta + $locator;
+        },
+        'pending_requests_dept_ao' => function () {
+            $user = auth()->user();
+            if (!$user) return 0;
+            $depts = app(\App\Services\DepartmentService::class)->resolveAllDepartmentsForAdminOfficer($user);
+            if ($depts->isEmpty()) return 0;
+            $employeeIds = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
 
             // Exclude leave requests filed by Department Heads (Mayor handles those)
             $leave = \App\Models\LeaveRequest::whereIn('user_id', $employeeIds)
