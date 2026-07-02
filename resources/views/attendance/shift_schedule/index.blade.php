@@ -302,6 +302,49 @@
     flex-shrink: 0;
 }
 
+/* ── Rotation generator ─────────────────────────────────── */
+.ss-rotation-panel {
+    margin: 1.25rem 1.25rem 0;
+    padding: .75rem 1rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: .6rem;
+    background: #f8fafc;
+}
+.ss-rotation-summary {
+    cursor: pointer;
+    font-size: .82rem;
+    font-weight: 600;
+    color: #1e40af;
+}
+.ss-rotation-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: end;
+    margin-top: .85rem;
+}
+.ss-rotation-field {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    font-size: .75rem;
+    font-weight: 600;
+    color: #475569;
+}
+.ss-rotation-field select,
+.ss-rotation-field input {
+    padding: .4rem .55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: .35rem;
+    font-size: .8rem;
+    color: #0f172a;
+}
+.ss-rotation-hint {
+    margin: .6rem 0 0;
+    font-size: .74rem;
+    color: #6b7280;
+}
+
 /* ── Form actions ────────────────────────────────────────── */
 .ss-form-actions {
     padding: 1rem 1.25rem;
@@ -437,6 +480,46 @@
                     </div>
                 </div>
             </div>
+
+            <details class="ss-rotation-panel">
+                <summary class="ss-rotation-summary">Generate rotation pattern (e.g. 24-on/24-off duty)</summary>
+                <form method="POST" action="{{ route('attendance.shift-schedule.generate-pattern') }}" class="ss-rotation-form">
+                    @csrf
+                    <input type="hidden" name="user_id" value="{{ $selectedEmployee->id }}">
+                    <input type="hidden" name="dept_id" value="{{ $deptId }}">
+
+                    <label class="ss-rotation-field">
+                        Shift
+                        <select name="shift_id" required>
+                            <option value="">Select shift…</option>
+                            @foreach($shifts as $shift)
+                                <option value="{{ $shift->id }}">{{ $shift->name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="ss-rotation-field">
+                        Days on
+                        <input type="number" name="on_days" min="1" value="1" required>
+                    </label>
+                    <label class="ss-rotation-field">
+                        Days off
+                        <input type="number" name="off_days" min="0" value="0" required>
+                    </label>
+                    <label class="ss-rotation-field">
+                        From
+                        <input type="date" name="start_date" required>
+                    </label>
+                    <label class="ss-rotation-field">
+                        To
+                        <input type="date" name="end_date" required>
+                    </label>
+                    <button type="submit" class="hris-btn hris-btn-primary">Generate</button>
+                </form>
+                <p class="ss-rotation-hint">
+                    Sets the selected shift as {{ $selectedEmployee->first_name }}'s ongoing default and marks the
+                    off-cycle dates as rest days. DTRs for the range are recomputed automatically.
+                </p>
+            </details>
 
             <form method="POST" action="{{ route('attendance.shift-schedule.store') }}" id="week-form">
                 @csrf

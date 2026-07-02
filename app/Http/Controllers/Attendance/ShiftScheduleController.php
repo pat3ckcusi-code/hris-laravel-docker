@@ -164,4 +164,65 @@ class ShiftScheduleController extends Controller
             'week_start' => $weekStart->toDateString(),
         ])->with('schedule_status', "Shift schedule for {$name} saved.");
     }
+
+    /**
+     * Generate a recurring on/off rotation (e.g. 24-on/24-off guard duty) over a
+     * date range, instead of assigning day-by-day through the week grid.
+     *
+     * Sets $shift_id as the employee's ongoing default (so "on" days need no
+     * per-date row at all) and writes explicit 'rest' rows only for the "off"
+     * days in the cycle. This - rather than an explicit row per day - is what
+     * keeps WorkSchedule::forUserOnDate()'s rest-day fallback resolving back to
+     * this same shift, which a crossing shift's post-midnight punch grouping
+     * depends on. Not intended for a short rotation layered on top of a
+     * different permanent shift.
+     */
+    public function generatePattern(Request $request): RedirectResponse
+    {
+        $this->authorizeManager($request->user());
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'shift_id' => ['required', 'integer', 'exists:shifts,id'],
+            'on_days' => ['required', 'integer', 'min:1'],
+            'off_days' => ['required', 'integer', 'min:0'],
+            'start_date' => ['required', 'date'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+        ]);
+
+        $employee = User::findOrFail($validated['user_id']);
+        $onDays = $validated['on_days'];
+        $offDays = $validated['off_days'];
+        $cycleLength = $onDays + $offDays;
+
+        $employee->update(['shift_id' => $validated['shift_id']]);
+
+        $start = Carbon::parse($validated['start_date'])->startOfDay();
+        $end = Carbon::parse($validated['end_date'])->startOfDay();
+
+        for ($date = $start->copy(), $i = 0; $date->lte($end); $date->addDay(), $i++) {
+            $dateStr = $date->toDateString();
+            $isOffDay = $offDays > 0 && ($i % $cycleLength) >= $onDays;
+
+            if ($isOffDay) {
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $request->user()->id]
+                );
+            } else {
+                EmployeeShiftSchedule::where('user_id', $employee->id)
+                    ->where('date', $dateStr)
+                    ->delete();
+            }
+        }
+
+        $this->importService->recomputeDtr($employee, $start->toDateString(), $end->toDateString());
+
+        $name = trim("{$employee->first_name} {$employee->last_name}");
+
+        return redirect()->route('attendance.shift-schedule.index', [
+            'dept_id' => $request->input('dept_id'),
+            'employee_id' => $employee->id,
+        ])->with('schedule_status', "Rotation pattern for {$name} generated from {$start->toDateString()} to {$end->toDateString()}.");
+    }
 }

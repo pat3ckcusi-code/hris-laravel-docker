@@ -56,7 +56,7 @@ class DtrPunchResolver
         [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($deduped, $shiftDate, $schedule, $excludedSlots);
 
         // ── Reference datetimes (rolled past midnight for crossing shifts) ──
-        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart);
+        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
         $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
         $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
         $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);

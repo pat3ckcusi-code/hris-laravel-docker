@@ -231,6 +231,8 @@ Route::middleware('auth')->group(function () {
         ->name('attendance.shift-schedule.index');
     Route::post('/attendance/shift-schedule', [ShiftScheduleController::class, 'store'])
         ->name('attendance.shift-schedule.store');
+    Route::post('/attendance/shift-schedule/generate-pattern', [ShiftScheduleController::class, 'generatePattern'])
+        ->name('attendance.shift-schedule.generate-pattern');
 
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');

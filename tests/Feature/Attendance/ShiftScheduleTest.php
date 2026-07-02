@@ -47,6 +47,26 @@ class ShiftScheduleTest extends TestCase
         ]);
     }
 
+    private function twentyFourHourShift(): WorkSchedule
+    {
+        // time_in 08:00, no break, time_out 08:00 the next day (a 24h guard duty).
+        return new WorkSchedule('08:00', '08:00', '08:00', '08:00', '08:00', true, true);
+    }
+
+    private function twentyFourHourShiftModel(): Shift
+    {
+        return Shift::create([
+            'name' => '24-Hour Duty',
+            'time_in' => '08:00',
+            'time_out' => '08:00',
+            'break_out' => null,
+            'break_in' => null,
+            'no_break' => true,
+            'crosses_midnight' => true,
+            'is_active' => true,
+        ]);
+    }
+
     // ── Resolver ──────────────────────────────────────────────────────────────
 
     public function test_day_shift_scores_late_and_undertime(): void
@@ -95,6 +115,30 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame(30, $r['undertime_minutes']);
     }
 
+    public function test_24_hour_shift_scores_late_arrival(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-01 08:10:00', '2026-06-02 08:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-01', $this->twentyFourHourShift());
+
+        $this->assertSame('08:10:00', $r['am_in']);
+        $this->assertSame('08:00:00', $r['pm_out']);
+        $this->assertSame(10, $r['late_minutes']);
+        $this->assertSame(0, $r['undertime_minutes']);
+    }
+
+    public function test_24_hour_shift_scores_early_departure(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-01 08:00:00', '2026-06-02 07:50:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-01', $this->twentyFourHourShift());
+
+        $this->assertSame(0, $r['late_minutes']);
+        $this->assertSame(10, $r['undertime_minutes']);
+    }
+
     // ── Grouping ──────────────────────────────────────────────────────────────
 
     public function test_night_shift_punches_fold_onto_start_date(): void
@@ -133,6 +177,26 @@ class ShiftScheduleTest extends TestCase
 
         $this->assertArrayHasKey('2026-06-10', $groups);
         $this->assertCount(2, $groups['2026-06-10']);
+    }
+
+    public function test_24_hour_shift_punches_fold_onto_start_date(): void
+    {
+        $shift = $this->twentyFourHourShiftModel();
+        $user = $this->createEmployee(['shift_id' => $shift->id]);
+
+        foreach (['2026-06-01 08:05:00', '2026-06-02 07:55:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo,
+                'logdate' => $d, 'logtime' => $t, 'in_out' => 'IN',
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+        $this->assertCount(2, $groups['2026-06-01']);
     }
 
     // ── WorkSchedule resolution ───────────────────────────────────────────────

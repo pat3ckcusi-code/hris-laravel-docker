@@ -191,6 +191,13 @@ class WorkSchedule
         $out = self::toMinutes($this->workEnd);
         $in = self::toMinutes($this->workStart);
 
+        // A shift spanning exactly 24h (e.g. a guard's duty) has a zero-length
+        // off-period: the boundary between consecutive shift-days is simply
+        // the shift's own start/end time, not a midpoint.
+        if ($in === $out) {
+            return $this->workStart;
+        }
+
         // Off-period runs from workEnd to the next workStart.
         $offEnd = $in > $out ? $in : $in + 1440;
         $mid = (int) round(($out + $offEnd) / 2) % 1440;
@@ -219,13 +226,24 @@ class WorkSchedule
      * Build the datetime of a reference time (e.g. workStart, workEnd) relative
      * to a shift date. For a crossing shift, reference times in the post-midnight
      * portion roll onto shiftDate + 1.
+     *
+     * $isShiftStart must be true for the workStart reference itself. This is the
+     * only way to tell it apart from the other references when a shift spans
+     * exactly 24h: workStart, morningEnd, lunchReturn and workEnd are then all
+     * numerically the same clock value, so the value alone can't say which one
+     * is the anchor (never rolls) versus a point elapsed 24h after it.
      */
-    public function referenceDateTime(string $shiftDate, string $hhmm): Carbon
+    public function referenceDateTime(string $shiftDate, string $hhmm, bool $isShiftStart = false): Carbon
     {
         $hhmm = self::hm($hhmm);
         $date = Carbon::parse("$shiftDate $hhmm:00");
 
-        if ($this->crossesMidnight && $hhmm < $this->offPeriodMidpoint()) {
+        if ($isShiftStart || ! $this->crossesMidnight) {
+            return $date;
+        }
+
+        $elapsed = self::toMinutes($hhmm) - self::toMinutes($this->workStart);
+        if ($elapsed <= 0) {
             $date->addDay();
         }
 
