@@ -46,6 +46,7 @@ class RecordsManagerController extends Controller
         $search = trim((string) $request->query('search', ''));
         $statusFilter = trim((string) $request->query('status', ''));
         $departmentFilter = trim((string) $request->query('department', ''));
+        $employeeTypeFilter = trim((string) $request->query('employee_type', ''));
 
         $employeesQuery = User::query()
             ->orderBy('last_name')
@@ -70,6 +71,10 @@ class RecordsManagerController extends Controller
 
         if ($departmentFilter !== '') {
             $employeesQuery->where('Dept_id', $departmentFilter);
+        }
+
+        if (in_array($employeeTypeFilter, self::EMPLOYEE_TYPES, true)) {
+            $employeesQuery->where('employee_type', $employeeTypeFilter);
         }
 
         $employees = $employeesQuery->get(['id', 'last_name', 'first_name', 'middle_name', 'email', 'EmpNo', 'designation', 'Dept_id', 'Status', 'employee_type', 'access_level', 'date_hired']);
@@ -105,6 +110,7 @@ class RecordsManagerController extends Controller
             'search' => $search,
             'statusFilter' => $statusFilter,
             'departmentFilter' => $departmentFilter,
+            'employeeTypeFilter' => $employeeTypeFilter,
             'nextSequentialByType' => $nextSequentialByType,
         ]);
     }
@@ -286,7 +292,7 @@ class RecordsManagerController extends Controller
 
     public function downloadImportTemplate()
     {
-        return Excel::download(new EmployeeImportTemplate(), 'employee_import_template.xlsx');
+        return Excel::download(new EmployeeImportTemplate, 'employee_import_template.xlsx');
     }
 
     public function import(Request $request): JsonResponse
@@ -320,32 +326,44 @@ class RecordsManagerController extends Controller
         }
 
         $imported = 0;
-        $failed   = [];
+        $failed = [];
         $warnings = [];
 
         // Skip the header row (index 0)
         foreach ($rows->skip(1) as $index => $row) {
             $rowNumber = $index + 2; // 1-based, accounting for header
 
-            $empNoInput  = trim((string) ($row[0] ?? ''));
-            $lastName   = strtoupper(trim((string) ($row[1] ?? '')));
-            $firstName  = strtoupper(trim((string) ($row[2] ?? '')));
+            $empNoInput = trim((string) ($row[0] ?? ''));
+            $lastName = strtoupper(trim((string) ($row[1] ?? '')));
+            $firstName = strtoupper(trim((string) ($row[2] ?? '')));
             $middleName = strtoupper(trim((string) ($row[3] ?? '')));
-            $email      = strtolower(trim((string) ($row[4] ?? '')));
+            $email = strtolower(trim((string) ($row[4] ?? '')));
             $designation = trim((string) ($row[5] ?? ''));
-            $deptName   = trim((string) ($row[6] ?? ''));
-            $dateHired  = trim((string) ($row[7] ?? ''));
-            $empType    = trim((string) ($row[8] ?? ''));
+            $deptName = trim((string) ($row[6] ?? ''));
+            $dateHired = trim((string) ($row[7] ?? ''));
+            $empType = trim((string) ($row[8] ?? ''));
             $accessLevel = strtolower(trim((string) ($row[9] ?? '')));
 
             $rowErrors = [];
 
-            if ($lastName === '')   $rowErrors[] = 'Last Name is required.';
-            if ($firstName === '')  $rowErrors[] = 'First Name is required.';
-            if ($email === '')      $rowErrors[] = 'Email is required.';
-            if ($dateHired === '')  $rowErrors[] = 'Date Hired is required.';
-            if ($empType === '')    $rowErrors[] = 'Employee Type is required.';
-            if ($accessLevel === '') $rowErrors[] = 'Access Level is required.';
+            if ($lastName === '') {
+                $rowErrors[] = 'Last Name is required.';
+            }
+            if ($firstName === '') {
+                $rowErrors[] = 'First Name is required.';
+            }
+            if ($email === '') {
+                $rowErrors[] = 'Email is required.';
+            }
+            if ($dateHired === '') {
+                $rowErrors[] = 'Date Hired is required.';
+            }
+            if ($empType === '') {
+                $rowErrors[] = 'Employee Type is required.';
+            }
+            if ($accessLevel === '') {
+                $rowErrors[] = 'Access Level is required.';
+            }
 
             if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $rowErrors[] = 'Email is not valid.';
@@ -373,6 +391,7 @@ class RecordsManagerController extends Controller
 
             if (! empty($rowErrors)) {
                 $failed[] = ['row' => $rowNumber, 'errors' => $rowErrors];
+
                 continue;
             }
 
@@ -391,31 +410,31 @@ class RecordsManagerController extends Controller
                 // Generate EmpNo: YY (from date_hired year) + 5-digit sequential per type
                 $year = substr(date('Y', strtotime($dateHired)), 2, 2);
                 $sequentialCounters[$empType]++;
-                $empNo = $year . str_pad($sequentialCounters[$empType], 5, '0', STR_PAD_LEFT);
+                $empNo = $year.str_pad($sequentialCounters[$empType], 5, '0', STR_PAD_LEFT);
             }
 
             $fullName = $this->buildEmployeeName($lastName, $firstName, $middleName ?: null);
             $emailName = (string) strstr($email, '@', true);
-            $defaultPassword = 'HRIS-' . Str::upper(Str::random(8));
+            $defaultPassword = 'HRIS-'.Str::upper(Str::random(8));
 
             $newUser = new User;
             $newUser->forceFill([
-                'name'                 => $fullName,
-                'email'                => $email,
-                'UserName'             => $emailName !== '' ? $emailName : $email,
-                'AcctName'             => $fullName,
-                'last_name'            => $lastName,
-                'first_name'           => $firstName,
-                'middle_name'          => $middleName ?: null,
-                'EmpNo'                => $empNo,
-                'designation'          => $designation ?: null,
-                'Dept_id'              => $deptId,
-                'Status'               => 'Active',
-                'employee_type'        => $empType,
-                'access_level'         => $accessLevel,
-                'password'             => Hash::make($defaultPassword),
+                'name' => $fullName,
+                'email' => $email,
+                'UserName' => $emailName !== '' ? $emailName : $email,
+                'AcctName' => $fullName,
+                'last_name' => $lastName,
+                'first_name' => $firstName,
+                'middle_name' => $middleName ?: null,
+                'EmpNo' => $empNo,
+                'designation' => $designation ?: null,
+                'Dept_id' => $deptId,
+                'Status' => 'Active',
+                'employee_type' => $empType,
+                'access_level' => $accessLevel,
+                'password' => Hash::make($defaultPassword),
                 'force_password_change' => true,
-                'date_hired'           => $dateHired,
+                'date_hired' => $dateHired,
             ]);
 
             try {
@@ -425,12 +444,14 @@ class RecordsManagerController extends Controller
                     $sequentialCounters[$empType]--;
                 }
                 $failed[] = ['row' => $rowNumber, 'errors' => ['A duplicate email or employee number was detected.']];
+
                 continue;
             } catch (Throwable) {
                 if (! $empNoWasProvided) {
                     $sequentialCounters[$empType]--;
                 }
                 $failed[] = ['row' => $rowNumber, 'errors' => ['An unexpected error occurred while saving this record.']];
+
                 continue;
             }
 
@@ -440,7 +461,7 @@ class RecordsManagerController extends Controller
 
         return response()->json([
             'imported' => $imported,
-            'failed'   => $failed,
+            'failed' => $failed,
             'warnings' => $warnings,
         ]);
     }

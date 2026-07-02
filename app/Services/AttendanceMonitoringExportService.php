@@ -33,11 +33,12 @@ class AttendanceMonitoringExportService
      * @param  Collection<int, Department>  $departments
      * @return Collection<int, array>
      */
-    public function getRows(Collection $departments, int $month, int $year): Collection
+    public function getRows(Collection $departments, int $month, int $year, ?string $employeeType = null): Collection
     {
         $deptIds = $departments->pluck('Dept_id')->toArray();
 
         $employees = User::whereIn('Dept_id', $deptIds)
+            ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
@@ -271,21 +272,29 @@ class AttendanceMonitoringExportService
                 $day = Carbon::parse($dateStr)->day;
 
                 $typeLabel = match ($excuse->excuse_type) {
-                    'power_interruption'  => 'Power Interruption',
-                    'system_failure'      => 'System Failure',
+                    'power_interruption' => 'Power Interruption',
+                    'system_failure' => 'System Failure',
                     'weather_disturbance' => 'Weather Disturbance',
-                    'emergency'           => 'Emergency',
-                    default               => 'Other',
+                    'emergency' => 'Emergency',
+                    default => 'Other',
                 };
 
                 if ($excuse->is_full_day) {
                     $scope = 'Full Day';
                 } else {
                     $slots = [];
-                    if ($excuse->excuse_am_in)  $slots[] = 'AM In';
-                    if ($excuse->excuse_am_out) $slots[] = 'AM Out';
-                    if ($excuse->excuse_pm_in)  $slots[] = 'PM In';
-                    if ($excuse->excuse_pm_out) $slots[] = 'PM Out';
+                    if ($excuse->excuse_am_in) {
+                        $slots[] = 'AM In';
+                    }
+                    if ($excuse->excuse_am_out) {
+                        $slots[] = 'AM Out';
+                    }
+                    if ($excuse->excuse_pm_in) {
+                        $slots[] = 'PM In';
+                    }
+                    if ($excuse->excuse_pm_out) {
+                        $slots[] = 'PM Out';
+                    }
                     $scope = $slots ? implode(', ', $slots) : '';
                 }
 
@@ -332,6 +341,7 @@ class AttendanceMonitoringExportService
             return [
                 'name' => $name,
                 'position' => $emp->designation ?? $emp->position ?? '',
+                'employee_type' => $emp->employee_type ?? '',
                 'is_exempt' => (bool) $emp->dtr_exempt,
                 'undertime_count' => $undertimeCount,
                 'tardiness_count' => $tardinessCount,
@@ -366,11 +376,11 @@ class AttendanceMonitoringExportService
      * @param  Collection<int, Department>  $departments
      * @return array{0: Spreadsheet, 1: string} [spreadsheet, filename]
      */
-    public function buildSpreadsheet(Collection $departments, int $month, int $year, ?User $actor = null): array
+    public function buildSpreadsheet(Collection $departments, int $month, int $year, ?User $actor = null, ?string $employeeType = null): array
     {
         $actor ??= Auth::user();
         $deptName = $departments->pluck('Dept_name')->filter()->implode(' / ');
-        $rows = $this->getRows($departments, $month, $year);
+        $rows = $this->getRows($departments, $month, $year, $employeeType);
 
         $spreadsheet = new Spreadsheet;
         $spreadsheet->getProperties()
@@ -555,7 +565,9 @@ class AttendanceMonitoringExportService
             $sheet->getRowDimension($r)->setRowHeight(18);
         }
 
-        $filename = 'Monitoring-Matrix-'.$monthLabel.'-'.now()->format('Ymd-His').'.xlsx';
+        $typeLabel = $employeeType ? ucwords(str_replace('-', ' ', $employeeType)) : 'All';
+        $typeSafe = preg_replace('/[^A-Za-z0-9]+/', '_', $typeLabel) ?: 'All';
+        $filename = 'Monitoring-Matrix-'.$monthLabel.'-'.$typeSafe.'-'.now()->format('Ymd-His').'.xlsx';
 
         try {
             HRAuditTrail::create([
@@ -567,6 +579,7 @@ class AttendanceMonitoringExportService
                 'details' => [
                     'month' => $month,
                     'year' => $year,
+                    'employee_type' => $employeeType,
                     'departments' => $departments->pluck('Dept_name')->toArray(),
                     'employee_count' => $rows->count(),
                     'filename' => $filename,
@@ -584,9 +597,9 @@ class AttendanceMonitoringExportService
      *
      * @param  Collection<int, Department>  $departments
      */
-    public function generateExcelResponse(Collection $departments, int $month, int $year): StreamedResponse
+    public function generateExcelResponse(Collection $departments, int $month, int $year, ?string $employeeType = null): StreamedResponse
     {
-        [$spreadsheet, $filename] = $this->buildSpreadsheet($departments, $month, $year);
+        [$spreadsheet, $filename] = $this->buildSpreadsheet($departments, $month, $year, employeeType: $employeeType);
 
         return response()->streamDownload(
             function () use ($spreadsheet): void {

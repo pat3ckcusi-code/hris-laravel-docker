@@ -191,6 +191,18 @@
                         @endforeach
                     </select>
                 </label>
+
+                <label>
+                    Employee Type
+                    <select name="employee_type">
+                        <option value="">All types</option>
+                        @foreach ($employeeTypes as $employeeType)
+                            <option value="{{ $employeeType }}" @selected($employeeTypeFilter === $employeeType)>
+                                {{ $employeeType }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
             </div>
 
             <div class="toolbar-actions">

@@ -326,8 +326,9 @@ class ProcessExportJob implements ShouldQueue
 
         $month = (int) $job->params['month'];
         $year = (int) $job->params['year'];
+        $employeeType = $job->params['employee_type'] ?? null;
 
-        [$spreadsheet, $filename] = $monitoringService->buildSpreadsheet($depts, $month, $year, $actor);
+        [$spreadsheet, $filename] = $monitoringService->buildSpreadsheet($depts, $month, $year, $actor, $employeeType);
 
         $path = "exports/{$job->id}.xlsx";
         $absPath = storage_path("app/{$path}");

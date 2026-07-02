@@ -44,7 +44,7 @@
         </button>
 
         <button type="button" id="matrix-export-btn"
-                onclick="startExport('{{ route('export-jobs.create') }}', { type: 'monitoring_matrix', params: { month: {{ $month }}, year: {{ $year }} } }, 'Building monitoring matrix&hellip;')"
+                onclick="exportMonitoringMatrixExcel()"
                 style="padding:0.52rem 1.1rem;background:#1d4ed8;color:#fff;border-radius:6px;
                        font-size:0.9rem;font-weight:600;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:0.4rem;">
             <i class="fas fa-file-excel" aria-hidden="true"></i> Download Excel
@@ -68,6 +68,19 @@
         <label for="matrix-search" style="font-size:0.8rem;font-weight:600;color:#374151;white-space:nowrap;">Search:</label>
         <input id="matrix-search" type="search" placeholder="Name or position…"
                style="padding:0.35rem 0.6rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem;width:220px;">
+
+        <label for="matrix-type-filter" style="font-size:0.8rem;font-weight:600;color:#374151;white-space:nowrap;margin-left:0.5rem;">Employee Type:</label>
+        <select id="matrix-type-filter"
+                style="padding:0.35rem 0.6rem;border:1px solid #d1d5db;border-radius:5px;font-size:0.82rem;background:#fff;">
+            <option value="">All Types</option>
+            <option value="permanent">Permanent</option>
+            <option value="elected officials">Elected Officials</option>
+            <option value="co-terminus">Co-Terminus</option>
+            <option value="casual">Casual</option>
+            <option value="job orders">Job Orders</option>
+            <option value="contractual">Contractual</option>
+        </select>
+
         <span style="font-size:0.78rem;color:#9ca3af;margin-left:0.25rem;">Click column headers to sort.</span>
     </div>
 
@@ -90,7 +103,7 @@
             </thead>
             <tbody>
                 @foreach($rows as $i => $row)
-                    <tr>
+                    <tr data-type="{{ strtolower($row['employee_type'] ?? '') }}">
                         <td style="{{ $td }}color:#6b7280;">{{ $i + 1 }}</td>
                         <td style="{{ $td }}text-align:left;font-weight:600;">{{ $row['name'] }}</td>
                         <td style="{{ $td }}">{{ $row['position'] ?: '-' }}</td>
@@ -167,22 +180,28 @@ document.addEventListener('DOMContentLoaded', function () {
     var table = document.getElementById('monitoring-matrix-table');
     if (!table) return;
 
-    // ── Search ──────────────────────────────────────────────────────────
+    // ── Search + Employee Type filter (combined, AND logic) ──────────────
     var searchInput = document.getElementById('matrix-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', function () {
-            var q = this.value.toLowerCase().trim();
-            var rows = table.tBodies[0].rows;
-            var visible = 0;
-            for (var i = 0; i < rows.length; i++) {
-                var name = (rows[i].cells[1] ? rows[i].cells[1].textContent : '').toLowerCase();
-                var pos  = (rows[i].cells[2] ? rows[i].cells[2].textContent : '').toLowerCase();
-                var show = !q || name.indexOf(q) > -1 || pos.indexOf(q) > -1;
-                rows[i].style.display = show ? '' : 'none';
-                if (show) rows[i].cells[0].textContent = ++visible;
-            }
-        });
+    var typeFilter = document.getElementById('matrix-type-filter');
+
+    function applyFilters() {
+        var q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        var type = typeFilter ? typeFilter.value : '';
+        var rows = table.tBodies[0].rows;
+        var visible = 0;
+        for (var i = 0; i < rows.length; i++) {
+            var name = (rows[i].cells[1] ? rows[i].cells[1].textContent : '').toLowerCase();
+            var pos  = (rows[i].cells[2] ? rows[i].cells[2].textContent : '').toLowerCase();
+            var matchesSearch = !q || name.indexOf(q) > -1 || pos.indexOf(q) > -1;
+            var matchesType = !type || rows[i].getAttribute('data-type') === type;
+            var show = matchesSearch && matchesType;
+            rows[i].style.display = show ? '' : 'none';
+            if (show) rows[i].cells[0].textContent = ++visible;
+        }
     }
+
+    if (searchInput) searchInput.addEventListener('input', applyFilters);
+    if (typeFilter) typeFilter.addEventListener('change', applyFilters);
 
     // ── Sortable columns (click header) ─────────────────────────────────
     var sortState = { col: 1, dir: 1 };
@@ -215,5 +234,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 });
+
+function exportMonitoringMatrixExcel() {
+    var typeFilter = document.getElementById('matrix-type-filter');
+    startExport('{{ route('export-jobs.create') }}', {
+        type: 'monitoring_matrix',
+        params: { month: {{ $month }}, year: {{ $year }}, employee_type: typeFilter ? typeFilter.value : '' },
+    }, 'Building monitoring matrix&hellip;');
+}
 </script>
 @endsection
