@@ -379,7 +379,9 @@ class AttendanceMonitoringExportService
     public function buildSpreadsheet(Collection $departments, int $month, int $year, ?User $actor = null, ?string $employeeType = null): array
     {
         $actor ??= Auth::user();
-        $deptName = $departments->pluck('Dept_name')->filter()->implode(' / ');
+        $deptName = $departments->count() > 3
+            ? 'All Departments'
+            : $departments->pluck('Dept_name')->filter()->implode(' / ');
         $rows = $this->getRows($departments, $month, $year, $employeeType);
 
         $spreadsheet = new Spreadsheet;
@@ -508,7 +510,11 @@ class AttendanceMonitoringExportService
         $dept = $departments->first();
         $deptHeadName = '';
         $deptHeadDesig = '';
-        if ($dept && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
+        // Only resolve a single "department head" signatory when the export
+        // covers exactly one department (e.g. Administrative Officer) - a
+        // company-wide, multi-department export (e.g. Time Keeper) has no
+        // single department head to attribute the "Approved by" line to.
+        if ($departments->count() === 1 && $dept && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
             $head = User::where('EmpNo', $dept->EmpNo)->first();
             if ($head) {
                 $deptHeadName = $this->buildFullName($head);

@@ -19,7 +19,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="header-title">HRIS &mdash; Password Reset</div>
+        <div class="header-title">HRIS Password Reset</div>
         <div class="header-sub">Human Resource Information System</div>
     </div>
     <div class="container">

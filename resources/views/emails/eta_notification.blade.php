@@ -20,7 +20,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="header-title">HRIS &mdash; Employee Travel Authorization</div>
+        <div class="header-title">HRIS Employee Travel Authorization</div>
         <div class="header-sub">Human Resource Information System</div>
     </div>
     <div class="container">

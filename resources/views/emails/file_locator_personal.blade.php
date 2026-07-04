@@ -20,7 +20,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="header-title">HRIS &mdash; File Locator (Personal)</div>
+        <div class="header-title">HRIS File Locator (Personal)</div>
         <div class="header-sub">Human Resource Information System</div>
     </div>
     <div class="container">

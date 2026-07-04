@@ -1,6 +1,6 @@
 @extends('dashboards.layout', [
     'title'    => 'Employee Cancellation Requests',
-    'subtitle' => 'Step 3 of 3 — Final approval for leave cancellation requests',
+    'subtitle' => 'Step 3 of 3 -Final approval for leave cancellation requests',
 ])
 
 @section('page_head')
@@ -13,7 +13,7 @@
 <div style="display:flex;align-items:flex-start;gap:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
     <i class="fa-solid fa-circle-info" style="color:#16a34a;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
     <div>
-        <strong style="color:#14532d;font-size:0.92rem;">3-Step Cancellation Workflow — You are the Final Approver</strong>
+        <strong style="color:#14532d;font-size:0.92rem;">3-Step Cancellation Workflow -You are the Final Approver</strong>
         <p style="margin:4px 0 0;font-size:0.875rem;color:#166534;line-height:1.55;">
             Department Head
             &nbsp;→&nbsp;Administrative Officer
@@ -255,7 +255,7 @@
                 Remarks <span style="color:#ef4444;">*</span>
             </label>
             <textarea id="reject-remarks" rows="3"
-                placeholder="Required — explain why this request is being rejected..."
+                placeholder="Required -explain why this request is being rejected..."
                 style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
             <p id="reject-remarks-error" style="color:#ef4444;font-size:0.8rem;margin:4px 0 0;display:none;">Remarks are required.</p>
         </div>
@@ -281,7 +281,7 @@
     <div class="dialog-body">
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:0.87rem;color:#166534;">
             <i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>
-            <span id="bulk-approve-count-label"></span> — each leave will be cancelled and credits refunded.
+            <span id="bulk-approve-count-label"></span> -each leave will be cancelled and credits refunded.
         </div>
     </div>
     <div class="modal-actions" style="margin-top:4px;display:flex;gap:8px;justify-content:flex-end;">
@@ -305,14 +305,14 @@
     <div class="dialog-body">
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.87rem;color:#991b1b;">
             <i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>
-            <span id="bulk-reject-count-label"></span> — all selected employees will be notified.
+            <span id="bulk-reject-count-label"></span> -all selected employees will be notified.
         </div>
         <div>
             <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
                 Remarks <span style="color:#ef4444;">*</span>
             </label>
             <textarea id="bulk-reject-remarks" rows="3"
-                placeholder="Required — applies to all selected rejections..."
+                placeholder="Required -applies to all selected rejections..."
                 style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
             <p id="bulk-reject-remarks-error" style="color:#ef4444;font-size:0.8rem;margin:4px 0 0;display:none;">Remarks are required.</p>
         </div>

@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Attendance;
 
+use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
+use App\Models\HRAuditTrail;
 use App\Models\Shift;
 use App\Models\User;
+use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
@@ -16,14 +19,22 @@ use Illuminate\Http\Request;
 /**
  * Time Keeper management of named work-shift templates (e.g. "Standard Day",
  * "Night", "Mid"). Employees are assigned a template via EmployeeScheduleController.
+ *
+ * Department Head / Administrative Officer get view-only access (once granted
+ * shift management access) so they know what templates exist when assigning
+ * shifts to their own employees - templates are global, so creating/editing/
+ * deleting one stays Time-Keeper/HR-Manager-only.
  */
 class ShiftController extends Controller
 {
+    use ScopesEmployeesByDepartment;
+
     /** Roles allowed to manage shift templates. */
     private const MANAGER_ROLES = ['time keeper', 'hr manager'];
 
     public function __construct(
         private readonly PersonnelLogImportService $importService,
+        private readonly DepartmentService $departmentService,
     ) {}
 
     private function authorizeManager(User $user): void
@@ -34,26 +45,32 @@ class ShiftController extends Controller
 
     public function index(Request $request): View
     {
-        $this->authorizeManager($request->user());
+        $user = $request->user();
+        $this->resolveAccessibleEmployeeIds($user);
 
+        $canManage = $this->isUnscopedManager($user);
         $shifts = Shift::withCount('employees')->orderBy('name')->get();
 
-        return view('attendance.shifts.index', compact('shifts'));
+        return view('attendance.shifts.index', compact('shifts', 'canManage'));
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeManager($request->user());
+        $actor = $request->user();
+        $this->authorizeManager($actor);
 
         $data = $this->validateShift($request);
-        Shift::create($data);
+        $shift = Shift::create($data);
+
+        $this->logTemplateAction($actor, $shift, 'shift_template_created', $data);
 
         return back()->with('shift_status', "Shift template \"{$data['name']}\" created.");
     }
 
     public function update(Request $request, Shift $shift): RedirectResponse
     {
-        $this->authorizeManager($request->user());
+        $actor = $request->user();
+        $this->authorizeManager($actor);
 
         $data = $this->validateShift($request);
         $shift->update($data);
@@ -61,20 +78,43 @@ class ShiftController extends Controller
         // Times changed - recompute every employee currently on this shift.
         $shift->employees()->each(fn (User $u) => $this->recomputeEmployee($u));
 
+        $this->logTemplateAction($actor, $shift, 'shift_template_updated', $data);
+
         return back()->with('shift_status', "Shift template \"{$shift->name}\" updated and affected DTRs recomputed.");
     }
 
     public function destroy(Request $request, Shift $shift): RedirectResponse
     {
-        $this->authorizeManager($request->user());
+        $actor = $request->user();
+        $this->authorizeManager($actor);
 
         if ($shift->employees()->exists()) {
             return back()->with('shift_error', "Cannot delete \"{$shift->name}\" - employees are still assigned to it.");
         }
 
+        $name = $shift->name;
+        $shiftId = $shift->id;
         $shift->delete();
 
+        $this->logTemplateAction($actor, null, 'shift_template_deleted', ['shift_id' => $shiftId, 'name' => $name]);
+
         return back()->with('shift_status', 'Shift template deleted.');
+    }
+
+    private function logTemplateAction(User $actor, ?Shift $shift, string $action, array $details): void
+    {
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $actor->id,
+                'module' => 'shift_management',
+                'action' => $action,
+                'target_type' => 'shift',
+                'target_id' => $shift?->id ?? ($details['shift_id'] ?? null),
+                'details' => $details,
+            ]);
+        } catch (\Exception) {
+            // audit failure must not block the template change
+        }
     }
 
     /**

@@ -131,14 +131,14 @@ class AdministrativeOfficerCancellationController extends Controller
         try {
             $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
             if ($lm) {
-                $this->approvalNotificationService->notifyEmployee($lm, 'Leave Cancellation', 'AO Endorsed — Awaiting Final Approval', $details);
+                $this->approvalNotificationService->notifyEmployee($lm, 'Leave Cancellation', 'AO Endorsed - Awaiting Final Approval', $details);
             }
         } catch (\Throwable $e) {
             Log::warning('Failed to notify Leave Manager of AO endorsement', ['leave_id' => $leave->id, 'error' => $e->getMessage()]);
         }
 
         // Notify employee
-        $this->approvalNotificationService->notifyEmployee($employee, 'Leave Cancellation', 'Endorsed by Administrative Officer — Awaiting Leave Manager', $details);
+        $this->approvalNotificationService->notifyEmployee($employee, 'Leave Cancellation', 'Endorsed by Administrative Officer -Awaiting Leave Manager', $details);
 
         return response()->json(['success' => true]);
     }

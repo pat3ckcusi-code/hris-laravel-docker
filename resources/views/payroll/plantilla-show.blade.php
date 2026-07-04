@@ -104,7 +104,7 @@
                 @foreach($employees as $emp)
                     @php($current = $currentAssignments->get($emp->id))
                     <option value="{{ $emp->id }}" @selected(old('employee_id') == $emp->id)>
-                        {{ $emp->last_name ? "{$emp->last_name}, {$emp->first_name}" : $emp->name }}{{ $emp->EmpNo ? " ({$emp->EmpNo})" : '' }}{{ $emp->designation ? " — {$emp->designation}" : '' }}{{ $current ? ' • currently: '.($current->plantilla->title ?? 'assigned') : '' }}
+                        {{ $emp->last_name ? "{$emp->last_name}, {$emp->first_name}" : $emp->name }}{{ $emp->EmpNo ? " ({$emp->EmpNo})" : '' }}{{ $emp->designation ? " -{$emp->designation}" : '' }}{{ $current ? ' • currently: '.($current->plantilla->title ?? 'assigned') : '' }}
                     </option>
                 @endforeach
             </select>

@@ -37,7 +37,7 @@
 <div class="wrapper">
 
     <div class="header">
-        <div class="header-title">{{ $settings?->system_name ?? 'HRIS' }} &mdash; {{ $requestType }}</div>
+        <div class="header-title">{{ $settings?->system_name ?? 'HRIS' }} {{ $requestType }}</div>
         <div class="header-sub">Human Resource Information System &bull; {{ $settings?->org_name ?? 'LGU Calapan' }}</div>
     </div>
 

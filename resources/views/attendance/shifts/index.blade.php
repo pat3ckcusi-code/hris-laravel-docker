@@ -25,6 +25,7 @@
 </div>
 
 {{-- Create new shift --}}
+@if ($canManage)
 <div class="shift-form-card">
     <h3 style="margin:0 0 .75rem;font-size:.9rem;font-weight:600;color:#0f172a;">New Shift Template</h3>
     <form method="POST" action="{{ route('attendance.shifts.store') }}" id="create-shift-form">
@@ -45,6 +46,11 @@
         </div>
     </form>
 </div>
+@else
+<div class="shift-form-card">
+    <span style="color:#64748b;font-size:.82rem;">View only - your Time Keeper manages shift templates.</span>
+</div>
+@endif
 
 <div class="hris-table-card">
     <div style="overflow-x:auto;">
@@ -66,16 +72,16 @@
                 @forelse ($shifts as $shift)
                     @php $fid = 'shift-form-'.$shift->id; @endphp
                     <tr>
-                        <td><input form="{{ $fid }}" type="text" name="name" value="{{ $shift->name }}" style="padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:.35rem;font-size:.8rem;"></td>
-                        <td><input form="{{ $fid }}" type="time" name="time_in" value="{{ substr($shift->time_in,0,5) }}"></td>
-                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ $shift->no_break ? 'disabled' : '' }}></td>
-                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ $shift->no_break ? 'disabled' : '' }}></td>
-                        <td><input form="{{ $fid }}" type="time" name="time_out" value="{{ substr($shift->time_out,0,5) }}"></td>
+                        <td><input form="{{ $fid }}" type="text" name="name" value="{{ $shift->name }}" style="padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:.35rem;font-size:.8rem;" {{ $canManage ? '' : 'disabled' }}></td>
+                        <td><input form="{{ $fid }}" type="time" name="time_in" value="{{ substr($shift->time_in,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
+                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ ($shift->no_break || ! $canManage) ? 'disabled' : '' }}></td>
+                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ ($shift->no_break || ! $canManage) ? 'disabled' : '' }}></td>
+                        <td><input form="{{ $fid }}" type="time" name="time_out" value="{{ substr($shift->time_out,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
                         <td style="text-align:center;">
                             <input form="{{ $fid }}" type="checkbox" name="no_break" value="1"
                                 {{ $shift->no_break ? 'checked' : '' }}
                                 onchange="toggleRowBreak(this, {{ $shift->id }})"
-                                style="width:auto;cursor:pointer;">
+                                style="width:auto;cursor:pointer;" {{ $canManage ? '' : 'disabled' }}>
                         </td>
                         <td>
                             @if ($shift->no_break)
@@ -88,17 +94,21 @@
                         </td>
                         <td style="text-align:center;">{{ $shift->employees_count }}</td>
                         <td style="white-space:nowrap;">
-                            <form id="{{ $fid }}" class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.update', $shift) }}">
-                                @csrf
-                                @method('PUT')
-                                <button type="submit" class="hris-btn hris-btn-primary">Save</button>
-                            </form>
-                            <form class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.destroy', $shift) }}"
-                                  onsubmit="return confirm('Delete this shift template?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="hris-btn">Delete</button>
-                            </form>
+                            @if ($canManage)
+                                <form id="{{ $fid }}" class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.update', $shift) }}">
+                                    @csrf
+                                    @method('PUT')
+                                    <button type="submit" class="hris-btn hris-btn-primary">Save</button>
+                                </form>
+                                <form class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.destroy', $shift) }}"
+                                      onsubmit="return confirm('Delete this shift template?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="hris-btn">Delete</button>
+                                </form>
+                            @else
+                                <span style="color:#94a3b8;font-size:.75rem;">View only</span>
+                            @endif
                         </td>
                     </tr>
                 @empty

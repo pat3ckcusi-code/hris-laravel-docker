@@ -213,7 +213,7 @@
                 </span>
                 <div>
                     <div style="font-weight:700;font-size:.95rem;color:#78350f;">Partial Excuses Already on Record</div>
-                    <div style="font-size:.78rem;color:#92400e;margin-top:.1rem;">New slots will be added — no existing slots removed</div>
+                    <div style="font-size:.78rem;color:#92400e;margin-top:.1rem;">New slots will be added -no existing slots removed</div>
                 </div>
             </div>
             {{-- Body --}}

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Services\DepartmentService;
+use App\Support\RoleNormalizer;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -118,6 +120,32 @@ class User extends Authenticatable
         $type = strtolower(trim((string) ($this->employee_type ?? '')));
 
         return in_array($type, self::LEAVE_ELIGIBLE_TYPES, true);
+    }
+
+    /**
+     * Check if the user can access the Shift Templates/Assignment/Schedule screens.
+     * Time Keeper and HR Manager always can. Department Head/Administrative Officer
+     * only if at least one department they head (or cover via OIC) has an active
+     * ShiftManagementGrant - access is per-department, granted by a Time Keeper.
+     */
+    public function hasShiftManagementAccess(): bool
+    {
+        $role = RoleNormalizer::normalize((string) ($this->access_level ?? ''));
+
+        if (in_array($role, ['time keeper', 'hr manager'], true)) {
+            return true;
+        }
+
+        if (! in_array($role, ['department head', 'administrative officer'], true)) {
+            return false;
+        }
+
+        $departmentService = app(DepartmentService::class);
+        $depts = $role === 'administrative officer'
+            ? $departmentService->resolveAllDepartmentsForAdminOfficer($this)
+            : $departmentService->resolveAllDepartmentsForUser($this);
+
+        return ShiftManagementGrant::active()->whereIn('dept_id', $depts->pluck('Dept_id'))->exists();
     }
 
     /**

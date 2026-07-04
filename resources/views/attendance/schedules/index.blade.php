@@ -79,12 +79,26 @@
             </div>
             <div>
                 <label class="hris-filter-label" for="dept_id">Department</label>
-                <select name="dept_id" id="dept_id" class="hris-filter-select" onchange="this.form.submit()">
-                    <option value="">All departments</option>
-                    @foreach ($departments as $dept)
-                        <option value="{{ $dept->Dept_id }}" @selected($deptId === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
-                    @endforeach
-                </select>
+                @if (is_null($lockedDepartments))
+                    <select name="dept_id" id="dept_id" class="hris-filter-select" onchange="this.form.submit()">
+                        <option value="">All departments</option>
+                        @foreach ($departments as $dept)
+                            <option value="{{ $dept->Dept_id }}" @selected($deptId === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
+                        @endforeach
+                    </select>
+                @elseif ($lockedDepartments->count() > 1)
+                    <select name="dept_id" id="dept_id" class="hris-filter-select" onchange="this.form.submit()">
+                        <option value="">All my departments</option>
+                        @foreach ($lockedDepartments as $dept)
+                            <option value="{{ $dept->Dept_id }}" @selected($deptId === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
+                        @endforeach
+                    </select>
+                @else
+                    <input type="hidden" name="dept_id" value="{{ $lockedDepartments->first()->Dept_id ?? '' }}">
+                    <span class="hris-filter-select" style="display:inline-block;background:#f1f5f9;color:#475569;">
+                        {{ $lockedDepartments->first()->Dept_name ?? 'Your Department' }}
+                    </span>
+                @endif
             </div>
             <div>
                 <label class="hris-filter-label" for="shift_id">Shift</label>

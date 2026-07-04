@@ -133,7 +133,7 @@ class DepartmentHeadCancellationController extends Controller
             if ($dept && ! empty($dept->ao_emp_no)) {
                 $ao = User::where('EmpNo', $dept->ao_emp_no)->first();
                 if ($ao) {
-                    $this->approvalNotificationService->notifyEmployee($ao, 'Leave Cancellation', 'DH Recommended — Awaiting AO Endorsement', $details);
+                    $this->approvalNotificationService->notifyEmployee($ao, 'Leave Cancellation', 'DH Recommended -Awaiting AO Endorsement', $details);
                 }
             }
         } catch (\Throwable $e) {

@@ -197,7 +197,7 @@
                         data-sg="{{ $vp->salary_grade }}"
                         data-step="{{ $vp->step }}"
                         data-dept="{{ $vp->department }}">
-                        {{ $vp->item_number ? "[{$vp->item_number}] " : '' }}{{ \Illuminate\Support\Str::limit($vp->title, 45) }} — SG {{ $vp->salary_grade }}
+                        {{ $vp->item_number ? "[{$vp->item_number}] " : '' }}{{ \Illuminate\Support\Str::limit($vp->title, 45) }} -SG {{ $vp->salary_grade }}
                     </option>
                 @endforeach
             </select>

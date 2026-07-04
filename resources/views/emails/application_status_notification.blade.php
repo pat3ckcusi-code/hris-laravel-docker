@@ -24,7 +24,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="header-title">HRIS &mdash; {{ $application_type }} Update</div>
+        <div class="header-title">HRIS {{ $application_type }} Update</div>
         <div class="header-sub">Human Resource Information System</div>
     </div>
     <div class="container">

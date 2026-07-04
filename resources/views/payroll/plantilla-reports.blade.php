@@ -162,7 +162,7 @@
             </div>
             <x-hris.table-pagination :paginator="$vacantPositions" />
         @else
-            <p class="empty-state">{{ request()->hasAny(['vacant_search', 'vacant_department']) ? 'No vacant positions match your filters.' : 'No vacant positions — every plantilla item has an active incumbent.' }}</p>
+            <p class="empty-state">{{ request()->hasAny(['vacant_search', 'vacant_department']) ? 'No vacant positions match your filters.' : 'No vacant positions -every plantilla item has an active incumbent.' }}</p>
         @endif
     </section>
 

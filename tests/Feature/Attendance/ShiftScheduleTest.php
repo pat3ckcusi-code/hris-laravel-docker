@@ -4,7 +4,9 @@ namespace Tests\Feature\Attendance;
 
 use App\Models\AttendanceLog;
 use App\Models\Department;
+use App\Models\OicAssignment;
 use App\Models\Shift;
+use App\Models\ShiftManagementGrant;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
@@ -357,5 +359,252 @@ class ShiftScheduleTest extends TestCase
         $activeRow = $rows->firstWhere(fn ($r) => str_contains($r['name'], 'Activeperson'));
         $this->assertTrue($exemptRow['is_exempt']);
         $this->assertFalse($activeRow['is_exempt']);
+    }
+
+    // ── Department Head / Administrative Officer: grant-gated, dept-scoped access ──
+
+    private function makeDepartment(string $name): Department
+    {
+        return Department::create([
+            'DeptCode' => strtoupper(str_replace(' ', '_', $name)),
+            'Dept_name' => $name,
+            'Designation' => $name,
+        ]);
+    }
+
+    public function test_department_head_without_grant_is_forbidden_on_all_shift_screens(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertStatus(403);
+        $this->actingAs($dh)->get(route('attendance.schedules'))->assertStatus(403);
+        $this->actingAs($dh)->get(route('attendance.shift-schedule.index'))->assertStatus(403);
+    }
+
+    public function test_time_keeper_can_grant_and_revoke_shift_management_access(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        $tk = $this->createTimeKeeper();
+
+        $this->actingAs($tk)->post(route('attendance.shift-access.grant', $deptA))->assertRedirect();
+        $this->assertTrue($dh->refresh()->hasShiftManagementAccess());
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertStatus(200);
+
+        $this->actingAs($tk)->post(route('attendance.shift-access.revoke', $deptA))->assertRedirect();
+        $this->assertFalse($dh->refresh()->hasShiftManagementAccess());
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertStatus(403);
+    }
+
+    public function test_granted_department_head_can_view_but_not_manage_shift_templates(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))
+            ->assertStatus(200)
+            ->assertDontSee('New Shift Template');
+
+        $this->actingAs($dh)->post(route('attendance.shifts.store'), [
+            'name' => 'Should Not Save', 'time_in' => '08:00', 'time_out' => '17:00',
+            'break_out' => '12:00', 'break_in' => '13:00',
+        ])->assertStatus(403);
+
+        $this->assertDatabaseMissing('shifts', ['name' => 'Should Not Save']);
+    }
+
+    public function test_granted_department_head_sees_only_own_department_employees(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+
+        $this->actingAs($dh)->get(route('attendance.schedules'))
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+
+        $this->actingAs($dh)->get(route('attendance.shift-schedule.index'))
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+    }
+
+    public function test_granted_department_head_cannot_assign_shift_outside_own_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->nightShiftModel();
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
+
+        $this->actingAs($dh)
+            ->put(route('attendance.schedules.update', $outsider), ['shift_id' => $shift->id])
+            ->assertStatus(403);
+
+        $this->assertNull($outsider->refresh()->shift_id);
+
+        $this->actingAs($dh)
+            ->put(route('attendance.schedules.exempt', $outsider))
+            ->assertStatus(403);
+
+        $this->assertFalse($outsider->refresh()->dtr_exempt);
+    }
+
+    public function test_granted_department_head_cannot_submit_shift_schedule_outside_own_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
+        $weekStart = now()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
+
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.store'), [
+            'user_id' => $outsider->id,
+            'week_start' => $weekStart,
+            'assignments' => [$weekStart => 'rest'],
+        ])->assertStatus(403);
+
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $outsider->id]);
+
+        $shift = $this->nightShiftModel();
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.generate-pattern'), [
+            'user_id' => $outsider->id,
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 1,
+            'start_date' => $weekStart,
+            'end_date' => now()->addDays(3)->toDateString(),
+        ])->assertStatus(403);
+
+        $this->assertNull($outsider->refresh()->shift_id);
+    }
+
+    public function test_granted_department_head_can_manage_own_department_employee(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->nightShiftModel();
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($dh)
+            ->put(route('attendance.schedules.update', $employee), ['shift_id' => $shift->id])
+            ->assertRedirect();
+
+        $this->assertSame($shift->id, $employee->refresh()->shift_id);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'shift_management',
+            'action' => 'shift_assigned',
+            'target_id' => $employee->id,
+        ]);
+    }
+
+    public function test_granted_administrative_officer_gets_scoped_access(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $ao = $this->createAdminOfficer(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+
+        $this->actingAs($ao)->get(route('attendance.schedules'))
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+
+        $this->actingAs($ao)
+            ->put(route('attendance.schedules.update', $outsider), ['shift_id' => $this->nightShiftModel()->id])
+            ->assertStatus(403);
+    }
+
+    public function test_oic_covered_department_without_its_own_grant_stays_inaccessible(): void
+    {
+        // Access is per-department: covering deptB via OIC does not unlock it
+        // unless deptB itself has been granted, even though deptA (home) is.
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        OicAssignment::create([
+            'user_id' => $dh->id,
+            'dept_id' => $deptB->Dept_id,
+            'role' => 'department head',
+            'appointed_by' => $this->createHRManager()->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+        ]);
+
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+
+        $this->actingAs($dh)->get(route('attendance.schedules'))
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+    }
+
+    public function test_oic_delegated_department_head_gets_access_once_covered_department_is_granted(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $deptC = $this->makeDepartment('Dept C');
+        $tk = $this->createTimeKeeper();
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $tk->id]);
+        ShiftManagementGrant::create(['dept_id' => $deptB->Dept_id, 'granted_by' => $tk->id]);
+
+        OicAssignment::create([
+            'user_id' => $dh->id,
+            'dept_id' => $deptB->Dept_id,
+            'role' => 'department head',
+            'appointed_by' => $this->createHRManager()->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+        ]);
+
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+        $this->createEmployee(['Dept_id' => $deptC->Dept_id, 'last_name' => 'InDeptC']);
+
+        $this->actingAs($dh)->get(route('attendance.schedules'))
+            ->assertSee('InDeptA')
+            ->assertSee('InDeptB')
+            ->assertDontSee('InDeptC');
+    }
+
+    public function test_revoking_department_removes_access_even_though_officer_still_holds_the_role(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        $tk = $this->createTimeKeeper();
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $tk->id]);
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertStatus(200);
+
+        $this->actingAs($tk)->post(route('attendance.shift-access.revoke', $deptA))->assertRedirect();
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertStatus(403);
+    }
+
+    public function test_only_time_keeper_or_hr_manager_can_grant_or_revoke_shift_access(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($dh)->get(route('attendance.shift-access.index'))->assertStatus(403);
+        $this->actingAs($dh)->post(route('attendance.shift-access.grant', $deptA))->assertStatus(403);
     }
 }

@@ -256,7 +256,7 @@
 
     function summaryHtml(row) {
         return '<strong>' + escapeHtml(row.employee || row) + '</strong>' +
-               (row.leaveType ? ' &mdash; ' + escapeHtml(row.leaveType) : '') +
+               (row.leaveType ? ' ' + escapeHtml(row.leaveType) : '') +
                (row.period ? '<br><span style="color:#64748b;font-size:0.82rem;">' + escapeHtml(row.period) + '</span>' : '');
     }
 

@@ -289,7 +289,7 @@
                 <div class="form-group">
                     <label class="import-label" for="dept_id">
                         Department
-                        <span class="import-label-hint">&mdash; optional, blank = all</span>
+                        <span class="import-label-hint"> optional, blank = all</span>
                     </label>
                     <select id="dept_id" name="dept_id">
                         <option value="">All Departments</option>
@@ -332,7 +332,7 @@
                     <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#e0f5f8;border:1px solid #9dd5e0;border-left:4px solid #17a2b8;border-radius:8px;font-size:0.82rem;color:#0f5f6d;">
                         <i class="fa-solid fa-circle-play" style="color:#17a2b8;flex-shrink:0;"></i>
                         <span>
-                            <strong>Auto-import ON</strong> &mdash;
+                            <strong>Auto-import ON</strong>
                             every {{ $autoInterval }} min &middot; {{ $autoDeptLabel }}
                         </span>
                     </div>
@@ -340,7 +340,7 @@
                     <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#f1f5f9;border:1px solid #cbd5e1;border-left:4px solid #94a3b8;border-radius:8px;font-size:0.82rem;color:#475569;">
                         <i class="fa-solid fa-circle-pause" style="color:#94a3b8;flex-shrink:0;"></i>
                         <span>
-                            <strong>Auto-import OFF</strong> &mdash;
+                            <strong>Auto-import OFF</strong>
                             <a href="{{ route('hr-manager.settings') }}#tab-attendance" style="color:#17a2b8;font-weight:600;">configure in Settings</a>
                         </span>
                     </div>
@@ -439,7 +439,7 @@
 
             <div class="import-warning-card">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <p>Re-importing an already-imported range is safe &mdash; duplicates are detected by employee, date, and time and skipped automatically.</p>
+                <p>Re-importing an already-imported range is safe duplicates are detected by employee, date, and time and skipped automatically.</p>
             </div>
 
         </aside>

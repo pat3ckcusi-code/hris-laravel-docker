@@ -314,7 +314,7 @@ class DtrController extends Controller
 
             $showEta = $isEtaDay && $etaPunchCount < 4;
 
-            // Office Order: same priority as ETA — sits between ETA and Excuse.
+            // Office Order: same priority as ETA -sits between ETA and Excuse.
             $isOoDay = ! $leaveCode && ! $isEtaDay && isset($officeOrderDateMap[$dateStr]);
             $ooNum = $isOoDay ? $officeOrderDateMap[$dateStr] : null;
             $ooPunchCount = $isOoDay ? count(array_filter([

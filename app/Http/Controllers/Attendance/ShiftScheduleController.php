@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Attendance;
 
+use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\EmployeeShiftSchedule;
+use App\Models\HRAuditTrail;
 use App\Models\Shift;
 use App\Models\User;
+use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
@@ -16,6 +19,8 @@ use Illuminate\Http\Request;
 
 /**
  * Time Keeper / HR Manager screen for setting per-date shift assignments.
+ * Department Head / Administrative Officer get the same tool once granted
+ * shift management access, scoped to their own department's employees.
  *
  * An employee's "shift schedule" overrides their default shift_id on specific
  * dates. A null shift_id in an assignment means the employee is scheduled off
@@ -24,10 +29,13 @@ use Illuminate\Http\Request;
  */
 class ShiftScheduleController extends Controller
 {
+    use ScopesEmployeesByDepartment;
+
     private const MANAGER_ROLES = ['time keeper', 'hr manager'];
 
     public function __construct(
         private readonly PersonnelLogImportService $importService,
+        private readonly DepartmentService $departmentService,
     ) {}
 
     private function authorizeManager(User $user): void
@@ -38,13 +46,24 @@ class ShiftScheduleController extends Controller
 
     public function index(Request $request): View
     {
-        $this->authorizeManager($request->user());
+        $user = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
 
-        $departments = Department::orderBy('Dept_name')->get();
         $shifts = Shift::where('is_active', true)->orderBy('name')->get();
 
         $deptId = $request->integer('dept_id') ?: null;
         $employeeId = $request->integer('employee_id') ?: null;
+
+        if ($accessibleIds === null) {
+            $departments = Department::orderBy('Dept_name')->get();
+            $lockedDepartments = null;
+        } else {
+            $departments = collect();
+            $lockedDepartments = $this->resolveAccessibleDepartments($user);
+            if ($deptId !== null && ! $lockedDepartments->pluck('Dept_id')->contains($deptId)) {
+                $deptId = null;
+            }
+        }
 
         // Week start: Monday of the requested week, defaults to current week's Monday.
         $weekStart = $request->query('week_start')
@@ -53,6 +72,7 @@ class ShiftScheduleController extends Controller
 
         $employees = User::query()
             ->where('dtr_exempt', false)
+            ->when($accessibleIds !== null, fn ($q) => $q->whereIn('id', $accessibleIds))
             ->when($deptId, fn ($q) => $q->where('Dept_id', $deptId))
             ->orderBy('last_name')->orderBy('first_name')
             ->get(['id', 'first_name', 'last_name', 'middle_name', 'Dept_id', 'shift_id']);
@@ -77,7 +97,7 @@ class ShiftScheduleController extends Controller
         }
 
         return view('attendance.shift_schedule.index', compact(
-            'departments', 'shifts', 'employees', 'deptId', 'employeeId',
+            'departments', 'lockedDepartments', 'shifts', 'employees', 'deptId', 'employeeId',
             'weekStart', 'weekDays', 'selectedEmployee', 'existingAssignments'
         ));
     }
@@ -93,7 +113,8 @@ class ShiftScheduleController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeManager($request->user());
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
 
         $validated = $request->validate([
             'user_id' => ['required', 'integer', 'exists:users,id'],
@@ -101,6 +122,10 @@ class ShiftScheduleController extends Controller
             'assignments' => ['required', 'array'],
             'assignments.*' => ['nullable', 'string'],
         ]);
+
+        if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
+            abort(403, 'You may only schedule employees in your own department.');
+        }
 
         $employee = User::findOrFail($validated['user_id']);
         $weekStart = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::MONDAY);
@@ -154,6 +179,11 @@ class ShiftScheduleController extends Controller
                 $weekStart->toDateString(),
                 $weekEnd->toDateString(),
             );
+
+            $this->logScheduleAction($actor, $employee, 'shift_schedule_updated', [
+                'week_start' => $weekStart->toDateString(),
+                'days_changed' => count($validated['assignments']),
+            ]);
         }
 
         $name = trim("{$employee->first_name} {$employee->last_name}");
@@ -179,7 +209,8 @@ class ShiftScheduleController extends Controller
      */
     public function generatePattern(Request $request): RedirectResponse
     {
-        $this->authorizeManager($request->user());
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
 
         $validated = $request->validate([
             'user_id' => ['required', 'integer', 'exists:users,id'],
@@ -189,6 +220,10 @@ class ShiftScheduleController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
         ]);
+
+        if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
+            abort(403, 'You may only schedule employees in your own department.');
+        }
 
         $employee = User::findOrFail($validated['user_id']);
         $onDays = $validated['on_days'];
@@ -218,11 +253,35 @@ class ShiftScheduleController extends Controller
 
         $this->importService->recomputeDtr($employee, $start->toDateString(), $end->toDateString());
 
+        $this->logScheduleAction($actor, $employee, 'rotation_generated', [
+            'shift_id' => $validated['shift_id'],
+            'on_days' => $onDays,
+            'off_days' => $offDays,
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+        ]);
+
         $name = trim("{$employee->first_name} {$employee->last_name}");
 
         return redirect()->route('attendance.shift-schedule.index', [
             'dept_id' => $request->input('dept_id'),
             'employee_id' => $employee->id,
         ])->with('schedule_status', "Rotation pattern for {$name} generated from {$start->toDateString()} to {$end->toDateString()}.");
+    }
+
+    private function logScheduleAction(User $actor, User $employee, string $action, array $details): void
+    {
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $actor->id,
+                'module' => 'shift_management',
+                'action' => $action,
+                'target_type' => 'user',
+                'target_id' => $employee->id,
+                'details' => $details,
+            ]);
+        } catch (\Exception) {
+            // audit failure must not block the schedule change
+        }
     }
 }

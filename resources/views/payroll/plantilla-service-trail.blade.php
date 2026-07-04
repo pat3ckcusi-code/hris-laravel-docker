@@ -14,7 +14,7 @@
             <option value="">Select employee...</option>
             @foreach($employees as $emp)
                 <option value="{{ $emp->id }}" @selected(request('employee_id') == $emp->id)>
-                    {{ $emp->last_name ? "{$emp->last_name}, {$emp->first_name}" : $emp->name }}{{ $emp->EmpNo ? " ({$emp->EmpNo})" : '' }}{{ $emp->designation ? " — {$emp->designation}" : '' }}
+                    {{ $emp->last_name ? "{$emp->last_name}, {$emp->first_name}" : $emp->name }}{{ $emp->EmpNo ? " ({$emp->EmpNo})" : '' }}{{ $emp->designation ? " -{$emp->designation}" : '' }}
                 </option>
             @endforeach
         </select>

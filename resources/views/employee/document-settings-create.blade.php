@@ -99,7 +99,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                            accept="image/*" class="fctl"
                            style="width:auto;"
                            onchange="previewImg(this,'hdr-preview')">
-                    <span class="hint">PNG / JPG / WebP &mdash; max 4 MB.</span>
+                    <span class="hint">PNG / JPG / WebP max 4 MB.</span>
                 </div>
             </div>
             @error('header_image') <span class="inv">{{ $message }}</span> @enderror
@@ -250,7 +250,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                            accept="image/*" class="fctl"
                            style="width:auto;"
                            onchange="previewImg(this,'ftr-preview')">
-                    <span class="hint">PNG / JPG / WebP &mdash; max 4 MB.</span>
+                    <span class="hint">PNG / JPG / WebP max 4 MB.</span>
                 </div>
             </div>
             @error('footer_image') <span class="inv">{{ $message }}</span> @enderror

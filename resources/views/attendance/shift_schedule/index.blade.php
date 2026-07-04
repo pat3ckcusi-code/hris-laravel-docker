@@ -392,12 +392,26 @@
 <div class="ss-toolbar">
     <div class="ss-toolbar-left">
         <form method="GET" action="{{ route('attendance.shift-schedule.index') }}" id="filter-form" class="ss-dept-form">
-            <select name="dept_id" class="ss-dept-select" onchange="this.form.submit()">
-                <option value="">All Departments</option>
-                @foreach($departments as $dept)
-                    <option value="{{ $dept->Dept_id }}" @selected($dept->Dept_id == $deptId)>{{ $dept->Dept_name }}</option>
-                @endforeach
-            </select>
+            @if (is_null($lockedDepartments))
+                <select name="dept_id" class="ss-dept-select" onchange="this.form.submit()">
+                    <option value="">All Departments</option>
+                    @foreach($departments as $dept)
+                        <option value="{{ $dept->Dept_id }}" @selected($dept->Dept_id == $deptId)>{{ $dept->Dept_name }}</option>
+                    @endforeach
+                </select>
+            @elseif ($lockedDepartments->count() > 1)
+                <select name="dept_id" class="ss-dept-select" onchange="this.form.submit()">
+                    <option value="">All my departments</option>
+                    @foreach($lockedDepartments as $dept)
+                        <option value="{{ $dept->Dept_id }}" @selected($dept->Dept_id == $deptId)>{{ $dept->Dept_name }}</option>
+                    @endforeach
+                </select>
+            @else
+                <input type="hidden" name="dept_id" value="{{ $lockedDepartments->first()->Dept_id ?? '' }}">
+                <span class="ss-dept-select" style="display:inline-flex;align-items:center;background:#f1f5f9;">
+                    {{ $lockedDepartments->first()->Dept_name ?? 'Your Department' }}
+                </span>
+            @endif
             @if($employeeId)
                 <input type="hidden" name="employee_id" value="{{ $employeeId }}">
             @endif

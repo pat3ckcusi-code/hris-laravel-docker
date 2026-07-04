@@ -164,7 +164,7 @@ class LeaveManagerTest extends TestCase
         $lm = $this->createLeaveManager();
         $emp = $this->createEmployee();
 
-        // Pending Cancellation — should NOT appear on LM page
+        // Pending Cancellation -should NOT appear on LM page
         $pendingLeave = LeaveRequest::create([
             'user_id'             => $emp->id,
             'leave_type'          => 'VL',
@@ -176,7 +176,7 @@ class LeaveManagerTest extends TestCase
         ]);
         LeaveDate::create(['leave_request_id' => $pendingLeave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
 
-        // AO Endorsed — SHOULD appear
+        // AO Endorsed -SHOULD appear
         $endorsedLeave = LeaveRequest::create([
             'user_id'             => $emp->id,
             'leave_type'          => 'VL',

@@ -60,7 +60,7 @@
         </div>
         <div style="font-size:0.82rem;color:#6b7280;margin-top:2px;">
             CGC Employees' Attendance, Leave &amp; Locator Monitoring Matrix
-            &mdash; For the Month of {{ \Carbon\Carbon::createFromDate($year, $month, 1)->format('F Y') }}
+            For the Month of {{ \Carbon\Carbon::createFromDate($year, $month, 1)->format('F Y') }}
         </div>
     </div>
 

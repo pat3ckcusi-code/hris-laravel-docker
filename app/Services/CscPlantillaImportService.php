@@ -15,7 +15,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 /**
  * Imports the official CSC "Plantilla of Personnel" workbook (one sheet per
  * office) into plantillas + employee_assignments, matching incumbents to
- * users by name. Salary amounts in the file are ignored — the salary matrix
+ * users by name. Salary amounts in the file are ignored -the salary matrix
  * is the source of monetary values; the file's SG and step are authoritative.
  *
  * Incumbent appointment dates (original appointment, last promotion) are

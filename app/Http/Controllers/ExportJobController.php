@@ -85,7 +85,7 @@ class ExportJobController extends Controller
             'form48'            => $this->authForm48($user, $params),
             'form48_dept_zip',
             'form48_dept'       => $this->authForm48Dept($user, $params),
-            'monitoring_matrix' => abort_unless($user->access_level === 'administrative officer', 403),
+            'monitoring_matrix' => $this->authMonitoringMatrix($user),
             'leave_card'        => $this->authLeaveCard($user, $params),
             'hr_reports'        => abort_unless($user->access_level === 'hr manager', 403),
         };
@@ -138,5 +138,11 @@ class ExportJobController extends Controller
     {
         $role = strtolower(trim((string) ($user->access_level ?? '')));
         abort_unless(in_array($role, ['leave manager', 'hr manager'], true), 403);
+    }
+
+    private function authMonitoringMatrix(User $user): void
+    {
+        $role = strtolower(trim((string) ($user->access_level ?? '')));
+        abort_unless($role === 'administrative officer', 403);
     }
 }

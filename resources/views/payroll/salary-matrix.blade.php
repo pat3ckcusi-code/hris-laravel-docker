@@ -1,7 +1,7 @@
 @extends('dashboards.layout', [
     'title' => 'Salary Matrix',
     'subtitle' => $activeOrdinance
-        ? "Effective {$selected} — {$activeOrdinance}"
+        ? "Effective {$selected} -{$activeOrdinance}"
         : "Salary Standardization Table, effective {$selected}",
 ])
 
@@ -10,7 +10,7 @@
         <select name="version" class="hris-filter-select" onchange="this.form.submit()">
             @forelse($versions as $v)
                 <option value="{{ $v->effective_date->toDateString() }}" @selected($selected === $v->effective_date->toDateString())>
-                    {{ $v->effective_date->format('M d, Y') }}{{ $v->ordinance_reference ? ' — '.\Illuminate\Support\Str::limit($v->ordinance_reference, 40) : '' }}
+                    {{ $v->effective_date->format('M d, Y') }}{{ $v->ordinance_reference ? ' -'.\Illuminate\Support\Str::limit($v->ordinance_reference, 40) : '' }}
                 </option>
             @empty
                 <option value="">No versions yet</option>
@@ -29,7 +29,7 @@
 
     <p class="text-muted" style="margin-bottom:16px;font-size:0.85rem">
         <i class="fas fa-circle-info" style="margin-right:6px"></i>
-        Payroll always uses the rate version whose effective date is on or before the pay period being run — so publishing
+        Payroll always uses the rate version whose effective date is on or before the pay period being run -so publishing
         a new tranche here (even mid-year) takes effect automatically without touching plantilla items or payroll code.
     </p>
 

@@ -1,6 +1,6 @@
 @extends('dashboards.layout', [
     'title'    => 'Leave Cancellation Requests',
-    'subtitle' => 'Step 1 of 3 — Review and recommend employee cancellation requests',
+    'subtitle' => 'Step 1 of 3 -Review and recommend employee cancellation requests',
 ])
 
 @section('page_head')
@@ -13,7 +13,7 @@
 <div style="display:flex;align-items:flex-start;gap:14px;background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #f97316;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
     <i class="fa-solid fa-circle-info" style="color:#f97316;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
     <div>
-        <strong style="color:#7c2d12;font-size:0.92rem;">3-Step Cancellation Workflow — You are Step 1</strong>
+        <strong style="color:#7c2d12;font-size:0.92rem;">3-Step Cancellation Workflow -You are Step 1</strong>
         <p style="margin:4px 0 0;font-size:0.875rem;color:#431407;line-height:1.55;">
             <span style="font-weight:600;color:#ea580c;">You (DH)</span>
             &nbsp;→&nbsp;Administrative Officer
@@ -219,7 +219,7 @@
                 Remarks <span style="color:#ef4444;">*</span>
             </label>
             <textarea id="reject-remarks" rows="3"
-                placeholder="Required — explain why the request is being rejected..."
+                placeholder="Required -explain why the request is being rejected..."
                 style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;resize:vertical;font-family:inherit;"></textarea>
             <p id="reject-remarks-error" style="color:#ef4444;font-size:0.8rem;margin:4px 0 0;display:none;">Remarks are required.</p>
         </div>
@@ -248,7 +248,7 @@
 
     function summaryHtml(row) {
         return '<strong>' + escapeHtml(row.employee || row) + '</strong>' +
-               (row.leaveType ? ' &mdash; ' + escapeHtml(row.leaveType) : '') +
+               (row.leaveType ? ' ' + escapeHtml(row.leaveType) : '') +
                (row.period ? '<br><span style="color:#64748b;font-size:0.82rem;">' + escapeHtml(row.period) + '</span>' : '');
     }
 

@@ -5,8 +5,11 @@ use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Attendance\DtrExcuseController;
+use App\Http\Controllers\Attendance\ShiftLogController;
+use App\Http\Controllers\Attendance\TimeLogsMonitoringController;
 use App\Http\Controllers\Attendance\EmployeeScheduleController;
 use App\Http\Controllers\Attendance\ShiftController;
+use App\Http\Controllers\Attendance\ShiftManagementAccessController;
 use App\Http\Controllers\Attendance\ShiftScheduleController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
@@ -209,31 +212,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/attendance/dtr/download-dept', [DtrController::class, 'downloadDepartmentForm48'])
         ->name('attendance.dtr.download-dept');
 
-    // Work-shift templates + per-employee assignment (Time Keeper / HR Manager - gated in controller)
-    Route::get('/attendance/shifts', [ShiftController::class, 'index'])
-        ->name('attendance.shifts');
-    Route::post('/attendance/shifts', [ShiftController::class, 'store'])
-        ->name('attendance.shifts.store');
-    Route::put('/attendance/shifts/{shift}', [ShiftController::class, 'update'])
-        ->name('attendance.shifts.update');
-    Route::delete('/attendance/shifts/{shift}', [ShiftController::class, 'destroy'])
-        ->name('attendance.shifts.destroy');
-
-    Route::get('/attendance/schedules', [EmployeeScheduleController::class, 'index'])
-        ->name('attendance.schedules');
-    Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
-        ->name('attendance.schedules.update');
-    Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
-        ->name('attendance.schedules.exempt');
-
-    // Per-date shift schedule (rotating / 24-7 departments)
-    Route::get('/attendance/shift-schedule', [ShiftScheduleController::class, 'index'])
-        ->name('attendance.shift-schedule.index');
-    Route::post('/attendance/shift-schedule', [ShiftScheduleController::class, 'store'])
-        ->name('attendance.shift-schedule.store');
-    Route::post('/attendance/shift-schedule/generate-pattern', [ShiftScheduleController::class, 'generatePattern'])
-        ->name('attendance.shift-schedule.generate-pattern');
-
     Route::get('/dashboard/records-manager', [DashboardController::class, 'recordsManager'])
         ->name('dashboard.records-manager');
     Route::get('/dashboard/records-manager/employees', [RecordsManagerController::class, 'index'])
@@ -372,7 +350,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     Route::post('/department-head/locator/{id}/record-arrival', [DepartmentHeadController::class, 'recordLocatorArrival'])->name('department-head.locator.record-arrival');
 });
 
-// Department Head — Leave Cancellation
+// Department Head -Leave Cancellation
 Route::middleware(['auth', 'role:department-head,administrative-officer'])->group(function () {
     Route::get('/department-head/leave-cancellation-requests', [DepartmentHeadCancellationController::class, 'leaveCancellationRequests'])
         ->name('department-head.leave-cancellation-requests');
@@ -384,7 +362,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
         ->name('api.department-head.pending-cancellation-count');
 });
 
-// Administrative Officer — Leave Cancellation
+// Administrative Officer -Leave Cancellation
 Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::get('/admin-officer/leave-cancellation-requests', [AdministrativeOfficerCancellationController::class, 'leaveCancellationRequests'])
         ->name('admin-officer.leave-cancellation-requests');
@@ -566,6 +544,53 @@ Route::middleware(['auth', 'role:hr-manager,administrative-officer,department-he
         ->name('attendance.dtr-excuse.check');
     Route::delete('/attendance/dtr-excuse/{dtrExcuse}', [DtrExcuseController::class, 'destroy'])
         ->name('attendance.dtr-excuse.destroy');
+});
+
+// Work-shift templates + assignment (Time Keeper / HR Manager unrestricted;
+// Administrative Officer / Department Head scoped to their own department and
+// gated by an explicit ShiftManagementGrant - see ShiftController/
+// EmployeeScheduleController/ShiftScheduleController for the finer-grained
+// per-action gating, e.g. Shift Templates write actions stay
+// Time-Keeper/HR-Manager-only even though the read route is shared).
+Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,department-head'])->group(function () {
+    Route::get('/attendance/shifts', [ShiftController::class, 'index'])
+        ->name('attendance.shifts');
+    Route::post('/attendance/shifts', [ShiftController::class, 'store'])
+        ->name('attendance.shifts.store');
+    Route::put('/attendance/shifts/{shift}', [ShiftController::class, 'update'])
+        ->name('attendance.shifts.update');
+    Route::delete('/attendance/shifts/{shift}', [ShiftController::class, 'destroy'])
+        ->name('attendance.shifts.destroy');
+
+    Route::get('/attendance/schedules', [EmployeeScheduleController::class, 'index'])
+        ->name('attendance.schedules');
+    Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
+        ->name('attendance.schedules.update');
+    Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
+        ->name('attendance.schedules.exempt');
+
+    Route::get('/attendance/shift-schedule', [ShiftScheduleController::class, 'index'])
+        ->name('attendance.shift-schedule.index');
+    Route::post('/attendance/shift-schedule', [ShiftScheduleController::class, 'store'])
+        ->name('attendance.shift-schedule.store');
+    Route::post('/attendance/shift-schedule/generate-pattern', [ShiftScheduleController::class, 'generatePattern'])
+        ->name('attendance.shift-schedule.generate-pattern');
+});
+
+// Shift Management access grants + company-wide Shift Logs (Time Keeper / HR Manager only)
+Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
+    Route::get('/attendance/shift-access', [ShiftManagementAccessController::class, 'index'])
+        ->name('attendance.shift-access.index');
+    Route::post('/attendance/shift-access/{department}/grant', [ShiftManagementAccessController::class, 'grant'])
+        ->name('attendance.shift-access.grant');
+    Route::post('/attendance/shift-access/{department}/revoke', [ShiftManagementAccessController::class, 'revoke'])
+        ->name('attendance.shift-access.revoke');
+
+    Route::get('/attendance/shift-logs', [ShiftLogController::class, 'index'])
+        ->name('attendance.shift-logs');
+
+    Route::get('/attendance/time-logs-monitoring', [TimeLogsMonitoringController::class, 'index'])
+        ->name('attendance.time-logs-monitoring');
 });
 
 // Mayor's Office routes
