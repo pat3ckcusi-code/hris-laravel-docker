@@ -10,10 +10,10 @@
         @if (file_exists(public_path('assets/fontawesome/css/all.min.css')))
             <link rel="stylesheet" href="{{ asset('assets/fontawesome/css/all.min.css') }}">
         @else
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="" crossorigin="anonymous">
+            <link rel="stylesheet" href="{{ asset('vendor/fontawesome/css/all.min.css') }}">
         @endif
     <!-- DataTables CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="{{ asset('vendor/datatables/jquery.dataTables.min.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/export-job.js'])
     @yield('page_head')
 </head>
@@ -39,8 +39,8 @@
     </div>
 
     <!-- jQuery + DataTables JS (used by some dashboards) -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="{{ asset('vendor/jquery/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ asset('vendor/datatables/jquery.dataTables.min.js') }}"></script>
 
     @yield('page_scripts')
     @yield('page_scripts_after')

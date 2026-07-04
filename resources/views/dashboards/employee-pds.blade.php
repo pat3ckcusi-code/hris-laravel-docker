@@ -350,6 +350,8 @@
                             <th>Inclusive Dates (To)</th>
                             <th>Position Title</th>
                             <th>Department / Agency / Office / Company</th>
+                            <th>Monthly Salary</th>
+                            <th>Salary/ Job/ Pay Grade & Step Increment</th>
                             <th>Status of Appointment</th>
                             <th>Gov't Service (Y/N)</th>
                         </tr>
@@ -368,6 +370,8 @@
                                 </td>
                                 <td><input type="text" name="work[{{ $i }}][position]"></td>
                                 <td><input type="text" name="work[{{ $i }}][agency]"></td>
+                                <td><input type="text" name="work[{{ $i }}][monthly_salary]" data-no-uppercase></td>
+                                <td><input type="text" name="work[{{ $i }}][sg]" placeholder="00-0" pattern="\d{2}-\d" title="Format: 00-0" maxlength="4" inputmode="numeric" data-no-uppercase></td>
                                 <td><input type="text" name="work[{{ $i }}][status]"></td>
                                 <td>
                                     <select name="work[{{ $i }}][is_government]">
@@ -1025,6 +1029,30 @@
             // Only uppercase text inputs that are NOT marked with data-no-uppercase
             const uppercaseInputs = Array.from(form.querySelectorAll('input[type="text"]:not([data-no-uppercase]), textarea:not([data-no-uppercase])'));
             uppercaseInputs.forEach(attachUpper);
+
+            // Enforce "00-0" format (2 digits, dash, 1 digit) on Salary/Job/Pay Grade & Step Increment
+            const enforceSalaryGradeFormat = function (input) {
+                const format = function () {
+                    const start = input.selectionStart;
+                    const digitsOnly = (input.value || '').replace(/[^0-9]/g, '').slice(0, 3);
+                    const formatted = digitsOnly.length > 2
+                        ? digitsOnly.slice(0, 2) + '-' + digitsOnly.slice(2)
+                        : digitsOnly;
+                    const lengthDelta = formatted.length - (input.value || '').length;
+                    input.value = formatted;
+                    try {
+                        if (typeof start === 'number') {
+                            const pos = Math.max(0, start + lengthDelta);
+                            input.setSelectionRange(pos, pos);
+                        }
+                    } catch (e) {
+                        // ignore selection errors
+                    }
+                };
+                input.addEventListener('input', format);
+                format();
+            };
+            Array.from(form.querySelectorAll('section[data-section="pds-work-experience"] input[name$="[sg]"]')).forEach(enforceSalaryGradeFormat);
 
             // Education dynamic rows (add/remove for College and Graduate)
             const educationTable = form.querySelector('section[data-section="pds-education"] table tbody');

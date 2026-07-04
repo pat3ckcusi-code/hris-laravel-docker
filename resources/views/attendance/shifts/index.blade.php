@@ -4,7 +4,7 @@
 ])
 
 @section('page_head')
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('vendor/sweetalert2/sweetalert2.all.min.js') }}"></script>
 <style>
 .shift-form-card { padding: 1rem 1.25rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .5rem; margin-bottom: 1rem; }
 .shift-form-grid { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }

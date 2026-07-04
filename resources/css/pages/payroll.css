@@ -201,6 +201,58 @@ textarea.form-input {
     background: linear-gradient(120deg, #dc2626, #f87171);
 }
 
+/* ── Plantilla module top-nav buttons (Service Trail / Reports / Add Position) ──
+   Pill shape + icon badge + hover lift give these more visual weight than a
+   plain .btn-outline, without introducing new brand colors - everything stays
+   on the existing --accent orange so it still reads as one design system. */
+.plantilla-nav-btn.btn-outline {
+    border-radius: 999px;
+    border-width: 1.5px;
+    padding-left: 14px;
+    transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.plantilla-nav-btn.btn-outline i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--chip-bg);
+    font-size: 0.68rem;
+}
+
+.plantilla-nav-btn.btn-outline:hover {
+    background: var(--chip-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(234, 88, 12, 0.18);
+}
+
+.btn-add-position {
+    border-radius: 999px;
+    padding-left: 14px;
+    box-shadow: 0 2px 8px rgba(234, 88, 12, 0.35);
+    transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.btn-add-position i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    font-size: 0.68rem;
+}
+
+.btn-add-position:hover {
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(234, 88, 12, 0.45);
+}
+
 /* ── Filters ────────────────────────────────────── */
 .payroll-filters {
     margin-bottom: 16px;
@@ -333,4 +385,418 @@ textarea.form-input {
     .payroll-table tbody td {
         padding: 6px 8px;
     }
+}
+
+/* =========================================================================
+   Plantilla module - stat tiles, badges, profile card, service timeline
+   ========================================================================= */
+
+/* ── Stat tiles (Reports) ───────────────────────── */
+.plantilla-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.stat-tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--panel);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.stat-tile .stat-icon {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.stat-tile.stat-filled .stat-icon { background: #dcfce7; color: #166534; }
+.stat-tile.stat-vacant .stat-icon { background: #fef3c7; color: #92400e; }
+.stat-tile.stat-promo .stat-icon  { background: #fff7ed; color: var(--accent); }
+
+.stat-tile .stat-value {
+    font-size: 1.65rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-tile .stat-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+/* ── Badges ─────────────────────────────────────── */
+.sg-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.item-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+/* ── Section panels (white card around tables) ──── */
+.plantilla-panel {
+    background: var(--panel);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: clip;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.plantilla-panel .hris-table thead th {
+    background: #f8fafc;
+}
+
+.payroll-section h2 i {
+    color: var(--accent);
+    margin-right: 8px;
+    font-size: 0.95em;
+}
+
+/* ── Employee profile card (Service Trail) ──────── */
+.profile-card {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    background: var(--panel);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.profile-avatar {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #fff7ed;
+    border: 2px solid #fed7aa;
+    color: #9a3412;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.15rem;
+}
+
+.profile-body { flex: 1; min-width: 0; }
+
+.profile-name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.profile-position {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-top: 2px;
+}
+
+.profile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 0.78rem;
+    color: #334155;
+}
+
+.meta-chip i { color: var(--accent); font-size: 0.85em; }
+
+/* ── Service timeline (Service Trail) ───────────── */
+.trail-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0 4px 4px;
+    position: relative;
+}
+
+.trail-timeline::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: #e2e8f0;
+}
+
+.trail-entry {
+    position: relative;
+    padding: 0 0 22px 34px;
+}
+
+.trail-entry:last-child { padding-bottom: 4px; }
+
+.trail-entry::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 0 2px #e2e8f0;
+}
+
+.trail-entry.trail-active::before {
+    background: var(--accent);
+    box-shadow: 0 0 0 2px #fed7aa;
+}
+
+.trail-period {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.trail-card {
+    margin-top: 6px;
+    background: var(--panel);
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.trail-entry.trail-active .trail-card {
+    border-color: #fed7aa;
+    background: linear-gradient(0deg, #fffbf7, #fffbf7);
+}
+
+.trail-title {
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.trail-title a { color: inherit; text-decoration: none; }
+.trail-title a:hover { color: var(--accent); }
+
+.trail-sub {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+/* ── Plantilla filter bar ───────────────────────── */
+.plantilla-filter-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.plantilla-filter-form .hris-search-input,
+.plantilla-filter-form .hris-filter-select {
+    height: 38px;
+}
+
+@media (max-width: 768px) {
+    .profile-card { flex-direction: column; }
+    .plantilla-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* =========================================================================
+   Plantilla index polish - vacancy state, incumbent avatar, step dots
+   ========================================================================= */
+
+/* Vacant reads as "opportunity", not "error" - matches stat-vacant amber */
+.status-chip.status-vacant {
+    background: transparent;
+    border: 1px dashed #fbbf24;
+    color: #92400e;
+}
+
+.status-chip.eligibility-professional {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.status-chip.eligibility-sub_professional {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-chip.eligibility-none {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.incumbent-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.avatar-sm {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.68rem;
+}
+
+.incumbent-cell a {
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.incumbent-cell a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+/* Step-of-8 mini indicator */
+.step-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: middle;
+}
+
+.step-dots .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e2e8f0;
+}
+
+.step-dots .dot.filled {
+    background: var(--accent);
+}
+
+.step-label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-right: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Modal form sections ─────────────────────────── */
+.form-section-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 18px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.form-section-title:first-child {
+    margin-top: 0;
+}
+
+.form-section-title i {
+    color: var(--accent);
+    margin-right: 6px;
+}
+
+/* ── Promote target info panel ──────────────────── */
+.target-info-card {
+    display: none;
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.target-info-card .pti-title {
+    font-weight: 700;
+    color: #9a3412;
+}
+
+/* ── Row-level index polish ─────────────────────── */
+/* Fixed layout + wrapping (instead of the shared table's nowrap headers)
+   keeps all 9 columns within the card width so the page doesn't need the
+   horizontal scrollbar the generic .hris-table-wrapper falls back to. */
+#plantilla-table {
+    table-layout: fixed;
+}
+
+#plantilla-table th,
+#plantilla-table td {
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: middle;
+    padding: 0.75rem 0.75rem;
+}
+
+#plantilla-table .action-btns {
+    justify-content: flex-start;
+}
+
+.dept-cell {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* ── Wide modal variant (salary matrix bulk tranche entry) ──────── */
+.employee-modal.modal-lg {
+    width: min(960px, calc(100vw - 24px));
 }

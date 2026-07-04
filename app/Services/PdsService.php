@@ -379,7 +379,7 @@ class PdsService
                 $sheetC2->setCellValue('A'.$Letnum, $rowiv['Career'] ?? ($rowiv['type'] ?? ''));
                 $sheetC2->setCellValue('F'.$Letnum, $rowiv['Rating'] ?? ($rowiv['rating'] ?? ''));
                 $sheetC2->setCellValue('I'.$Letnum, $rowiv['Place'] ?? ($rowiv['place'] ?? ''));
-                $sheetC2->setCellValue('J'.$Letnum, $rowiv['LiNum'] ?? ($rowiv['license_no'] ?? ''));
+                $sheetC2->setCellValue('L'.$Letnum, $rowiv['LiNum'] ?? ($rowiv['license_no'] ?? ''));
 
                 $examDateRaw = $rowiv['Date'] ?? ($rowiv['exam_date'] ?? '');
                 $examDate = (! empty($examDateRaw) && $examDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($examDateRaw)) : 'N/A';
@@ -387,7 +387,7 @@ class PdsService
 
                 $liDateRaw = $rowiv['LiDate'] ?? ($rowiv['license_date'] ?? '');
                 $liDate = (! empty($liDateRaw) && $liDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($liDateRaw)) : 'N/A';
-                $sheetC2->setCellValue('K'.$Letnum, $liDate);
+                $sheetC2->setCellValue('M'.$Letnum, $liDate);
 
                 $c++;
             }
@@ -405,16 +405,16 @@ class PdsService
         }
 
         foreach ($workRaw as $k => $v) {
-            if (preg_match('/^work\\[(position|company|from|to|status|is_government|sg|agency|to_present)_(\\d+)\\]$/', (string) $k, $m)) {
+            if (preg_match('/^work\\[(position|company|from|to|status|is_government|sg|monthly_salary|agency|to_present)_(\\d+)\\]$/', (string) $k, $m)) {
                 $field = $m[1];
                 $idx = (int) $m[2] - 1;
-                $map = ['company' => 'agency', 'sg' => 'sg', 'agency' => 'agency', 'to_present' => 'to_present'];
+                $map = ['company' => 'agency', 'sg' => 'sg', 'agency' => 'agency', 'to_present' => 'to_present', 'monthly_salary' => 'monthly_salary'];
                 $rowsV[$idx][$map[$field] ?? $field] = (string) $v;
             }
         }
 
         foreach ($rowsV as $idx => $r) {
-            $fields = ['position', 'from', 'agency', 'status', 'is_government'];
+            $fields = ['position', 'from', 'agency', 'status', 'is_government', 'monthly_salary', 'sg'];
             $allEmpty = true;
             foreach ($fields as $f) {
                 if (isset($r[$f]) && trim((string) $r[$f]) !== '') {
@@ -493,8 +493,10 @@ class PdsService
                 $sheetC2->setCellValue('C'.$NumExp, $indateTo);
                 $sheetC2->setCellValue('D'.$NumExp, $rowv['position'] ?? ($rowv['Position'] ?? ''));
                 $sheetC2->setCellValue('G'.$NumExp, $rowv['agency'] ?? ($rowv['Dept'] ?? ($rowv['company'] ?? '')));
-                $sheetC2->setCellValue('J'.$NumExp, $rowv['status'] ?? ($rowv['Status'] ?? ''));
-                $sheetC2->setCellValue('K'.$NumExp, $rowv['is_government'] ?? ($rowv['GovService'] ?? ''));
+                $sheetC2->setCellValue('J'.$NumExp, $rowv['monthly_salary'] ?? '');
+                $sheetC2->setCellValue('K'.$NumExp, $rowv['sg'] ?? '');
+                $sheetC2->setCellValue('L'.$NumExp, $rowv['status'] ?? ($rowv['Status'] ?? ''));
+                $sheetC2->setCellValue('M'.$NumExp, $rowv['is_government'] ?? ($rowv['GovService'] ?? ''));
 
                 $d++;
             }

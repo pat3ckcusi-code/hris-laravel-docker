@@ -1,4 +1,11 @@
-@props(['paginator'])
+@props(['paginator', 'onEachSide' => 2])
+
+@php
+    $current = $paginator->currentPage();
+    $last = $paginator->lastPage();
+    $start = max($current - $onEachSide, 1);
+    $end = min($current + $onEachSide, $last);
+@endphp
 
 @if($paginator->hasPages())
     <nav class="hris-pagination-wrapper" role="navigation" aria-label="Pagination">
@@ -14,9 +21,19 @@
                 </li>
             @endif
 
+            {{-- First page + leading ellipsis --}}
+            @if($start > 1)
+                <li class="hris-pagination-item">
+                    <a class="hris-pagination-link" href="{{ $paginator->url(1) }}">1</a>
+                </li>
+                @if($start > 2)
+                    <li class="hris-pagination-item disabled"><span class="hris-pagination-link">&hellip;</span></li>
+                @endif
+            @endif
+
             {{-- Pagination Elements --}}
-            @foreach($paginator->getUrlRange(1, $paginator->lastPage()) as $page => $url)
-                @if($page == $paginator->currentPage())
+            @foreach($paginator->getUrlRange($start, $end) as $page => $url)
+                @if($page == $current)
                     <li class="hris-pagination-item active">
                         <span class="hris-pagination-link">{{ $page }}</span>
                     </li>
@@ -26,6 +43,16 @@
                     </li>
                 @endif
             @endforeach
+
+            {{-- Trailing ellipsis + last page --}}
+            @if($end < $last)
+                @if($end < $last - 1)
+                    <li class="hris-pagination-item disabled"><span class="hris-pagination-link">&hellip;</span></li>
+                @endif
+                <li class="hris-pagination-item">
+                    <a class="hris-pagination-link" href="{{ $paginator->url($last) }}">{{ $last }}</a>
+                </li>
+            @endif
 
             {{-- Next Page Link --}}
             @if($paginator->hasMorePages())

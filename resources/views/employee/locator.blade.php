@@ -176,14 +176,14 @@
 @endsection
 
 @section('page_scripts')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="{{ asset('vendor/jquery/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ asset('vendor/datatables/jquery.dataTables.min.js') }}"></script>
     <script>
         // Ensure SweetAlert is available on this page; load CDN fallback if not present
         (function(){
             if (typeof window.Swal === 'undefined') {
                 const s = document.createElement('script');
-                s.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11';
+                s.src = '{{ asset('vendor/sweetalert2/sweetalert2.all.min.js') }}';
                 s.async = false;
                 document.head.appendChild(s);
             }

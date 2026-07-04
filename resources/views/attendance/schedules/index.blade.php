@@ -4,7 +4,7 @@
 ])
 
 @section('page_head')
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('vendor/sweetalert2/sweetalert2.all.min.js') }}"></script>
 <style>
 /* ── Toolbar ── */
 .sched-toolbar { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; justify-content:space-between; margin:0 0 1rem; }

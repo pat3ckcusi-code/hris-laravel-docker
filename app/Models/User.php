@@ -141,6 +141,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'date_hired' => 'date',
+            'date_of_original_appointment' => 'date',
+            'date_of_last_promotion' => 'date',
             'is_sanggunian_member' => 'boolean',
             'on_extended_service' => 'boolean',
             'hours_per_day' => 'float',

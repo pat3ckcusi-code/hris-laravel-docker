@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use setasign\Fpdi\Fpdi;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -333,12 +334,12 @@ class LeaveRequestService
         // When deduction is already applied to live balances (post-approval), restore
         // the pre-deduction totals so Section 7.A shows the same values as at Allow Printing.
         if (! empty($leave->printing_deduction_applied)) {
-            $displayTotalEarnedVL   += $displayRequestedVL;
-            $displayTotalEarnedSL   += $displayRequestedSL;
+            $displayTotalEarnedVL += $displayRequestedVL;
+            $displayTotalEarnedSL += $displayRequestedSL;
             $displayTotalEarnedWLNS += $displayRequestedWLNS;
-            $displayTotalEarnedSPL  += $displayRequestedSPL;
-            $displayTotalEarnedCTO  += $displayRequestedCTO;
-            $displayTotalEarnedSP   += $displayRequestedSP;
+            $displayTotalEarnedSPL += $displayRequestedSPL;
+            $displayTotalEarnedCTO += $displayRequestedCTO;
+            $displayTotalEarnedSP += $displayRequestedSP;
         }
 
         $displayBalanceVL = $displayTotalEarnedVL - $displayRequestedVL;
@@ -643,12 +644,12 @@ class LeaveRequestService
                         }
 
                         $candidates = [
-                            'VL'   => ['balance_vacation_leave', 'vl', 'VL'],
-                            'SL'   => ['balance_sick_leave', 'sl', 'SL'],
+                            'VL' => ['balance_vacation_leave', 'vl', 'VL'],
+                            'SL' => ['balance_sick_leave', 'sl', 'SL'],
                             'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
-                            'SPL'  => ['balance_special_leave_privilege', 'spl', 'SPL'],
-                            'CTO'  => ['balance_cto', 'cto', 'CTO'],
-                            'SP'   => ['balance_solo_parent_leave', 'sp', 'SP'],
+                            'SPL' => ['balance_special_leave_privilege', 'spl', 'SPL'],
+                            'CTO' => ['balance_cto', 'cto', 'CTO'],
+                            'SP' => ['balance_solo_parent_leave', 'sp', 'SP'],
                         ];
 
                         $restored = [];
@@ -700,22 +701,22 @@ class LeaveRequestService
                             $ld->save();
                         });
 
-                        $original->status              = 'cancelled';
-                        $original->detailed_status     = 'Cancelled';
+                        $original->status = 'cancelled';
+                        $original->detailed_status = 'Cancelled';
                         $original->cancellation_status = 'Rescheduled';
-                        $original->reschedule_status   = 'Rescheduled';
+                        $original->reschedule_status = 'Rescheduled';
                         $original->save();
 
                         try {
                             HRAuditTrail::create([
                                 'actor_user_id' => auth()->id(),
-                                'module'        => 'leave',
-                                'action'        => 'cancel_restore_balances',
-                                'target_type'   => 'leave_request',
-                                'target_id'     => $original->id,
-                                'details'       => [
-                                    'restored'     => $restored,
-                                    'reason'       => 'Rescheduled to leave #'.$original->rescheduledLeaves()->latest('id')->first()?->id,
+                                'module' => 'leave',
+                                'action' => 'cancel_restore_balances',
+                                'target_type' => 'leave_request',
+                                'target_id' => $original->id,
+                                'details' => [
+                                    'restored' => $restored,
+                                    'reason' => 'Rescheduled to leave #'.$original->rescheduledLeaves()->latest('id')->first()?->id,
                                     'cancelled_at' => now()->toDateTimeString(),
                                 ],
                             ]);
@@ -725,19 +726,19 @@ class LeaveRequestService
 
                         try {
                             app(LeaveLedgerService::class)->writeLedgerEntry([
-                                'user_id'          => $original->user_id,
+                                'user_id' => $original->user_id,
                                 'transaction_date' => now()->toDateString(),
                                 'transaction_type' => 'LEAVE_CANCELLED',
-                                'leave_type'       => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
-                                'credit_vl'        => floatval($restored['VL'] ?? 0),
-                                'credit_sl'        => floatval($restored['SL'] ?? 0),
-                                'debit_vl'         => 0,
-                                'debit_sl'         => 0,
-                                'reference_id'     => $original->id,
-                                'reference_type'   => 'leave_request',
-                                'created_by'       => auth()->id(),
-                                'is_system'        => false,
-                                'remarks'          => 'Leave rescheduled',
+                                'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
+                                'credit_vl' => floatval($restored['VL'] ?? 0),
+                                'credit_sl' => floatval($restored['SL'] ?? 0),
+                                'debit_vl' => 0,
+                                'debit_sl' => 0,
+                                'reference_id' => $original->id,
+                                'reference_type' => 'leave_request',
+                                'created_by' => auth()->id(),
+                                'is_system' => false,
+                                'remarks' => 'Leave rescheduled',
                             ]);
                         } catch (\Throwable $ex) {
                             Log::error('LeaveLedger write failed on reschedule cancel', ['leave_id' => $original->id, 'error' => $ex->getMessage()]);
@@ -771,13 +772,13 @@ class LeaveRequestService
                     $lm = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'leave manager'")->first();
 
                     $notifDetails = [
-                        'Employee'             => $empName,
-                        'Department'           => $departmentName,
-                        'Leave Type'           => $leave->leave_type ?? 'N/A',
-                        'New Start Date'       => Carbon::parse($leave->start_date)->format('l, F j, Y'),
-                        'New End Date'         => Carbon::parse($leave->end_date)->format('l, F j, Y'),
-                        'Original Leave'       => '#'.$original->id.' ('.Carbon::parse($original->start_date)->format('M j').' – '.Carbon::parse($original->end_date)->format('M j, Y').')',
-                        'Approved By'          => auth()->user()?->name ?? 'Approver',
+                        'Employee' => $empName,
+                        'Department' => $departmentName,
+                        'Leave Type' => $leave->leave_type ?? 'N/A',
+                        'New Start Date' => Carbon::parse($leave->start_date)->format('l, F j, Y'),
+                        'New End Date' => Carbon::parse($leave->end_date)->format('l, F j, Y'),
+                        'Original Leave' => '#'.$original->id.' ('.Carbon::parse($original->start_date)->format('M j').' – '.Carbon::parse($original->end_date)->format('M j, Y').')',
+                        'Approved By' => auth()->user()?->name ?? 'Approver',
                     ];
 
                     $employee->notify(new HrisTransactionNotification(
@@ -1150,7 +1151,7 @@ class LeaveRequestService
             if ($plantilla) {
                 $matrix = SalaryMatrix::where('sg', $plantilla->salary_grade)
                     ->where('step', $plantilla->step)
-                    ->orderByDesc('year')
+                    ->orderByDesc('effective_date')
                     ->first();
                 $salary = $matrix ? number_format($matrix->amount, 2) : '';
             }
@@ -1307,7 +1308,7 @@ class LeaveRequestService
         if ($siteSettings && ! empty($siteSettings->hr_manager_name)) {
             $sheet->mergeCells('C59:E59');
             $sheet->setCellValue('C59', $siteSettings->hr_manager_name);
-            $sheet->getStyle('C59')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('C59')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
         $sheet->setCellValue('C60', $siteSettings->hr_manager_designation ?? 'OIC-CHRMD');
 

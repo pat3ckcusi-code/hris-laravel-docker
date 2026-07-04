@@ -628,6 +628,10 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
     ]);
 
     // Plantilla Employee Assignments
+    Route::get('plantilla-reports', [PlantillaController::class, 'reports'])->name('plantilla.reports');
+    Route::get('plantilla-service-trail', [PlantillaController::class, 'serviceTrail'])->name('plantilla.service-trail');
+    Route::post('plantilla-history', [EmployeeAssignmentController::class, 'storeHistorical'])->name('plantilla.history.store');
+    Route::post('plantilla-promote', [EmployeeAssignmentController::class, 'promote'])->name('plantilla.promote');
     Route::post('plantilla/{plantilla}/assignments', [EmployeeAssignmentController::class, 'store'])->name('plantilla.assignments.store');
     Route::put('plantilla/{plantilla}/assignments/{assignment}', [EmployeeAssignmentController::class, 'update'])->name('plantilla.assignments.update');
     Route::delete('plantilla/{plantilla}/assignments/{assignment}', [EmployeeAssignmentController::class, 'destroy'])->name('plantilla.assignments.destroy');
@@ -641,6 +645,7 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'salary-matrix.update',
         'destroy' => 'salary-matrix.destroy',
     ]);
+    Route::post('salary-matrix-versions', [SalaryMatrixController::class, 'storeVersion'])->name('salary-matrix.versions.store');
     Route::resource('earnings', EarningsController::class)->names([
         'index' => 'earnings.index',
         'create' => 'earnings.create',

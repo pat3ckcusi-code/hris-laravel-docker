@@ -18,11 +18,24 @@
 
     <div class="detail-card">
         <div class="detail-row"><strong>Position Title:</strong> {{ $plantilla->title }}</div>
+        <div class="detail-row"><strong>Item Number:</strong> {{ $plantilla->item_number ?: '-' }}</div>
+        <div class="detail-row"><strong>Department / Office:</strong> {{ $plantilla->department ?: '-' }}</div>
         <div class="detail-row"><strong>Salary Grade:</strong> {{ $plantilla->salary_grade }}</div>
         <div class="detail-row"><strong>Step:</strong> {{ $plantilla->step }}</div>
         <div class="detail-row"><strong>Employment Type:</strong> {{ ucfirst($plantilla->employment_type) }}</div>
-        <div class="detail-row"><strong>Assigned Employees:</strong> {{ $plantilla->assignments->count() }}</div>
+        <div class="detail-row"><strong>CSC Eligibility Required:</strong> {{ $eligibilityOptions[$plantilla->csc_eligibility] ?? 'Not specified' }}</div>
+        <div class="detail-row"><strong>Active Incumbents:</strong> {{ $plantilla->assignments->whereNull('end_date')->count() }}</div>
     </div>
+
+    <section class="payroll-section">
+        <h2><i class="fas fa-graduation-cap"></i>Qualification Standards</h2>
+        <div class="detail-card">
+            <div class="detail-row"><strong>Education:</strong> <span style="white-space:pre-line">{{ $plantilla->education ?: 'Not specified' }}</span></div>
+            <div class="detail-row"><strong>Training:</strong> <span style="white-space:pre-line">{{ $plantilla->training ?: 'Not specified' }}</span></div>
+            <div class="detail-row"><strong>Work Experience:</strong> <span style="white-space:pre-line">{{ $plantilla->experience ?: 'Not specified' }}</span></div>
+            <div class="detail-row"><strong>Competency:</strong> <span style="white-space:pre-line">{{ $plantilla->competency ?: 'Not specified' }}</span></div>
+        </div>
+    </section>
 
     <section class="payroll-section">
         <h2>Employee Assignments</h2>
@@ -89,9 +102,13 @@
             <select name="employee_id" id="assign-employee" class="form-input" required>
                 <option value="">Select employee</option>
                 @foreach($employees as $emp)
-                    <option value="{{ $emp->id }}" @selected(old('employee_id') == $emp->id)>{{ $emp->name }}</option>
+                    @php($current = $currentAssignments->get($emp->id))
+                    <option value="{{ $emp->id }}" @selected(old('employee_id') == $emp->id)>
+                        {{ $emp->last_name ? "{$emp->last_name}, {$emp->first_name}" : $emp->name }}{{ $emp->EmpNo ? " ({$emp->EmpNo})" : '' }}{{ $emp->designation ? " — {$emp->designation}" : '' }}{{ $current ? ' • currently: '.($current->plantilla->title ?? 'assigned') : '' }}
+                    </option>
                 @endforeach
             </select>
+            <small class="text-muted">Employees marked "currently: ..." already hold an active assignment; assigning them here will end that assignment automatically.</small>
         </div>
         <div class="form-row">
             <div class="form-group">

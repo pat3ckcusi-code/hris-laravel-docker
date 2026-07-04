@@ -178,17 +178,21 @@ class PayrollComputationService
      */
     protected function getBasicSalary(int $sg, int $step, PayrollRun $run, array &$errors): float
     {
-        $year = $run->period_start->year;
-
+        // The latest matrix version whose effective_date has been reached by
+        // the run's period - this is what makes a mid-year ordinance apply
+        // exactly when it takes effect, not just at the next calendar year.
         $entry = SalaryMatrix::where('sg', $sg)
             ->where('step', $step)
-            ->where('year', $year)
+            ->where('effective_date', '<=', $run->period_start)
+            ->orderByDesc('effective_date')
             ->first();
 
         if (! $entry) {
+            // Period predates all known versions for this sg/step - fall
+            // back to the earliest one on record rather than paying zero.
             $entry = SalaryMatrix::where('sg', $sg)
                 ->where('step', $step)
-                ->orderByDesc('year')
+                ->orderBy('effective_date')
                 ->first();
         }
 
