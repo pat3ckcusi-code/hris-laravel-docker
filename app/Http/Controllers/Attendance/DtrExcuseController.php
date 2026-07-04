@@ -45,7 +45,7 @@ class DtrExcuseController extends Controller
             ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
             : $this->departmentService->resolveAllDepartmentsForUser($user);
 
-        return User::whereIn('Dept_id', $depts->pluck('Dept_id'))
+        return User::active()->whereIn('Dept_id', $depts->pluck('Dept_id'))
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->toArray();
@@ -56,7 +56,7 @@ class DtrExcuseController extends Controller
         $user = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
 
-        $employeesQuery = User::where('dtr_exempt', false)
+        $employeesQuery = User::active()->where('dtr_exempt', false)
             ->orderBy('last_name')
             ->orderBy('first_name');
         if ($accessibleIds !== null) {

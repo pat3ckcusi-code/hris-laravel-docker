@@ -2,14 +2,14 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\Eta;
+use App\Models\LeaveDate;
+use App\Models\LeaveRequest;
+use App\Models\Locator;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
-use App\Models\LeaveRequest;
-use App\Models\Eta;
-use App\Models\Locator;
-use App\Models\TravelOrder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * Department Head Role Tests
@@ -18,7 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class DepartmentHeadTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Dashboard
@@ -65,6 +65,20 @@ class DepartmentHeadTest extends TestCase
         $response = $this->actingAs($dh)->get(route('api.department.employees-on-duty'));
 
         $response->assertStatus(200);
+    }
+
+    public function test_separated_employee_excluded_from_employees_on_duty(): void
+    {
+        $dh = $this->createDepartmentHead();
+
+        $this->createEmployee(['Dept_id' => $dh->Dept_id, 'Status' => 'Active']);
+        $separated = $this->createEmployee(['Dept_id' => $dh->Dept_id, 'Status' => 'Separated']);
+
+        $response = $this->actingAs($dh)->get(route('api.department.employees-on-duty'));
+
+        $response->assertStatus(200);
+        $empNos = collect($response->json('data'))->pluck('EmpNo')->all();
+        $this->assertNotContains($separated->EmpNo, $empNos);
     }
 
     // ──────────────────────────────────────────────
@@ -114,12 +128,12 @@ class DepartmentHeadTest extends TestCase
         $this->createLeaveBalance($employee, ['VL' => 15]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $employee->id,
+            'user_id' => $employee->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'Test leave',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test leave',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($dh)->post(
@@ -138,12 +152,12 @@ class DepartmentHeadTest extends TestCase
         $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $employee->id,
+            'user_id' => $employee->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'Test leave',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test leave',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($dh)->post(
@@ -163,11 +177,11 @@ class DepartmentHeadTest extends TestCase
         $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
 
         $eta = Eta::create([
-            'user_id'        => $employee->id,
+            'user_id' => $employee->id,
             'departure_date' => now()->addDay()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'Traffic',
-            'status'         => 'pending',
+            'destination' => 'City Hall',
+            'purpose' => 'Traffic',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($dh)->post(
@@ -186,14 +200,14 @@ class DepartmentHeadTest extends TestCase
         $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
 
         $locator = Locator::create([
-            'user_id'                  => $employee->id,
-            'application_type'         => 'Official',
-            'location'                 => 'City Hall',
-            'travel_date'              => now()->addDay()->toDateString(),
-            'intended_departure_time'  => '10:00',
-            'intended_arrival_time'    => '12:00',
-            'detail'                   => 'Meeting',
-            'status'                   => 'pending',
+            'user_id' => $employee->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($dh)->post(
@@ -224,12 +238,12 @@ class DepartmentHeadTest extends TestCase
             $this->createLeaveBalance($emp, ['VL' => 30]);
             for ($j = 0; $j < 10; $j++) {
                 $leave = LeaveRequest::create([
-                    'user_id'    => $emp->id,
+                    'user_id' => $emp->id,
                     'leave_type' => 'VL',
                     'start_date' => now()->addDays($idx * 10 + $j + 7)->toDateString(),
-                    'end_date'   => now()->addDays($idx * 10 + $j + 7)->toDateString(),
-                    'reason'     => "Approval load test #{$idx}-{$j}",
-                    'status'     => 'pending',
+                    'end_date' => now()->addDays($idx * 10 + $j + 7)->toDateString(),
+                    'reason' => "Approval load test #{$idx}-{$j}",
+                    'status' => 'pending',
                 ]);
                 $leaveIds[] = $leave->id;
             }
@@ -264,8 +278,8 @@ class DepartmentHeadTest extends TestCase
         $rate = $total > 0 ? ($successes / $total) * 100 : 0;
 
         $this->assertGreaterThanOrEqual(80, $rate,
-            "Approval success rate: {$rate}% ({$successes}/{$total}). Time: {$totalTime}ms. " .
-            "Errors: " . implode('; ', $errors));
+            "Approval success rate: {$rate}% ({$successes}/{$total}). Time: {$totalTime}ms. ".
+            'Errors: '.implode('; ', $errors));
     }
 
     // ──────────────────────────────────────────────
@@ -309,7 +323,7 @@ class DepartmentHeadTest extends TestCase
         $this->assertLessThanOrEqual(200, $queryCount,
             "Statistics generated {$queryCount} queries (target: ≤30, current threshold: 200)");
         $this->assertEmpty($slowQueries,
-            "Found " . count($slowQueries) . " slow queries (>200ms)");
+            'Found '.count($slowQueries).' slow queries (>200ms)');
     }
 
     // ──────────────────────────────────────────────
@@ -343,11 +357,11 @@ class DepartmentHeadTest extends TestCase
         }
 
         $response = $this->actingAs($dh)->post(route('api.travel-orders'), [
-            'destination'    => 'Provincial Capitol',
-            'purpose'        => 'Official meeting with governor',
+            'destination' => 'Provincial Capitol',
+            'purpose' => 'Official meeting with governor',
             'departure_date' => now()->addDays(3)->toDateString(),
-            'return_date'    => now()->addDays(5)->toDateString(),
-            'employee_ids'   => array_map(fn ($e) => $e->id, $emps),
+            'return_date' => now()->addDays(5)->toDateString(),
+            'employee_ids' => array_map(fn ($e) => $e->id, $emps),
         ]);
 
         $this->assertTrue(
@@ -365,11 +379,11 @@ class DepartmentHeadTest extends TestCase
         }
 
         $response = $this->actingAs($dh)->post(route('api.office-orders'), [
-            'subject'        => 'Overtime assignment',
-            'details'        => 'Required to work on Saturday for project deadline',
-            'issued_date'    => now()->toDateString(),
-            'effective_date'  => now()->addDays(2)->toDateString(),
-            'employee_ids'   => array_map(fn ($e) => $e->id, $emps),
+            'subject' => 'Overtime assignment',
+            'details' => 'Required to work on Saturday for project deadline',
+            'issued_date' => now()->toDateString(),
+            'effective_date' => now()->addDays(2)->toDateString(),
+            'employee_ids' => array_map(fn ($e) => $e->id, $emps),
         ]);
 
         $this->assertTrue(
@@ -431,19 +445,19 @@ class DepartmentHeadTest extends TestCase
         $dh = $this->createDepartmentHead();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'Pending Cancellation',
             'cancellation_reason' => 'Personal reasons',
             'cancellation_requested_at' => now(),
             'cancellation_requested_by' => $emp->id,
         ]);
-        \App\Models\LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
 
         $response = $this->actingAs($dh)->postJson(route('department-head.leave.recommend-cancellation', $leave->id), [
             'remarks' => 'Looks valid, recommend.',
@@ -462,13 +476,13 @@ class DepartmentHeadTest extends TestCase
         $dh = $this->createDepartmentHead();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'Pending Cancellation',
         ]);
 
@@ -488,13 +502,13 @@ class DepartmentHeadTest extends TestCase
         $dh = $this->createDepartmentHead();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'DH Recommended',
         ]);
 

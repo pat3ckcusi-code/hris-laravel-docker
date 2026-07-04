@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\CrossCutting;
 
-use Tests\TestCase;
-use Tests\Traits\CreatesTestUsers;
-use Tests\Traits\MeasuresPerformance;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+use Tests\Traits\CreatesTestUsers;
+use Tests\Traits\MeasuresPerformance;
 
 /**
  * Cross-Cutting: Authentication Tests
@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Hash;
  */
 class AuthenticationTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Basic Authentication
@@ -35,7 +35,7 @@ class AuthenticationTest extends TestCase
         $user = $this->createEmployee(['password' => Hash::make('TestPass123!')]);
 
         $response = $this->post(route('login.submit'), [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'TestPass123!',
         ]);
 
@@ -48,7 +48,7 @@ class AuthenticationTest extends TestCase
         $user = $this->createEmployee();
 
         $response = $this->post(route('login.submit'), [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'WrongPassword',
         ]);
 
@@ -58,12 +58,12 @@ class AuthenticationTest extends TestCase
     public function test_inactive_user_blocked(): void
     {
         $user = $this->createEmployee([
-            'Status'   => 'Inactive',
+            'Status' => 'Inactive',
             'password' => Hash::make('TestPass123!'),
         ]);
 
         $response = $this->post(route('login.submit'), [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'TestPass123!',
         ]);
 
@@ -74,15 +74,30 @@ class AuthenticationTest extends TestCase
     public function test_separated_user_blocked(): void
     {
         $user = $this->createEmployee([
-            'Status'   => 'Separated',
+            'Status' => 'Separated',
             'password' => Hash::make('TestPass123!'),
         ]);
 
         $response = $this->post(route('login.submit'), [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'TestPass123!',
         ]);
 
+        $this->assertGuest();
+    }
+
+    public function test_mid_session_status_change_forces_logout(): void
+    {
+        $user = $this->createEmployee(['Status' => 'Active']);
+
+        $this->actingAs($user);
+        $this->assertAuthenticated();
+
+        $user->forceFill(['Status' => 'Inactive'])->save();
+
+        $response = $this->get(route('dashboard'));
+
+        $response->assertRedirect(route('login'));
         $this->assertGuest();
     }
 
@@ -119,8 +134,8 @@ class AuthenticationTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)->post(route('password.force.update'), [
-            'current_password'      => 'OldPass123!',
-            'password'              => 'NewSecurePass456!',
+            'current_password' => 'OldPass123!',
+            'password' => 'NewSecurePass456!',
             'password_confirmation' => 'NewSecurePass456!',
         ]);
 
@@ -172,7 +187,7 @@ class AuthenticationTest extends TestCase
             $start = microtime(true);
             try {
                 $response = $this->post(route('login.submit'), [
-                    'email'    => $user->email,
+                    'email' => $user->email,
                     'password' => 'TestPass123!',
                 ]);
 

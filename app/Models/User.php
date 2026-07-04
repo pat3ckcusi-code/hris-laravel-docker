@@ -4,13 +4,13 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Notifications\ResetPasswordNotification;
+use App\Services\DepartmentService;
+use App\Support\RoleNormalizer;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Services\DepartmentService;
-use App\Support\RoleNormalizer;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -120,6 +120,41 @@ class User extends Authenticatable
         $type = strtolower(trim((string) ($this->employee_type ?? '')));
 
         return in_array($type, self::LEAVE_ELIGIBLE_TYPES, true);
+    }
+
+    public const STATUS_ACTIVE = 'Active';
+
+    public const STATUS_INACTIVE = 'Inactive';
+
+    public const STATUS_SEPARATED = 'Separated';
+
+    public const STATUSES = [self::STATUS_ACTIVE, self::STATUS_INACTIVE, self::STATUS_SEPARATED];
+
+    /**
+     * Employees with no Status set are legacy records and are treated as active.
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q): void {
+            $q->where('Status', self::STATUS_ACTIVE)
+                ->orWhereNull('Status')
+                ->orWhere('Status', '');
+        });
+    }
+
+    public function isActive(): bool
+    {
+        return ! $this->isInactive() && ! $this->isSeparated();
+    }
+
+    public function isInactive(): bool
+    {
+        return strtolower(trim((string) $this->Status)) === strtolower(self::STATUS_INACTIVE);
+    }
+
+    public function isSeparated(): bool
+    {
+        return strtolower(trim((string) $this->Status)) === strtolower(self::STATUS_SEPARATED);
     }
 
     /**

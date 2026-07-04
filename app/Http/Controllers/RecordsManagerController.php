@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Exports\EmployeeImportTemplate;
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\User;
 use App\Notifications\EmployeeDefaultPasswordNotification;
+use App\Services\EmployeeAssignmentService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,8 @@ use Throwable;
 
 class RecordsManagerController extends Controller
 {
+    public function __construct(private EmployeeAssignmentService $employeeAssignmentService) {}
+
     private const ROLE_VIEW_MAP = [
         'employee' => 'dashboards.employee',
         'department head' => 'dashboards.department-head',
@@ -82,7 +86,7 @@ class RecordsManagerController extends Controller
         $departments = Department::query()->orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
 
         $totalEmployees = User::count();
-        $activeEmployees = User::where('Status', 'Active')->count();
+        $activeEmployees = User::active()->count();
 
         $maxSequentialByType = User::whereNotNull('EmpNo')
             ->whereNotNull('employee_type')
@@ -137,7 +141,7 @@ class RecordsManagerController extends Controller
             'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users', 'EmpNo')],
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
-            'Status' => ['nullable', 'in:Active,Inactive,Separated'],
+            'Status' => ['nullable', Rule::in(User::STATUSES)],
             'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
             'date_hired' => ['required', 'date'],
@@ -209,7 +213,7 @@ class RecordsManagerController extends Controller
             'EmpNo' => ['nullable', 'string', 'max:255', Rule::unique('users', 'EmpNo')->ignore($user->id)],
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
-            'Status' => ['nullable', 'in:Active,Inactive,Separated'],
+            'Status' => ['nullable', Rule::in(User::STATUSES)],
             'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
             'date_hired' => ['required', 'date'],
@@ -220,6 +224,8 @@ class RecordsManagerController extends Controller
         }
 
         $fullName = $this->buildEmployeeName($validated['last_name'], $validated['first_name'], $validated['middle_name'] ?? null);
+        $previousStatus = $user->Status;
+        $newStatus = $validated['Status'] ?? null;
 
         $user->forceFill([
             'name' => $fullName,
@@ -231,7 +237,7 @@ class RecordsManagerController extends Controller
             'EmpNo' => $validated['EmpNo'] ?? null,
             'designation' => $validated['designation'] ?? null,
             'Dept_id' => $validated['Dept_id'] ?? null,
-            'Status' => $validated['Status'] ?? null,
+            'Status' => $newStatus,
             'employee_type' => $validated['employee_type'] ?? null,
             'access_level' => $validated['access_level'],
             'date_hired' => $validated['date_hired'],
@@ -245,6 +251,26 @@ class RecordsManagerController extends Controller
         }
         if ($newRole !== 'administrative officer') {
             Department::where('admin_officer_id', $user->id)->update(['admin_officer_id' => null]);
+        }
+
+        if ($newStatus !== $previousStatus) {
+            HRAuditTrail::create([
+                'actor_user_id' => $request->user()?->id,
+                'module' => 'records',
+                'action' => 'status_changed',
+                'target_type' => User::class,
+                'target_id' => $user->id,
+                'details' => [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $newStatus,
+                    'employee_name' => $user->name,
+                    'employee_no' => $user->EmpNo,
+                ],
+            ]);
+
+            if ($user->isInactive() || $user->isSeparated()) {
+                $this->employeeAssignmentService->endActiveAssignmentForStatusChange($user->id, (string) $newStatus);
+            }
         }
 
         if ($request->expectsJson()) {

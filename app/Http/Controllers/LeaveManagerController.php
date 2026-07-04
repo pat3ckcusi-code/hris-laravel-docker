@@ -785,7 +785,7 @@ class LeaveManagerController extends Controller
             return response()->json([]);
         }
 
-        $rows = User::query()
+        $rows = User::active()
             ->with(['department:Dept_id,Dept_name'])
             ->select(['id', 'EmpNo', 'first_name', 'last_name', 'designation', 'Dept_id'])
             ->where(function ($w) use ($q) {
@@ -938,9 +938,8 @@ class LeaveManagerController extends Controller
 
     public function leaveLedger(Request $request)
     {
-        $employees = User::query()
+        $employees = User::active()
             ->whereHas('leaveBalance')
-            ->where('Status', 'Active')
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get(['id', 'first_name', 'last_name', 'EmpNo', 'Dept_id']);

@@ -75,7 +75,7 @@
             Swal.fire({
                 icon: 'warning',
                 title: 'Inactive Account',
-                text: 'Your account is inactive. Please contact the {{ $settings?->org_name ?? 'City Human Resource Department' }}{{ $settings?->support_email ? ' at ' . $__settings->support_email : '' }}.',
+                text: 'Your account is inactive. Please contact the {{ $settings?->org_name ?? 'City Human Resource Department' }}{{ $settings?->support_email ? ' at ' . $settings->support_email : '' }}.',
                 confirmButtonColor: '#ea580c',
             });
         </script>
@@ -85,7 +85,17 @@
             Swal.fire({
                 icon: 'warning',
                 title: 'Separated Account',
-                text: 'Your account is separated and can no longer access the system. Please contact the {{ $settings?->org_name ?? 'City Human Resource Department' }}{{ $settings?->support_email ? ' at ' . $__settings->support_email : '' }}.',
+                text: 'Your account is separated and can no longer access the system. Please contact the {{ $settings?->org_name ?? 'City Human Resource Department' }}{{ $settings?->support_email ? ' at ' . $settings->support_email : '' }}.',
+                confirmButtonColor: '#ea580c',
+            });
+        </script>
+    @endif
+    @if (session('status_terminated'))
+        <script>
+            Swal.fire({
+                icon: 'info',
+                title: 'Signed Out',
+                text: 'Your account status has changed. You have been signed out - please contact the {{ $settings?->org_name ?? 'City Human Resource Department' }}{{ $settings?->support_email ? ' at ' . $settings->support_email : '' }} if you believe this is an error.',
                 confirmButtonColor: '#ea580c',
             });
         </script>

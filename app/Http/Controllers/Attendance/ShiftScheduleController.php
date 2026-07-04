@@ -70,7 +70,7 @@ class ShiftScheduleController extends Controller
             ? Carbon::parse($request->query('week_start'))->startOfWeek(Carbon::MONDAY)
             : Carbon::now()->startOfWeek(Carbon::MONDAY);
 
-        $employees = User::query()
+        $employees = User::active()
             ->where('dtr_exempt', false)
             ->when($accessibleIds !== null, fn ($q) => $q->whereIn('id', $accessibleIds))
             ->when($deptId, fn ($q) => $q->where('Dept_id', $deptId))

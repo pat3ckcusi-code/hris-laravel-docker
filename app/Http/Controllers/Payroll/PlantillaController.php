@@ -142,7 +142,7 @@ class PlantillaController extends Controller
 
     private function matchingEmployeeIds(string $search): Collection
     {
-        return User::where('last_name', 'like', "%{$search}%")
+        return User::active()->where('last_name', 'like', "%{$search}%")
             ->orWhere('first_name', 'like', "%{$search}%")
             ->orWhere('name', 'like', "%{$search}%")
             ->orWhere('EmpNo', 'like', "%{$search}%")
@@ -210,7 +210,7 @@ class PlantillaController extends Controller
     public function show(int $id): View
     {
         $plantilla = Plantilla::with('assignments.employee')->findOrFail($id);
-        $employees = User::orderBy('last_name')
+        $employees = User::active()->orderBy('last_name')
             ->get(['id', 'name', 'last_name', 'first_name', 'designation', 'EmpNo']);
         $currentAssignments = EmployeeAssignment::whereNull('end_date')
             ->with('plantilla')

@@ -16,6 +16,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(\App\Http\Middleware\RejectPathTraversal::class);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\LimitPayloadSize::class);
+        $middleware->appendToGroup('web', \App\Http\Middleware\EnsureEmployeeStatusActive::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\ForcePasswordChange::class);
 
         $middleware->alias([

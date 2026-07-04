@@ -425,14 +425,14 @@ class DashboardController extends Controller
         $assignedDepartmentsCount = count($assignedDepartmentIds);
         $unassignedDepartmentsCount = $totalDepartments - $assignedDepartmentsCount;
 
-        $departmentHeadUsers = User::query()
+        $departmentHeadUsers = User::active()
             ->whereRaw('LOWER(access_level) = ?', ['department head'])
             ->whereNotNull('EmpNo')
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get(['id', 'EmpNo', 'last_name', 'first_name', 'middle_name']);
 
-        $adminOfficerUsers = User::query()
+        $adminOfficerUsers = User::active()
             ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'administrative officer'")
             ->whereNotNull('EmpNo')
             ->orderBy('last_name')

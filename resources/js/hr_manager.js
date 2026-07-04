@@ -331,6 +331,8 @@ const bindRecordsModule = (root) => {
     const paginationRoot = document.getElementById('recordsPagination');
     const csrf = root.dataset.csrf || '';
 
+    const statusOption = (value, current) => `<option value="${value}" ${(current || '') === value ? 'selected' : ''}>${value || 'Unset'}</option>`;
+
     const renderRows = (rows) => {
         if (!tableBody) return;
 
@@ -342,10 +344,18 @@ const bindRecordsModule = (root) => {
                         <td>${row.name ?? ''}</td>
                         <td>${row.department ?? ''}</td>
                         <td>${row.position ?? ''}</td>
-                        <td><span class="status-chip">${row.employment_status ?? ''}</span></td>
+                        <td>
+                            <select class="hrm-status-select">
+                                ${statusOption('', row.employment_status)}
+                                ${statusOption('Active', row.employment_status)}
+                                ${statusOption('Inactive', row.employment_status)}
+                                ${statusOption('Separated', row.employment_status)}
+                            </select>
+                        </td>
                         <td>${row.history ?? ''}</td>
                         <td>
                             <button class="hrm-btn-secondary hrm-record-edit" type="button">Edit</button>
+                            <button class="hrm-btn hrm-record-save-status" type="button">Save Status</button>
                             <button class="hrm-btn-secondary hrm-record-update" type="button">Update</button>
                             <button class="hrm-btn-secondary hrm-record-compliance" type="button">Generate Compliance Report</button>
                         </td>
@@ -387,6 +397,31 @@ const bindRecordsModule = (root) => {
 
         const id = row.dataset.id;
         if (!id) return;
+
+        if (button.classList.contains('hrm-record-save-status')) {
+            const select = row.querySelector('.hrm-status-select');
+            const updateUrl = (root.dataset.updateUrl || '').replace('__ID__', id);
+
+            try {
+                const response = await fetch(updateUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    body: JSON.stringify({ Status: select?.value || null }),
+                });
+
+                if (!response.ok) throw new Error('Failed to update employment status.');
+                await Swal.fire('Success', 'Employment status updated.', 'success');
+                fetchRows(1);
+            } catch (error) {
+                await Swal.fire('Error', 'Failed to update employment status.', 'error');
+            }
+
+            return;
+        }
 
         let action = null;
         let title = 'Action completed';

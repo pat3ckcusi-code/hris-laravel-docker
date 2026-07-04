@@ -8,7 +8,7 @@
 @endsection
 
 @section('content')
-    <section class="hrm-module" data-module="records" data-url="{{ $recordsDataUrl }}" data-action-url="{{ route('hr-manager.records.action', ['user' => '__ID__']) }}" data-planning-url="{{ route('hr-manager.records.planning-data') }}" data-csrf="{{ csrf_token() }}" data-pagination='@json($recordsPagination)'>
+    <section class="hrm-module" data-module="records" data-url="{{ $recordsDataUrl }}" data-action-url="{{ route('hr-manager.records.action', ['user' => '__ID__']) }}" data-update-url="{{ route('hr-manager.records.update', ['user' => '__ID__']) }}" data-planning-url="{{ route('hr-manager.records.planning-data') }}" data-csrf="{{ csrf_token() }}" data-pagination='@json($recordsPagination)'>
 
         {{-- Workforce Planning Panel (Enhancement 5) --}}
         <div class="hrm-planning-toggle" style="margin-bottom:1.25rem;">
@@ -84,10 +84,18 @@
                             <td>{{ $employee['name'] }}</td>
                             <td>{{ $employee['department'] }}</td>
                             <td>{{ $employee['position'] }}</td>
-                            <td><span class="status-chip">{{ $employee['employment_status'] }}</span></td>
+                            <td>
+                                <select class="hrm-status-select">
+                                    <option value="" @selected(empty($employee['employment_status']))>Unset</option>
+                                    <option value="Active" @selected($employee['employment_status'] === 'Active')>Active</option>
+                                    <option value="Inactive" @selected($employee['employment_status'] === 'Inactive')>Inactive</option>
+                                    <option value="Separated" @selected($employee['employment_status'] === 'Separated')>Separated</option>
+                                </select>
+                            </td>
                             <td>{{ $employee['history'] }}</td>
                             <td>
                                 <button class="hrm-btn-secondary hrm-record-edit" type="button">Edit</button>
+                                <button class="hrm-btn hrm-record-save-status" type="button">Save Status</button>
                                 <button class="hrm-btn-secondary hrm-record-update" type="button">Update</button>
                                 <button class="hrm-btn-secondary hrm-record-compliance" type="button">Generate Compliance Report</button>
                             </td>

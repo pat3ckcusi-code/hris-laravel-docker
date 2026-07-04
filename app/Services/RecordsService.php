@@ -49,8 +49,8 @@ class RecordsService
 
         $statusSummary = [
             'total' => $employees->count(),
-            'active' => $employees->where('Status', 'Active')->count(),
-            'inactive' => $employees->where('Status', '!=', 'Active')->count(),
+            'active' => $employees->filter(fn (User $employee) => $employee->isActive())->count(),
+            'inactive' => $employees->filter(fn (User $employee) => ! $employee->isActive())->count(),
         ];
 
         return [$employees, $departments, $statusSummary];

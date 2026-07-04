@@ -68,7 +68,7 @@ class EmployeeScheduleController extends Controller
 
         $shifts = Shift::where('is_active', true)->orderBy('name')->get();
 
-        $employees = User::query()
+        $employees = User::active()
             // Exempt employees are hidden from shift assignment unless explicitly requested.
             ->where('dtr_exempt', $showExempt)
             ->when($accessibleIds !== null, fn ($q) => $q->whereIn('id', $accessibleIds))

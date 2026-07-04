@@ -51,6 +51,7 @@ class DepartmentService
     {
         return strtolower(trim(str_replace(['-', '_'], ' ', (string) $role)));
     }
+
     /**
      * Resolve a Department model for the given user.
      */
@@ -75,7 +76,7 @@ class DepartmentService
             return [];
         }
 
-        return User::where('Dept_id', $dept->Dept_id)->pluck('id')->toArray();
+        return User::active()->where('Dept_id', $dept->Dept_id)->pluck('id')->toArray();
     }
 
     /**
@@ -180,6 +181,6 @@ class DepartmentService
             return [];
         }
 
-        return User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->pluck('id')->toArray();
+        return User::active()->whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->pluck('id')->toArray();
     }
 }

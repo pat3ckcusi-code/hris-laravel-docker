@@ -41,7 +41,7 @@ class OicAssignmentController extends Controller
 
         $employeesByDept = [];
         foreach ($depts as $dept) {
-            $employeesByDept[$dept->Dept_id] = User::where('Dept_id', $dept->Dept_id)
+            $employeesByDept[$dept->Dept_id] = User::active()->where('Dept_id', $dept->Dept_id)
                 ->whereNotIn('access_level', ['department head', 'department-head', 'administrative officer', 'administrative-officer'])
                 ->orderBy('name')
                 ->get(['id', 'name', 'first_name', 'last_name', 'designation']);

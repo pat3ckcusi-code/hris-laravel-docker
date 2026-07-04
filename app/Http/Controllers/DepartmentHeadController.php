@@ -561,7 +561,7 @@ class DepartmentHeadController extends Controller
         $deptIds = $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray();
         $cacheKey = 'dh_stats_'.implode('_', $deptIds)."_{$month}_{$year}";
         $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($depts, $month, $year) {
-            $employees = User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get();
+            $employees = User::active()->whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get();
             $employeeIds = $employees->pluck('id')->toArray();
             $deptNames = $depts->pluck('Dept_name', 'Dept_id');
 
@@ -733,7 +733,7 @@ class DepartmentHeadController extends Controller
         }
 
         $today = Carbon::today()->toDateString();
-        $employees = User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get();
+        $employees = User::active()->whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get();
         $employeeIds = $employees->pluck('id')->toArray();
 
         // Employees on approved leave today - check individual leave_dates rows first,

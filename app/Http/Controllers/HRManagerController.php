@@ -12,6 +12,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
+use App\Services\EmployeeAssignmentService;
 use App\Services\HRDashboardService;
 use App\Services\LeaveCardExportService;
 use App\Services\LeaveRequestService;
@@ -27,11 +28,15 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HRManagerController extends Controller
 {
-    public function __construct(private HRDashboardService $dashboardService) {}
+    public function __construct(
+        private HRDashboardService $dashboardService,
+        private EmployeeAssignmentService $employeeAssignmentService,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -258,6 +263,46 @@ class HRManagerController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Records action logged.',
+        ]);
+    }
+
+    public function recordsUpdate(Request $request, User $user): JsonResponse
+    {
+        $this->ensureHrManager($request);
+
+        $validated = $request->validate([
+            'Status' => ['nullable', Rule::in(User::STATUSES)],
+        ]);
+
+        $previousStatus = $user->Status;
+        $newStatus = $validated['Status'] ?? null;
+
+        $user->forceFill(['Status' => $newStatus])->save();
+
+        if ($newStatus !== $previousStatus) {
+            $this->storeAuditTrail(
+                $request,
+                'records',
+                'status_changed',
+                User::class,
+                (int) $user->id,
+                [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $newStatus,
+                    'employee_name' => $user->name,
+                    'employee_no' => $user->EmpNo,
+                ]
+            );
+
+            if ($user->isInactive() || $user->isSeparated()) {
+                $this->employeeAssignmentService->endActiveAssignmentForStatusChange($user->id, (string) $newStatus);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employment status updated.',
+            'employment_status' => $newStatus,
         ]);
     }
 
@@ -782,7 +827,7 @@ class HRManagerController extends Controller
         $this->ensureHrManager($request);
 
         $settings = Setting::first();
-        $departments = \App\Models\Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+        $departments = Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
 
         return view('hr-manager.settings', [
             'settings' => $settings,
@@ -840,10 +885,10 @@ class HRManagerController extends Controller
             // Dashboard
             'dashboard_cache_ttl' => 'nullable|integer|min:1|max:120',
             // Auto-import
-            'auto_import_enabled'          => 'nullable|boolean',
+            'auto_import_enabled' => 'nullable|boolean',
             'auto_import_interval_minutes' => 'nullable|integer|min:1|max:1440',
-            'auto_import_dept_id'          => 'nullable|integer|exists:departments,Dept_id',
-            'auto_import_page_size'        => 'nullable|integer|min:10|max:5000',
+            'auto_import_dept_id' => 'nullable|integer|exists:departments,Dept_id',
+            'auto_import_page_size' => 'nullable|integer|min:10|max:5000',
         ]);
 
         $validated['records_enabled'] = $request->boolean('records_enabled');

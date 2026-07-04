@@ -19,6 +19,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -122,7 +123,7 @@ class DtrController extends Controller
 
         if ($isAdmin) {
             $departments = Department::orderBy('Dept_name')->get();
-            $employees = User::where('dtr_exempt', false)
+            $employees = User::active()->where('dtr_exempt', false)
                 ->orderBy('last_name')->orderBy('first_name')
                 ->get(['id', 'first_name', 'last_name', 'employee_type']);
             $officerDepts = collect();
@@ -131,7 +132,7 @@ class DtrController extends Controller
             $departments = collect();
             $officerDepts = Department::whereIn('Dept_id', $officerDeptIds)->orderBy('Dept_name')->get();
             $officerDept = $officerDepts->firstWhere('Dept_id', $officerDeptId);
-            $employees = User::whereIn('Dept_id', $officerDeptIds)
+            $employees = User::active()->whereIn('Dept_id', $officerDeptIds)
                 ->where('dtr_exempt', false)
                 ->orderBy('last_name')->orderBy('first_name')
                 ->get(['id', 'first_name', 'last_name', 'employee_type']);
@@ -276,7 +277,7 @@ class DtrController extends Controller
         // Build office-order date map: 'Y-m-d' → office_order_num.
         $officeOrderDateMap = [];
         if ($employee->EmpNo) {
-            \Illuminate\Support\Facades\DB::table('office_orders')
+            DB::table('office_orders')
                 ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
                 ->where('office_order_employees.emp_no', $employee->EmpNo)
                 ->where(function ($q) use ($from, $to): void {
@@ -724,7 +725,7 @@ class DtrController extends Controller
         [$from, $to] = $this->resolvePeriod($month, $dtrType, $period);
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
 
-        $employees = User::where('Dept_id', $deptId)
+        $employees = User::active()->where('Dept_id', $deptId)
             ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')
@@ -829,7 +830,7 @@ class DtrController extends Controller
         [$from, $to] = $this->resolvePeriod($month, $dtrType, $period);
         $monthYear = $this->resolveMonthYearLabel($from, $to, $dtrType);
 
-        $employees = User::where('Dept_id', $deptId)
+        $employees = User::active()->where('Dept_id', $deptId)
             ->where('dtr_exempt', false)
             ->when($employeeType, fn ($q, $type) => $q->where('employee_type', $type))
             ->orderBy('last_name')->orderBy('first_name')

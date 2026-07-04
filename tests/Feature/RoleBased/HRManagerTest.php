@@ -2,14 +2,13 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\HRAuditTrail;
+use App\Models\LeaveRequest;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
-use App\Models\LeaveRequest;
-use App\Models\HRAuditTrail;
-use App\Models\Setting;
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * HR Manager Role Tests
@@ -19,7 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class HRManagerTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Dashboard & Charts
@@ -57,12 +56,12 @@ class HRManagerTest extends TestCase
         foreach ($users as $idx => $user) {
             for ($j = 0; $j < 5; $j++) {
                 LeaveRequest::create([
-                    'user_id'    => $user->id,
+                    'user_id' => $user->id,
                     'leave_type' => ['VL', 'SL', 'SPL'][$j % 3],
                     'start_date' => now()->subDays($idx + $j)->toDateString(),
-                    'end_date'   => now()->subDays($idx + $j)->toDateString(),
-                    'reason'     => "Analytics seed #{$idx}-{$j}",
-                    'status'     => ['pending', 'approved', 'rejected'][$j % 3],
+                    'end_date' => now()->subDays($idx + $j)->toDateString(),
+                    'reason' => "Analytics seed #{$idx}-{$j}",
+                    'status' => ['pending', 'approved', 'rejected'][$j % 3],
                 ]);
             }
         }
@@ -81,7 +80,7 @@ class HRManagerTest extends TestCase
         $this->assertLessThanOrEqual(5000, $elapsed,
             "Chart data with 1000 leave records took {$elapsed}ms (max 5000ms)");
         $this->assertEmpty($slowQueries,
-            "Found " . count($slowQueries) . " slow queries (>500ms)");
+            'Found '.count($slowQueries).' slow queries (>500ms)');
     }
 
     public function test_employees_by_filter(): void
@@ -133,6 +132,40 @@ class HRManagerTest extends TestCase
             $response->isSuccessful() || $response->isRedirection(),
             "Records action failed: HTTP {$response->getStatusCode()}"
         );
+    }
+
+    public function test_records_update_changes_employee_status(): void
+    {
+        $hr = $this->createHRManager();
+        $emp = $this->createEmployee(['Status' => 'Active']);
+
+        $response = $this->actingAs($hr)->putJson(
+            route('hr-manager.records.update', $emp->id),
+            ['Status' => 'Inactive']
+        );
+
+        $response->assertStatus(200);
+        $this->assertSame('Inactive', $emp->fresh()->Status);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'status_changed',
+            'target_type' => User::class,
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_records_update_rejects_invalid_status(): void
+    {
+        $hr = $this->createHRManager();
+        $emp = $this->createEmployee(['Status' => 'Active']);
+
+        $response = $this->actingAs($hr)->putJson(
+            route('hr-manager.records.update', $emp->id),
+            ['Status' => 'Bogus']
+        );
+
+        $response->assertStatus(422);
     }
 
     public function test_bulk_records_operations(): void
@@ -191,12 +224,12 @@ class HRManagerTest extends TestCase
         $this->createLeaveBalance($emp, ['VL' => 15]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $emp->id,
+            'user_id' => $emp->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'HR approval test',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'HR approval test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($hr)->post(
@@ -222,12 +255,12 @@ class HRManagerTest extends TestCase
             $this->createLeaveBalance($emp, ['VL' => 15]);
 
             $leave = LeaveRequest::create([
-                'user_id'    => $emp->id,
+                'user_id' => $emp->id,
                 'leave_type' => 'VL',
                 'start_date' => now()->addDays($i + 7)->toDateString(),
-                'end_date'   => now()->addDays($i + 7)->toDateString(),
-                'reason'     => "Org-wide test #{$i}",
-                'status'     => 'pending',
+                'end_date' => now()->addDays($i + 7)->toDateString(),
+                'reason' => "Org-wide test #{$i}",
+                'status' => 'pending',
             ]);
 
             try {
@@ -280,12 +313,12 @@ class HRManagerTest extends TestCase
         // Generate audit trail entries
         for ($i = 0; $i < 100; $i++) {
             HRAuditTrail::create([
-                'user_id'     => $hr->id,
-                'module'      => ['leave', 'records', 'settings', 'roles'][$i % 4],
-                'action'      => ['create', 'update', 'delete', 'approve'][$i % 4],
+                'user_id' => $hr->id,
+                'module' => ['leave', 'records', 'settings', 'roles'][$i % 4],
+                'action' => ['create', 'update', 'delete', 'approve'][$i % 4],
                 'target_type' => 'user',
-                'target_id'   => $i + 1,
-                'details'     => json_encode(['test' => "audit_#{$i}"]),
+                'target_id' => $i + 1,
+                'details' => json_encode(['test' => "audit_#{$i}"]),
             ]);
         }
 
@@ -349,8 +382,8 @@ class HRManagerTest extends TestCase
         $hr = $this->createHRManager();
 
         $response = $this->actingAs($hr)->post(route('hr-manager.settings.update'), [
-            'signatory_hr_name'    => 'Test HR Director',
-            'signatory_hr_title'   => 'HR Director IV',
+            'signatory_hr_name' => 'Test HR Director',
+            'signatory_hr_title' => 'HR Director IV',
         ]);
 
         $this->assertTrue(
@@ -404,24 +437,24 @@ class HRManagerTest extends TestCase
         $emp = $this->createEmployee();
 
         LeaveRequest::create([
-            'user_id'    => $emp->id,
+            'user_id' => $emp->id,
             'leave_type' => 'VL',
             'start_date' => '2026-06-10',
-            'end_date'   => '2026-06-10',
-            'reason'     => 'June leave test',
-            'status'     => 'pending',
+            'end_date' => '2026-06-10',
+            'reason' => 'June leave test',
+            'status' => 'pending',
         ]);
 
         LeaveRequest::create([
-            'user_id'    => $emp->id,
+            'user_id' => $emp->id,
             'leave_type' => 'SL',
             'start_date' => '2026-05-10',
-            'end_date'   => '2026-05-10',
-            'reason'     => 'May leave test',
-            'status'     => 'pending',
+            'end_date' => '2026-05-10',
+            'reason' => 'May leave test',
+            'status' => 'pending',
         ]);
 
-        $response = $this->actingAs($hr)->get(route('hr-manager.leave') . '?month=2026-06&status=all');
+        $response = $this->actingAs($hr)->get(route('hr-manager.leave').'?month=2026-06&status=all');
 
         $response->assertStatus(200);
         $response->assertSee('2026-06');
@@ -431,7 +464,7 @@ class HRManagerTest extends TestCase
     {
         $hr = $this->createHRManager();
 
-        $response = $this->actingAs($hr)->get(route('hr-manager.leave.analytics') . '?month=2026-06&department=0');
+        $response = $this->actingAs($hr)->get(route('hr-manager.leave.analytics').'?month=2026-06&department=0');
 
         $response->assertStatus(200);
         $response->assertJsonStructure([

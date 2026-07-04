@@ -33,13 +33,13 @@ class LoginController extends Controller
             ->where('email', $credentials['email'])
             ->first();
 
-        if ($user && strtolower((string) $user->Status) === 'inactive') {
+        if ($user && $user->isInactive()) {
             return back()
                 ->with('inactive_account', true)
                 ->onlyInput('email');
         }
 
-        if ($user && strtolower((string) $user->Status) === 'separated') {
+        if ($user && $user->isSeparated()) {
             return back()
                 ->with('separated_account', true)
                 ->onlyInput('email');

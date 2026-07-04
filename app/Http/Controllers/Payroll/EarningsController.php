@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\Earning;
+use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,8 +39,8 @@ class EarningsController extends Controller
 
     public function show(int $id): View
     {
-        $earning   = Earning::with('employeeEarnings.employee')->findOrFail($id);
-        $employees = \App\Models\User::orderBy('name')->get(['id', 'name']);
+        $earning = Earning::with('employeeEarnings.employee')->findOrFail($id);
+        $employees = User::active()->orderBy('name')->get(['id', 'name']);
 
         return view('payroll.earning-show', compact('earning', 'employees'));
     }

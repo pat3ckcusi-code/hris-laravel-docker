@@ -673,7 +673,7 @@ class AdministrativeOfficerController extends Controller
         $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($depts, $month, $year) {
             $deptIds = $depts->pluck('Dept_id')->toArray();
             $deptNames = $depts->pluck('Dept_name', 'Dept_id');
-            $employees = User::whereIn('Dept_id', $deptIds)->get();
+            $employees = User::active()->whereIn('Dept_id', $deptIds)->get();
             $employeeIds = $employees->pluck('id')->toArray();
 
             $etaCounts = Eta::selectRaw('user_id, COUNT(*) as cnt')
@@ -843,7 +843,7 @@ class AdministrativeOfficerController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $employees = User::whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get()->map(function ($u) {
+        $employees = User::active()->whereIn('Dept_id', $depts->pluck('Dept_id')->toArray())->get()->map(function ($u) {
             return [
                 'EmpNo' => $u->EmpNo ?? ($u->id ?? ''),
                 'name' => trim(($u->last_name ?? '').', '.($u->first_name ?? '')),

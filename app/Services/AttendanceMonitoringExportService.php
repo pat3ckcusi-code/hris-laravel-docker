@@ -37,7 +37,7 @@ class AttendanceMonitoringExportService
     {
         $deptIds = $departments->pluck('Dept_id')->toArray();
 
-        $employees = User::whereIn('Dept_id', $deptIds)
+        $employees = User::active()->whereIn('Dept_id', $deptIds)
             ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')
             ->orderBy('first_name')

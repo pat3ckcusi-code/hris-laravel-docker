@@ -3,6 +3,8 @@
 namespace Tests\Feature\RoleBased;
 
 use App\Models\Department;
+use App\Models\EmployeeAssignment;
+use App\Models\Plantilla;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -100,6 +102,59 @@ class RecordsManagerTest extends TestCase
             $response->isSuccessful() || $response->isRedirection(),
             "Deactivate employee failed: HTTP {$response->getStatusCode()}"
         );
+    }
+
+    public function test_separating_employee_ends_active_assignment_and_logs_audit(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee(['Status' => 'Active']);
+
+        $plantilla = Plantilla::create([
+            'title' => 'Test Position',
+            'salary_grade' => 10,
+            'step' => 1,
+            'employment_type' => 'Permanent',
+        ]);
+
+        $assignment = EmployeeAssignment::create([
+            'employee_id' => $emp->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => now()->subYear()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($rm)->put(
+            route('dashboard.records-manager.users.update', $emp->id),
+            [
+                'last_name' => $emp->last_name,
+                'first_name' => $emp->first_name,
+                'email' => $emp->email,
+                'Dept_id' => $emp->Dept_id,
+                'Status' => 'Separated',
+                'access_level' => 'employee',
+                'date_hired' => now()->subYears(2)->toDateString(),
+            ]
+        );
+
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Separate employee failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $this->assertNotNull($assignment->fresh()->end_date, 'Active assignment was not ended on separation.');
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'status_changed',
+            'target_type' => User::class,
+            'target_id' => $emp->id,
+        ]);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'payroll',
+            'action' => 'assignment_ended',
+            'target_type' => User::class,
+            'target_id' => $emp->id,
+        ]);
     }
 
     public function test_bulk_employee_operations(): void

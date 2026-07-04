@@ -472,6 +472,8 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.records.data');
     Route::post('/dashboard/hr-manager/records/{user}/action', [HRManagerController::class, 'recordsAction'])
         ->name('hr-manager.records.action');
+    Route::put('/dashboard/hr-manager/records/{user}', [HRManagerController::class, 'recordsUpdate'])
+        ->name('hr-manager.records.update');
     Route::get('/dashboard/hr-manager/leave/data', [HRManagerController::class, 'leaveData'])
         ->name('hr-manager.leave.data');
     Route::post('/dashboard/hr-manager/leave/{leaveRequest}/action', [HRManagerController::class, 'leaveAction'])
