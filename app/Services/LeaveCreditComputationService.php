@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\ComputationTableLwp;
-use App\Models\ComputationTableWop;
 use App\Models\MonthlyAttendance;
 use App\Models\User;
 
@@ -20,44 +19,27 @@ class LeaveCreditComputationService
      */
     public function computeMonthlyCredit(User $user, MonthlyAttendance $attendance): array
     {
-        $absDays = (float) $attendance->abs_wop_days;
         $remarks = null;
 
-        if ($absDays == 0) {
-            $daysPresent = (int) round($attendance->days_present);
-            $daysPresent = max(1, min(30, $daysPresent));
+        // Both VL and SL earn identically off Table II (computation_table_lwp), keyed by
+        // days_present — which the caller already nets down by non-illness LWOP days.
+        // abs_wop_days only distinguishes the transaction label below, it doesn't select a
+        // different formula (SL is not zeroed during a month with LWOP).
+        $daysPresent = (int) round($attendance->days_present);
+        $daysPresent = max(0, min(30, $daysPresent));
 
-            $row = ComputationTableLwp::find($daysPresent);
-            $credit = $row ? (float) $row->credit_earned : 0.0;
+        $row = ComputationTableLwp::find($daysPresent);
+        $credit = $row ? (float) $row->credit_earned : 0.0;
 
-            $vlEarned = $credit;
-            $slEarned = $credit;
-            $transactionType = 'CREDIT_EARNED';
-        } else {
-            // Round abs_wop_days to nearest 0.5 to match table keys.
-            $roundedAbs = round($absDays * 2) / 2;
-            $roundedAbs = max(0.00, min(29.50, $roundedAbs));
-
-            $row = ComputationTableWop::find($roundedAbs);
-            $vlEarned = $row ? (float) $row->vl_earned : 0.0;
-            $slEarned = 0.0;
-            $transactionType = 'CREDIT_EARNED_WOP';
-        }
+        $vlEarned = $credit;
+        $slEarned = $credit;
+        $transactionType = (float) $attendance->abs_wop_days > 0 ? 'CREDIT_EARNED_WOP' : 'CREDIT_EARNED';
 
         // Part-time ratio override.
         if ($user->employee_type === 'part_time' && $user->hours_per_day !== null) {
             $ratio = (float) $user->hours_per_day / 8.0;
             $vlEarned = round($vlEarned * $ratio, 3);
             $slEarned = round($slEarned * $ratio, 3);
-        }
-
-        // Sanggunian member override.
-        if ($user->is_sanggunian_member) {
-            // Full credit when all sessions attended; zero otherwise.
-            // session_attendance_complete is not yet a dedicated column; default false.
-            $sessionComplete = false;
-            $vlEarned = $sessionComplete ? 1.250 : 0.0;
-            $slEarned = $sessionComplete ? 1.250 : 0.0;
         }
 
         // Extended service: same rate but mark as non-commutative.

@@ -8,8 +8,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Process monthly leave credits on the 1st of every month at 00:30.
-Schedule::command('credit:process-monthly')->monthlyOn(1, '00:30');
+// Monthly leave credits are triggered manually by a Leave Manager from the
+// Leave Ledger UI (LeaveManagerController::runMonthlyCredits) rather than on
+// a schedule; the credit:process-monthly command remains available for CLI use.
 
 // Auto-import biometric punch logs. The command self-throttles via cache
 // based on the interval configured in HR Settings → Attendance.

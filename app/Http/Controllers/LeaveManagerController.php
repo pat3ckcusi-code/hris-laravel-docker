@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Console\Commands\ProcessMonthlyLeaveCredits;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
@@ -10,7 +11,9 @@ use App\Models\MonthlyAttendance;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\LeaveCardExportService;
+use App\Services\LeaveCreditComputationService;
 use App\Services\LeaveLedgerService;
+use App\Services\LwopAggregationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -948,11 +951,162 @@ class LeaveManagerController extends Controller
         $currentYear = now()->year;
         $years = range($currentYear, max(2020, $currentYear - 6));
 
+        $lastMonth = Carbon::now()->subMonthNoOverflow();
+        $lastMonthProcessed = MonthlyAttendance::where('year', $lastMonth->year)
+            ->where('month', $lastMonth->month)
+            ->whereNotNull('processed_at')
+            ->exists();
+
         return view('leave-manager.leave-ledger', [
             'employees' => $employees,
             'departments' => $departments,
             'years' => $years,
             'currentYear' => $currentYear,
+            'lastMonthYear' => $lastMonth->year,
+            'lastMonthMonth' => $lastMonth->month,
+            'lastMonthLabel' => $lastMonth->format('F Y'),
+            'lastMonthProcessed' => $lastMonthProcessed,
+        ]);
+    }
+
+    public function runMonthlyCredits(Request $request): JsonResponse
+    {
+        $request->validate([
+            'year' => ['required', 'integer', 'min:2020'],
+            'month' => ['required', 'integer', 'between:1,12'],
+        ]);
+
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        $lastCreditableMonth = Carbon::now()->subMonthNoOverflow();
+        $requested = Carbon::create($year, $month, 1);
+
+        if ($requested->greaterThan($lastCreditableMonth->copy()->startOfMonth())) {
+            return response()->json([
+                'message' => 'Cannot process a future or the current (incomplete) month.',
+            ], 422);
+        }
+
+        $result = app(ProcessMonthlyLeaveCredits::class)->processBatch($year, $month, null, false);
+
+        HRAuditTrail::create([
+            'actor_user_id' => Auth::id(),
+            'module' => 'leave',
+            'action' => 'monthly_credit_run',
+            'target_type' => 'App\\Models\\MonthlyAttendance',
+            'target_id' => null,
+            'details' => [
+                'year' => $year,
+                'month' => $month,
+                'processed' => $result['processed'],
+                'skipped' => $result['skipped'],
+                'failed' => $result['failed'],
+                'triggered_by' => Auth::id(),
+            ],
+        ]);
+
+        return response()->json($result);
+    }
+
+    /**
+     * Correct an already-processed month whose leave data changed afterward. Posts only
+     * the delta between the newly-computed and previously-recorded VL/SL (never the full
+     * recomputed amount) so the employee's balance isn't double-credited.
+     */
+    public function recomputeEmployeeMonth(Request $request): JsonResponse
+    {
+        $request->validate([
+            'user_id' => ['required', 'integer'],
+            'year' => ['required', 'integer', 'min:2020'],
+            'month' => ['required', 'integer', 'between:1,12'],
+        ]);
+
+        $userId = (int) $request->input('user_id');
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        $attendance = MonthlyAttendance::where('user_id', $userId)
+            ->where('year', $year)
+            ->where('month', $month)
+            ->first();
+
+        if (! $attendance || $attendance->processed_at === null) {
+            return response()->json([
+                'message' => 'This month has not been processed yet — use Run Monthly Credits instead.',
+            ], 422);
+        }
+
+        $user = User::findOrFail($userId);
+
+        $oldVl = (float) $attendance->computed_vl;
+        $oldSl = (float) $attendance->computed_sl;
+        $originalProcessedAt = $attendance->processed_at;
+
+        $aggregate = app(LwopAggregationService::class)->computeForMonth($user, $year, $month);
+        $attendance->days_present = $aggregate['days_present'];
+        $attendance->abs_wop_days = $aggregate['abs_wop_days'];
+
+        $result = app(LeaveCreditComputationService::class)->computeMonthlyCredit($user, $attendance);
+        $newVl = $result['vl_earned'];
+        $newSl = $result['sl_earned'];
+
+        $deltaVl = round($newVl - $oldVl, 3);
+        $deltaSl = round($newSl - $oldSl, 3);
+
+        $epsilon = 0.0005;
+        $hasChange = abs($deltaVl) > $epsilon || abs($deltaSl) > $epsilon;
+
+        if ($hasChange) {
+            app(LeaveLedgerService::class)->writeLedgerEntry([
+                'user_id' => $userId,
+                'transaction_date' => Carbon::create($year, $month, 1)->endOfMonth()->toDateString(),
+                'transaction_type' => 'CREDIT_CORRECTION',
+                'leave_type' => 'VL+SL',
+                'days_present' => $attendance->days_present,
+                'abs_wop_days' => $attendance->abs_wop_days > 0 ? $attendance->abs_wop_days : null,
+                'credit_vl' => $deltaVl > 0 ? $deltaVl : 0,
+                'credit_sl' => $deltaSl > 0 ? $deltaSl : 0,
+                'debit_vl' => $deltaVl < 0 ? abs($deltaVl) : 0,
+                'debit_sl' => $deltaSl < 0 ? abs($deltaSl) : 0,
+                'is_system' => true,
+                'created_by' => Auth::id(),
+                'remarks' => "Correction: leave data changed after original processing on {$originalProcessedAt->format('Y-m-d H:i')}.",
+            ]);
+        }
+
+        $attendance->computed_vl = $newVl;
+        $attendance->computed_sl = $newSl;
+        $attendance->processed_at = now();
+        $attendance->processed_by = Auth::id();
+        $attendance->save();
+
+        HRAuditTrail::create([
+            'actor_user_id' => Auth::id(),
+            'module' => 'leave',
+            'action' => 'monthly_credit_correction',
+            'target_type' => 'App\\Models\\MonthlyAttendance',
+            'target_id' => $attendance->id,
+            'details' => [
+                'user_id' => $userId,
+                'year' => $year,
+                'month' => $month,
+                'old_vl' => $oldVl,
+                'old_sl' => $oldSl,
+                'new_vl' => $newVl,
+                'new_sl' => $newSl,
+                'delta_vl' => $deltaVl,
+                'delta_sl' => $deltaSl,
+                'triggered_by' => Auth::id(),
+            ],
+        ]);
+
+        return response()->json([
+            'changed' => $hasChange,
+            'delta_vl' => $deltaVl,
+            'delta_sl' => $deltaSl,
+            'new_vl' => $newVl,
+            'new_sl' => $newSl,
         ]);
     }
 
@@ -1013,19 +1167,117 @@ class LeaveManagerController extends Controller
         $records = $query->get();
         $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
 
-        $data = $records->map(fn ($r) => [
-            'emp_no' => $r->user?->EmpNo ?? '-',
-            'name' => $r->user ? trim(($r->user->last_name ?? '').', '.($r->user->first_name ?? '')) : '-',
-            'department' => $r->user ? ($departments[$r->user->Dept_id] ?? '-') : '-',
-            'year' => $r->year,
-            'month' => Carbon::create($r->year, $r->month, 1)->format('F'),
-            'days_present' => number_format((float) $r->days_present, 3),
-            'abs_wop_days' => number_format((float) $r->abs_wop_days, 3),
-            'computed_vl' => $r->computed_vl !== null ? number_format($r->computed_vl, 3) : '-',
-            'computed_sl' => $r->computed_sl !== null ? number_format($r->computed_sl, 3) : '-',
-            'processed_at' => $r->processed_at ? $r->processed_at->format('Y-m-d H:i') : '-',
-        ])->values();
+        $userIds = $records->pluck('user_id')->unique()->values();
+        $rangeStart = $month !== null ? Carbon::create($year, $month, 1)->startOfDay() : Carbon::create($year, 1, 1)->startOfDay();
+        $rangeEnd = $month !== null
+            ? $rangeStart->copy()->endOfMonth()->startOfDay()
+            : Carbon::create($year, 12, 31)->startOfDay();
+
+        $leaveRequestsByUser = LeaveRequest::whereIn('user_id', $userIds)
+            ->where('start_date', '<=', $rangeEnd->toDateString())
+            ->where('end_date', '>=', $rangeStart->toDateString())
+            ->get(['user_id', 'start_date', 'end_date', 'updated_at'])
+            ->groupBy('user_id');
+
+        $data = $records->map(function ($r) use ($departments, $leaveRequestsByUser) {
+            return [
+                'emp_no' => $r->user?->EmpNo ?? '-',
+                'name' => $r->user ? trim(($r->user->last_name ?? '').', '.($r->user->first_name ?? '')) : '-',
+                'department' => $r->user ? ($departments[$r->user->Dept_id] ?? '-') : '-',
+                'year' => $r->year,
+                'month' => Carbon::create($r->year, $r->month, 1)->format('F'),
+                'month_number' => $r->month,
+                'user_id' => $r->user_id,
+                'days_present' => number_format((float) $r->days_present, 3),
+                'abs_wop_days' => number_format((float) $r->abs_wop_days, 3),
+                'computed_vl' => $r->computed_vl !== null ? number_format($r->computed_vl, 3) : '-',
+                'computed_sl' => $r->computed_sl !== null ? number_format($r->computed_sl, 3) : '-',
+                'processed_at' => $r->processed_at ? $r->processed_at->format('Y-m-d H:i') : '-',
+                'stale' => $this->isMonthlyCreditStale($r, $leaveRequestsByUser->get($r->user_id, collect())),
+            ];
+        })->values();
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * A processed month is stale if any of the employee's leave requests overlapping
+     * that month were created or edited after the credit was computed — the recorded
+     * days_present/abs_wop_days no longer reflect current leave data.
+     */
+    private function isMonthlyCreditStale(MonthlyAttendance $attendance, $userLeaveRequests): bool
+    {
+        if ($attendance->processed_at === null) {
+            return false;
+        }
+
+        $monthStart = Carbon::create($attendance->year, $attendance->month, 1)->startOfDay();
+        $monthEnd = $monthStart->copy()->endOfMonth()->startOfDay();
+
+        foreach ($userLeaveRequests as $leaveRequest) {
+            $requestStart = Carbon::parse($leaveRequest->start_date)->startOfDay();
+            $requestEnd = Carbon::parse($leaveRequest->end_date)->startOfDay();
+
+            $overlaps = $requestStart->lessThanOrEqualTo($monthEnd) && $requestEnd->greaterThanOrEqualTo($monthStart);
+
+            if ($overlaps && $leaveRequest->updated_at !== null && $leaveRequest->updated_at->greaterThan($attendance->processed_at)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Employees currently accumulating unauthorized absence (no attendance and nothing
+     * on file to cover it), so HR can act before the CSC 30-working-day separation
+     * threshold. Filtered to a 5-workday floor to avoid noise from routine isolated
+     * absences.
+     */
+    public function apiAwolMonitor(Request $request): JsonResponse
+    {
+        $employees = User::active()
+            ->whereIn('employee_type', User::LEAVE_ELIGIBLE_TYPES)
+            ->whereHas('leaveBalance')
+            ->get();
+
+        $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
+        $lwopService = app(LwopAggregationService::class);
+
+        $rows = $employees->map(function ($employee) use ($departments, $lwopService) {
+            $streak = $lwopService->computeCurrentAwolStreak($employee);
+
+            if ($streak['streak'] < 5) {
+                return null;
+            }
+
+            return [
+                'emp_no' => $employee->EmpNo ?? '-',
+                'name' => trim(($employee->last_name ?? '').', '.($employee->first_name ?? '')),
+                'department' => $departments[$employee->Dept_id] ?? '-',
+                'streak' => $streak['capped'] ? '60+' : (string) $streak['streak'],
+                'streak_sort' => $streak['streak'],
+                'streak_started_on' => $streak['streak_started_on'],
+                'episodes_this_semester' => $lwopService->countAwolEpisodesThisSemester($employee),
+                'status' => $this->awolSeverityLabel($streak['streak']),
+            ];
+        })->filter()->sortByDesc('streak_sort')->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Severity band for the AWOL Monitor. 30+ workdays is the CSC threshold for
+     * separation without prior notice; below that, a Return-to-Work Order is required
+     * first — these bands give HR lead time to act before it gets there.
+     */
+    private function awolSeverityLabel(int $streak): string
+    {
+        return match (true) {
+            $streak >= 30 => 'critical',
+            $streak >= 25 => 'urgent',
+            $streak >= 15 => 'warning',
+            default => 'watch',
+        };
     }
 }

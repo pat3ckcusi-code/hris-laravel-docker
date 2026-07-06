@@ -5,12 +5,12 @@ use App\Http\Controllers\AdministrativeOfficerController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Attendance\DtrExcuseController;
-use App\Http\Controllers\Attendance\ShiftLogController;
-use App\Http\Controllers\Attendance\TimeLogsMonitoringController;
 use App\Http\Controllers\Attendance\EmployeeScheduleController;
 use App\Http\Controllers\Attendance\ShiftController;
+use App\Http\Controllers\Attendance\ShiftLogController;
 use App\Http\Controllers\Attendance\ShiftManagementAccessController;
 use App\Http\Controllers\Attendance\ShiftScheduleController;
+use App\Http\Controllers\Attendance\TimeLogsMonitoringController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
@@ -410,6 +410,12 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
     Route::get('/leave-manager/leave-ledger', [LeaveManagerController::class, 'leaveLedger'])
         ->name('leave-manager.leave-ledger');
 
+    Route::post('/leave-manager/leave-ledger/run-monthly-credits', [LeaveManagerController::class, 'runMonthlyCredits'])
+        ->name('leave-manager.run-monthly-credits');
+
+    Route::post('/leave-manager/leave-ledger/recompute-employee-month', [LeaveManagerController::class, 'recomputeEmployeeMonth'])
+        ->name('leave-manager.recompute-employee-month');
+
     Route::get('/leave-manager/leave-card/download', [LeaveManagerController::class, 'downloadLeaveCard'])
         ->name('leave-manager.leave-card.download');
 
@@ -438,6 +444,8 @@ Route::middleware(['auth', 'role:leave-manager,hr-manager'])->group(function () 
         ->name('api.leave-ledger.history');
     Route::get('/api/leave-ledger/monthly', [LeaveManagerController::class, 'apiMonthlyCredits'])
         ->name('api.leave-ledger.monthly');
+    Route::get('/api/leave-ledger/awol-monitor', [LeaveManagerController::class, 'apiAwolMonitor'])
+        ->name('api.leave-ledger.awol-monitor');
 });
 
 Route::middleware(['auth', 'role:hr-manager'])->group(function () {

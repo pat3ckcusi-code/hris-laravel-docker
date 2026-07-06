@@ -58,9 +58,9 @@ class EtaController extends Controller
 
         $etas = $query->paginate(10)->withQueryString();
 
-        // Resolve the approved-by name for each ETA
+        // Resolve the approved-by name for each ETA (only once the ETA has actually been decided)
         foreach ($etas as $eta) {
-            if (! empty($eta->approved_by)) {
+            if (in_array($eta->status, ['approved', 'declined'], true) && ! empty($eta->approved_by)) {
                 $approverUser = User::find($eta->approved_by);
                 if ($approverUser) {
                     $parts = array_filter([
@@ -73,23 +73,7 @@ class EtaController extends Controller
                     $eta->dept_head = 'Unknown';
                 }
             } else {
-                // Fallback: show department head name from department
-                $dept = $user->Dept_id ? Department::find($user->Dept_id) : null;
-                if ($dept && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
-                    $deptHead = User::where('EmpNo', $dept->EmpNo)->first();
-                    if ($deptHead) {
-                        $parts = array_filter([
-                            $deptHead->first_name ?? '',
-                            $deptHead->middle_name ?? '',
-                            $deptHead->last_name ?? '',
-                        ]);
-                        $eta->dept_head = ! empty($parts) ? implode(' ', $parts) : ($deptHead->name ?? 'Not assigned');
-                    } else {
-                        $eta->dept_head = 'Not assigned';
-                    }
-                } else {
-                    $eta->dept_head = 'Not assigned';
-                }
+                $eta->dept_head = null;
             }
         }
 
@@ -484,32 +468,22 @@ class EtaController extends Controller
             $query->whereMonth('departure_date', now()->month)->whereYear('departure_date', now()->year);
         }
 
-        // resolve department head once for this user
-        $deptHeadName = null;
-        if ($user && ! empty($user->Dept_id)) {
-            $department = Department::find($user->Dept_id);
-            if ($department && ! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
-                $head = User::where('EmpNo', $department->EmpNo)->first();
-                if ($head) {
-                    $parts = [];
-                    if (! empty($head->first_name)) {
-                        $parts[] = $head->first_name;
-                    }
-                    if (! empty($head->middle_name)) {
-                        $parts[] = $head->middle_name;
-                    }
-                    if (! empty($head->last_name)) {
-                        $parts[] = $head->last_name;
-                    }
-                    if (empty($parts) && ! empty($head->name)) {
-                        $parts[] = $head->name;
-                    }
-                    $deptHeadName = implode(' ', $parts);
+        $etas = $query->get()->map(function ($eta) {
+            $approverName = null;
+            if (in_array($eta->status, ['approved', 'declined'], true) && ! empty($eta->approved_by)) {
+                $approverUser = User::find($eta->approved_by);
+                if ($approverUser) {
+                    $parts = array_filter([
+                        $approverUser->first_name ?? '',
+                        $approverUser->middle_name ?? '',
+                        $approverUser->last_name ?? '',
+                    ]);
+                    $approverName = ! empty($parts) ? implode(' ', $parts) : ($approverUser->name ?? 'Unknown');
+                } else {
+                    $approverName = 'Unknown';
                 }
             }
-        }
 
-        $etas = $query->get()->map(function ($eta) use ($deptHeadName) {
             return [
                 'id' => $eta->id,
                 'departure_date' => $eta->departure_date,
@@ -517,7 +491,7 @@ class EtaController extends Controller
                 'destination' => $eta->destination,
                 'purpose' => $eta->purpose,
                 'purpose_details' => $eta->purpose_details ?? null,
-                'dept_head' => $deptHeadName,
+                'dept_head' => $approverName,
                 'status' => $eta->status,
                 'created_at' => $eta->created_at->toDateTimeString(),
                 'can_print' => $eta->status === 'approved',

@@ -22,6 +22,10 @@
                 style="padding:0.55rem 1.25rem;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;">
                 Monthly Credits
             </button>
+            <button type="button" class="ledger-tab-btn" data-tab="tab-awol"
+                style="padding:0.55rem 1.25rem;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;">
+                AWOL Monitor
+            </button>
         </div>
 
         {{-- ── Tab 1: Ledger History ── --}}
@@ -107,6 +111,13 @@
 
         {{-- ── Tab 2: Monthly Credits ── --}}
         <div id="tab-monthly" class="ledger-tab-panel" style="display:none;">
+            @unless($lastMonthProcessed)
+            <div id="monthly-credit-reminder" style="padding:0.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;margin-bottom:1rem;font-size:0.86rem;color:#92400e;">
+                <i class="fas fa-triangle-exclamation fa-fw"></i>
+                {{ $lastMonthLabel }} leave credits have not been processed yet. Select it below and click Run Monthly Credits.
+            </div>
+            @endunless
+
             <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;margin-bottom:1rem;">
                 <div>
                     <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Year</label>
@@ -121,17 +132,17 @@
                     <select id="monthly-month" style="padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
                         <option value="">All months</option>
                         @foreach(['January','February','March','April','May','June','July','August','September','October','November','December'] as $mi => $mn)
-                            <option value="{{ $mi + 1 }}" @selected($mi + 1 == now()->month)>{{ $mn }}</option>
+                            <option value="{{ $mi + 1 }}" @selected($mi + 1 == $lastMonthMonth)>{{ $mn }}</option>
                         @endforeach
                     </select>
                 </div>
-                <button type="button" id="monthly-load-btn" class="hris-btn hris-btn-primary" style="padding:0.45rem 1.1rem;">Load</button>
+                <button type="button" id="monthly-load-btn" class="hris-btn hris-btn-secondary" style="padding:0.45rem 1.1rem;">Load</button>
+                <button type="button" id="monthly-run-btn" class="hris-btn hris-btn-primary" style="padding:0.45rem 1.1rem;">
+                    <i class="fas fa-play fa-fw"></i> Run Monthly Credits
+                </button>
             </div>
 
-            <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
-                Showing monthly attendance records where credits have been computed. Run
-                <code>php artisan credit:process-monthly</code> to populate this table.
-            </p>
+            <div id="monthly-run-result" style="display:none;padding:0.55rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.86rem;"></div>
 
             <div class="table-responsive">
                 <table id="monthly-credits-table" class="hris-table" style="width:100%;">
@@ -147,6 +158,34 @@
                             <th class="text-right">Computed VL</th>
                             <th class="text-right">Computed SL</th>
                             <th>Processed At</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        {{-- ── Tab 3: AWOL Monitor ── --}}
+        <div id="tab-awol" class="ledger-tab-panel" style="display:none;">
+            <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
+                Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it — no leave,
+                excuse, locator, or ETA). Per CSC rules, 30 continuous working days of AWOL is grounds for separation without
+                prior notice; under 30 days, a Return-to-Work Order should be served first. Only employees with a current streak
+                of 5+ workdays are shown.
+            </p>
+
+            <div class="table-responsive">
+                <table id="awol-monitor-table" class="hris-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>EmpNo</th>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th class="text-right">Current Streak</th>
+                            <th>Streak Started On</th>
+                            <th class="text-right">Episodes This Semester</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -186,6 +225,7 @@ $(function () {
                 var map = {
                     CREDIT_EARNED: '<span style="color:#16a34a;font-weight:600;">Credit Earned</span>',
                     CREDIT_EARNED_WOP: '<span style="color:#16a34a;font-weight:600;">Credit (WOP)</span>',
+                    CREDIT_CORRECTION: '<span style="color:#ea580c;font-weight:600;">Correction</span>',
                     LEAVE_USED: '<span style="color:#dc2626;font-weight:600;">Leave Used</span>',
                     LEAVE_CANCELLED: '<span style="color:#d97706;font-weight:600;">Cancelled</span>',
                     MANUAL_ADJUSTMENT: '<span style="color:#7c3aed;font-weight:600;">Manual Adj.</span>',
@@ -331,6 +371,13 @@ $(function () {
             { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
             { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
             { data: 'processed_at' },
+            { data: null, orderable: false, render: function (row) {
+                if (!row.stale) { return '<span style="color:#16a34a;">OK</span>'; }
+                return '<span style="color:#b45309;font-weight:600;">&#9888; Stale</span> ' +
+                    '<button type="button" class="hris-btn hris-btn-secondary monthly-recompute-btn" ' +
+                    'data-user-id="' + row.user_id + '" data-year="' + row.year + '" data-month="' + row.month_number + '" ' +
+                    'style="padding:0.2rem 0.6rem;font-size:0.78rem;margin-left:0.4rem;">Recompute</button>';
+            }},
         ],
         order: [[3, 'desc'], [4, 'desc'], [1, 'asc']],
         pageLength: 25,
@@ -353,6 +400,156 @@ $(function () {
     var monthlyLoaded = false;
     $('[data-tab="tab-monthly"]').on('click', function () {
         if (!monthlyLoaded) { loadMonthly(); monthlyLoaded = true; }
+    });
+
+    // ── Run Monthly Credits ────────────────────────────────────────────────────
+    var CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    function showRunResult(message, isError) {
+        $('#monthly-run-result')
+            .css({
+                display: 'block',
+                background: isError ? '#fef2f2' : '#f0fdf4',
+                border: '1px solid ' + (isError ? '#fecaca' : '#bbf7d0'),
+                color: isError ? '#b91c1c' : '#15803d',
+            })
+            .text(message);
+    }
+
+    $('#monthly-run-btn').on('click', function () {
+        var year = $('#monthly-year').val();
+        var month = $('#monthly-month').val();
+
+        if (!month) {
+            showRunResult('Select a specific month before running (not "All months").', true);
+            return;
+        }
+
+        if (!window.confirm(
+            'This will post real leave credits for every eligible employee for the selected month. ' +
+            'Already-processed employees are skipped, so it is safe to re-run. Continue?'
+        )) {
+            return;
+        }
+
+        var $btn = $(this).prop('disabled', true);
+        var originalHtml = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Running…');
+        $('#monthly-run-result').hide();
+
+        fetch('{{ route('leave-manager.run-monthly-credits') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ year: parseInt(year), month: parseInt(month) }),
+        })
+            .then(function (res) {
+                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            })
+            .then(function (result) {
+                if (!result.ok) {
+                    showRunResult(result.data.message || 'Failed to process monthly credits.', true);
+                    return;
+                }
+                var d = result.data;
+                showRunResult('Processed: ' + d.processed + ', Skipped: ' + d.skipped + ', Failed: ' + d.failed, d.failed > 0);
+                $('#monthly-credit-reminder').hide();
+                loadMonthly();
+            })
+            .catch(function () {
+                showRunResult('Network error while processing monthly credits.', true);
+            })
+            .finally(function () {
+                $btn.prop('disabled', false).html(originalHtml);
+            });
+    });
+
+    // ── Recompute a single stale employee-month ────────────────────────────────
+    $('#monthly-credits-table tbody').on('click', '.monthly-recompute-btn', function () {
+        var $btn = $(this);
+        var userId = $btn.data('user-id');
+        var year = $btn.data('year');
+        var month = $btn.data('month');
+
+        if (!window.confirm(
+            'Recompute this employee\'s credit for this month? Only the difference from the ' +
+            'previously-posted amount will be added to the ledger, not the full amount again.'
+        )) {
+            return;
+        }
+
+        $btn.prop('disabled', true).text('Working…');
+
+        fetch('{{ route('leave-manager.recompute-employee-month') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ user_id: userId, year: year, month: month }),
+        })
+            .then(function (res) {
+                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            })
+            .then(function (result) {
+                if (!result.ok) {
+                    window.alert(result.data.message || 'Recompute failed.');
+                    $btn.prop('disabled', false).text('Recompute');
+                    return;
+                }
+                var d = result.data;
+                window.alert(d.changed
+                    ? 'Corrected. VL change: ' + d.delta_vl + ', SL change: ' + d.delta_sl
+                    : 'No change needed — figures were already correct.');
+                loadMonthly();
+            })
+            .catch(function () {
+                window.alert('Network error while recomputing.');
+                $btn.prop('disabled', false).text('Recompute');
+            });
+    });
+
+    // ── AWOL Monitor table ──────────────────────────────────────────────────────
+    var awolTable = $('#awol-monitor-table').DataTable({
+        data: [],
+        columns: [
+            { data: 'emp_no' },
+            { data: 'name' },
+            { data: 'department' },
+            { data: 'streak', className: 'text-right' },
+            { data: 'streak_started_on', defaultContent: '-' },
+            { data: 'episodes_this_semester', className: 'text-right' },
+            { data: 'status', render: function (v) {
+                var map = {
+                    watch: '<span style="color:#64748b;font-weight:600;">Watch</span>',
+                    warning: '<span style="color:#d97706;font-weight:600;">Warning</span>',
+                    urgent: '<span style="color:#ea580c;font-weight:600;">Urgent</span>',
+                    critical: '<span style="color:#dc2626;font-weight:700;">Critical</span>',
+                };
+                return map[v] || v;
+            }},
+        ],
+        order: [[3, 'desc']],
+        pageLength: 25,
+        dom: '<"dt-top-bar"ip>rt<"dt-bottom-bar"lip>',
+        language: { emptyTable: 'No employees currently accumulating unauthorized absence.' },
+    });
+
+    function loadAwolMonitor() {
+        $.getJSON('{{ route('api.leave-ledger.awol-monitor') }}', {}, function (res) {
+            awolTable.clear().rows.add(res.data).draw();
+        });
+    }
+
+    var awolLoaded = false;
+    $('[data-tab="tab-awol"]').on('click', function () {
+        if (!awolLoaded) { loadAwolMonitor(); awolLoaded = true; }
     });
 });
 </script>

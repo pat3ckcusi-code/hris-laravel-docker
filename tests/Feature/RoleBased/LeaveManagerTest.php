@@ -2,14 +2,19 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Console\Commands\ProcessMonthlyLeaveCredits;
+use App\Models\Dtr;
+use App\Models\Holiday;
+use App\Models\LeaveDate;
+use App\Models\LeaveLedger;
+use App\Models\LeaveRequest;
+use App\Models\MonthlyAttendance;
+use App\Services\LeaveLedgerService;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
-use App\Models\LeaveBalance;
-use App\Models\LeaveRequest;
-use App\Models\LeaveDate;
-use App\Models\Holiday;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * Leave Manager Role Tests
@@ -18,7 +23,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class LeaveManagerTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Manage Leave Balance
@@ -98,9 +103,9 @@ class LeaveManagerTest extends TestCase
         $balance = $this->createLeaveBalance($emp);
 
         $response = $this->actingAs($lm)->post(route('leave-manager.apply-credits'), [
-            'id'             => $balance->id,
+            'id' => $balance->id,
             'deduction_days' => 1.25,
-            'deduct_from'    => 'VL',
+            'deduct_from' => 'VL',
         ]);
 
         $this->assertTrue(
@@ -123,12 +128,12 @@ class LeaveManagerTest extends TestCase
             $this->createLeaveBalance($emp);
 
             LeaveRequest::create([
-                'user_id'    => $emp->id,
+                'user_id' => $emp->id,
                 'leave_type' => ['VL', 'SL', 'SPL'][$i % 3],
                 'start_date' => now()->subDays($i)->toDateString(),
-                'end_date'   => now()->subDays($i)->toDateString(),
-                'reason'     => "Approved leave #{$i}",
-                'status'     => 'approved',
+                'end_date' => now()->subDays($i)->toDateString(),
+                'reason' => "Approved leave #{$i}",
+                'status' => 'approved',
             ]);
         }
 
@@ -166,24 +171,24 @@ class LeaveManagerTest extends TestCase
 
         // Pending Cancellation -should NOT appear on LM page
         $pendingLeave = LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'Pending Cancellation',
         ]);
         LeaveDate::create(['leave_request_id' => $pendingLeave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
 
         // AO Endorsed -SHOULD appear
         $endorsedLeave = LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->addDays(3)->toDateString(),
-            'end_date'            => now()->addWeek()->addDays(3)->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->addDays(3)->toDateString(),
+            'end_date' => now()->addWeek()->addDays(3)->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'AO Endorsed',
         ]);
         LeaveDate::create(['leave_request_id' => $endorsedLeave->id, 'leave_date' => now()->addWeek()->addDays(3)->toDateString(), 'is_cancelled' => false]);
@@ -205,12 +210,12 @@ class LeaveManagerTest extends TestCase
         $this->createLeaveBalance($emp, ['VL' => 10.000]);
 
         $leave = LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'Pending Cancellation',
         ]);
 
@@ -225,13 +230,13 @@ class LeaveManagerTest extends TestCase
         $this->createLeaveBalance($emp, ['VL' => 14.000]);
 
         $leave = LeaveRequest::create([
-            'user_id'                   => $emp->id,
-            'leave_type'                => 'VL',
-            'start_date'                => now()->addWeek()->toDateString(),
-            'end_date'                  => now()->addWeek()->toDateString(),
-            'reason'                    => 'Cancel test',
-            'status'                    => 'approved',
-            'cancellation_status'       => 'AO Endorsed',
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Cancel test',
+            'status' => 'approved',
+            'cancellation_status' => 'AO Endorsed',
             'printing_deduction_details' => json_encode(['VL' => 1.0]),
             'printing_deduction_applied' => true,
         ]);
@@ -260,13 +265,13 @@ class LeaveManagerTest extends TestCase
         $this->createLeaveBalance($emp, ['VL' => $originalVL]);
 
         $leave = LeaveRequest::create([
-            'user_id'                    => $emp->id,
-            'leave_type'                 => 'VL',
-            'start_date'                 => now()->addWeek()->toDateString(),
-            'end_date'                   => now()->addWeek()->addDays(2)->toDateString(),
-            'reason'                     => 'Rollback test',
-            'status'                     => 'approved',
-            'cancellation_status'        => 'AO Endorsed',
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->addDays(2)->toDateString(),
+            'reason' => 'Rollback test',
+            'status' => 'approved',
+            'cancellation_status' => 'AO Endorsed',
             'printing_deduction_details' => json_encode(['VL' => 3.0]),
             'printing_deduction_applied' => true,
         ]);
@@ -296,9 +301,9 @@ class LeaveManagerTest extends TestCase
         $lm = $this->createLeaveManager();
 
         $response = $this->actingAs($lm)->post(route('api.holidays.store'), [
-            'title'        => 'Independence Day',
+            'title' => 'Independence Day',
             'holiday_date' => now()->addMonth()->toDateString(),
-            'type'         => 'regular',
+            'type' => 'regular',
         ]);
 
         $this->assertTrue(
@@ -328,10 +333,10 @@ class LeaveManagerTest extends TestCase
 
         // Create holiday
         $holiday = Holiday::create([
-            'title'        => 'Test Holiday',
+            'title' => 'Test Holiday',
             'holiday_date' => $holidayDate,
-            'type'         => 'Regular',
-            'created_by'   => $lm->id,
+            'type' => 'Regular',
+            'created_by' => $lm->id,
         ]);
 
         // Create leaves on that date
@@ -340,23 +345,23 @@ class LeaveManagerTest extends TestCase
             $this->createLeaveBalance($emp, ['VL' => 14]);
 
             $leave = LeaveRequest::create([
-                'user_id'    => $emp->id,
+                'user_id' => $emp->id,
                 'leave_type' => 'VL',
                 'start_date' => $holidayDate,
-                'end_date'   => $holidayDate,
-                'reason'     => 'To be cancelled by holiday',
-                'status'     => 'approved',
+                'end_date' => $holidayDate,
+                'reason' => 'To be cancelled by holiday',
+                'status' => 'approved',
             ]);
 
             LeaveDate::create([
                 'leave_request_id' => $leave->id,
-                'leave_date'       => $holidayDate,
-                'is_cancelled'     => false,
+                'leave_date' => $holidayDate,
+                'is_cancelled' => false,
             ]);
         }
 
         $response = $this->actingAs($lm)->post(route('api.leave.bulk-cancel-holiday'), [
-            'date'          => $holidayDate,
+            'date' => $holidayDate,
             'holiday_title' => 'Test Holiday',
         ]);
 
@@ -385,5 +390,392 @@ class LeaveManagerTest extends TestCase
         );
 
         $response->assertStatus(200);
+    }
+
+    // ──────────────────────────────────────────────
+    // 7. Run Monthly Credits
+    // ──────────────────────────────────────────────
+
+    /**
+     * Seed Dtr "present" rows for every weekday in a month, skipping $exceptDates
+     * (days covered by a leave request instead) -- so AWOL detection doesn't
+     * introduce noise into tests asserting exact credit amounts.
+     */
+    private function seedFullAttendance(int $userId, int $year, int $month, array $exceptDates = []): void
+    {
+        $except = array_flip($exceptDates);
+        $cursor = Carbon::create($year, $month, 1);
+        $end = $cursor->copy()->endOfMonth();
+
+        while ($cursor->lessThanOrEqualTo($end)) {
+            $dateStr = $cursor->toDateString();
+            if ($cursor->isWeekday() && ! isset($except[$dateStr])) {
+                Dtr::create(['employee_id' => $userId, 'date' => $dateStr, 'is_absent' => false]);
+            }
+            $cursor->addDay();
+        }
+    }
+
+    public function test_run_monthly_credits_creates_ledger_entries_and_audit_trail(): void
+    {
+        // employee_type=casual keeps the Leave Manager account itself out of
+        // LEAVE_ELIGIBLE_TYPES so these tests can assert exact processed counts
+        // for the one deliberately-created eligible employee.
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['processed' => 1, 'skipped' => 0, 'failed' => 0]);
+
+        $this->assertDatabaseHas('monthly_attendance', [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+        $this->assertTrue(
+            LeaveLedger::where('user_id', $emp->id)
+                ->whereIn('transaction_type', ['CREDIT_EARNED', 'CREDIT_EARNED_WOP'])
+                ->exists(),
+            'A credit ledger entry should have been posted for the employee.'
+        );
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'actor_user_id' => $lm->id,
+            'module' => 'leave',
+            'action' => 'monthly_credit_run',
+        ]);
+    }
+
+    public function test_run_monthly_credits_second_call_skips_without_duplicating(): void
+    {
+        // employee_type=casual keeps the Leave Manager account itself out of
+        // LEAVE_ELIGIBLE_TYPES so these tests can assert exact processed counts
+        // for the one deliberately-created eligible employee.
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        $payload = ['year' => $lastMonth->year, 'month' => $lastMonth->month];
+
+        $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), $payload)
+            ->assertStatus(200)->assertJson(['processed' => 1, 'skipped' => 0]);
+
+        $ledgerCountAfterFirstRun = LeaveLedger::where('user_id', $emp->id)->count();
+
+        $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), $payload)
+            ->assertStatus(200)->assertJson(['processed' => 0, 'skipped' => 1]);
+
+        $this->assertSame(
+            $ledgerCountAfterFirstRun,
+            LeaveLedger::where('user_id', $emp->id)->count(),
+            'Re-running for the same month must not post a duplicate ledger entry.'
+        );
+    }
+
+    public function test_run_monthly_credits_rejects_current_month(): void
+    {
+        $lm = $this->createLeaveManager();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), [
+            'year' => now()->year,
+            'month' => now()->month,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_non_leave_manager_cannot_run_monthly_credits(): void
+    {
+        $emp = $this->createEmployee();
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($emp)->postJson(route('leave-manager.run-monthly-credits'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_run_monthly_credits_failed_ledger_write_leaves_employee_retryable(): void
+    {
+        // employee_type=casual keeps the Leave Manager account itself out of
+        // LEAVE_ELIGIBLE_TYPES so these tests can assert exact processed counts
+        // for the one deliberately-created eligible employee.
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $failingLedgerService = \Mockery::mock(LeaveLedgerService::class);
+        $failingLedgerService->shouldReceive('writeLedgerEntry')->andThrow(new \RuntimeException('simulated ledger failure'));
+        $this->app->instance(LeaveLedgerService::class, $failingLedgerService);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['processed' => 0, 'skipped' => 0, 'failed' => 1]);
+
+        $attendance = MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)
+            ->where('month', $lastMonth->month)
+            ->first();
+        $this->assertNull(
+            $attendance?->processed_at,
+            'A failed ledger write must not leave processed_at committed, so the employee stays eligible for retry.'
+        );
+    }
+
+    // ──────────────────────────────────────────────
+    // 8. Stale Monthly Credit Detection & Correction
+    // ──────────────────────────────────────────────
+
+    public function test_processed_month_with_no_changes_is_not_stale(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $response = $this->actingAs($lm)->getJson(
+            route('api.leave-ledger.monthly', ['year' => $lastMonth->year, 'month' => $lastMonth->month])
+        );
+        $response->assertStatus(200);
+
+        $row = collect($response->json('data'))->firstWhere('user_id', $emp->id);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['stale']);
+    }
+
+    public function test_stale_month_detected_and_recompute_posts_only_delta(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        $backdatedDates = [];
+        for ($day = 1; $day <= 5; $day++) {
+            $backdatedDates[] = Carbon::create($lastMonth->year, $lastMonth->month, $day)->toDateString();
+        }
+        // Full attendance for the whole month at first-processing time -- the LWOP
+        // request below is filed and approved *after* the fact, retroactively
+        // reclassifying days 1-5. AWOL detection stays out of the picture entirely
+        // (Dtr already shows present), isolating this test to the LWOP-driven delta.
+        $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
+
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $attendance = MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)->first();
+        $oldVl = (float) $attendance->computed_vl;
+        $this->assertEquals(1.25, $oldVl, 'Sanity check: no LWOP yet, full credit expected.');
+
+        MonthlyAttendance::where('id', $attendance->id)->update(['processed_at' => now()->subMinutes(5)]);
+
+        // Backdated 5-day LWOP request approved *after* the month was processed.
+        $backdatedLeave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => Carbon::create($lastMonth->year, $lastMonth->month, 1)->toDateString(),
+            'end_date' => Carbon::create($lastMonth->year, $lastMonth->month, 5)->toDateString(),
+            'reason' => 'Backdated',
+            'status' => 'approved',
+            'lwop_days' => 5,
+        ]);
+        foreach ($backdatedDates as $date) {
+            LeaveDate::create(['leave_request_id' => $backdatedLeave->id, 'leave_date' => $date, 'is_cancelled' => false]);
+        }
+
+        $listResponse = $this->actingAs($lm)->getJson(
+            route('api.leave-ledger.monthly', ['year' => $lastMonth->year, 'month' => $lastMonth->month])
+        );
+        $row = collect($listResponse->json('data'))->firstWhere('user_id', $emp->id);
+        $this->assertTrue($row['stale'], 'A leave request approved after processed_at must flag the month stale.');
+
+        $expectedDelta = round(1.042 - 1.25, 3); // 25 days present -> 1.042, matches CSC Example 1's 0.208 loss
+
+        $recompute = $this->actingAs($lm)->postJson(route('leave-manager.recompute-employee-month'), [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+        $recompute->assertStatus(200)->assertJson([
+            'changed' => true,
+            'delta_vl' => $expectedDelta,
+            'delta_sl' => $expectedDelta,
+        ]);
+
+        $corrections = LeaveLedger::where('user_id', $emp->id)->where('transaction_type', 'CREDIT_CORRECTION')->get();
+        $this->assertCount(1, $corrections, 'Exactly one correction entry for the delta, not a full re-credit.');
+        $this->assertEquals(abs($expectedDelta), (float) $corrections->first()->debit_vl);
+        $this->assertEquals(0.0, (float) $corrections->first()->credit_vl);
+
+        $attendance->refresh();
+        $this->assertEquals(1.042, (float) $attendance->computed_vl);
+        $this->assertEquals(1.042, (float) $attendance->computed_sl);
+
+        $listResponse2 = $this->actingAs($lm)->getJson(
+            route('api.leave-ledger.monthly', ['year' => $lastMonth->year, 'month' => $lastMonth->month])
+        );
+        $row2 = collect($listResponse2->json('data'))->firstWhere('user_id', $emp->id);
+        $this->assertFalse($row2['stale'], 'Recompute should bump processed_at and clear the stale flag.');
+    }
+
+    public function test_stale_flag_but_no_actual_change_writes_no_ledger_entry(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $attendance = MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)->first();
+        MonthlyAttendance::where('id', $attendance->id)->update(['processed_at' => now()->subMinutes(5)]);
+
+        // Fully balance-covered leave (no LWOP overflow) -- flips the staleness heuristic
+        // without actually changing the credit calculation.
+        LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => Carbon::create($lastMonth->year, $lastMonth->month, 10)->toDateString(),
+            'end_date' => Carbon::create($lastMonth->year, $lastMonth->month, 10)->toDateString(),
+            'reason' => 'Normal leave',
+            'status' => 'approved',
+            'lwop_days' => 0,
+        ]);
+
+        $ledgerCountBefore = LeaveLedger::where('user_id', $emp->id)->count();
+
+        $recompute = $this->actingAs($lm)->postJson(route('leave-manager.recompute-employee-month'), [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+        $recompute->assertStatus(200)->assertJson(['changed' => false]);
+
+        $this->assertSame(
+            $ledgerCountBefore,
+            LeaveLedger::where('user_id', $emp->id)->count(),
+            'A no-op recompute must not write a ledger entry.'
+        );
+
+        $attendance->refresh();
+        $this->assertNotNull($attendance->processed_at);
+    }
+
+    public function test_non_leave_manager_cannot_recompute_employee_month(): void
+    {
+        $emp = $this->createEmployee();
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($emp)->postJson(route('leave-manager.recompute-employee-month'), [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_recompute_never_processed_month_returns_422(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.recompute-employee-month'), [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────────
+    // 9. AWOL Monitor
+    // ──────────────────────────────────────────────
+
+    public function test_awol_monitor_shows_employee_with_qualifying_streak(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+        // No Dtr rows, leave, excuse, locator, or ETA at all -- guarantees a 5+
+        // workday AWOL streak with no further setup needed.
+
+        $response = $this->actingAs($lm)->getJson(route('api.leave-ledger.awol-monitor'));
+        $response->assertStatus(200);
+
+        $row = collect($response->json('data'))->firstWhere('emp_no', $emp->EmpNo);
+        $this->assertNotNull($row, 'An employee with no attendance/coverage at all should appear in the AWOL monitor.');
+    }
+
+    public function test_non_leave_manager_cannot_view_awol_monitor(): void
+    {
+        $emp = $this->createEmployee();
+
+        $response = $this->actingAs($emp)->getJson(route('api.leave-ledger.awol-monitor'));
+
+        $response->assertStatus(403);
+    }
+
+    public function test_awol_monitor_excludes_part_time_employees(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee(['employee_type' => 'part_time']);
+        $this->createLeaveBalance($emp);
+        // No Dtr rows, leave, excuse, locator, or ETA at all -- would otherwise
+        // guarantee a 5+ workday AWOL streak, proving exclusion is on employee_type.
+
+        $response = $this->actingAs($lm)->getJson(route('api.leave-ledger.awol-monitor'));
+        $response->assertStatus(200);
+
+        $row = collect($response->json('data'))->firstWhere('emp_no', $emp->EmpNo);
+        $this->assertNull($row, 'Monthly Leave Credits (and the AWOL monitor tied to it) only apply to Permanent, Elected Officials, and Co-Terminus employees -- part_time must be excluded.');
+    }
+
+    public function test_run_monthly_credits_excludes_part_time_employees(): void
+    {
+        // employee_type=casual keeps the Leave Manager account itself out of
+        // LEAVE_ELIGIBLE_TYPES so this test can assert an exact processed count.
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee(['employee_type' => 'part_time']);
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['processed' => 0, 'skipped' => 0, 'failed' => 0]);
+
+        $this->assertDatabaseMissing('monthly_attendance', [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+        $this->assertFalse(
+            LeaveLedger::where('user_id', $emp->id)->exists(),
+            'A part_time employee must not receive Monthly Leave Credits.'
+        );
     }
 }

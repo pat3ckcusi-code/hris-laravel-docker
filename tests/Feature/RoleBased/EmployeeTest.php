@@ -202,6 +202,48 @@ class EmployeeTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_pending_eta_does_not_show_approver_name(): void
+    {
+        $user = $this->createEmployee();
+
+        Eta::create([
+            'user_id'        => $user->id,
+            'departure_date' => now()->toDateString(),
+            'destination'    => 'City Hall',
+            'purpose'        => 'Test',
+            'status'         => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->get(route('employee.eta.data'));
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.0.dept_head', null);
+    }
+
+    public function test_approved_eta_shows_actual_approver_name(): void
+    {
+        $user = $this->createEmployee();
+        $deptHead = $this->createDepartmentHead([
+            'first_name'  => 'Angel',
+            'middle_name' => 'Miranda',
+            'last_name'   => 'Navarro',
+        ]);
+
+        $eta = Eta::create([
+            'user_id'        => $user->id,
+            'departure_date' => now()->toDateString(),
+            'destination'    => 'City Hall',
+            'purpose'        => 'Test',
+            'status'         => 'approved',
+        ]);
+        $eta->forceFill(['approved_by' => $deptHead->id])->save();
+
+        $response = $this->actingAs($user)->get(route('employee.eta.data'));
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.0.dept_head', 'Angel Miranda Navarro');
+    }
+
     public function test_employee_can_cancel_eta(): void
     {
         $user = $this->createEmployee();

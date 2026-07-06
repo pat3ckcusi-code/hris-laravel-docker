@@ -128,7 +128,7 @@
                                             <div class="text-sm text-slate-500">{{ $eta->purpose_details }}</div>
                                         @endif
                                     </td>
-                                    <td>{{ $eta->dept_head ?? 'Not assigned' }}</td>
+                                    <td>{{ $eta->dept_head ?? '—' }}</td>
                                     <td>
                                         @php
                                             $status = strtolower((string) $eta->status);
@@ -179,13 +179,7 @@
             dep.setAttribute('min', today);
 
             function syncArrival(){
-                if(!dep.value){
-                    arr.value = '';
-                    return;
-                }
-                const arrivalDate = new Date(dep.value + 'T00:00:00Z');
-                arrivalDate.setUTCDate(arrivalDate.getUTCDate() + 1);
-                arr.value = arrivalDate.toISOString().slice(0,10);
+                arr.value = dep.value || '';
             }
 
             dep.addEventListener('change', syncArrival);
