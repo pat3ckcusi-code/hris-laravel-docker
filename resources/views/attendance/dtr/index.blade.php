@@ -136,7 +136,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                             <option value="permanent">Permanent</option>
                             <option value="co-terminus">Co-Terminus</option>
                             <option value="casual">Casual</option>
-                            <option value="job order">Job Order</option>
+                            <option value="job orders">Job Orders</option>
                             <option value="contractual">Contractual</option>
                         </select>
                     </div>
@@ -259,7 +259,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                         <option value="permanent">Permanent</option>
                         <option value="co-terminus">Co-Terminus</option>
                         <option value="casual">Casual</option>
-                        <option value="job order">Job Order</option>
+                        <option value="job orders">Job Orders</option>
                         <option value="contractual">Contractual</option>
                     </select>
                 </div>
@@ -356,7 +356,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                         <option value="permanent">Permanent</option>
                         <option value="co-terminus">Co-Terminus</option>
                         <option value="casual">Casual</option>
-                        <option value="job order">Job Order</option>
+                        <option value="job orders">Job Orders</option>
                         <option value="contractual">Contractual</option>
                     </select>
                 </div>

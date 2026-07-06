@@ -707,7 +707,7 @@ class DtrController extends Controller
             'dtr_type' => ['required', 'in:monthly,semi-monthly'],
             'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'period' => ['nullable', 'in:1,2'],
-            'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job order,contractual'],
+            'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job orders,contractual'],
             'dept_id' => ['required', 'integer', 'exists:departments,Dept_id'],
         ]);
 
@@ -812,7 +812,7 @@ class DtrController extends Controller
             'dtr_type' => ['required', 'in:monthly,semi-monthly'],
             'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'period' => ['nullable', 'in:1,2'],
-            'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job order,contractual'],
+            'employee_type' => ['nullable', 'in:permanent,co-terminus,casual,job orders,contractual'],
             'dept_id' => ['required', 'integer', 'exists:departments,Dept_id'],
         ]);
 
