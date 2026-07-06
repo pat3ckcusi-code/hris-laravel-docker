@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Attendance\Concerns;
 
+use App\Models\Shift;
 use App\Models\ShiftManagementGrant;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -80,5 +82,42 @@ trait ScopesEmployeesByDepartment
         $role = strtolower(trim((string) ($user->access_level ?? '')));
 
         return in_array($role, self::SCOPE_ADMIN_ROLES, true);
+    }
+
+    /**
+     * Shift query scoped to the templates the user may see/select: unfiltered
+     * for Time Keeper/HR Manager, otherwise global templates plus ones
+     * explicitly scoped to the user's granted department(s).
+     */
+    private function resolveVisibleShiftsQuery(User $user): Builder
+    {
+        if ($this->isUnscopedManager($user)) {
+            return Shift::query();
+        }
+
+        return Shift::visibleToDepartments($this->resolveAccessibleDepartments($user)->pluck('Dept_id'));
+    }
+
+    /**
+     * Write-path guard: aborts unless $shiftId is a template the acting user
+     * may assign to an employee in department $deptId. Time Keeper/HR Manager
+     * may assign any existing template; scoped officers are checked against
+     * the target employee's own department (not the officer's full accessible
+     * set), so a shift scoped to another department never lands on this
+     * employee even under OIC coverage of both departments.
+     */
+    private function assertShiftAssignable(int $shiftId, ?int $deptId, User $actor): void
+    {
+        if ($this->isUnscopedManager($actor)) {
+            abort_unless(Shift::whereKey($shiftId)->exists(), 422, 'Invalid shift.');
+
+            return;
+        }
+
+        abort_unless(
+            Shift::whereKey($shiftId)->visibleToDepartments([$deptId])->exists(),
+            403,
+            'That shift template is not available to your department.'
+        );
     }
 }

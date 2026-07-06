@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
+use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\Shift;
 use App\Models\User;
@@ -49,9 +50,14 @@ class ShiftController extends Controller
         $this->resolveAccessibleEmployeeIds($user);
 
         $canManage = $this->isUnscopedManager($user);
-        $shifts = Shift::withCount('employees')->orderBy('name')->get();
+        $shifts = $this->resolveVisibleShiftsQuery($user)
+            ->withCount('employees')
+            ->with('departments')
+            ->orderBy('name')
+            ->get();
+        $departments = Department::orderBy('Dept_name')->get();
 
-        return view('attendance.shifts.index', compact('shifts', 'canManage'));
+        return view('attendance.shifts.index', compact('shifts', 'canManage', 'departments'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -61,8 +67,10 @@ class ShiftController extends Controller
 
         $data = $this->validateShift($request);
         $shift = Shift::create($data);
+        $departmentIds = $data['is_global'] ? [] : $request->input('department_ids', []);
+        $shift->departments()->sync($departmentIds);
 
-        $this->logTemplateAction($actor, $shift, 'shift_template_created', $data);
+        $this->logTemplateAction($actor, $shift, 'shift_template_created', $data + ['department_ids' => $departmentIds]);
 
         return back()->with('shift_status', "Shift template \"{$data['name']}\" created.");
     }
@@ -74,11 +82,13 @@ class ShiftController extends Controller
 
         $data = $this->validateShift($request);
         $shift->update($data);
+        $departmentIds = $data['is_global'] ? [] : $request->input('department_ids', []);
+        $shift->departments()->sync($departmentIds);
 
         // Times changed - recompute every employee currently on this shift.
         $shift->employees()->each(fn (User $u) => $this->recomputeEmployee($u));
 
-        $this->logTemplateAction($actor, $shift, 'shift_template_updated', $data);
+        $this->logTemplateAction($actor, $shift, 'shift_template_updated', $data + ['department_ids' => $departmentIds]);
 
         return back()->with('shift_status', "Shift template \"{$shift->name}\" updated and affected DTRs recomputed.");
     }
@@ -118,7 +128,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool}
+     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool, is_global: bool}
      */
     private function validateShift(Request $request): array
     {
@@ -130,6 +140,9 @@ class ShiftController extends Controller
             'break_out' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
             'break_in' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
             'time_out' => ['required', 'date_format:H:i'],
+            'is_global' => ['nullable', 'boolean'],
+            'department_ids' => ['nullable', 'array'],
+            'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
         ]);
 
         return [
@@ -141,6 +154,7 @@ class ShiftController extends Controller
             'crosses_midnight' => Shift::isCrossMidnight($v['time_in'], $v['time_out']),
             'no_break' => $noBreak,
             'is_active' => true,
+            'is_global' => $request->boolean('is_global'),
         ];
     }
 

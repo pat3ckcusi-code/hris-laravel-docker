@@ -12,6 +12,7 @@ use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
 use App\Services\ShiftPunchGrouper;
 use App\Support\WorkSchedule;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -467,7 +468,7 @@ class ShiftScheduleTest extends TestCase
         ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
 
         $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
-        $weekStart = now()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
+        $weekStart = now()->startOfWeek(Carbon::MONDAY)->toDateString();
 
         $this->actingAs($dh)->post(route('attendance.shift-schedule.store'), [
             'user_id' => $outsider->id,
@@ -606,5 +607,130 @@ class ShiftScheduleTest extends TestCase
 
         $this->actingAs($dh)->get(route('attendance.shift-access.index'))->assertStatus(403);
         $this->actingAs($dh)->post(route('attendance.shift-access.grant', $deptA))->assertStatus(403);
+    }
+
+    // ── Shift templates scoped to specific departments ─────────────────────────
+
+    private function scopedShiftModel(string $name, array $deptIds): Shift
+    {
+        $shift = Shift::create([
+            'name' => $name,
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+            'crosses_midnight' => false,
+            'is_active' => true,
+            'is_global' => false,
+        ]);
+        $shift->departments()->attach($deptIds);
+
+        return $shift;
+    }
+
+    public function test_granted_department_head_cannot_see_shift_scoped_to_other_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))->assertDontSee($shift->name);
+        $this->actingAs($dh)->get(route('attendance.schedules'))->assertDontSee($shift->name);
+        $this->actingAs($dh)->get(route('attendance.shift-schedule.index'))->assertDontSee($shift->name);
+    }
+
+    public function test_granted_department_head_sees_global_and_own_department_shift_templates(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $global = $this->nightShiftModel();
+        $ownScoped = $this->scopedShiftModel('Dept A Only', [$deptA->Dept_id]);
+
+        $this->actingAs($dh)->get(route('attendance.shifts'))
+            ->assertSee($global->name)
+            ->assertSee($ownScoped->name);
+    }
+
+    public function test_granted_department_head_cannot_assign_shift_scoped_to_other_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($dh)
+            ->put(route('attendance.schedules.update', $employee), ['shift_id' => $shift->id])
+            ->assertStatus(403);
+
+        $this->assertNull($employee->refresh()->shift_id);
+    }
+
+    public function test_granted_department_head_cannot_submit_shift_schedule_entry_with_out_of_scope_shift(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+        $weekStart = now()->startOfWeek(Carbon::MONDAY)->toDateString();
+
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.store'), [
+            'user_id' => $employee->id,
+            'week_start' => $weekStart,
+            'assignments' => [$weekStart => (string) $shift->id],
+        ])->assertStatus(403);
+
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $employee->id]);
+    }
+
+    public function test_granted_department_head_cannot_generate_pattern_with_out_of_scope_shift(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+        $weekStart = now()->startOfWeek(Carbon::MONDAY)->toDateString();
+
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.generate-pattern'), [
+            'user_id' => $employee->id,
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 1,
+            'start_date' => $weekStart,
+            'end_date' => now()->addDays(3)->toDateString(),
+        ])->assertStatus(403);
+
+        $this->assertNull($employee->refresh()->shift_id);
+    }
+
+    public function test_time_keeper_sees_and_manages_all_shift_templates_regardless_of_scope(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $tk = $this->createTimeKeeper();
+
+        $shift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($tk)->get(route('attendance.shifts'))->assertSee($shift->name);
+
+        $this->actingAs($tk)
+            ->put(route('attendance.schedules.update', $employee), ['shift_id' => $shift->id])
+            ->assertRedirect();
+
+        $this->assertSame($shift->id, $employee->refresh()->shift_id);
     }
 }

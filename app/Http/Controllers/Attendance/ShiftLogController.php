@@ -122,7 +122,9 @@ class ShiftLogController extends Controller
             'dtr_exemption_toggled' => ! empty($d['exempt']) ? 'Marked exempt from DTR' : 'Restored to DTR tracking',
             'shift_schedule_updated' => "Week of {$d['week_start']} - {$d['days_changed']} day(s) changed",
             'rotation_generated' => "{$d['on_days']}-on / {$d['off_days']}-off, {$d['start_date']} to {$d['end_date']}",
-            'shift_template_created', 'shift_template_updated' => "{$d['time_in']}-{$d['time_out']}".(($d['no_break'] ?? false) ? ', no break' : ''),
+            'shift_template_created', 'shift_template_updated' => "{$d['time_in']}-{$d['time_out']}"
+                .(($d['no_break'] ?? false) ? ', no break' : '')
+                .(($d['is_global'] ?? true) ? ', Shared' : ', scoped to '.count($d['department_ids'] ?? []).' dept(s)'),
             'shift_template_deleted' => 'Template removed',
             default => '',
         };

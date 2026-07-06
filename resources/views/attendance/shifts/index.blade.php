@@ -15,6 +15,13 @@
 .shift-badge-day { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#e5e7eb; color:#374151; }
 .shift-badge-nobreak { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#d1fae5; color:#065f46; }
 .shift-inline-form { display:inline; }
+.shift-badge-shared { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#dbeafe; color:#1e40af; }
+.shift-badge-dept { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#e5e7eb; color:#374151; white-space:nowrap; }
+.shift-scope-cell { min-width:16rem; }
+.shift-scope-badges { display:flex; flex-wrap:wrap; gap:.3rem; margin-bottom:.4rem; }
+.shift-dept-checklist { width:100%; min-width:14rem; max-height:9rem; overflow-y:auto; border:1px solid #cbd5e1; border-radius:.35rem; padding:.4rem .6rem; background:#fff; }
+.shift-dept-checklist label { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#374151; padding:.15rem 0; cursor:pointer; }
+.shift-dept-checklist input { width:auto; }
 </style>
 @endsection
 
@@ -42,6 +49,23 @@
                     <span>No Break (2-punch)</span>
                 </label>
             </div>
+            <div class="shift-field" style="align-self:center;">
+                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" name="is_global" value="1" id="create-is-global" style="width:auto;" checked onchange="toggleCreateDeptPicker(this)">
+                    <span>Shared / All Departments</span>
+                </label>
+            </div>
+            <div class="shift-field" id="create-dept-field" style="display:none;">
+                <label>Departments</label>
+                <div class="shift-dept-checklist">
+                    @foreach ($departments as $d)
+                        <label>
+                            <input type="checkbox" name="department_ids[]" value="{{ $d->Dept_id }}">
+                            <span>{{ $d->Dept_name }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
             <div class="shift-field"><button type="submit" class="hris-btn hris-btn-primary">Add Shift</button></div>
         </div>
     </form>
@@ -64,6 +88,7 @@
                     <th>Time Out</th>
                     <th>No Break</th>
                     <th>Type</th>
+                    <th class="shift-scope-cell">Scope</th>
                     <th>Employees</th>
                     <th></th>
                 </tr>
@@ -92,6 +117,38 @@
                                 <span class="shift-badge-day">Day</span>
                             @endif
                         </td>
+                        <td class="shift-scope-cell">
+                            <div class="shift-scope-badges">
+                                @if ($shift->is_global)
+                                    <span class="shift-badge-shared">Shared / All Departments</span>
+                                @elseif ($shift->departments->isEmpty())
+                                    <span class="shift-badge-dept" style="color:#b91c1c;background:#fee2e2;">No departments assigned</span>
+                                @else
+                                    @foreach ($shift->departments as $dept)
+                                        <span class="shift-badge-dept">{{ $dept->Dept_name }}</span>
+                                    @endforeach
+                                @endif
+                            </div>
+                            @if ($canManage)
+                                <label style="display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:#475569;margin-bottom:.35rem;cursor:pointer;">
+                                    <input form="{{ $fid }}" type="checkbox" name="is_global" value="1"
+                                        {{ $shift->is_global ? 'checked' : '' }}
+                                        onchange="toggleRowDeptPicker(this, {{ $shift->id }})"
+                                        style="width:auto;cursor:pointer;">
+                                    <span>Shared / All Departments</span>
+                                </label>
+                                <div id="dept-field-{{ $shift->id }}" style="{{ $shift->is_global ? 'display:none;' : '' }}">
+                                    <div class="shift-dept-checklist">
+                                        @foreach ($departments as $d)
+                                            <label>
+                                                <input form="{{ $fid }}" type="checkbox" name="department_ids[]" value="{{ $d->Dept_id }}" {{ $shift->departments->contains('Dept_id', $d->Dept_id) ? 'checked' : '' }}>
+                                                <span>{{ $d->Dept_name }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                        </td>
                         <td style="text-align:center;">{{ $shift->employees_count }}</td>
                         <td style="white-space:nowrap;">
                             @if ($canManage)
@@ -112,7 +169,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
+                    <tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -135,6 +192,14 @@ function toggleRowBreak(cb, shiftId) {
     cells.forEach(function(input) {
         input.disabled = cb.checked;
     });
+}
+
+function toggleCreateDeptPicker(cb) {
+    document.getElementById('create-dept-field').style.display = cb.checked ? 'none' : 'block';
+}
+
+function toggleRowDeptPicker(cb, shiftId) {
+    document.getElementById('dept-field-' + shiftId).style.display = cb.checked ? 'none' : 'block';
 }
 
 @if (session('shift_status'))

@@ -66,7 +66,7 @@ class EmployeeScheduleController extends Controller
             }
         }
 
-        $shifts = Shift::where('is_active', true)->orderBy('name')->get();
+        $shifts = $this->resolveVisibleShiftsQuery($user)->where('is_active', true)->orderBy('name')->get();
 
         $employees = User::active()
             // Exempt employees are hidden from shift assignment unless explicitly requested.
@@ -100,6 +100,10 @@ class EmployeeScheduleController extends Controller
         $validated = $request->validate([
             'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
         ]);
+
+        if ($validated['shift_id'] !== null) {
+            $this->assertShiftAssignable($validated['shift_id'], $user->Dept_id, $actor);
+        }
 
         $user->update(['shift_id' => $validated['shift_id'] ?? null]);
 

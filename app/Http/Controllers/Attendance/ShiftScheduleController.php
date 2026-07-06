@@ -49,7 +49,7 @@ class ShiftScheduleController extends Controller
         $user = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
 
-        $shifts = Shift::where('is_active', true)->orderBy('name')->get();
+        $shifts = $this->resolveVisibleShiftsQuery($user)->where('is_active', true)->orderBy('name')->get();
 
         $deptId = $request->integer('dept_id') ?: null;
         $employeeId = $request->integer('employee_id') ?: null;
@@ -163,7 +163,7 @@ class ShiftScheduleController extends Controller
                 $recomputeNeeded = true;
             } else {
                 $shiftId = (int) $value;
-                abort_unless(Shift::where('id', $shiftId)->exists(), 422, 'Invalid shift.');
+                $this->assertShiftAssignable($shiftId, $employee->Dept_id, $actor);
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
                     ['shift_id' => $shiftId, 'created_by' => $request->user()->id]
@@ -226,6 +226,8 @@ class ShiftScheduleController extends Controller
         }
 
         $employee = User::findOrFail($validated['user_id']);
+        $this->assertShiftAssignable($validated['shift_id'], $employee->Dept_id, $actor);
+
         $onDays = $validated['on_days'];
         $offDays = $validated['off_days'];
         $cycleLength = $onDays + $offDays;
