@@ -357,9 +357,11 @@ class RecordsManagerController extends Controller
         $failed = [];
         $warnings = [];
 
-        // Skip the header row (index 0)
+        // Skip the header row (index 0). Collection::skip() preserves original
+        // keys, so $index is already the pre-skip position (1-based spreadsheet
+        // row number requires only +1, not +2).
         foreach ($rows->skip(1) as $index => $row) {
-            $rowNumber = $index + 2; // 1-based, accounting for header
+            $rowNumber = $index + 1;
 
             $empNoInput = trim((string) ($row[0] ?? ''));
             $lastName = strtoupper(trim((string) ($row[1] ?? '')));
@@ -371,6 +373,12 @@ class RecordsManagerController extends Controller
             $dateHired = trim((string) ($row[7] ?? ''));
             $empType = trim((string) ($row[8] ?? ''));
             $accessLevel = strtolower(trim((string) ($row[9] ?? '')));
+
+            if ($empNoInput === '' && $lastName === '' && $firstName === '' && $middleName === ''
+                && $email === '' && $designation === '' && $deptName === '' && $dateHired === ''
+                && $empType === '' && $accessLevel === '') {
+                continue;
+            }
 
             $rowErrors = [];
 

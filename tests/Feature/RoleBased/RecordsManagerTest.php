@@ -212,6 +212,37 @@ class RecordsManagerTest extends TestCase
             "Bulk update: {$updated}/{$total} employees updated");
     }
 
+    public function test_import_skips_blank_rows_and_reports_partial_rows(): void
+    {
+        $rm = $this->createRecordsManager();
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([
+            ['EmpNo', 'Last Name', 'First Name', 'Middle Name', 'Email', 'Designation', 'Department', 'Date Hired', 'Employee Type', 'Access Level'],
+            ['', 'DELA CRUZ', 'JUAN', '', 'juan.import.test@example.com', '', '', '2026-01-15', 'Permanent', 'employee'],
+            ['', '', '', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', '', '', ''],
+            ['', 'PARTIAL', '', '', '', '', '', '', '', ''],
+        ]);
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'import').'.xlsx';
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($tmpPath);
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($tmpPath));
+        unlink($tmpPath);
+
+        $response = $this->actingAs($rm)->post(route('dashboard.records-manager.employees.import'), [
+            'import_file' => $file,
+        ]);
+
+        $response->assertOk();
+        $data = $response->json();
+
+        $this->assertSame(1, $data['imported']);
+        $this->assertCount(1, $data['failed'], 'Blank rows should not appear in failed rows.');
+        $this->assertSame(5, $data['failed'][0]['row'], 'Reported row number should match the actual spreadsheet row.');
+        $this->assertDatabaseHas('users', ['email' => 'juan.import.test@example.com', 'date_hired' => '2026-01-15']);
+    }
+
     // ──────────────────────────────────────────────
     // 3. Department Management
     // ──────────────────────────────────────────────
