@@ -26,7 +26,19 @@
                 <div class="font-weight-bold month-label">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
                 <button class="month-nav" id="nextMonthBtn" data-month="{{ $next->format('n') }}" data-year="{{ $next->format('Y') }}">Next &raquo;</button>
             </div>
-            <div>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="stats-type-filter">Employee Type</label>
+                    <select id="stats-type-filter" class="hris-filter-select">
+                        <option value="">All Types</option>
+                        <option value="Permanent">Permanent</option>
+                        <option value="Elected Officials">Elected Officials</option>
+                        <option value="Co-Terminus">Co-Terminus</option>
+                        <option value="Casual">Casual</option>
+                        <option value="Job Orders">Job Orders</option>
+                        <option value="Contractual">Contractual</option>
+                    </select>
+                </div>
                 <button class="month-nav" id="monthToday">This Month</button>
             </div>
         </div>
@@ -169,6 +181,9 @@ document.addEventListener('DOMContentLoaded', function () {
         var now = new Date();
         setMonth(now.getMonth() + 1, now.getFullYear());
     });
+    document.getElementById('stats-type-filter').addEventListener('change', function () {
+        statsTable.ajax.reload(null, false);
+    });
 
     // ── DataTable init ───────────────────────────────────────────────────
     if ($.fn.DataTable.isDataTable('#stats-table')) {
@@ -182,6 +197,7 @@ document.addEventListener('DOMContentLoaded', function () {
             data: function (d) {
                 d.month = currentMonth;
                 d.year  = currentYear;
+                d.employee_type = document.getElementById('stats-type-filter').value;
             },
         },
         columns: [

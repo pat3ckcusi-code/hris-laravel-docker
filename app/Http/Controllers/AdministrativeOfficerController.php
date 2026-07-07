@@ -662,6 +662,7 @@ class AdministrativeOfficerController extends Controller
         $start = (int) $request->query('start', 0);
         $length = (int) $request->query('length', 10);
         $search = trim($request->input('search.value', ''));
+        $employeeType = trim((string) $request->query('employee_type', ''));
 
         $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
 
@@ -669,7 +670,7 @@ class AdministrativeOfficerController extends Controller
             return response()->json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
         }
 
-        $cacheKey = 'ao_stats_'.implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray())."_{$month}_{$year}";
+        $cacheKey = 'ao_stats_v2_'.implode('_', $depts->sortBy('Dept_id')->pluck('Dept_id')->toArray())."_{$month}_{$year}";
         $allRows = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($depts, $month, $year) {
             $deptIds = $depts->pluck('Dept_id')->toArray();
             $deptNames = $depts->pluck('Dept_name', 'Dept_id');
@@ -703,6 +704,7 @@ class AdministrativeOfficerController extends Controller
                     'Mname' => $emp->middle_name ?? '',
                     'Extension' => property_exists($emp, 'extension') ? ($emp->extension ?? '') : '',
                     'Dept' => $deptNames->get($emp->Dept_id) ?? '',
+                    'employee_type' => $emp->employee_type ?: 'Unspecified',
                     'eta_count' => $etaCount,
                     'locator_count' => $locatorCount,
                     'leave_count' => $leaveCount,
@@ -715,6 +717,10 @@ class AdministrativeOfficerController extends Controller
 
         $recordsTotal = count($allRows);
 
+        if ($employeeType !== '') {
+            $allRows = array_values(array_filter($allRows, fn ($row) => $row['employee_type'] === $employeeType));
+        }
+
         if ($search !== '') {
             $lc = strtolower($search);
             $allRows = array_values(array_filter($allRows, function ($row) use ($lc) {
@@ -722,7 +728,8 @@ class AdministrativeOfficerController extends Controller
 
                 return str_contains($name, $lc)
                     || str_contains(strtolower($row['EmpNo']), $lc)
-                    || str_contains(strtolower($row['Dept']), $lc);
+                    || str_contains(strtolower($row['Dept']), $lc)
+                    || str_contains(strtolower($row['employee_type']), $lc);
             }));
         }
 
