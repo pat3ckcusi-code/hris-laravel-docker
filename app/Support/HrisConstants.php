@@ -16,6 +16,11 @@ class HrisConstants
     /** Canonical codes used in leave_balances columns and leave_type comparisons. */
     public const LEAVE_TYPES = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
 
+    // ── Employee types ──────────────────────────────────────────────────────
+
+    /** Canonical `users.employee_type` values, in Title Case. */
+    public const EMPLOYEE_TYPES = ['Permanent', 'Elected Officials', 'Co-Terminus', 'Casual', 'Job Orders', 'Contractual'];
+
     // ── Workforce planning ─────────────────────────────────────────────────
 
     /** Service-anniversary milestones (years) tracked for recognition. */

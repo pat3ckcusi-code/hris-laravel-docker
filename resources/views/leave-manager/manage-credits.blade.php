@@ -16,6 +16,12 @@
 
             <div>
                 <input id="leave-credits-search" class="leave-credits-search" placeholder="Search employees, dept or EmpNo">
+                <select id="leave-credits-type-filter" class="hris-filter-select">
+                    <option value="">All Employee Types</option>
+                    @foreach($employeeTypes as $employeeType)
+                        <option value="{{ strtolower($employeeType) }}">{{ $employeeType }}</option>
+                    @endforeach
+                </select>
             </div>
         </div>
 
@@ -35,7 +41,7 @@
                 </thead>
                 <tbody>
                     @forelse($balances as $balance)
-                        <tr data-id="{{ $balance->id }}">
+                        <tr data-id="{{ $balance->id }}" data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
                             <td data-label="Employee Name" class="employee-name">
                                 @if($balance->user)
                                     @php $empName = trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')); @endphp
@@ -90,6 +96,21 @@
 
         $('#leave-credits-search').on('input', function () {
             table.search(this.value).draw();
+        });
+
+        // Employee Type filter (client-side, matches the row's data-type attribute)
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData, counter) {
+            if (settings.nTable.id !== 'leaveCreditsTable') return true;
+
+            var selected = $('#leave-credits-type-filter').val();
+            if (!selected) return true;
+
+            var rowType = $(table.row(dataIndex).node()).data('type');
+            return rowType === selected;
+        });
+
+        $('#leave-credits-type-filter').on('change', function () {
+            table.draw();
         });
 
         // Compute deduction (days) from tardiness + undertime (480 min = 1 day)

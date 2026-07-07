@@ -16,6 +16,12 @@
 
                 <div class="leave-balance-controls">
                     <input id="leave-balance-search" class="leave-balance-search" placeholder="Search employees, dept or EmpNo">
+                    <select id="leave-balance-type-filter" class="hris-filter-select">
+                        <option value="">All Employee Types</option>
+                        @foreach($employeeTypes as $employeeType)
+                            <option value="{{ strtolower($employeeType) }}">{{ $employeeType }}</option>
+                        @endforeach
+                    </select>
                     <button id="export-csv" class="hris-btn hris-btn-secondary" type="button">Export CSV</button>
                 </div>
             </div>
@@ -37,7 +43,7 @@
                 </thead>
                 <tbody>
                     @foreach($balances as $balance)
-                        <tr>
+                        <tr data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
                             <td>{{ $balance->user?->EmpNo ?? '-' }}</td>
                             <td>
                                 @if($balance->user)
@@ -85,6 +91,21 @@
         // Wire external search box
         $('#leave-balance-search').on('input', function () {
             table.search(this.value).draw();
+        });
+
+        // Employee Type filter (client-side, matches the row's data-type attribute)
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex, rowData, counter) {
+            if (settings.nTable.id !== 'leave-balance-table') return true;
+
+            var selected = $('#leave-balance-type-filter').val();
+            if (!selected) return true;
+
+            var rowType = $(table.row(dataIndex).node()).data('type');
+            return rowType === selected;
+        });
+
+        $('#leave-balance-type-filter').on('change', function () {
+            table.draw();
         });
 
         // Basic CSV export (client-side)

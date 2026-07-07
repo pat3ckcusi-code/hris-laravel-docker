@@ -14,6 +14,7 @@ use App\Services\LeaveCardExportService;
 use App\Services\LeaveCreditComputationService;
 use App\Services\LeaveLedgerService;
 use App\Services\LwopAggregationService;
+use App\Support\HrisConstants;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,7 @@ class LeaveManagerController extends Controller
         return view('leave-manager.manage-balance', [
             'balances' => $balances,
             'departments' => $departments,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
         ]);
     }
 
@@ -63,6 +65,7 @@ class LeaveManagerController extends Controller
         return view('leave-manager.manage-credits', [
             'balances' => $balances,
             'departments' => $departments,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
         ]);
     }
 

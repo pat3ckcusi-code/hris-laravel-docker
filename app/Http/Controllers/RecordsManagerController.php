@@ -8,6 +8,7 @@ use App\Models\HRAuditTrail;
 use App\Models\User;
 use App\Notifications\EmployeeDefaultPasswordNotification;
 use App\Services\EmployeeAssignmentService;
+use App\Support\HrisConstants;
 use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -34,15 +35,6 @@ class RecordsManagerController extends Controller
         'payroll manager' => 'dashboards.payroll-manager',
         'records manager' => 'dashboards.records-manager',
         'front desk' => 'dashboards.front-desk',
-    ];
-
-    private const EMPLOYEE_TYPES = [
-        'Permanent',
-        'Elected Officials',
-        'Co-Terminus',
-        'Casual',
-        'Job Orders',
-        'Contractual',
     ];
 
     public function index(Request $request)
@@ -79,7 +71,7 @@ class RecordsManagerController extends Controller
             $employeesQuery->where('Dept_id', $departmentFilter);
         }
 
-        if (in_array($employeeTypeFilter, self::EMPLOYEE_TYPES, true)) {
+        if (in_array($employeeTypeFilter, HrisConstants::EMPLOYEE_TYPES, true)) {
             $employeesQuery->where('employee_type', $employeeTypeFilter);
         }
 
@@ -98,7 +90,7 @@ class RecordsManagerController extends Controller
             ->pluck('max_seq', 'employee_type');
 
         $nextSequentialByType = [];
-        foreach (self::EMPLOYEE_TYPES as $type) {
+        foreach (HrisConstants::EMPLOYEE_TYPES as $type) {
             $nextSequentialByType[$type] = str_pad((int) ($maxSequentialByType[$type] ?? 0) + 1, 5, '0', STR_PAD_LEFT);
         }
 
@@ -107,7 +99,7 @@ class RecordsManagerController extends Controller
             'employees' => $employees,
             'departments' => $departments,
             'accessLevels' => array_keys(self::ROLE_VIEW_MAP),
-            'employeeTypes' => self::EMPLOYEE_TYPES,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
             'statusSummary' => [
                 'total' => $totalEmployees,
                 'active' => $activeEmployees,
@@ -144,7 +136,7 @@ class RecordsManagerController extends Controller
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
             'Status' => ['nullable', Rule::in(User::STATUSES)],
-            'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
+            'employee_type' => ['nullable', Rule::in(HrisConstants::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
             'date_hired' => ['required', 'date'],
         ]);
@@ -216,7 +208,7 @@ class RecordsManagerController extends Controller
             'designation' => ['nullable', 'string', 'max:255'],
             'Dept_id' => ['nullable', 'exists:departments,Dept_id'],
             'Status' => ['nullable', Rule::in(User::STATUSES)],
-            'employee_type' => ['nullable', Rule::in(self::EMPLOYEE_TYPES)],
+            'employee_type' => ['nullable', Rule::in(HrisConstants::EMPLOYEE_TYPES)],
             'access_level' => ['required', Rule::in($allowedAccessLevels)],
             'date_hired' => ['required', 'date'],
         ]);
@@ -349,7 +341,7 @@ class RecordsManagerController extends Controller
             ->pluck('max_seq', 'employee_type');
 
         $sequentialCounters = [];
-        foreach (self::EMPLOYEE_TYPES as $type) {
+        foreach (HrisConstants::EMPLOYEE_TYPES as $type) {
             $sequentialCounters[$type] = (int) ($maxSequentialByType[$type] ?? 0);
         }
 
@@ -405,8 +397,8 @@ class RecordsManagerController extends Controller
                 $rowErrors[] = 'Email is not valid.';
             }
 
-            if ($empType !== '' && ! in_array($empType, self::EMPLOYEE_TYPES, true)) {
-                $rowErrors[] = 'Employee Type must be one of: '.implode(', ', self::EMPLOYEE_TYPES).'.';
+            if ($empType !== '' && ! in_array($empType, HrisConstants::EMPLOYEE_TYPES, true)) {
+                $rowErrors[] = 'Employee Type must be one of: '.implode(', ', HrisConstants::EMPLOYEE_TYPES).'.';
             }
 
             if ($accessLevel !== '' && ! in_array($accessLevel, $allowedAccessLevels, true)) {
