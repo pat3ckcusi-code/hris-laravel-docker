@@ -8,6 +8,7 @@ use App\Models\HRAuditTrail;
 use App\Models\User;
 use App\Notifications\EmployeeDefaultPasswordNotification;
 use App\Services\EmployeeAssignmentService;
+use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use Throwable;
 
 class RecordsManagerController extends Controller
@@ -403,7 +405,8 @@ class RecordsManagerController extends Controller
                 $rowErrors[] = 'Access Level must be one of: '.implode(', ', $allowedAccessLevels).'.';
             }
 
-            if ($dateHired !== '' && ! strtotime($dateHired)) {
+            $parsedDateHired = $dateHired !== '' ? $this->parseImportDate($dateHired) : null;
+            if ($dateHired !== '' && $parsedDateHired === null) {
                 $rowErrors[] = 'Date Hired is not a valid date.';
             }
 
@@ -434,7 +437,7 @@ class RecordsManagerController extends Controller
                 $empNo = $empNoInput;
             } else {
                 // Generate EmpNo: YY (from date_hired year) + 5-digit sequential per type
-                $year = substr(date('Y', strtotime($dateHired)), 2, 2);
+                $year = $parsedDateHired->format('y');
                 $sequentialCounters[$empType]++;
                 $empNo = $year.str_pad($sequentialCounters[$empType], 5, '0', STR_PAD_LEFT);
             }
@@ -460,7 +463,7 @@ class RecordsManagerController extends Controller
                 'access_level' => $accessLevel,
                 'password' => Hash::make($defaultPassword),
                 'force_password_change' => true,
-                'date_hired' => $dateHired,
+                'date_hired' => $parsedDateHired->format('Y-m-d'),
             ]);
 
             try {
@@ -490,6 +493,40 @@ class RecordsManagerController extends Controller
             'failed' => $failed,
             'warnings' => $warnings,
         ]);
+    }
+
+    /**
+     * Parses a "Date Hired" cell value that may arrive as an ISO string, a
+     * day-first slash/dash date, an Excel serial number, or another common
+     * format depending on how the source spreadsheet formatted the cell.
+     */
+    private function parseImportDate(string $value): ?Carbon
+    {
+        if (is_numeric($value)) {
+            try {
+                return Carbon::instance(ExcelDate::excelToDateTimeObject((float) $value));
+            } catch (Throwable) {
+                return null;
+            }
+        }
+
+        foreach (['Y-m-d', 'd/m/Y', 'd-m-Y', 'd/m/y', 'd-m-y'] as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $value);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($date !== false) {
+                return $date->startOfDay();
+            }
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function ensureRecordsManager(Request $request): void
