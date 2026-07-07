@@ -12,6 +12,18 @@ const colorSet = {
     red: '#dc3545',
 };
 
+// Permanent stays orange and Job Orders stays blue to match the chart's
+// previous single-color default; other types fill in from the rest of the palette.
+const employeeTypeColors = {
+    'Permanent': colorSet.orange,
+    'Job Orders': colorSet.blue,
+    'Elected Officials': colorSet.indigo,
+    'Co-Terminus': colorSet.cyan,
+    'Casual': colorSet.yellow,
+    'Contractual': colorSet.green,
+    'Unspecified': colorSet.gray,
+};
+
 const createBarChart = (canvasId, label, payload, color = colorSet.blue, optionsOverride = {}) => {
     const ctx = document.getElementById(canvasId)?.getContext('2d');
     if (!ctx) return null;
@@ -39,6 +51,44 @@ const createBarChart = (canvasId, label, payload, color = colorSet.blue, options
             },
         }, optionsOverride),
     });
+};
+
+const stackedDatasets = (payload) => (payload?.datasets || []).map((ds) => ({
+    label: ds.label,
+    data: ds.data,
+    backgroundColor: employeeTypeColors[ds.label] || colorSet.gray,
+    borderRadius: 4,
+}));
+
+const createStackedBarChart = (canvasId, payload, optionsOverride = {}) => {
+    const ctx = document.getElementById(canvasId)?.getContext('2d');
+    if (!ctx) return null;
+
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: payload?.labels || [],
+            datasets: stackedDatasets(payload),
+        },
+        options: Object.assign({
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true },
+            },
+            plugins: {
+                legend: { display: true, position: 'bottom' },
+            },
+        }, optionsOverride),
+    });
+};
+
+const updateStackedBarChart = (chart, payload) => {
+    if (!chart) return;
+    chart.data.labels = payload?.labels || [];
+    chart.data.datasets = stackedDatasets(payload);
+    chart.update();
 };
 
 const createPieChart = (canvasId, payload, colors, optionsOverride = {}) => {
@@ -77,22 +127,21 @@ const initializeWorkforceCharts = (root, initialData) => {
     if (!root) return;
 
     const charts = {
-        totalWorkforceChart: createBarChart(
+        totalWorkforceChart: createStackedBarChart(
             'totalWorkforceChart',
-            'Total Workforce',
-            initialData.workforce_per_department || initialData.total_workforce,
-            colorSet.orange,
+            initialData.workforce_per_department,
             {
                 onClick: (evt, elements) => {
                     if (elements.length > 0) {
-                        const idx = elements[0].index;
-                        const department = charts.totalWorkforceChart.data.labels[idx];
-                        fetchEmployees('department', department, `Employees in ${department}`);
+                        const { index, datasetIndex } = elements[0];
+                        const department = charts.totalWorkforceChart.data.labels[index];
+                        const type = charts.totalWorkforceChart.data.datasets[datasetIndex].label;
+                        fetchEmployees({ department, employee_type: type }, `${type} — ${department}`);
                     }
                 },
                 scales: {
-                    x: { display: false },
-                    y: { title: { display: true, text: 'Total Employees' } },
+                    x: { stacked: true, display: false },
+                    y: { stacked: true, title: { display: true, text: 'Total Employees' } },
                 },
             }
         ),
@@ -117,12 +166,18 @@ const initializeWorkforceCharts = (root, initialData) => {
 
     // Attach click handlers for pie and other charts to open filtered employee popups
     const attachChartClickHandlers = () => {
+        // Include the currently-selected department/employee type (if any) so a chart
+        // segment's drill-down list matches what the chart itself is scoped to, instead
+        // of always pulling the org-wide total for that segment.
+        const activeDepartment = () => filter?.value || undefined;
+        const activeEmployeeType = () => typeFilter?.value || undefined;
+
         if (charts.genderChart) {
             charts.genderChart.options.onClick = function (evt, elements) {
                 if (elements.length > 0) {
                     const idx = elements[0].index;
                     const label = this.data.labels[idx];
-                    fetchEmployees('gender', label, `Employees: ${label}`);
+                    fetchEmployees({ department: activeDepartment(), employee_type: activeEmployeeType(), gender: label }, `Employees: ${label}`);
                 }
             };
             charts.genderChart.update();
@@ -133,8 +188,9 @@ const initializeWorkforceCharts = (root, initialData) => {
                 if (elements.length > 0) {
                     const idx = elements[0].index;
                     const label = this.data.labels[idx];
-                    // filter by employee_type on click
-                    fetchEmployees('employee_type', label, `Employees: ${label}`);
+                    // filter by employee_type on click (the clicked segment is already the
+                    // most specific value here, so it takes precedence over the dropdown)
+                    fetchEmployees({ department: activeDepartment(), employee_type: label }, `Employees: ${label}`);
                 }
             };
             charts.employmentStatusChart.update();
@@ -145,7 +201,7 @@ const initializeWorkforceCharts = (root, initialData) => {
                 if (elements.length > 0) {
                     const idx = elements[0].index;
                     const label = this.data.labels[idx];
-                    fetchEmployees('age_group', label, `Employees: ${label}`);
+                    fetchEmployees({ department: activeDepartment(), employee_type: activeEmployeeType(), age_group: label }, `Employees: ${label}`);
                 }
             };
             charts.ageGroupChart.update();
@@ -156,7 +212,7 @@ const initializeWorkforceCharts = (root, initialData) => {
                 if (elements.length > 0) {
                     const idx = elements[0].index;
                     const label = this.data.labels[idx];
-                    fetchEmployees('length_of_service', label, `Employees: ${label}`);
+                    fetchEmployees({ department: activeDepartment(), employee_type: activeEmployeeType(), length_of_service: label }, `Employees: ${label}`);
                 }
             };
             charts.lengthOfServiceChart.update();
@@ -165,10 +221,10 @@ const initializeWorkforceCharts = (root, initialData) => {
 
     const chartUrl = root.dataset.chartUrl || '';
     const filter = document.getElementById('departmentFilter');
+    const typeFilter = document.getElementById('employeeTypeFilter');
 
     const refreshCharts = (payload) => {
-        // totalWorkforceChart uses workforce_per_department labels/values
-        updateChart(charts.totalWorkforceChart, payload.workforce_per_department || payload.total_workforce);
+        updateStackedBarChart(charts.totalWorkforceChart, payload.workforce_per_department);
         updateChart(charts.genderChart, payload.gender_distribution);
         updateChart(charts.employmentStatusChart, payload.employment_status);
         updateChart(charts.ageGroupChart, payload.age_group_distribution);
@@ -188,13 +244,15 @@ const initializeWorkforceCharts = (root, initialData) => {
         { key: 'date_hired', label: 'Date Hired' },
     ];
 
-    // Fetch employees for a given filter and render popup
-    const fetchEmployees = async (key, value, title = 'Employees', columns = null) => {
+    // Fetch employees for a given set of filters (e.g. { department: 'IT', employee_type: 'Job Orders' }) and render popup
+    const fetchEmployees = async (filters, title = 'Employees', columns = null) => {
         try {
             const params = new URLSearchParams();
-            if (key && value !== undefined && value !== null) {
-                params.append(key, String(value));
-            }
+            Object.entries(filters || {}).forEach(([key, value]) => {
+                if (key && value !== undefined && value !== null) {
+                    params.append(key, String(value));
+                }
+            });
 
             const url = `${root.dataset.chartUrl.replace(/chart-data$/, 'employees/filter')}?${params.toString()}`;
             const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -233,9 +291,13 @@ const initializeWorkforceCharts = (root, initialData) => {
         });
     };
 
-    const loadChartData = async (department) => {
+    const loadChartData = async () => {
         try {
-            const query = department ? `?department=${encodeURIComponent(department)}` : '';
+            const params = new URLSearchParams();
+            if (filter?.value) params.append('department', filter.value);
+            if (typeFilter?.value) params.append('employee_type', typeFilter.value);
+            const query = params.toString() ? `?${params.toString()}` : '';
+
             const response = await fetch(`${chartUrl}${query}`, {
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -254,8 +316,14 @@ const initializeWorkforceCharts = (root, initialData) => {
     };
 
     if (filter) {
-        filter.addEventListener('change', (event) => {
-            loadChartData(event.target.value);
+        filter.addEventListener('change', () => {
+            loadChartData();
+        });
+    }
+
+    if (typeFilter) {
+        typeFilter.addEventListener('change', () => {
+            loadChartData();
         });
     }
 
@@ -269,7 +337,7 @@ const initializeWorkforceCharts = (root, initialData) => {
             const title = card.dataset.title || 'Employees';
 
             if (filter === 'award_recipients') {
-                fetchEmployees('award_recipients', '1', title, [
+                fetchEmployees({ award_recipients: '1' }, title, [
                     { key: 'emp_no', label: 'Employee No' },
                     { key: 'name', label: 'Name' },
                     { key: 'department', label: 'Department' },
@@ -277,7 +345,7 @@ const initializeWorkforceCharts = (root, initialData) => {
                     { key: 'years_of_service_int', label: 'Years of Service' },
                 ]);
             } else if (filter === 'sixty_plus') {
-                fetchEmployees('sixty_plus', '1', title, [
+                fetchEmployees({ sixty_plus: '1' }, title, [
                     { key: 'emp_no', label: 'Employee No' },
                     { key: 'name', label: 'Name' },
                     { key: 'department', label: 'Department' },
@@ -317,149 +385,6 @@ const renderPagination = (container, pagination, onPage) => {
             if (button.disabled) return;
             onPage(Number(button.dataset.page));
         });
-    });
-};
-
-const bindRecordsModule = (root) => {
-    if (!root || root.dataset.module !== 'records') return;
-
-    const tableBody = document.querySelector('#recordsTable tbody');
-    const search = document.getElementById('recordsSearch');
-    const department = document.getElementById('recordsDepartment');
-    const status = document.getElementById('recordsStatus');
-    const filterBtn = document.getElementById('recordsFilterBtn');
-    const paginationRoot = document.getElementById('recordsPagination');
-    const csrf = root.dataset.csrf || '';
-
-    const statusOption = (value, current) => `<option value="${value}" ${(current || '') === value ? 'selected' : ''}>${value || 'Unset'}</option>`;
-
-    const renderRows = (rows) => {
-        if (!tableBody) return;
-
-        tableBody.innerHTML = rows
-            .map(
-                (row) => `
-                    <tr data-id="${row.id}">
-                        <td>${row.emp_no ?? ''}</td>
-                        <td>${row.name ?? ''}</td>
-                        <td>${row.department ?? ''}</td>
-                        <td>${row.position ?? ''}</td>
-                        <td>
-                            <select class="hrm-status-select">
-                                ${statusOption('', row.employment_status)}
-                                ${statusOption('Active', row.employment_status)}
-                                ${statusOption('Inactive', row.employment_status)}
-                                ${statusOption('Separated', row.employment_status)}
-                            </select>
-                        </td>
-                        <td>${row.history ?? ''}</td>
-                        <td>
-                            <button class="hrm-btn-secondary hrm-record-edit" type="button">Edit</button>
-                            <button class="hrm-btn hrm-record-save-status" type="button">Save Status</button>
-                            <button class="hrm-btn-secondary hrm-record-update" type="button">Update</button>
-                            <button class="hrm-btn-secondary hrm-record-compliance" type="button">Generate Compliance Report</button>
-                        </td>
-                    </tr>
-                `
-            )
-            .join('');
-    };
-
-    const fetchRows = async (page = 1) => {
-        const params = new URLSearchParams({
-            search: search?.value || '',
-            department: department?.value || '',
-            status: status?.value || '',
-            page: String(page),
-        });
-
-        try {
-            const response = await fetch(`${root.dataset.url}?${params.toString()}`);
-            if (!response.ok) throw new Error('Records load failed.');
-
-            const data = await response.json();
-            renderRows(data.rows || []);
-            renderPagination(paginationRoot, data.pagination, fetchRows);
-        } catch (error) {
-            await Swal.fire('Error', 'Failed to load employee profiles.', 'error');
-        }
-    };
-
-    filterBtn?.addEventListener('click', () => fetchRows(1));
-
-    const initialPagination = JSON.parse(root.dataset.pagination || '{"current_page":1,"last_page":1}');
-    renderPagination(paginationRoot, initialPagination, fetchRows);
-
-    tableBody?.addEventListener('click', async (event) => {
-        const button = event.target.closest('button');
-        const row = event.target.closest('tr');
-        if (!button || !row) return;
-
-        const id = row.dataset.id;
-        if (!id) return;
-
-        if (button.classList.contains('hrm-record-save-status')) {
-            const select = row.querySelector('.hrm-status-select');
-            const updateUrl = (root.dataset.updateUrl || '').replace('__ID__', id);
-
-            try {
-                const response = await fetch(updateUrl, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': csrf,
-                    },
-                    body: JSON.stringify({ Status: select?.value || null }),
-                });
-
-                if (!response.ok) throw new Error('Failed to update employment status.');
-                await Swal.fire('Success', 'Employment status updated.', 'success');
-                fetchRows(1);
-            } catch (error) {
-                await Swal.fire('Error', 'Failed to update employment status.', 'error');
-            }
-
-            return;
-        }
-
-        let action = null;
-        let title = 'Action completed';
-
-        if (button.classList.contains('hrm-record-edit')) {
-            action = 'edit';
-            title = 'Edit action logged';
-        }
-
-        if (button.classList.contains('hrm-record-update')) {
-            action = 'update';
-            title = 'Update action logged';
-        }
-
-        if (button.classList.contains('hrm-record-compliance')) {
-            action = 'compliance-report';
-            title = 'Compliance action logged';
-        }
-
-        if (!action) return;
-
-        try {
-            const actionUrl = (root.dataset.actionUrl || '').replace('__ID__', id);
-            const response = await fetch(actionUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': csrf,
-                },
-                body: JSON.stringify({ action }),
-            });
-
-            if (!response.ok) throw new Error('Failed to log records action.');
-            await Swal.fire('Success', title, 'success');
-        } catch (error) {
-            await Swal.fire('Error', 'Failed to process records action.', 'error');
-        }
     });
 };
 
@@ -734,13 +659,6 @@ const bindAlertPanel = (root) => {
         .then((data) => {
             const chips = [];
 
-            if (data.stale_leave?.count > 0) {
-                chips.push(makeChip(
-                    `&#x26a0; ${data.stale_leave.count} leave ${data.stale_leave.count === 1 ? 'request' : 'requests'} pending ${data.stale_leave.days}+ days`,
-                    null, 'red'
-                ));
-            }
-
             if (data.open_payroll) {
                 chips.push(makeChip(
                     `&#x26a0; Payroll run "${data.open_payroll.period}" is still in Draft`,
@@ -762,26 +680,12 @@ const bindAlertPanel = (root) => {
                 ));
             });
 
-            if (data.stale_travel > 0) {
-                chips.push(makeChip(
-                    `&#x26a0; ${data.stale_travel} stale travel ${data.stale_travel === 1 ? 'order' : 'orders'}`,
-                    null, 'orange'
-                ));
-            }
-
-            if (data.stale_documents > 0) {
-                chips.push(makeChip(
-                    `&#x26a0; ${data.stale_documents} stale document ${data.stale_documents === 1 ? 'request' : 'requests'}`,
-                    null, 'orange'
-                ));
-            }
-
             if (chips.length === 0) {
-                strip.innerHTML = `<span class="hrm-alert-chip" style="border-left-color:#28a745">&#x2713; All clear &mdash; no urgent items</span>`;
-            } else {
-                strip.innerHTML = chips.join('');
+                strip.style.display = 'none';
+                return;
             }
 
+            strip.innerHTML = chips.join('');
             strip.style.display = 'flex';
         })
         .catch(() => { /* Silently ignore alert fetch failures */ });
@@ -856,12 +760,6 @@ const bindWorkforcePlanning = (root) => {
     let loaded = false;
     let hiringChart = null;
 
-    const milestoneLabel = (years) => {
-        if (years >= 30) return `<span class="hrm-milestone-badge hrm-milestone-30">&#9733;&#9733;&#9733; ${years} YRS</span>`;
-        if (years >= 20) return `<span class="hrm-milestone-badge hrm-milestone-20">&#9733;&#9733; ${years} YRS</span>`;
-        return `<span class="hrm-milestone-badge hrm-milestone-10">&#9733; ${years} YRS</span>`;
-    };
-
     const loadPlanningData = () => {
         fetch(planningUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then((r) => r.json())
@@ -891,28 +789,6 @@ const bindWorkforcePlanning = (root) => {
                     netEl.querySelector('h3').style.color = net >= 0 ? '#28a745' : '#dc3545';
                 }
 
-                // Milestones table
-                const milEl = document.getElementById('milestonesTable');
-                if (milEl) {
-                    const ms = data.milestones || [];
-                    if (ms.length === 0) {
-                        milEl.innerHTML = `<p style="color:#94a3b8;padding:0.5rem 0;">No service milestones in the next 90 days.</p>`;
-                    } else {
-                        const rows = ms.map((m) => `<tr>
-                            <td>${m.name ?? ''}</td>
-                            <td>${m.department ?? ''}</td>
-                            <td>${milestoneLabel(m.years)}</td>
-                            <td>${m.anniversary ?? ''}</td>
-                            <td>${m.days_away === 0 ? 'Today!' : `In ${m.days_away} days`}</td>
-                        </tr>`).join('');
-
-                        milEl.innerHTML = `<table class="hrm-table">
-                            <thead><tr><th>Name</th><th>Department</th><th>Milestone</th><th>Anniversary</th><th>Days Away</th></tr></thead>
-                            <tbody>${rows}</tbody>
-                        </table>`;
-                    }
-                }
-
                 // Hiring trend chart
                 if (data.trend && !hiringChart) {
                     hiringChart = createBarChart('hiringTrendChart', 'New Hires', data.trend, colorSet.cyan);
@@ -933,6 +809,101 @@ const bindWorkforcePlanning = (root) => {
             loadPlanningData();
         }
     });
+
+    loaded = true;
+    loadPlanningData();
+};
+
+// ── Service Milestones (standalone page) ─────────────────────────────────
+
+const bindServiceMilestonesModule = (root) => {
+    if (!root || root.dataset.module !== 'service-milestones') return;
+
+    const container = document.getElementById('milestonesTable');
+    const planningUrl = root.dataset.planningUrl;
+    if (!container || !planningUrl) return;
+
+    const milestoneLabel = (years) => {
+        if (years >= 30) return `<span class="hrm-milestone-badge hrm-milestone-30">&#9733;&#9733;&#9733; ${years} YRS</span>`;
+        if (years >= 20) return `<span class="hrm-milestone-badge hrm-milestone-20">&#9733;&#9733; ${years} YRS</span>`;
+        return `<span class="hrm-milestone-badge hrm-milestone-10">&#9733; ${years} YRS</span>`;
+    };
+
+    const milestoneYears = [10, 15, 20, 25, 30];
+    const cardEls = milestoneYears.map((years) => document.getElementById(`msYear${years}`));
+    const clearBtn = document.getElementById('msClearFilter');
+
+    let allMilestones = [];
+    let activeYear = null;
+
+    const renderCards = (ms) => {
+        milestoneYears.forEach((years) => {
+            const el = document.getElementById(`msYear${years}`);
+            if (!el) return;
+            el.querySelector('h3').textContent = ms.filter((m) => m.years === years).length;
+        });
+    };
+
+    const renderTable = (ms) => {
+        if (ms.length === 0) {
+            container.innerHTML = activeYear
+                ? `<p style="color:#94a3b8;padding:0.5rem 0;">No ${activeYear}-year milestones remaining this year.</p>`
+                : `<p style="color:#94a3b8;padding:0.5rem 0;">No service milestones remaining this year.</p>`;
+            return;
+        }
+
+        const rows = ms.map((m) => `<tr class="${m.days_away <= 7 ? 'ms-row-urgent' : ''}">
+            <td>${m.name ?? ''}</td>
+            <td>${m.department ?? ''}</td>
+            <td>${milestoneLabel(m.years)}</td>
+            <td>${m.anniversary ?? ''}</td>
+            <td>${m.days_away === 0 ? 'Today!' : `In ${m.days_away} days`}</td>
+        </tr>`).join('');
+
+        container.innerHTML = `<table class="hrm-table">
+            <thead><tr><th>Name</th><th>Department</th><th>Milestone</th><th>Anniversary</th><th>Days Away</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    };
+
+    const applyFilter = () => {
+        cardEls.forEach((el) => {
+            if (!el) return;
+            const isActive = activeYear !== null && Number(el.dataset.year) === activeYear;
+            el.classList.toggle('ms-card-active', isActive);
+            el.setAttribute('aria-pressed', String(isActive));
+        });
+
+        if (clearBtn) clearBtn.style.display = activeYear === null ? 'none' : 'inline-flex';
+
+        const filtered = activeYear === null ? allMilestones : allMilestones.filter((m) => m.years === activeYear);
+        renderTable(filtered);
+    };
+
+    cardEls.forEach((el) => {
+        if (!el) return;
+        el.addEventListener('click', () => {
+            const years = Number(el.dataset.year);
+            activeYear = activeYear === years ? null : years;
+            applyFilter();
+        });
+    });
+
+    clearBtn?.addEventListener('click', () => {
+        activeYear = null;
+        applyFilter();
+    });
+
+    fetch(planningUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => r.json())
+        .then((data) => {
+            allMilestones = data.milestones || [];
+            renderCards(allMilestones);
+            applyFilter();
+        })
+        .catch(() => {
+            container.innerHTML = `<p style="color:#dc3545;padding:0.5rem 0;">Failed to load service milestones.</p>`;
+        });
 };
 
 // ── Enhancement 2: Attendance Overview ───────────────────────────────────
@@ -1177,7 +1148,6 @@ if (moduleRoot && moduleRoot.dataset.module === 'reports' && moduleRoot !== dash
     initializeWorkforceCharts(moduleRoot, window.hrManagerInitialData || {});
 }
 
-bindRecordsModule(moduleRoot);
 bindLeaveModule(moduleRoot);
 if (moduleRoot?.dataset?.module === 'leave') {
     bindLeaveAnalytics(moduleRoot);
@@ -1185,6 +1155,7 @@ if (moduleRoot?.dataset?.module === 'leave') {
 if (moduleRoot?.dataset?.module === 'records') {
     bindWorkforcePlanning(moduleRoot);
 }
+bindServiceMilestonesModule(moduleRoot);
 bindFrontdeskModule(moduleRoot);
 bindAuditModule(moduleRoot);
 bindSimpleSuccessButtons();

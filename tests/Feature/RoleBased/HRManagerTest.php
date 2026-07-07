@@ -42,6 +42,96 @@ class HRManagerTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_chart_data_workforce_per_department_breaks_down_by_employee_type(): void
+    {
+        $hr = $this->createHRManager();
+
+        $dept = \App\Models\Department::first();
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Job Orders']);
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Co-Terminus']);
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Elected Officials']);
+
+        $response = $this->actingAs($hr)->get(route('hr-manager.chart-data'));
+
+        $response->assertStatus(200);
+
+        $payload = $response->json('workforce_per_department');
+        $this->assertArrayHasKey('labels', $payload);
+        $this->assertArrayHasKey('datasets', $payload);
+
+        $labels = collect($payload['datasets'])->pluck('label');
+        foreach (['Permanent', 'Job Orders', 'Co-Terminus', 'Elected Officials'] as $type) {
+            $this->assertTrue($labels->contains($type), "Expected a dataset for {$type}");
+        }
+
+        $deptIndex = array_search($dept->Dept_name, $payload['labels'], true);
+        foreach ($payload['datasets'] as $dataset) {
+            if (in_array($dataset['label'], ['Permanent', 'Job Orders', 'Co-Terminus', 'Elected Officials'], true)) {
+                $this->assertSame(1, $dataset['data'][$deptIndex]);
+            }
+        }
+    }
+
+    public function test_employees_by_filter_respects_department_and_employee_type(): void
+    {
+        $hr = $this->createHRManager();
+
+        $dept = \App\Models\Department::first();
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Job Orders']);
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);
+
+        $response = $this->actingAs($hr)->get(route('hr-manager.employees.filter', [
+            'department' => $dept->Dept_id,
+            'employee_type' => 'Job Orders',
+        ]));
+
+        $response->assertStatus(200);
+        $rows = $response->json();
+        $this->assertNotEmpty($rows);
+        foreach ($rows as $row) {
+            $this->assertSame('Job Orders', $row['employee_type']);
+        }
+    }
+
+    public function test_chart_data_scoped_by_employee_type_filter(): void
+    {
+        $hr = $this->createHRManager();
+
+        $deptA = \App\Models\Department::first() ?? \App\Models\Department::forceCreate([
+            'DeptCode' => 'TEST-A', 'Dept_name' => 'Test Department A', 'EmpNo' => 'TESTDEPT-A', 'Designation' => 'Test',
+        ]);
+        $deptB = \App\Models\Department::forceCreate([
+            'DeptCode' => 'TEST-B', 'Dept_name' => 'Test Department B', 'EmpNo' => 'TESTDEPT-B', 'Designation' => 'Test',
+        ]);
+
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'employee_type' => 'Job Orders']);
+        $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'employee_type' => 'Job Orders']);
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'employee_type' => 'Permanent']);
+
+        // employee_type alone: every chart should total to the 2 Job Orders employees.
+        $response = $this->actingAs($hr)->get(route('hr-manager.chart-data', ['employee_type' => 'Job Orders']));
+        $response->assertStatus(200);
+
+        $payload = $response->json();
+        $this->assertSame(2, array_sum($payload['gender_distribution']['values']));
+        $this->assertSame(2, array_sum($payload['age_group_distribution']['values']));
+        $this->assertSame(2, array_sum($payload['length_of_service']['values']));
+        $this->assertSame(['Job Orders'], $payload['employment_status']['labels']);
+        $this->assertSame(
+            2,
+            collect($payload['workforce_per_department']['datasets'])->flatMap(fn ($ds) => $ds['data'])->sum()
+        );
+
+        // department + employee_type combined: narrows down to the single matching employee.
+        $combined = $this->actingAs($hr)->get(route('hr-manager.chart-data', [
+            'department' => $deptA->Dept_id,
+            'employee_type' => 'Job Orders',
+        ]));
+        $combined->assertStatus(200);
+        $this->assertSame(1, array_sum($combined->json('gender_distribution.values')));
+    }
+
     public function test_chart_data_stress_test_with_5000_records(): void
     {
         $hr = $this->createHRManager();

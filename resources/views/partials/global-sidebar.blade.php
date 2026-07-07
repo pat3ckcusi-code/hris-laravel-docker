@@ -62,6 +62,7 @@
         'analytics'           => 'fas fa-chart-line fa-fw',
         'reports'             => 'fas fa-chart-bar fa-fw',
         'audit'               => 'fas fa-shield-halved fa-fw',
+        'milestones'          => 'fas fa-award fa-fw',
 
         // Payroll
         'payroll_create'      => 'fas fa-plus-circle fa-fw',
@@ -171,7 +172,7 @@
         // ─── HR Manager ───────────────────────────────────
         'hr manager' => [
             ['section' => 'Dashboard'],
-            ['label' => 'Charts &amp; Analytics', 'icon' => 'analytics', 'route' => 'hr-manager.dashboard', 'active' => ['hr-manager.dashboard'], 'badge' => 'hr_alerts'],
+            ['label' => 'Charts &amp; Analytics', 'icon' => 'analytics', 'route' => 'hr-manager.dashboard', 'active' => ['hr-manager.dashboard']],
 
             ['section' => 'Operations'],
             ['label' => 'Records Management', 'icon' => 'records',      'route' => 'hr-manager.records',              'active' => ['hr-manager.records']],
@@ -193,6 +194,7 @@
 
             ['section' => 'Reports'],
             ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',     'active' => ['hr-manager.reports']],
+            ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
             ['label' => 'Leave Ledger',       'icon' => 'audit',     'route' => 'hr-manager.leave-ledger','active' => ['hr-manager.leave-ledger']],
             ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],
 
@@ -392,41 +394,6 @@
         },
         'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),
         'approved_document_requests' => fn () => \App\Models\DocumentRequest::whereIn('status', ['Accepted', 'Completed'])->count(),
-        'hr_alerts' => function () {
-            $staleDays = 3;
-            $count = 0;
-            if (\Illuminate\Support\Facades\Schema::hasTable('leave_requests')) {
-                $count += \Illuminate\Support\Facades\DB::table('leave_requests')
-                    ->whereRaw('LOWER(status) = ?', ['pending'])
-                    ->where('created_at', '<', now()->subDays($staleDays))
-                    ->count();
-            }
-            if (\Illuminate\Support\Facades\Schema::hasTable('travel_orders')) {
-                $count += \Illuminate\Support\Facades\DB::table('travel_orders')
-                    ->whereRaw('LOWER(status) = ?', ['pending'])
-                    ->where('created_at', '<', now()->subDays($staleDays))
-                    ->count();
-            }
-            if (\Illuminate\Support\Facades\Schema::hasTable('document_requests')) {
-                $count += \Illuminate\Support\Facades\DB::table('document_requests')
-                    ->whereRaw('LOWER(status) = ?', ['requested'])
-                    ->where('requested_on', '<', now()->subDays($staleDays))
-                    ->count();
-            }
-            if (\Illuminate\Support\Facades\Schema::hasTable('payroll_exceptions')) {
-                $count += \Illuminate\Support\Facades\DB::table('payroll_exceptions')
-                    ->where('resolved_flag', false)
-                    ->count();
-            }
-            if (\Illuminate\Support\Facades\Schema::hasTable('payroll_runs')) {
-                $openRun = \Illuminate\Support\Facades\DB::table('payroll_runs')
-                    ->where('status', 'draft')
-                    ->whereNull('locked_at')
-                    ->exists();
-                if ($openRun) $count++;
-            }
-            return $count;
-        },
     ];
 
     // ── OIC: merge Self-Service (employee) + Department Management (OIC role) ──

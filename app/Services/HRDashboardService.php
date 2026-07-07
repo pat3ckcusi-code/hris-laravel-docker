@@ -9,6 +9,7 @@ use App\Models\PayrollException;
 use App\Models\PayrollRun;
 use App\Models\Pds;
 use App\Models\User;
+use App\Support\HrisConstants;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,7 +35,9 @@ class HRDashboardService
     {
         $chartData = $this->buildChartData(null);
 
-        $totalEmployees = array_sum($chartData['workforce_per_department']['values']);
+        $totalEmployees = collect($chartData['workforce_per_department']['datasets'])
+            ->flatMap(fn ($ds) => $ds['data'])
+            ->sum();
 
         $typeMap = array_combine(
             $chartData['employment_status']['labels'],
@@ -130,13 +133,13 @@ class HRDashboardService
     // ── Workforce chart data ──────────────────────────────────────────────────
 
     /** @return array<string, array<string, mixed>> */
-    public function buildChartData(?int $departmentId): array
+    public function buildChartData(?int $departmentId, ?string $employeeType = null): array
     {
-        $employees = $this->employeeQuery($departmentId)->get([
+        $employees = $this->employeeQuery($departmentId, $employeeType)->get([
             'id', 'Dept_id', 'Status', 'employee_type', 'created_at', 'date_hired',
         ]);
 
-        $workforcePerDepartment = $this->workforcePerDepartment($departmentId);
+        $workforcePerDepartment = $this->workforcePerDepartment($departmentId, $employeeType);
         $totalWorkforce = $this->countByKey($employees, 'employee_type', 'Unspecified');
         $employmentStatus = $this->countByKey($employees, 'employee_type', 'Unknown');
 
@@ -196,7 +199,7 @@ class HRDashboardService
     }
 
     /** @return Builder<User> */
-    private function employeeQuery(?int $departmentId): Builder
+    private function employeeQuery(?int $departmentId, ?string $employeeType = null): Builder
     {
         $query = User::query()
             ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee']);
@@ -205,20 +208,29 @@ class HRDashboardService
             $query->where('Dept_id', $departmentId);
         }
 
+        if ($employeeType !== null) {
+            $query->where('employee_type', $employeeType);
+        }
+
         return $query;
     }
 
-    /** @return array{labels: array<int, string>, values: array<int, int>} */
-    private function workforcePerDepartment(?int $departmentId): array
+    /** @return array{labels: array<int, string>, datasets: array<int, array{label: string, data: array<int, int>}>} */
+    private function workforcePerDepartment(?int $departmentId, ?string $employeeType = null): array
     {
         $q = Department::query()
             ->select('departments.Dept_name')
+            ->selectRaw("TRIM(COALESCE(users.employee_type, '')) as employee_type")
             ->selectRaw('COUNT(users.id) as total')
-            ->leftJoin('users', function ($join): void {
+            ->leftJoin('users', function ($join) use ($employeeType): void {
                 $join->on('users.Dept_id', '=', 'departments.Dept_id')
                     ->whereRaw(RoleNormalizer::rawExpression('users.access_level')." = 'employee'");
+
+                if ($employeeType !== null) {
+                    $join->where('users.employee_type', $employeeType);
+                }
             })
-            ->groupBy('departments.Dept_id', 'departments.Dept_name')
+            ->groupBy('departments.Dept_id', 'departments.Dept_name', 'users.employee_type')
             ->orderBy('departments.Dept_name');
 
         if ($departmentId !== null) {
@@ -227,10 +239,68 @@ class HRDashboardService
 
         $rows = $q->get();
 
-        return [
-            'labels' => $rows->pluck('Dept_name')->all(),
-            'values' => $rows->pluck('total')->map(fn ($v) => (int) $v)->all(),
-        ];
+        // Employees whose Dept_id is null (or points at a deleted/invalid department) never
+        // match the join above and would otherwise silently vanish from the chart and the
+        // "Total Employees" card. Surface them under an explicit 'Unassigned' bucket.
+        if ($departmentId === null) {
+            $unassignedQuery = User::query()
+                ->selectRaw("TRIM(COALESCE(employee_type, '')) as employee_type")
+                ->selectRaw('COUNT(*) as total')
+                ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee'])
+                ->where(function ($w): void {
+                    $w->whereNull('Dept_id')->orWhereNotIn('Dept_id', Department::query()->select('Dept_id'));
+                });
+
+            if ($employeeType !== null) {
+                $unassignedQuery->where('employee_type', $employeeType);
+            }
+
+            $unassigned = $unassignedQuery
+                ->groupBy('employee_type')
+                ->get()
+                ->map(fn ($r) => (object) ['Dept_name' => 'Unassigned', 'employee_type' => $r->employee_type, 'total' => $r->total]);
+
+            if ($unassigned->isNotEmpty()) {
+                $rows = $rows->concat($unassigned);
+            }
+        }
+
+        $deptNames = $rows->pluck('Dept_name')->unique()->values()->all();
+
+        $isKnownType = fn (string $type): bool => in_array($type, HrisConstants::EMPLOYEE_TYPES, true);
+
+        // Canonical order first so colors/legend stay stable across "all departments" and
+        // single-department views, then bucket anything blank/unrecognized as 'Unspecified'.
+        $types = collect(HrisConstants::EMPLOYEE_TYPES)
+            ->filter(fn ($t) => $rows->contains(fn ($r) => $r->employee_type === $t))
+            ->values();
+
+        $unspecifiedTotal = $rows
+            ->filter(fn ($r) => $r->employee_type === '' || ! $isKnownType($r->employee_type))
+            ->sum('total');
+
+        // A department with zero employees still produces one placeholder row (blank
+        // employee_type, total 0) via the LEFT JOIN — don't let that alone add a spurious
+        // 'Unspecified' legend entry.
+        if ($unspecifiedTotal > 0) {
+            $types->push('Unspecified');
+        }
+
+        $datasets = $types->map(function (string $type) use ($rows, $deptNames, $isKnownType) {
+            $byDept = $rows
+                ->filter(fn ($r) => $type === 'Unspecified'
+                    ? ($r->employee_type === '' || ! $isKnownType($r->employee_type))
+                    : $r->employee_type === $type)
+                ->groupBy('Dept_name')
+                ->map(fn ($g) => (int) $g->sum('total'));
+
+            return [
+                'label' => $type,
+                'data' => array_map(fn ($d) => $byDept[$d] ?? 0, $deptNames),
+            ];
+        })->values()->all();
+
+        return ['labels' => $deptNames, 'datasets' => $datasets];
     }
 
     /**
@@ -423,12 +493,6 @@ class HRDashboardService
     /** @return array<string, mixed> */
     public function buildAlerts(): array
     {
-        $staleDays = 3;
-
-        $staleLeave = Schema::hasTable('leave_requests')
-            ? (int) DB::table('leave_requests')->whereRaw('LOWER(status) = ?', ['pending'])->where('created_at', '<', now()->subDays($staleDays))->count()
-            : 0;
-
         $openPayroll = null;
         if (Schema::hasTable('payroll_runs')) {
             $run = DB::table('payroll_runs')->where('status', 'draft')->whereNull('locked_at')->orderByDesc('id')->first(['id', 'period']);
@@ -456,22 +520,11 @@ class HRDashboardService
                 ->all();
         }
 
-        $staleTravelOrders = Schema::hasTable('travel_orders')
-            ? (int) DB::table('travel_orders')->whereRaw('LOWER(status) = ?', ['pending'])->where('created_at', '<', now()->subDays($staleDays))->count()
-            : 0;
-
-        $staleDocuments = Schema::hasTable('document_requests')
-            ? (int) DB::table('document_requests')->whereRaw('LOWER(status) = ?', ['requested'])->where('requested_on', '<', now()->subDays($staleDays))->count()
-            : 0;
-
         return [
-            'stale_leave' => ['count' => $staleLeave, 'days' => $staleDays],
             'open_payroll' => $openPayroll,
             'unresolved_exceptions' => $unresolvedExceptions,
             'upcoming_holidays' => $upcomingHolidays,
-            'stale_travel' => $staleTravelOrders,
-            'stale_documents' => $staleDocuments,
-            'total_alerts' => $staleLeave + $staleTravelOrders + $staleDocuments + $unresolvedExceptions + ($openPayroll ? 1 : 0),
+            'total_alerts' => $unresolvedExceptions + ($openPayroll ? 1 : 0),
         ];
     }
 
@@ -594,7 +647,7 @@ class HRDashboardService
                 $anniversary = $hired->copy()->addYears($milestone);
                 $daysUntil = (int) now()->diffInDays($anniversary, false);
 
-                if ($daysUntil >= 0 && $daysUntil <= 90) {
+                if ($daysUntil >= 0 && $anniversary->year === now()->year) {
                     $milestones[] = [
                         'name' => $emp->name,
                         'department' => $emp->Dept_name ?? 'N/A',

@@ -16,6 +16,7 @@ use App\Services\EmployeeAssignmentService;
 use App\Services\HRDashboardService;
 use App\Services\LeaveCardExportService;
 use App\Services\LeaveRequestService;
+use App\Support\HrisConstants;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
@@ -46,6 +47,7 @@ class HRManagerController extends Controller
 
         return view('hr-manager.dashboard', [
             'departments' => $departments,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
             'workforceCards' => $this->dashboardService->buildWorkforceCards(),
             'chartDataUrl' => route('hr-manager.chart-data'),
             'initialChartData' => $this->dashboardService->buildChartData(null),
@@ -59,8 +61,14 @@ class HRManagerController extends Controller
         $departmentId = $request->integer('department');
         $deptKey = $departmentId > 0 ? $departmentId : 'all';
 
-        $data = Cache::remember("hr_chart_data_{$deptKey}", now()->addMinutes(10), function () use ($departmentId) {
-            return $this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null);
+        $employeeType = trim((string) $request->query('employee_type', ''));
+        $typeKey = $employeeType !== '' ? $employeeType : 'all';
+
+        $data = Cache::remember("hr_chart_data_{$deptKey}_{$typeKey}", now()->addMinutes(10), function () use ($departmentId, $employeeType) {
+            return $this->dashboardService->buildChartData(
+                $departmentId > 0 ? $departmentId : null,
+                $employeeType !== '' ? $employeeType : null
+            );
         });
 
         return response()->json($data);
@@ -76,6 +84,7 @@ class HRManagerController extends Controller
         $department = trim((string) $request->query('department', ''));
         $gender = trim((string) $request->query('gender', ''));
         $status = trim((string) $request->query('status', ''));
+        $employeeType = trim((string) $request->query('employee_type', ''));
         $ageGroup = trim((string) $request->query('age_group', ''));
         $lengthOfService = trim((string) $request->query('length_of_service', ''));
         $awardRecipients = trim((string) $request->query('award_recipients', ''));
@@ -110,6 +119,14 @@ class HRManagerController extends Controller
 
         if ($status !== '') {
             $query->where('users.Status', $status);
+        }
+
+        if ($employeeType !== '') {
+            if (strcasecmp($employeeType, 'Unspecified') === 0) {
+                $query->where(fn ($q) => $q->whereNull('users.employee_type')->orWhere('users.employee_type', ''));
+            } else {
+                $query->where('users.employee_type', $employeeType);
+            }
         }
 
         $rows = $query->orderBy('users.last_name')->orderBy('users.first_name')->get();
@@ -513,10 +530,15 @@ class HRManagerController extends Controller
         $this->ensureHrManager($request);
 
         $departmentId = $request->integer('department');
+        $employeeType = trim((string) $request->query('employee_type', ''));
 
         return view('hr-manager.reports', [
             'departments' => $this->departmentOptions(),
-            'initialChartData' => $this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null),
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
+            'initialChartData' => $this->dashboardService->buildChartData(
+                $departmentId > 0 ? $departmentId : null,
+                $employeeType !== '' ? $employeeType : null
+            ),
             'reportsChartUrl' => route('hr-manager.chart-data'),
             'exportPdfUrl' => route('hr-manager.reports.export', ['format' => 'pdf']),
             'exportExcelUrl' => route('hr-manager.reports.export', ['format' => 'excel']),
@@ -540,6 +562,16 @@ class HRManagerController extends Controller
             fputcsv($handle, $headers);
 
             foreach ($chart as $metric => $payload) {
+                if (isset($payload['datasets'])) {
+                    foreach ($payload['datasets'] as $dataset) {
+                        foreach ($payload['labels'] as $index => $label) {
+                            fputcsv($handle, [$metric, "{$label} — {$dataset['label']}", (string) ($dataset['data'][$index] ?? 0)]);
+                        }
+                    }
+
+                    continue;
+                }
+
                 $labels = $payload['labels'] ?? [];
                 $values = $payload['values'] ?? [];
                 foreach ($labels as $index => $label) {
@@ -695,6 +727,15 @@ class HRManagerController extends Controller
         $data = Cache::remember('hr_workforce_planning', now()->addMinutes(15), fn () => $this->dashboardService->buildWorkforcePlanning());
 
         return response()->json($data);
+    }
+
+    public function serviceMilestones(Request $request): View
+    {
+        $this->ensureHrManager($request);
+
+        return view('hr-manager.service-milestones', [
+            'planningDataUrl' => route('hr-manager.records.planning-data'),
+        ]);
     }
 
     // ── Enhancement 2: Attendance Overview ────────────────────────────────

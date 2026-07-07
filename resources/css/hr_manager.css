@@ -404,6 +404,147 @@
 .hrm-milestone-20 { background: #fef3c7; color: #92400e; }
 .hrm-milestone-30 { background: #fce7f3; color: #9d174d; }
 
+/* ── Service Milestones (standalone page) ─────────────────────── */
+.ms-cards {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.ms-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid #d9e2ef;
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 6px 18px rgba(13, 33, 62, 0.06);
+    border-top: 3px solid var(--ms-tier-color, #0891b2);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ms-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(13, 33, 62, 0.1);
+}
+
+.ms-card:focus-visible {
+    outline: 2px solid var(--ms-tier-color, #0891b2);
+    outline-offset: 2px;
+}
+
+.ms-card-active {
+    border-color: var(--ms-tier-color, #0891b2);
+    box-shadow: 0 0 0 2px var(--ms-tier-color, #0891b2), 0 10px 24px rgba(13, 33, 62, 0.1);
+}
+
+.ms-card-active .ms-card-icon {
+    background: var(--ms-tier-color, #0891b2);
+    color: #fff;
+}
+
+.ms-card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--ms-tier-color, #0891b2) 14%, #fff);
+    color: var(--ms-tier-color, #0891b2);
+    font-size: 0.95rem;
+}
+
+.ms-card p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ms-card h3 {
+    margin: 0;
+    color: #1f2d3d;
+    font-size: 1.7rem;
+    line-height: 1;
+}
+
+.ms-tier-10 { --ms-tier-color: #06b6d4; }
+.ms-tier-15 { --ms-tier-color: #0891b2; }
+.ms-tier-20 { --ms-tier-color: #0e7490; }
+.ms-tier-25 { --ms-tier-color: #155e75; }
+.ms-tier-30 { --ms-tier-color: #083344; }
+
+.ms-heading-icon {
+    color: #eda100;
+    margin-right: 0.3rem;
+}
+
+.ms-table-card h4 {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.ms-clear-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    background: #eef4fa;
+    color: #2f3c4a;
+    border: 1px solid #cfdae7;
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    font-family: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+}
+
+.ms-clear-filter:hover {
+    background: #e2ecf5;
+}
+
+[data-module="service-milestones"] .hrm-table tbody tr:nth-child(even) {
+    background: #f9fbfd;
+}
+
+[data-module="service-milestones"] .hrm-table tbody tr:hover {
+    background: #eef7fb;
+}
+
+[data-module="service-milestones"] .hrm-table tbody tr.ms-row-urgent {
+    background: #fff7ed;
+}
+
+[data-module="service-milestones"] .hrm-table tbody tr.ms-row-urgent:hover {
+    background: #ffedd5;
+}
+
+@media (max-width: 1100px) {
+    .ms-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .ms-cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 /* ── Attendance Drilldown Badges (Attendance Overview) ────────── */
 .att-badge {
     display: inline-block;

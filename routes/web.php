@@ -529,6 +529,9 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     Route::get('/dashboard/hr-manager/records/planning-data', [HRManagerController::class, 'recordsPlanningData'])
         ->name('hr-manager.records.planning-data');
 
+    Route::get('/dashboard/hr-manager/service-milestones', [HRManagerController::class, 'serviceMilestones'])
+        ->name('hr-manager.service-milestones');
+
     Route::get('/dashboard/hr-manager/leave-ledger', [HRManagerController::class, 'leaveLedger'])
         ->name('hr-manager.leave-ledger');
 

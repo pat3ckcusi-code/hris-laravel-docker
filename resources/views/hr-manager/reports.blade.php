@@ -16,6 +16,12 @@
                     <option value="{{ $department->Dept_id }}">{{ $department->Dept_name }}</option>
                 @endforeach
             </select>
+            <select id="employeeTypeFilter">
+                <option value="">All Employee Types</option>
+                @foreach($employeeTypes as $type)
+                    <option value="{{ $type }}">{{ $type }}</option>
+                @endforeach
+            </select>
             <button type="button" class="hrm-btn"
                     onclick="startExport('{{ route('export-jobs.create') }}', { type: 'hr_reports', params: { format: 'csv' } }, 'Building workforce report&hellip;')">
                 Export CSV
