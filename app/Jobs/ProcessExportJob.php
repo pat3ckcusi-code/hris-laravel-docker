@@ -360,7 +360,13 @@ class ProcessExportJob implements ShouldQueue
 
     private function handleHrReports(ExportJob $job, HRDashboardService $dashboardService): array
     {
-        $chart = $dashboardService->buildChartData(null);
+        $departmentId = (int) ($job->params['department'] ?? 0);
+        $employeeType = trim((string) ($job->params['employee_type'] ?? ''));
+
+        $chart = $dashboardService->buildChartData(
+            $departmentId > 0 ? $departmentId : null,
+            $employeeType !== '' ? $employeeType : null
+        );
         $filename = 'hr-workforce-report-'.now()->format('Ymd-His').'.csv';
         $path = "exports/{$job->id}.csv";
         $absPath = storage_path("app/{$path}");

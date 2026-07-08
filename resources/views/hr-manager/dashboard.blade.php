@@ -8,7 +8,7 @@
 @endsection
 
 @section('content')
-    <section class="hrm-dashboard" data-chart-url="{{ $chartDataUrl }}" data-alerts-url="{{ route('hr-manager.alerts') }}">
+    <section class="hrm-dashboard" data-chart-url="{{ $chartDataUrl }}" data-alerts-url="{{ route('hr-manager.alerts') }}" data-export-url="{{ $exportUrl }}">
 
         {{-- Alerts Panel --}}
         <div id="hrmAlertStrip" class="hrm-alert-strip" style="display:none;"></div>
@@ -56,6 +56,10 @@
                     <option value="{{ $type }}">{{ $type }}</option>
                 @endforeach
             </select>
+
+            <button type="button" class="hrm-btn" id="hrmExportCsvBtn">
+                Export CSV
+            </button>
         </div>
 
         <div class="hrm-chart-grid">

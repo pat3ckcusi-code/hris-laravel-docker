@@ -43,14 +43,19 @@ class HRManagerController extends Controller
     {
         $this->ensureHrManager($request);
 
-        $departments = $this->departmentOptions();
+        $departmentId = $request->integer('department');
+        $employeeType = trim((string) $request->query('employee_type', ''));
 
         return view('hr-manager.dashboard', [
-            'departments' => $departments,
+            'departments' => $this->departmentOptions(),
             'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
             'workforceCards' => $this->dashboardService->buildWorkforceCards(),
             'chartDataUrl' => route('hr-manager.chart-data'),
-            'initialChartData' => $this->dashboardService->buildChartData(null),
+            'exportUrl' => route('export-jobs.create'),
+            'initialChartData' => $this->dashboardService->buildChartData(
+                $departmentId > 0 ? $departmentId : null,
+                $employeeType !== '' ? $employeeType : null
+            ),
         ]);
     }
 
@@ -522,66 +527,6 @@ class HRManagerController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Request completed and employee notification queued.',
-        ]);
-    }
-
-    public function reports(Request $request): View
-    {
-        $this->ensureHrManager($request);
-
-        $departmentId = $request->integer('department');
-        $employeeType = trim((string) $request->query('employee_type', ''));
-
-        return view('hr-manager.reports', [
-            'departments' => $this->departmentOptions(),
-            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
-            'initialChartData' => $this->dashboardService->buildChartData(
-                $departmentId > 0 ? $departmentId : null,
-                $employeeType !== '' ? $employeeType : null
-            ),
-            'reportsChartUrl' => route('hr-manager.chart-data'),
-            'exportPdfUrl' => route('hr-manager.reports.export', ['format' => 'pdf']),
-            'exportExcelUrl' => route('hr-manager.reports.export', ['format' => 'excel']),
-        ]);
-    }
-
-    public function exportReport(Request $request, string $format): StreamedResponse|RedirectResponse
-    {
-        $this->ensureHrManager($request);
-
-        if (! in_array($format, ['pdf', 'excel'], true)) {
-            return redirect()->route('hr-manager.reports');
-        }
-
-        $chart = $this->dashboardService->buildChartData(null);
-        $filename = 'hr-workforce-report-'.now()->format('Ymd-His');
-
-        return response()->streamDownload(function () use ($chart): void {
-            $headers = ['Metric', 'Category', 'Value'];
-            $handle = fopen('php://output', 'wb');
-            fputcsv($handle, $headers);
-
-            foreach ($chart as $metric => $payload) {
-                if (isset($payload['datasets'])) {
-                    foreach ($payload['datasets'] as $dataset) {
-                        foreach ($payload['labels'] as $index => $label) {
-                            fputcsv($handle, [$metric, "{$label} — {$dataset['label']}", (string) ($dataset['data'][$index] ?? 0)]);
-                        }
-                    }
-
-                    continue;
-                }
-
-                $labels = $payload['labels'] ?? [];
-                $values = $payload['values'] ?? [];
-                foreach ($labels as $index => $label) {
-                    fputcsv($handle, [$metric, $label, (string) ($values[$index] ?? 0)]);
-                }
-            }
-
-            fclose($handle);
-        }, $filename.($format === 'pdf' ? '.pdf' : '.csv'), [
-            'Content-Type' => 'text/csv',
         ]);
     }
 

@@ -193,7 +193,6 @@
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
 
             ['section' => 'Reports'],
-            ['label' => 'HR Reports',         'icon' => 'reports',   'route' => 'hr-manager.reports',     'active' => ['hr-manager.reports']],
             ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
             ['label' => 'Leave Ledger',       'icon' => 'audit',     'route' => 'hr-manager.leave-ledger','active' => ['hr-manager.leave-ledger']],
             ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],

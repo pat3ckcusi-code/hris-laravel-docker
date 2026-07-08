@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveRequest;
 use App\Models\User;
@@ -42,11 +43,26 @@ class HRManagerTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_dashboard_honors_department_and_employee_type_query_params(): void
+    {
+        $hr = $this->createHRManager();
+        $dept = Department::first();
+        $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);
+
+        $response = $this->actingAs($hr)->get(route('hr-manager.dashboard', [
+            'department' => $dept->Dept_id,
+            'employee_type' => 'Permanent',
+        ]));
+
+        $response->assertStatus(200);
+        $this->assertArrayHasKey('labels', $response->viewData('initialChartData')['gender_distribution']);
+    }
+
     public function test_chart_data_workforce_per_department_breaks_down_by_employee_type(): void
     {
         $hr = $this->createHRManager();
 
-        $dept = \App\Models\Department::first();
+        $dept = Department::first();
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Job Orders']);
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Co-Terminus']);
@@ -77,7 +93,7 @@ class HRManagerTest extends TestCase
     {
         $hr = $this->createHRManager();
 
-        $dept = \App\Models\Department::first();
+        $dept = Department::first();
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Job Orders']);
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);
 
@@ -98,10 +114,10 @@ class HRManagerTest extends TestCase
     {
         $hr = $this->createHRManager();
 
-        $deptA = \App\Models\Department::first() ?? \App\Models\Department::forceCreate([
+        $deptA = Department::first() ?? Department::forceCreate([
             'DeptCode' => 'TEST-A', 'Dept_name' => 'Test Department A', 'EmpNo' => 'TESTDEPT-A', 'Designation' => 'Test',
         ]);
-        $deptB = \App\Models\Department::forceCreate([
+        $deptB = Department::forceCreate([
             'DeptCode' => 'TEST-B', 'Dept_name' => 'Test Department B', 'EmpNo' => 'TESTDEPT-B', 'Designation' => 'Test',
         ]);
 
@@ -508,11 +524,23 @@ class HRManagerTest extends TestCase
     // 8. Reports
     // ──────────────────────────────────────────────
 
-    public function test_reports_page_loads(): void
+    public function test_old_reports_url_redirects_to_dashboard(): void
     {
         $hr = $this->createHRManager();
 
-        $response = $this->actingAs($hr)->get(route('hr-manager.reports'));
+        $response = $this->actingAs($hr)->get('/dashboard/hr-manager/reports');
+
+        $response->assertRedirect('/dashboard/hr-manager');
+    }
+
+    public function test_hr_manager_can_trigger_hr_reports_export(): void
+    {
+        $hr = $this->createHRManager();
+
+        $response = $this->actingAs($hr)->postJson(route('export-jobs.create'), [
+            'type' => 'hr_reports',
+            'params' => ['department' => null, 'employee_type' => null],
+        ]);
 
         $response->assertStatus(200);
     }

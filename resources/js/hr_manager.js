@@ -327,6 +327,19 @@ const initializeWorkforceCharts = (root, initialData) => {
         });
     }
 
+    const exportBtn = document.getElementById('hrmExportCsvBtn');
+    if (exportBtn && root.dataset.exportUrl) {
+        exportBtn.addEventListener('click', () => {
+            window.startExport(root.dataset.exportUrl, {
+                type: 'hr_reports',
+                params: {
+                    department: activeDepartment(),
+                    employee_type: activeEmployeeType(),
+                },
+            }, 'Building workforce report…');
+        });
+    }
+
     // initial attach
     attachChartClickHandlers();
 
@@ -1142,10 +1155,6 @@ const bindPayrollOverview = () => {
 if (dashboardRoot) {
     initializeWorkforceCharts(dashboardRoot, window.hrManagerInitialData || {});
     bindAlertPanel(dashboardRoot);
-}
-
-if (moduleRoot && moduleRoot.dataset.module === 'reports' && moduleRoot !== dashboardRoot) {
-    initializeWorkforceCharts(moduleRoot, window.hrManagerInitialData || {});
 }
 
 bindLeaveModule(moduleRoot);

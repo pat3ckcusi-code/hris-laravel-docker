@@ -460,8 +460,7 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.leave');
     Route::get('/dashboard/hr-manager/frontdesk', [HRManagerController::class, 'frontdesk'])
         ->name('hr-manager.frontdesk');
-    Route::get('/dashboard/hr-manager/reports', [HRManagerController::class, 'reports'])
-        ->name('hr-manager.reports');
+    Route::redirect('/dashboard/hr-manager/reports', '/dashboard/hr-manager');
     Route::get('/dashboard/hr-manager/audit', [HRManagerController::class, 'audit'])
         ->name('hr-manager.audit');
     Route::get('/dashboard/hr-manager/roles', [HRManagerController::class, 'roles'])
@@ -492,8 +491,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.frontdesk.action');
     Route::post('/dashboard/hr-manager/frontdesk/{documentRequest}/complete', [HRManagerController::class, 'frontdeskComplete'])
         ->name('hr-manager.frontdesk.complete');
-    Route::get('/dashboard/hr-manager/reports/export/{format}', [HRManagerController::class, 'exportReport'])
-        ->name('hr-manager.reports.export');
     Route::get('/dashboard/hr-manager/audit/data', [HRManagerController::class, 'auditData'])
         ->name('hr-manager.audit.data');
     Route::get('/dashboard/hr-manager/employees/filter', [HRManagerController::class, 'getEmployeesByFilter'])

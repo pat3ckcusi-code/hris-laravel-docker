@@ -6,6 +6,7 @@ use App\Jobs\ProcessExportJob;
 use App\Models\ExportJob;
 use App\Models\User;
 use App\Services\DepartmentService;
+use App\Support\RoleNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -19,7 +20,7 @@ class ExportJobController extends Controller
     public function create(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'type'   => ['required', 'string', 'in:pds,form48,form48_dept_zip,form48_dept,monitoring_matrix,leave_card,hr_reports'],
+            'type' => ['required', 'string', 'in:pds,form48,form48_dept_zip,form48_dept,monitoring_matrix,leave_card,hr_reports'],
             'params' => ['required', 'array'],
         ]);
 
@@ -32,7 +33,7 @@ class ExportJobController extends Controller
         ProcessExportJob::dispatch($job);
 
         return response()->json([
-            'job_id'     => $job->id,
+            'job_id' => $job->id,
             'status_url' => route('export-jobs.status', $job->id),
         ]);
     }
@@ -81,13 +82,13 @@ class ExportJobController extends Controller
     private function authorizeExport(User $user, string $type, array $params): void
     {
         match ($type) {
-            'pds'               => $this->authPds($user, $params),
-            'form48'            => $this->authForm48($user, $params),
+            'pds' => $this->authPds($user, $params),
+            'form48' => $this->authForm48($user, $params),
             'form48_dept_zip',
-            'form48_dept'       => $this->authForm48Dept($user, $params),
+            'form48_dept' => $this->authForm48Dept($user, $params),
             'monitoring_matrix' => $this->authMonitoringMatrix($user),
-            'leave_card'        => $this->authLeaveCard($user, $params),
-            'hr_reports'        => abort_unless($user->access_level === 'hr manager', 403),
+            'leave_card' => $this->authLeaveCard($user, $params),
+            'hr_reports' => abort_unless(RoleNormalizer::normalize((string) $user->access_level) === 'hr manager', 403),
         };
     }
 
