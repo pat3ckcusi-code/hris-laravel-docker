@@ -176,7 +176,81 @@ class AttendanceMonitoringExportService
             $officialLeaveCount = $empLeaveDates->count();
 
             $personalLocators = $empLocators->filter(fn ($l) => strtolower((string) $l->application_type) === 'personal');
-            $unofficialExitCount = $personalLocators->count();
+
+            // Locator slot coverage per date (any application_type - the point is whether
+            // there's a paper trail, not whether it was "official" business).
+            $locatorSlotMap = [];
+            foreach ($empLocators as $l) {
+                if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
+                    continue;
+                }
+                $dateStr = Carbon::parse($l->travel_date)->toDateString();
+                $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($l->travel_date), $empAssignments);
+                $slots = Locator::coveredSlotKeys((string) $l->intended_departure_time, (string) $l->intended_arrival_time, $schedule);
+                $locatorSlotMap[$dateStr] = array_unique(array_merge($locatorSlotMap[$dateStr] ?? [], $slots));
+            }
+
+            // ETA covers the whole day it spans.
+            $etaCoveredDates = [];
+            foreach ($empEtas as $eta) {
+                $start = Carbon::parse($eta->departure_date)->startOfDay();
+                $end = Carbon::parse($eta->arrival_date ?? $eta->departure_date)->startOfDay();
+                for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+                    $etaCoveredDates[$d->toDateString()] = true;
+                }
+            }
+
+            // Office Order covers the whole day it's effective/issued on.
+            $officeOrderCoveredDates = [];
+            foreach ($officeOrdersByEmpNo->get($emp->EmpNo, collect()) as $oo) {
+                $date = $oo->effective_date ?? $oo->issued_date;
+                if ($date) {
+                    $officeOrderCoveredDates[Carbon::parse($date)->toDateString()] = true;
+                }
+            }
+
+            // Single source of truth for "is this slot explained by a Locator/ETA/Office
+            // Order/DtrExcuse", shared by unofficialExitCount and the phantom-undertime
+            // computation below so the two rules never disagree on what counts as covered.
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $empExcusesByDate): bool {
+                if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])) {
+                    return true;
+                }
+                $excuse = $empExcusesByDate[$dateStr] ?? null;
+                $coveredSlots = array_unique(array_merge(
+                    $locatorSlotMap[$dateStr] ?? [],
+                    $excuse ? $excuse->excludedSlotKeys() : []
+                ));
+
+                return in_array($slot, $coveredSlots, true);
+            };
+
+            $slotLabels = ['am_out' => 'No AM Out', 'pm_out' => 'No PM Out'];
+
+            // Flagged when the employee clocked in but has no matching clock-out for a
+            // slot, and nothing (Locator/ETA/Office Order/DtrExcuse) explains the gap.
+            $unofficialExitDays = [];
+            foreach ($workDtrs as $d) {
+                $dateStr = Carbon::parse($d->date)->toDateString();
+
+                // Don't flag a shift that hasn't ended yet - e.g. today's still-open day.
+                $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
+                if (Carbon::now()->lt($schedule->referenceDateTime($dateStr, $schedule->workEnd))) {
+                    continue;
+                }
+
+                $missingSlots = array_values(array_filter([
+                    ($d->time_in_am && ! $d->time_out_am) ? 'am_out' : null,
+                    ($d->time_in_pm && ! $d->time_out_pm) ? 'pm_out' : null,
+                ]));
+
+                $uncovered = array_values(array_filter($missingSlots, fn ($slot) => ! $isSlotCovered($dateStr, $slot)));
+                if ($uncovered !== []) {
+                    $unofficialExitDays[$dateStr] = $uncovered;
+                }
+            }
+
+            $unofficialExitCount = count($unofficialExitDays);
 
             $totalMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
                 $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
@@ -188,6 +262,35 @@ class AttendanceMonitoringExportService
 
                 return $late + $ut;
             });
+
+            // A day whose PM Out is missing (but PM In exists) means the employee never
+            // logged their departure - since there's no punch proving they stayed later,
+            // charge the remainder of the shift (PM In -> shift end) as undertime, unless
+            // something (Locator/ETA/Office Order/DtrExcuse) explains the gap.
+            $phantomUndertimeByDate = [];
+            foreach ($workDtrs as $d) {
+                if (! $d->time_in_pm || $d->time_out_pm) {
+                    continue;
+                }
+
+                $dateStr = Carbon::parse($d->date)->toDateString();
+                $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
+                $endRef = $schedule->referenceDateTime($dateStr, $schedule->workEnd);
+
+                if (Carbon::now()->lt($endRef) || $isSlotCovered($dateStr, 'pm_out')) {
+                    continue;
+                }
+
+                $pmInAt = $schedule->referenceDateTime($dateStr, (string) $d->time_in_pm);
+                if ($pmInAt->gte($endRef)) {
+                    continue;
+                }
+
+                $phantomUndertimeByDate[$dateStr] = (int) $pmInAt->diffInMinutes($endRef);
+            }
+
+            $undertimeCount += count($phantomUndertimeByDate);
+            $totalMinutes += array_sum($phantomUndertimeByDate);
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
                 if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
@@ -215,10 +318,21 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$d->late_minutes.' mins)']);
             }
 
-            // DTR: undertime days
+            // DTR: undertime days (including missing-PM-Out days charged as phantom undertime)
             foreach ($workDtrs->filter(fn ($d) => $d->undertime_minutes > 0) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$d->undertime_minutes.' mins)']);
+            }
+            foreach ($phantomUndertimeByDate as $dateStr => $mins) {
+                $day = Carbon::parse($dateStr)->day;
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$mins.' mins)']);
+            }
+
+            // Unofficial exit days (clocked in, no matching clock-out, nothing explains it)
+            foreach ($unofficialExitDays as $dateStr => $slots) {
+                $day = Carbon::parse($dateStr)->day;
+                $detail = implode(', ', array_map(fn ($s) => $slotLabels[$s] ?? $s, $slots));
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Unofficial Exit ('.$detail.')']);
             }
 
             // Approved leave dates

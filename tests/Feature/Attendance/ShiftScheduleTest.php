@@ -4,9 +4,14 @@ namespace Tests\Feature\Attendance;
 
 use App\Models\AttendanceLog;
 use App\Models\Department;
+use App\Models\Dtr;
+use App\Models\DtrExcuse;
+use App\Models\Eta;
+use App\Models\Locator;
 use App\Models\OicAssignment;
 use App\Models\Shift;
 use App\Models\ShiftManagementGrant;
+use App\Models\User;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
@@ -14,6 +19,7 @@ use App\Services\ShiftPunchGrouper;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
@@ -140,6 +146,45 @@ class ShiftScheduleTest extends TestCase
 
         $this->assertSame(0, $r['late_minutes']);
         $this->assertSame(10, $r['undertime_minutes']);
+    }
+
+    public function test_three_punch_day_anchors_end_of_shift_punch_to_pm_out(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 08:00:00', '2026-06-11 12:00:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame('08:00:00', $r['am_in']);
+        $this->assertSame('12:00:00', $r['am_out']);
+        $this->assertNull($r['pm_in']);
+        $this->assertSame('17:00:00', $r['pm_out']);
+    }
+
+    public function test_three_punch_day_before_shift_end_keeps_positional_fallback(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-30 08:00:00', '2026-06-30 12:00:00', '2026-06-30 12:45:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-30', $this->dayShift());
+
+        $this->assertSame('08:00:00', $r['am_in']);
+        $this->assertSame('12:00:00', $r['am_out']);
+        $this->assertSame('12:45:00', $r['pm_in']);
+        $this->assertNull($r['pm_out']);
+    }
+
+    public function test_two_punch_day_anchors_end_of_shift_punch_to_pm_out(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 08:00:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame('08:00:00', $r['am_in']);
+        $this->assertNull($r['am_out']);
+        $this->assertNull($r['pm_in']);
+        $this->assertSame('17:00:00', $r['pm_out']);
     }
 
     // ── Grouping ──────────────────────────────────────────────────────────────
@@ -360,6 +405,247 @@ class ShiftScheduleTest extends TestCase
         $activeRow = $rows->firstWhere(fn ($r) => str_contains($r['name'], 'Activeperson'));
         $this->assertTrue($exemptRow['is_exempt']);
         $this->assertFalse($activeRow['is_exempt']);
+    }
+
+    // ── Monitoring Matrix: "unofficial exit" (clocked in, never clocked out) ──
+
+    private function unofficialExitRowFor(User $employee): array
+    {
+        $departments = Department::where('Dept_id', $employee->Dept_id)->get();
+        $rows = app(AttendanceMonitoringExportService::class)->getRows($departments, 6, 2026);
+
+        return $rows->firstWhere(fn ($r) => str_contains($r['name'], $employee->last_name));
+    }
+
+    public function test_unofficial_exit_counted_for_missing_pm_logout_without_coverage(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Nologout']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertSame(1, $row['undertime_count']);
+        $this->assertSame(240, $row['total_minutes']); // 13:00 -> 17:00 shift end
+        $this->assertStringContainsString('15-Unofficial Exit (No PM Out)', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_locator_covers_missing_logout(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Locatorcovered']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        Locator::create([
+            'user_id' => $employee->id,
+            'application_type' => 'Personal',
+            'location' => 'City Hall',
+            'detail' => 'Pay bills',
+            'travel_date' => '2026-06-15',
+            'intended_departure_time' => '15:00',
+            'intended_arrival_time' => '17:30',
+            'status' => 'approved',
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_dtr_excuse_covers_missing_logout(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Excusedexit']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        DtrExcuse::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'excuse_type' => 'power_interruption',
+            'is_full_day' => false,
+            'excuse_pm_out' => true,
+            'reason' => 'Power outage before end of shift',
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_eta_or_office_order_covers_the_day(): void
+    {
+        $etaEmployee = $this->createEmployee(['last_name' => 'Etacovered']);
+        Dtr::create([
+            'employee_id' => $etaEmployee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        Eta::create([
+            'user_id' => $etaEmployee->id,
+            'departure_date' => '2026-06-15',
+            'arrival_date' => '2026-06-15',
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $officeOrderEmployee = $this->createEmployee(['last_name' => 'Ordercovered']);
+        Dtr::create([
+            'employee_id' => $officeOrderEmployee->id,
+            'date' => '2026-06-16',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        $officeOrderId = DB::table('office_orders')->insertGetId([
+            'office_order_num' => '2026-999',
+            'subject' => 'Test Office Order',
+            'issued_date' => '2026-06-16',
+            'effective_date' => '2026-06-16',
+            'status' => 'Approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('office_order_employees')->insert([
+            'office_order_id' => $officeOrderId,
+            'emp_no' => $officeOrderEmployee->EmpNo,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $etaRow = $this->unofficialExitRowFor($etaEmployee);
+        $this->assertSame(0, $etaRow['unofficial_exit_count']);
+        $this->assertSame(0, $etaRow['undertime_count']);
+        $this->assertSame(0, $etaRow['total_minutes']);
+        $this->assertStringNotContainsString('Unofficial Exit', $etaRow['remarks']);
+
+        $officeOrderRow = $this->unofficialExitRowFor($officeOrderEmployee);
+        $this->assertSame(0, $officeOrderRow['unofficial_exit_count']);
+        $this->assertSame(0, $officeOrderRow['undertime_count']);
+        $this->assertSame(0, $officeOrderRow['total_minutes']);
+        $this->assertStringNotContainsString('Unofficial Exit', $officeOrderRow['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_while_shift_still_in_progress(): void
+    {
+        $this->travelTo(Carbon::parse('2026-06-15 15:00:00')); // before the 17:00 shift end
+
+        $employee = $this->createEmployee(['last_name' => 'Stillworking']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+    }
+
+    public function test_unofficial_exit_not_counted_for_fully_absent_day(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Fullyabsent']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => null,
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => true,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(1, $row['unfiled_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
+    }
+
+    public function test_daily_time_records_imputes_undertime_for_missing_pm_out(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Imputedut']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame(240, $row['undertime_minutes']); // 13:00 -> 17:00 shift end
+        $this->assertTrue($row['is_undertime']);
+        $this->assertTrue($row['is_pm_out_undertime']);
     }
 
     // ── Department Head / Administrative Officer: grant-gated, dept-scoped access ──

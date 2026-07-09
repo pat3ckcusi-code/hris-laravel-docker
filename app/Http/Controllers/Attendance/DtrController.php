@@ -328,6 +328,27 @@ class DtrController extends Controller
             $excuse = (! $leaveCode && ! $isEtaDay && ! $isOoDay) ? ($excuseMap[$dateStr] ?? null) : null;
             $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
+            // Missing PM Out (PM In present) with nothing else explaining the gap - impute
+            // the shortfall from PM In to shift end, mirroring the Monitoring Matrix
+            // report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
+            $pmOutImputed = false;
+            $imputePmOutUndertime = function () use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
+                if (! $dtr->time_in_pm || $dtr->time_out_pm) {
+                    return 0;
+                }
+                $endRef = $rowSchedule->referenceDateTime($dateStr, $rowSchedule->workEnd);
+                if (Carbon::now()->lt($endRef)) {
+                    return 0;
+                }
+                $pmInAt = $rowSchedule->referenceDateTime($dateStr, (string) $dtr->time_in_pm);
+                if ($pmInAt->gte($endRef)) {
+                    return 0;
+                }
+                $pmOutImputed = true;
+
+                return (int) $pmInAt->diffInMinutes($endRef);
+            };
+
             // Resolve effective display values for each slot.
             $coversAmIn = $coversAmOut = $coversPmIn = $coversPmOut = false;
             if ($leaveCode) {
@@ -355,7 +376,8 @@ class DtrController extends Controller
                 $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
                 $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
                 $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($dtr->late_minutes ?? 0);
-                $utMin = $coversPmOut ? 0 : ($dtr->undertime_minutes ?? 0);
+                $storedUt = $dtr->undertime_minutes ?? 0;
+                $utMin = $coversPmOut ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
             } elseif ($loc) {
                 [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] = Form48ExportService::resolveLocatorSlots(
                     $dtr->time_in_am, $dtr->time_out_am,
@@ -371,13 +393,17 @@ class DtrController extends Controller
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
                     $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $rowSchedule
                 );
+                if ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
+                    $utMin = $imputePmOutUndertime();
+                }
             } else {
                 $tAmIn = $dtr->time_in_am ?? '-';
                 $tAmOut = $dtr->time_out_am ?? '-';
                 $tPmIn = $dtr->time_in_pm ?? '-';
                 $tPmOut = $dtr->time_out_pm ?? '-';
                 $lateMin = $dtr->late_minutes ?? 0;
-                $utMin = $dtr->undertime_minutes ?? 0;
+                $storedUt = $dtr->undertime_minutes ?? 0;
+                $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime();
             }
 
             // Display every punch as HH:MM - some branches above (e.g. Locator)
@@ -400,7 +426,7 @@ class DtrController extends Controller
             $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd;
             $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd;
             $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
-            $isPmOutUndertime = $utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd;
+            $isPmOutUndertime = $pmOutImputed || ($utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd);
 
             // Decorate excused slots with the excuse type/reason so the cause is visible
             // without leaving this page; only applies to slots an excuse actually covers.

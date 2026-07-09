@@ -131,6 +131,22 @@ class DtrPunchResolver
                 }
             }
 
+            // A punch at/after shift end is unambiguously a departure (nobody returns
+            // from lunch after the shift already ended) - anchor it to pm_out even with
+            // fewer than 4 total punches, instead of leaving it in its naive positional
+            // slot where it reads as a lunch punch. No-op when count === 4, since the
+            // last punch is already positionally pm_out there.
+            if ($count >= 2) {
+                $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+                $last = $sorted->last();
+
+                if ($last->gte($endRef)) {
+                    $leading = $sorted->slice(0, $count - 1)->values();
+
+                    return [$leading->get(0), $leading->get(1), $leading->get(2), $last];
+                }
+            }
+
             return [$sorted->get(0), $sorted->get(1), $sorted->get(2), $sorted->get(3)];
         }
 
