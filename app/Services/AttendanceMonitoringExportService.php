@@ -7,6 +7,7 @@ use App\Models\Dtr;
 use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
+use App\Models\Holiday;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\Locator;
@@ -121,7 +122,24 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('emp_no');
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo) {
+        $travelOrdersByEmpNo = empty($empNos) ? collect() : DB::table('travel_orders')
+            ->join('travel_order_employees', 'travel_orders.id', '=', 'travel_order_employees.travel_order_id')
+            ->whereIn('travel_order_employees.emp_no', $empNos)
+            ->where('travel_orders.status', 'Approved')
+            ->where('travel_orders.start_date', '<=', $periodEnd)
+            ->where('travel_orders.end_date', '>=', $periodStart)
+            ->select('travel_order_employees.emp_no', 'travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
+            ->get()
+            ->groupBy('emp_no');
+
+        // Public holidays in the period are never counted as absence days, regardless
+        // of punch/coverage state.
+        $holidays = Holiday::whereBetween('holiday_date', [$periodStart, $periodEnd])
+            ->pluck('holiday_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->flip();
+
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $periodStart, $periodEnd) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
@@ -209,11 +227,28 @@ class AttendanceMonitoringExportService
                 }
             }
 
-            // Single source of truth for "is this slot explained by a Locator/ETA/Office
-            // Order/DtrExcuse", shared by unofficialExitCount and the phantom-undertime
-            // computation below so the two rules never disagree on what counts as covered.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $empExcusesByDate): bool {
-                if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])) {
+            // Approved Travel Order covers every day of its (month-clamped) date range.
+            $travelOrderCoveredDates = [];
+            foreach ($travelOrdersByEmpNo->get($emp->EmpNo, collect()) as $to) {
+                if (! $to->start_date || ! $to->end_date) {
+                    continue;
+                }
+                $start = Carbon::parse($to->start_date)->startOfDay();
+                $end = Carbon::parse($to->end_date)->startOfDay();
+                $start = $start->lt(Carbon::parse($periodStart)) ? Carbon::parse($periodStart) : $start;
+                $end = $end->gt(Carbon::parse($periodEnd)) ? Carbon::parse($periodEnd) : $end;
+                for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+                    $travelOrderCoveredDates[$d->toDateString()] = true;
+                }
+            }
+
+            // Single source of truth for "is this slot explained by an approved Leave/ETA/
+            // Office Order/Travel Order (whole-day) or a Locator/DtrExcuse (per-slot)",
+            // shared by unofficialExitCount and the phantom-undertime computation below so
+            // the rules never disagree on what counts as covered.
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate): bool {
+                if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
+                    || isset($travelOrderCoveredDates[$dateStr]) || $approvedLeaveDateStrings->has($dateStr)) {
                     return true;
                 }
                 $excuse = $empExcusesByDate[$dateStr] ?? null;
@@ -225,32 +260,62 @@ class AttendanceMonitoringExportService
                 return in_array($slot, $coveredSlots, true);
             };
 
-            $slotLabels = ['am_out' => 'No AM Out', 'pm_out' => 'No PM Out'];
+            // Flagged when a scheduled, already-ended workday has no punched logs at all
+            // and nothing (Leave/Locator/ETA/Office Order/Travel Order/DtrExcuse) explains
+            // the absence. DTR-exempt employees are never expected to punch, so they're
+            // never flagged.
+            $empDtrsByDate = $empDtrs->keyBy(fn ($d) => Carbon::parse($d->date)->toDateString());
 
-            // Flagged when the employee clocked in but has no matching clock-out for a
-            // slot, and nothing (Locator/ETA/Office Order/DtrExcuse) explains the gap.
+            $periodStartDate = Carbon::parse($periodStart);
+            $periodEndDate = Carbon::parse($periodEnd);
+
             $unofficialExitDays = [];
-            foreach ($workDtrs as $d) {
-                $dateStr = Carbon::parse($d->date)->toDateString();
 
-                // Don't flag a shift that hasn't ended yet - e.g. today's still-open day.
-                $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
-                if (Carbon::now()->lt($schedule->referenceDateTime($dateStr, $schedule->workEnd))) {
-                    continue;
-                }
+            if (! $emp->dtr_exempt) {
+                $serviceStart = ($emp->date_hired && $emp->date_hired->gt($periodStartDate))
+                    ? $emp->date_hired->copy()->startOfDay()
+                    : $periodStartDate->copy();
 
-                $missingSlots = array_values(array_filter([
-                    ($d->time_in_am && ! $d->time_out_am) ? 'am_out' : null,
-                    ($d->time_in_pm && ! $d->time_out_pm) ? 'pm_out' : null,
-                ]));
+                for ($date = $serviceStart->copy(); $date->lte($periodEndDate); $date->addDay()) {
+                    $dateStr = $date->toDateString();
 
-                $uncovered = array_values(array_filter($missingSlots, fn ($slot) => ! $isSlotCovered($dateStr, $slot)));
-                if ($uncovered !== []) {
-                    $unofficialExitDays[$dateStr] = $uncovered;
+                    if (WorkSchedule::isFieldWork($emp, $date, $empAssignments)) {
+                        continue;
+                    }
+
+                    $isRestDay = WorkSchedule::isRestDay($emp, $date, $empAssignments)
+                        || ($date->isWeekend() && ! $empAssignments->has($dateStr));
+                    if ($isRestDay || isset($holidays[$dateStr])) {
+                        continue;
+                    }
+
+                    $schedule = WorkSchedule::forUserOnDate($emp, $date, $empAssignments);
+                    if (Carbon::now()->lt($schedule->referenceDateTime($dateStr, $schedule->workEnd))) {
+                        continue;
+                    }
+
+                    $dtr = $empDtrsByDate->get($dateStr);
+                    if ($dtr && ($dtr->time_in_am || $dtr->time_in_pm)) {
+                        continue;
+                    }
+
+                    if ($isSlotCovered($dateStr, 'am_in') && $isSlotCovered($dateStr, 'pm_in')) {
+                        continue;
+                    }
+
+                    $unofficialExitDays[$dateStr] = true;
                 }
             }
 
             $unofficialExitCount = count($unofficialExitDays);
+
+            // An employee with zero Dtr rows for the whole month (biometric device
+            // outage, an EmpNo mismatch, or a department not yet onboarded) shouldn't
+            // read as "confirmed absent every workday" - flag it distinctly so the
+            // report doesn't cry wolf during a real data gap. Only trips when the
+            // absence loop above actually found unexplained days, so an employee fully
+            // covered by leave/etc. with no Dtr rows is never mislabeled.
+            $unofficialExitNoData = $unofficialExitCount > 0 && $empDtrs->isEmpty();
 
             $totalMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
                 $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
@@ -328,11 +393,16 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$mins.' mins)']);
             }
 
-            // Unofficial exit days (clocked in, no matching clock-out, nothing explains it)
-            foreach ($unofficialExitDays as $dateStr => $slots) {
-                $day = Carbon::parse($dateStr)->day;
-                $detail = implode(', ', array_map(fn ($s) => $slotLabels[$s] ?? $s, $slots));
-                $remarkEntries->push(['day' => $day, 'label' => $day.'-Unofficial Exit ('.$detail.')']);
+            // Fully absent days with no punches and nothing on file to explain them -
+            // collapsed to a single note when it's a whole-month data gap rather than
+            // per-day entries, to avoid flooding the Remarks column.
+            if ($unofficialExitNoData) {
+                $remarkEntries->push(['day' => 0, 'label' => 'No DTR data recorded this month - verify biometric import']);
+            } else {
+                foreach (array_keys($unofficialExitDays) as $dateStr) {
+                    $day = Carbon::parse($dateStr)->day;
+                    $remarkEntries->push(['day' => $day, 'label' => $day.'-Absent (Unofficial Exit)']);
+                }
             }
 
             // Approved leave dates
@@ -439,6 +509,21 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Office Order No. '.$oo->office_order_num]);
             }
 
+            // Travel orders - expand each order to individual days within the month
+            foreach ($travelOrdersByEmpNo->get($emp->EmpNo, collect()) as $to) {
+                if (! $to->start_date || ! $to->end_date) {
+                    continue;
+                }
+                $start = Carbon::parse($to->start_date)->startOfDay();
+                $end = Carbon::parse($to->end_date)->startOfDay();
+                $start = $start->lt($periodStartDate) ? $periodStartDate->copy() : $start;
+                $end = $end->gt($periodEndDate) ? $periodEndDate->copy() : $end;
+                for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+                    $day = $cursor->day;
+                    $remarkEntries->push(['day' => $day, 'label' => $day.'-Travel Order No. '.$to->travel_order_num]);
+                }
+            }
+
             $fullRemarks = $remarkEntries
                 ->sortBy('day')
                 ->pluck('label')
@@ -462,6 +547,7 @@ class AttendanceMonitoringExportService
                 'unfiled_count' => $unfiledCount,
                 'official_leave_count' => $officialLeaveCount,
                 'unofficial_exit_count' => $unofficialExitCount,
+                'unofficial_exit_no_data' => $unofficialExitNoData,
                 'total_minutes' => $totalMinutes,
                 'personal_locator_minutes' => $personalLocatorMinutes,
                 'remarks' => $fullRemarks,
@@ -595,7 +681,9 @@ class AttendanceMonitoringExportService
             $sheet->setCellValue("E{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['tardiness_count'] ?: 0));
             $sheet->setCellValue("F{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['unfiled_count'] ?: 0));
             $sheet->setCellValue("G{$rowNum}", $row['official_leave_count'] ?: 0);
-            $sheet->setCellValue("H{$rowNum}", $row['unofficial_exit_count'] ?: 0);
+            $sheet->setCellValue("H{$rowNum}", $row['is_exempt']
+                ? 'EXEMPT'
+                : ($row['unofficial_exit_no_data'] ? 'NO DTR DATA' : ($row['unofficial_exit_count'] ?: 0)));
             $sheet->setCellValue("I{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['total_minutes'] ?: 0));
             $sheet->setCellValue("J{$rowNum}", $row['personal_locator_minutes'] ?: 0);
             $sheet->setCellValue("K{$rowNum}", $row['remarks']);

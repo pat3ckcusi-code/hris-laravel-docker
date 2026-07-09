@@ -6,7 +6,11 @@ use App\Models\AttendanceLog;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
+use App\Models\Holiday;
+use App\Models\LeaveDate;
+use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\OicAssignment;
 use App\Models\Shift;
@@ -407,26 +411,41 @@ class ShiftScheduleTest extends TestCase
         $this->assertFalse($activeRow['is_exempt']);
     }
 
-    // ── Monitoring Matrix: "unofficial exit" (clocked in, never clocked out) ──
+    // ── Monitoring Matrix: "days absent w/ unofficial exit" (zero punches, nothing
+    // on file to explain the day) ──────────────────────────────────────────────
+    //
+    // Every test below pins `date_hired` to the last day of the reported month
+    // (or, for the weekend case, to the last day of a month ending on a Sunday) so
+    // the day-enumeration loop in AttendanceMonitoringExportService only ever
+    // walks that single day - otherwise every other undocumented weekday in the
+    // month would also be flagged, since the report has no other attendance data
+    // for these throwaway test employees.
 
-    private function unofficialExitRowFor(User $employee): array
+    private function unofficialExitRowFor(User $employee, int $month = 6, int $year = 2026): array
     {
         $departments = Department::where('Dept_id', $employee->Dept_id)->get();
-        $rows = app(AttendanceMonitoringExportService::class)->getRows($departments, 6, 2026);
+        $rows = app(AttendanceMonitoringExportService::class)->getRows($departments, $month, $year);
 
         return $rows->firstWhere(fn ($r) => str_contains($r['name'], $employee->last_name));
     }
 
-    public function test_unofficial_exit_counted_for_missing_pm_logout_without_coverage(): void
+    public function test_unofficial_exit_counted_for_fully_absent_day_with_no_coverage(): void
     {
-        $employee = $this->createEmployee(['last_name' => 'Nologout']);
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Fullyabsent', 'date_hired' => '2026-06-30']);
+        // No Dtr row at all for 2026-06-30 - matches real production data, since the
+        // import pipeline never writes a row for a day with zero punches. A present
+        // Dtr row earlier in the month proves biometric import is otherwise working,
+        // so this test exercises plain per-day absence rather than the whole-month
+        // "No DTR Data" safeguard (covered separately below).
         Dtr::create([
             'employee_id' => $employee->id,
             'date' => '2026-06-15',
             'time_in_am' => '08:00:00',
             'time_out_am' => '12:00:00',
             'time_in_pm' => '13:00:00',
-            'time_out_pm' => null,
+            'time_out_pm' => '17:00:00',
             'late_minutes' => 0,
             'undertime_minutes' => 0,
             'is_absent' => false,
@@ -435,17 +454,18 @@ class ShiftScheduleTest extends TestCase
         $row = $this->unofficialExitRowFor($employee);
 
         $this->assertSame(1, $row['unofficial_exit_count']);
-        $this->assertSame(1, $row['undertime_count']);
-        $this->assertSame(240, $row['total_minutes']); // 13:00 -> 17:00 shift end
-        $this->assertStringContainsString('15-Unofficial Exit (No PM Out)', $row['remarks']);
+        $this->assertFalse($row['unofficial_exit_no_data']);
+        $this->assertStringContainsString('30-Absent (Unofficial Exit)', $row['remarks']);
     }
 
-    public function test_unofficial_exit_not_counted_when_locator_covers_missing_logout(): void
+    public function test_unofficial_exit_not_counted_for_partial_punch_missing_pm_logout(): void
     {
-        $employee = $this->createEmployee(['last_name' => 'Locatorcovered']);
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Nologout', 'date_hired' => '2026-06-30']);
         Dtr::create([
             'employee_id' => $employee->id,
-            'date' => '2026-06-15',
+            'date' => '2026-06-30',
             'time_in_am' => '08:00:00',
             'time_out_am' => '12:00:00',
             'time_in_pm' => '13:00:00',
@@ -454,13 +474,78 @@ class ShiftScheduleTest extends TestCase
             'undertime_minutes' => 0,
             'is_absent' => false,
         ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        // Partial punches (clocked in, never logged out) no longer count toward this
+        // column - only a true zero-punch day does. The separate phantom-undertime
+        // rule is untouched and still charges the missing PM-out.
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(1, $row['undertime_count']);
+        $this->assertSame(240, $row['total_minutes']); // 13:00 -> 17:00 shift end
+        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_covered_by_approved_leave(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Leavecovered', 'date_hired' => '2026-06-30']);
+        $leave = LeaveRequest::create([
+            'user_id' => $employee->id,
+            'leave_type' => 'VL',
+            'start_date' => '2026-06-30',
+            'end_date' => '2026-06-30',
+            'reason' => 'Test',
+            'status' => 'approved',
+        ]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => '2026-06-30', 'is_cancelled' => false]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_covered_by_approved_travel_order(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Travelcovered', 'date_hired' => '2026-06-30']);
+        $travelOrderId = DB::table('travel_orders')->insertGetId([
+            'travel_order_num' => '2026-999',
+            'purpose' => 'Test travel',
+            'destination' => 'Manila',
+            'start_date' => '2026-06-30',
+            'end_date' => '2026-06-30',
+            'recommender' => $employee->id,
+            'created_by' => $employee->id,
+            'status' => 'Approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('travel_order_employees')->insert([
+            'travel_order_id' => $travelOrderId,
+            'emp_no' => $employee->EmpNo,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertStringContainsString('30-Travel Order No. 2026-999', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_covered_by_locator_all_day(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Locatorcovered', 'date_hired' => '2026-06-30']);
         Locator::create([
             'user_id' => $employee->id,
-            'application_type' => 'Personal',
+            'application_type' => 'Official',
             'location' => 'City Hall',
-            'detail' => 'Pay bills',
-            'travel_date' => '2026-06-15',
-            'intended_departure_time' => '15:00',
+            'detail' => 'Field assignment',
+            'travel_date' => '2026-06-30',
+            'intended_departure_time' => '07:00',
             'intended_arrival_time' => '17:30',
             'status' => 'approved',
         ]);
@@ -468,118 +553,197 @@ class ShiftScheduleTest extends TestCase
         $row = $this->unofficialExitRowFor($employee);
 
         $this->assertSame(0, $row['unofficial_exit_count']);
-        $this->assertSame(0, $row['undertime_count']);
-        $this->assertSame(0, $row['total_minutes']);
-        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
     }
 
-    public function test_unofficial_exit_not_counted_when_dtr_excuse_covers_missing_logout(): void
+    public function test_unofficial_exit_not_counted_when_covered_by_eta(): void
     {
-        $employee = $this->createEmployee(['last_name' => 'Excusedexit']);
-        Dtr::create([
-            'employee_id' => $employee->id,
-            'date' => '2026-06-15',
-            'time_in_am' => '08:00:00',
-            'time_out_am' => '12:00:00',
-            'time_in_pm' => '13:00:00',
-            'time_out_pm' => null,
-            'late_minutes' => 0,
-            'undertime_minutes' => 0,
-            'is_absent' => false,
-        ]);
-        DtrExcuse::create([
-            'user_id' => $employee->id,
-            'date' => '2026-06-15',
-            'excuse_type' => 'power_interruption',
-            'is_full_day' => false,
-            'excuse_pm_out' => true,
-            'reason' => 'Power outage before end of shift',
-        ]);
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
 
-        $row = $this->unofficialExitRowFor($employee);
-
-        $this->assertSame(0, $row['unofficial_exit_count']);
-        $this->assertSame(0, $row['undertime_count']);
-        $this->assertSame(0, $row['total_minutes']);
-        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
-    }
-
-    public function test_unofficial_exit_not_counted_when_eta_or_office_order_covers_the_day(): void
-    {
-        $etaEmployee = $this->createEmployee(['last_name' => 'Etacovered']);
-        Dtr::create([
-            'employee_id' => $etaEmployee->id,
-            'date' => '2026-06-15',
-            'time_in_am' => '08:00:00',
-            'time_out_am' => '12:00:00',
-            'time_in_pm' => '13:00:00',
-            'time_out_pm' => null,
-            'late_minutes' => 0,
-            'undertime_minutes' => 0,
-            'is_absent' => false,
-        ]);
+        $employee = $this->createEmployee(['last_name' => 'Etacovered', 'date_hired' => '2026-06-30']);
         Eta::create([
-            'user_id' => $etaEmployee->id,
-            'departure_date' => '2026-06-15',
-            'arrival_date' => '2026-06-15',
+            'user_id' => $employee->id,
+            'departure_date' => '2026-06-30',
+            'arrival_date' => '2026-06-30',
             'destination' => 'City Hall',
             'purpose' => 'Meeting',
             'status' => 'approved',
         ]);
 
-        $officeOrderEmployee = $this->createEmployee(['last_name' => 'Ordercovered']);
-        Dtr::create([
-            'employee_id' => $officeOrderEmployee->id,
-            'date' => '2026-06-16',
-            'time_in_am' => '08:00:00',
-            'time_out_am' => '12:00:00',
-            'time_in_pm' => '13:00:00',
-            'time_out_pm' => null,
-            'late_minutes' => 0,
-            'undertime_minutes' => 0,
-            'is_absent' => false,
-        ]);
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_covered_by_office_order(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Ordercovered', 'date_hired' => '2026-06-30']);
         $officeOrderId = DB::table('office_orders')->insertGetId([
-            'office_order_num' => '2026-999',
+            'office_order_num' => '2026-998',
             'subject' => 'Test Office Order',
-            'issued_date' => '2026-06-16',
-            'effective_date' => '2026-06-16',
+            'issued_date' => '2026-06-30',
+            'effective_date' => '2026-06-30',
             'status' => 'Approved',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
         DB::table('office_order_employees')->insert([
             'office_order_id' => $officeOrderId,
-            'emp_no' => $officeOrderEmployee->EmpNo,
+            'emp_no' => $employee->EmpNo,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        $etaRow = $this->unofficialExitRowFor($etaEmployee);
-        $this->assertSame(0, $etaRow['unofficial_exit_count']);
-        $this->assertSame(0, $etaRow['undertime_count']);
-        $this->assertSame(0, $etaRow['total_minutes']);
-        $this->assertStringNotContainsString('Unofficial Exit', $etaRow['remarks']);
+        $row = $this->unofficialExitRowFor($employee);
 
-        $officeOrderRow = $this->unofficialExitRowFor($officeOrderEmployee);
-        $this->assertSame(0, $officeOrderRow['unofficial_exit_count']);
-        $this->assertSame(0, $officeOrderRow['undertime_count']);
-        $this->assertSame(0, $officeOrderRow['total_minutes']);
-        $this->assertStringNotContainsString('Unofficial Exit', $officeOrderRow['remarks']);
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_when_covered_by_full_day_dtr_excuse(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Excusedexit', 'date_hired' => '2026-06-30']);
+        DtrExcuse::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-30',
+            'excuse_type' => 'power_interruption',
+            'is_full_day' => true,
+            'reason' => 'Power outage all day',
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_for_dtr_exempt_employee(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Exemptperson', 'date_hired' => '2026-06-30', 'dtr_exempt' => true]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertTrue($row['is_exempt']);
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_on_weekend(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // 2026-05-31 is a Sunday.
+        $employee = $this->createEmployee(['last_name' => 'Weekendperson', 'date_hired' => '2026-05-31']);
+
+        $row = $this->unofficialExitRowFor($employee, 5, 2026);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_on_holiday(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Holidayperson', 'date_hired' => '2026-06-30']);
+        Holiday::create(['title' => 'Test Holiday', 'holiday_date' => '2026-06-30']);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_on_rest_day_override(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Restdayperson', 'date_hired' => '2026-06-30']);
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-30',
+            'shift_id' => null,
+            'type' => 'rest',
+            'created_by' => $employee->id,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_on_field_work_day(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Fieldworkperson', 'date_hired' => '2026-06-30']);
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-30',
+            'shift_id' => null,
+            'type' => 'field_work',
+            'created_by' => $employee->id,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
     }
 
     public function test_unofficial_exit_not_counted_while_shift_still_in_progress(): void
     {
-        $this->travelTo(Carbon::parse('2026-06-15 15:00:00')); // before the 17:00 shift end
+        $this->travelTo(Carbon::parse('2026-06-30 15:00:00')); // before the 17:00 shift end
 
-        $employee = $this->createEmployee(['last_name' => 'Stillworking']);
+        $employee = $this->createEmployee(['last_name' => 'Stillworking', 'date_hired' => '2026-06-30']);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_not_counted_before_employee_was_hired(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // Hired the month after the reported period - nothing in June should ever
+        // be flagged, even though there's no attendance data at all for June.
+        $employee = $this->createEmployee(['last_name' => 'Newhire', 'date_hired' => '2026-07-01']);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
+    public function test_unofficial_exit_flags_no_dtr_data_for_whole_month_gap(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // No Dtr row anywhere in June - simulates a biometric device outage, a
+        // persistent EmpNo mismatch, or a department not yet onboarded to biometrics.
+        $employee = $this->createEmployee(['last_name' => 'Nodatagap', 'date_hired' => '2026-06-30']);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertTrue($row['unofficial_exit_no_data']);
+        $this->assertStringContainsString('No DTR data recorded this month', $row['remarks']);
+        $this->assertStringNotContainsString('Absent (Unofficial Exit)', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_no_data_flag_not_set_when_employee_has_other_punches_that_month(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Partialdata', 'date_hired' => '2026-06-30']);
+        // A real punch record earlier in the month proves biometric import is working
+        // for this employee - June 30 itself is still genuinely unexplained.
         Dtr::create([
             'employee_id' => $employee->id,
             'date' => '2026-06-15',
             'time_in_am' => '08:00:00',
             'time_out_am' => '12:00:00',
             'time_in_pm' => '13:00:00',
-            'time_out_pm' => null,
+            'time_out_pm' => '17:00:00',
             'late_minutes' => 0,
             'undertime_minutes' => 0,
             'is_absent' => false,
@@ -587,33 +751,30 @@ class ShiftScheduleTest extends TestCase
 
         $row = $this->unofficialExitRowFor($employee);
 
-        $this->assertSame(0, $row['unofficial_exit_count']);
-        $this->assertSame(0, $row['undertime_count']);
-        $this->assertSame(0, $row['total_minutes']);
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertFalse($row['unofficial_exit_no_data']);
+        $this->assertStringContainsString('30-Absent (Unofficial Exit)', $row['remarks']);
     }
 
-    public function test_unofficial_exit_not_counted_for_fully_absent_day(): void
+    public function test_unofficial_exit_no_data_flag_not_set_when_fully_covered_by_leave(): void
     {
-        $employee = $this->createEmployee(['last_name' => 'Fullyabsent']);
-        Dtr::create([
-            'employee_id' => $employee->id,
-            'date' => '2026-06-15',
-            'time_in_am' => null,
-            'time_out_am' => null,
-            'time_in_pm' => null,
-            'time_out_pm' => null,
-            'late_minutes' => 0,
-            'undertime_minutes' => 0,
-            'is_absent' => true,
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Fullycovered', 'date_hired' => '2026-06-30']);
+        $leave = LeaveRequest::create([
+            'user_id' => $employee->id,
+            'leave_type' => 'VL',
+            'start_date' => '2026-06-30',
+            'end_date' => '2026-06-30',
+            'reason' => 'Test',
+            'status' => 'approved',
         ]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => '2026-06-30', 'is_cancelled' => false]);
 
         $row = $this->unofficialExitRowFor($employee);
 
         $this->assertSame(0, $row['unofficial_exit_count']);
-        $this->assertSame(1, $row['unfiled_count']);
-        $this->assertSame(0, $row['undertime_count']);
-        $this->assertSame(0, $row['total_minutes']);
-        $this->assertStringNotContainsString('Unofficial Exit', $row['remarks']);
+        $this->assertFalse($row['unofficial_exit_no_data']);
     }
 
     public function test_daily_time_records_imputes_undertime_for_missing_pm_out(): void

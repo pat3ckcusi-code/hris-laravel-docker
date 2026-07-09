@@ -131,9 +131,15 @@
                         <td style="{{ $td }}{{ $row['official_leave_count'] > 0 ? 'color:#2563eb;font-weight:600;' : 'color:#6b7280;' }}">
                             {{ $row['official_leave_count'] ?: 0 }}
                         </td>
-                        <td style="{{ $td }}{{ $row['unofficial_exit_count'] > 0 ? 'color:#d97706;font-weight:600;' : 'color:#6b7280;' }}">
-                            {{ $row['unofficial_exit_count'] ?: 0 }}
-                        </td>
+                        @if ($row['is_exempt'])
+                            <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @elseif ($row['unofficial_exit_no_data'])
+                            <td style="{{ $td }}color:#6b7280;font-style:italic;" title="No biometric records found for this employee this month - verify the biometric import before treating this as absenteeism.">No DTR Data</td>
+                        @else
+                            <td style="{{ $td }}{{ $row['unofficial_exit_count'] > 0 ? 'color:#d97706;font-weight:600;' : 'color:#6b7280;' }}">
+                                {{ $row['unofficial_exit_count'] ?: 0 }}
+                            </td>
+                        @endif
                         @if ($row['is_exempt'])
                             <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
                         @else
