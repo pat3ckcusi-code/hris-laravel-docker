@@ -11,6 +11,7 @@ use App\Http\Controllers\Attendance\ShiftLogController;
 use App\Http\Controllers\Attendance\ShiftManagementAccessController;
 use App\Http\Controllers\Attendance\ShiftScheduleController;
 use App\Http\Controllers\Attendance\TimeLogsMonitoringController;
+use App\Http\Controllers\Attendance\WorkforceCalendarController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
@@ -591,6 +592,14 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.shift-schedule.generate-pattern');
     Route::post('/attendance/shift-schedule/generate-pattern-bulk', [ShiftScheduleController::class, 'generatePatternBulk'])
         ->name('attendance.shift-schedule.generate-pattern-bulk');
+});
+
+// Workforce Calendar - read-only "who's away" planning view (Time Keeper / HR
+// Manager unrestricted; Administrative Officer / Department Head scoped to
+// their own department, no ShiftManagementGrant gate since it's read-only).
+Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,department-head'])->group(function () {
+    Route::get('/attendance/workforce-calendar', [WorkforceCalendarController::class, 'index'])
+        ->name('attendance.workforce-calendar.index');
 });
 
 // Shift Management access grants + company-wide Shift Logs (Time Keeper / HR Manager only)

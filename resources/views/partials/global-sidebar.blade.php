@@ -50,6 +50,7 @@
         'filed_office'        => 'fas fa-archive fa-fw',
         'oic'                 => 'fas fa-user-clock fa-fw',
         'monitoring_matrix'   => 'fas fa-table-list fa-fw',
+        'workforce_calendar'  => 'fas fa-calendar-days fa-fw',
 
         // Records & HR
         'records'             => 'fas fa-database fa-fw',
@@ -135,6 +136,7 @@
             ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',                     'active' => ['attendance.shifts*'],          'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',                  'active' => ['attendance.schedules*'],        'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',       'active' => ['attendance.shift-schedule*'],   'permission' => 'hasShiftManagementAccess'],
+            ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index',  'active' => ['attendance.workforce-calendar*']],
         ],
 
         // ─── Administrative Officer ────────────────────────
@@ -167,6 +169,7 @@
             ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',                 'active' => ['attendance.shifts*'],          'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',              'active' => ['attendance.schedules*'],        'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',   'active' => ['attendance.shift-schedule*'],   'permission' => 'hasShiftManagementAccess'],
+            ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
         ],
 
         // ─── HR Manager ───────────────────────────────────
@@ -192,6 +195,7 @@
             ['label' => 'Shift Logs',         'icon' => 'audit',             'route' => 'attendance.shift-logs',               'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
+            ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
 
             ['section' => 'Reports'],
             ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
@@ -286,6 +290,7 @@
             ['label' => 'Shift Logs',       'icon' => 'audit',             'route' => 'attendance.shift-logs',             'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix', 'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',      'active' => ['attendance.monitoring-matrix*']],
+            ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
         ],
 
         // ─── Front Desk ───────────────────────────────────
