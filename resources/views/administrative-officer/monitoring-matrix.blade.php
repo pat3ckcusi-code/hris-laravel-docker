@@ -123,6 +123,8 @@
                         @endif
                         @if ($row['is_exempt'])
                             <td style="{{ $td }}color:#92400e;font-weight:600;">EXEMPT</td>
+                        @elseif ($row['unfiled_leave_no_data'])
+                            <td style="{{ $td }}color:#6b7280;font-style:italic;" title="No biometric records found for this employee this month - verify the biometric import before treating this as absenteeism.">No DTR Data</td>
                         @else
                             <td style="{{ $td }}{{ $row['unfiled_count'] > 0 ? 'color:#dc2626;font-weight:700;' : 'color:#6b7280;' }}">
                                 {{ $row['unfiled_count'] ?: 0 }}

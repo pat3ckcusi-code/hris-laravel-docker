@@ -12,6 +12,12 @@ Artisan::command('inspire', function () {
 // Leave Ledger UI (LeaveManagerController::runMonthlyCredits) rather than on
 // a schedule; the credit:process-monthly command remains available for CLI use.
 
+// Flip users.shift_id forward/back to whatever shift_assignments row covers
+// today, so a scheduled future/expiring shift change takes effect on its own
+// without anyone re-saving it. Runs before the per-minute import below so the
+// day's DTR processing sees the correct shift from the start.
+Schedule::command('shift:sync-cache')->dailyAt('00:05');
+
 // Auto-import biometric punch logs. The command self-throttles via cache
 // based on the interval configured in HR Settings → Attendance.
 Schedule::command('attendance:auto-import')->everyMinute();

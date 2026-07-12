@@ -228,6 +228,28 @@ class PersonnelLogImportService
         $this->upsertDtrRecords($user, $from, $to);
     }
 
+    /**
+     * Recompute DTR across the employee's full attendance-log history - used
+     * after a shift assignment change, so stored late/undertime reflect the
+     * new shift. A no-op if the employee has no imported punches yet.
+     */
+    public function recomputeFullRange(User $user): void
+    {
+        $range = AttendanceLog::where('user_id', $user->id)
+            ->selectRaw('MIN(logdate) as min_d, MAX(logdate) as max_d')
+            ->first();
+
+        if ($range === null || $range->min_d === null) {
+            return;
+        }
+
+        $this->recomputeDtr(
+            $user,
+            Carbon::parse($range->min_d)->toDateString(),
+            Carbon::parse($range->max_d)->toDateString(),
+        );
+    }
+
     private function upsertDtrRecords(User $user, string $from, string $to): void
     {
         // Exempt employees keep no DTR rows regardless of imported punches.
@@ -248,6 +270,10 @@ class PersonnelLogImportService
             ->with('shift')
             ->get()
             ->keyBy(fn ($a) => $a->date->toDateString());
+
+        // Same reasoning as $assignments above: warm the shift-assignment-history
+        // memo once so the per-date WorkSchedule calls below stay O(1).
+        WorkSchedule::preloadShiftAssignments([$user->id]);
 
         $logs = AttendanceLog::where('user_id', $user->id)
             ->whereBetween('logdate', [$fetchFrom, $fetchTo])

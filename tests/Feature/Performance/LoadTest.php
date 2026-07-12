@@ -12,6 +12,7 @@ use App\Models\HRAuditTrail;
 use App\Models\DocumentRequest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,6 +24,20 @@ use Illuminate\Support\Facades\DB;
 class LoadTest extends TestCase
 {
     use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // These tests intentionally fire far more requests per minute, per
+        // user, than any real user would (that's the point - measuring the
+        // underlying query/rendering performance under stress). Without this,
+        // the production 'api'/'documents' rate limiters (60 and 30 req/min)
+        // start rejecting requests partway through a run, which looks like a
+        // performance failure but is actually just the rate limiter working
+        // as designed.
+        $this->withoutMiddleware(ThrottleRequests::class);
+    }
 
     // ──────────────────────────────────────────────
     // 1. Login Throughput

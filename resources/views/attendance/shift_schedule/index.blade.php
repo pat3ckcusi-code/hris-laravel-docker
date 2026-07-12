@@ -114,18 +114,28 @@
     overflow-y: auto;
 }
 
+.ss-emp-row-wrap {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: 0 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.ss-emp-row-wrap:last-child { border-bottom: none; }
+.ss-emp-checkbox { cursor: pointer; flex-shrink: 0; }
+
 .ss-emp-row {
     display: flex;
     align-items: center;
     gap: .65rem;
-    padding: .6rem 1rem;
-    border-bottom: 1px solid #f1f5f9;
+    padding: .6rem 0;
+    flex: 1;
+    min-width: 0;
     text-decoration: none;
     color: inherit;
     transition: background .12s;
     cursor: pointer;
 }
-.ss-emp-row:last-child   { border-bottom: none; }
 .ss-emp-row:hover        { background: #eff6ff; }
 .ss-emp-row.active       { background: #dbeafe; }
 
@@ -187,6 +197,10 @@
     color: #6b7280;
     font-weight: 400;
 }
+
+.ss-multi-shift-list { list-style: none; margin: .3rem 0 0; padding: 0; font-size: .74rem; color: #6b7280; }
+.ss-multi-shift-list li { line-height: 1.5; }
+.ss-shift-dates { color: #94a3b8; }
 
 .ss-week-grid {
     display: grid;
@@ -260,6 +274,7 @@
 /* Color states */
 .ss-day-select.is-rest      { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
 .ss-day-select.is-field-work { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+.ss-day-select.is-standard  { background: #f1f5f9; color: #334155; border-color: #94a3b8; }
 .ss-day-select.is-assigned  { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
 
 /* State dot indicator */
@@ -274,6 +289,7 @@
 }
 .ss-day-card.state-rest      .ss-state-dot { background: #ef4444; }
 .ss-day-card.state-field-work .ss-state-dot { background: #22c55e; }
+.ss-day-card.state-standard  .ss-state-dot { background: #64748b; }
 .ss-day-card.state-assigned   .ss-state-dot { background: #3b82f6; }
 
 /* ── Legend ─────────────────────────────────────────────── */
@@ -301,6 +317,32 @@
     border-radius: 50%;
     flex-shrink: 0;
 }
+
+/* ── Bulk rotation bar ──────────────────────────────────── */
+.ss-bulk-rotation-panel {
+    margin-bottom: 1.25rem;
+    padding: .85rem 1.25rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: .75rem;
+    background: #f8fafc;
+}
+.ss-bulk-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: end;
+    margin-top: .85rem;
+}
+.ss-bulk-field { display: flex; flex-direction: column; gap: .3rem; font-size: .75rem; font-weight: 600; color: #475569; }
+.ss-bulk-field select,
+.ss-bulk-field input {
+    padding: .4rem .55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: .35rem;
+    font-size: .8rem;
+    color: #0f172a;
+}
+.ss-bulk-submit { flex-direction: row; align-items: center; }
 
 /* ── Rotation generator ─────────────────────────────────── */
 .ss-rotation-panel {
@@ -344,6 +386,27 @@
     font-size: .74rem;
     color: #6b7280;
 }
+
+/* ── Rotation on/off preview ────────────────────────────── */
+.ss-rotation-preview { margin-top: .85rem; }
+.ss-preview-hint { font-size: .78rem; color: #94a3b8; margin: 0; }
+.ss-preview-grid { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ss-preview-chip {
+    width: 2.15rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: .25rem 0;
+    border-radius: .35rem;
+    font-size: .68rem;
+    border: 1px solid transparent;
+}
+.ss-preview-dow { font-size: .58rem; text-transform: uppercase; opacity: .75; }
+.ss-preview-day { font-weight: 700; font-size: .78rem; }
+.ss-preview-on  { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
+.ss-preview-off { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+.ss-preview-summary { margin: .5rem 0 0; font-size: .75rem; color: #6b7280; }
 
 /* ── Form actions ────────────────────────────────────────── */
 .ss-form-actions {
@@ -437,6 +500,49 @@
     </div>
 </div>
 
+{{-- Bulk rotation bar ─────────────────────────────────────────── --}}
+<details class="ss-bulk-rotation-panel">
+    <summary class="ss-rotation-summary">Bulk-generate rotation pattern for selected employees</summary>
+    <form id="bulk-rotation-form" method="POST" action="{{ route('attendance.shift-schedule.generate-pattern-bulk') }}" class="ss-bulk-bar">
+        @csrf
+        <input type="hidden" name="dept_id" value="{{ $deptId }}">
+        <div class="ss-bulk-field">
+            <label for="bulk_shift_id">Shift</label>
+            <select name="shift_id" id="bulk_shift_id" required>
+                <option value="">Select shift…</option>
+                @foreach($shifts as $shift)
+                    <option value="{{ $shift->id }}">{{ $shift->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="ss-bulk-field">
+            <label for="bulk_on_days">Days on</label>
+            <input type="number" name="on_days" id="bulk_on_days" min="1" value="1" required>
+        </div>
+        <div class="ss-bulk-field">
+            <label for="bulk_off_days">Days off</label>
+            <input type="number" name="off_days" id="bulk_off_days" min="0" value="0" required>
+        </div>
+        <div class="ss-bulk-field">
+            <label for="bulk_start_date">From</label>
+            <input type="date" name="start_date" id="bulk_start_date" required>
+        </div>
+        <div class="ss-bulk-field">
+            <label for="bulk_end_date">To</label>
+            <input type="date" name="end_date" id="bulk_end_date" required>
+        </div>
+        <div class="ss-bulk-field ss-bulk-submit">
+            <button type="submit" class="hris-btn hris-btn-primary" id="bulk-rotation-submit" disabled>
+                Generate for selected (<span id="bulk-rotation-count">0</span>)
+            </button>
+        </div>
+    </form>
+    <div class="ss-rotation-preview" id="bulk-rotation-preview"></div>
+    <p class="ss-rotation-hint">
+        Check employees in the list below, then generate the same on/off cycle for all of them at once.
+    </p>
+</details>
+
 {{-- Main layout ──────────────────────────────────────────────── --}}
 <div class="ss-layout">
 
@@ -444,6 +550,9 @@
     <div class="ss-panel">
         <div class="ss-panel-header">
             <span class="ss-panel-title">Employees</span>
+            <label style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:#475569;cursor:pointer;font-weight:600;">
+                <input type="checkbox" id="ss-select-all" style="cursor:pointer;"> Select all
+            </label>
         </div>
 
         {{-- Search ──────────────────────────────────────────── --}}
@@ -456,14 +565,16 @@
                 @php
                     $initials = strtoupper(substr($emp->first_name, 0, 1) . substr($emp->last_name, 0, 1));
                 @endphp
-                <a href="{{ route('attendance.shift-schedule.index', ['dept_id' => $deptId, 'employee_id' => $emp->id, 'week_start' => $weekStart->toDateString()]) }}"
-                   class="ss-emp-row {{ $emp->id == $employeeId ? 'active' : '' }}"
-                   data-name="{{ strtolower($emp->last_name . ' ' . $emp->first_name) }}">
-                    <div class="ss-emp-avatar">{{ $initials }}</div>
-                    <div class="ss-emp-info">
-                        <div class="ss-emp-name">{{ $emp->last_name }}, {{ $emp->first_name }}</div>
-                    </div>
-                </a>
+                <div class="ss-emp-row-wrap" data-name="{{ strtolower($emp->last_name . ' ' . $emp->first_name) }}">
+                    <input type="checkbox" form="bulk-rotation-form" name="user_ids[]" value="{{ $emp->id }}" class="ss-emp-checkbox">
+                    <a href="{{ route('attendance.shift-schedule.index', ['dept_id' => $deptId, 'employee_id' => $emp->id, 'week_start' => $weekStart->toDateString()]) }}"
+                       class="ss-emp-row {{ $emp->id == $employeeId ? 'active' : '' }}">
+                        <div class="ss-emp-avatar">{{ $initials }}</div>
+                        <div class="ss-emp-info">
+                            <div class="ss-emp-name">{{ $emp->last_name }}, {{ $emp->first_name }}</div>
+                        </div>
+                    </a>
+                </div>
             @empty
                 <div style="padding:1.5rem;color:#94a3b8;font-size:.82rem;text-align:center;">No employees found.</div>
             @endforelse
@@ -492,6 +603,18 @@
                     <div class="ss-emp-default-shift">
                         Default shift: {{ $selectedEmployee->shift_id ? ($shifts->firstWhere('id', $selectedEmployee->shift_id)?->name ?? 'N/A') : 'Standard Day' }}
                     </div>
+                    @if ($activeAssignments->isNotEmpty() && ! $activeAssignments->every(fn ($r) => $r->shift_id === null))
+                        <ul class="ss-multi-shift-list">
+                            @foreach ($activeAssignments as $row)
+                                @php
+                                    $rowDateLabel = $row->effective_until
+                                        ? $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString()
+                                        : 'from '.$row->effective_from->toFormattedDateString();
+                                @endphp
+                                <li>{{ $row->shift?->name ?? 'Standard Day' }} — {{ \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day' }} <span class="ss-shift-dates">({{ $rowDateLabel }})</span></li>
+                            @endforeach
+                        </ul>
+                    @endif
                 </div>
             </div>
 
@@ -513,22 +636,23 @@
                     </label>
                     <label class="ss-rotation-field">
                         Days on
-                        <input type="number" name="on_days" min="1" value="1" required>
+                        <input type="number" name="on_days" id="rot_on_days" min="1" value="1" required>
                     </label>
                     <label class="ss-rotation-field">
                         Days off
-                        <input type="number" name="off_days" min="0" value="0" required>
+                        <input type="number" name="off_days" id="rot_off_days" min="0" value="0" required>
                     </label>
                     <label class="ss-rotation-field">
                         From
-                        <input type="date" name="start_date" required>
+                        <input type="date" name="start_date" id="rot_start_date" required>
                     </label>
                     <label class="ss-rotation-field">
                         To
-                        <input type="date" name="end_date" required>
+                        <input type="date" name="end_date" id="rot_end_date" required>
                     </label>
                     <button type="submit" class="hris-btn hris-btn-primary">Generate</button>
                 </form>
+                <div class="ss-rotation-preview" id="rotation-preview"></div>
                 <p class="ss-rotation-hint">
                     Sets the selected shift as {{ $selectedEmployee->first_name }}'s ongoing default and marks the
                     off-cycle dates as rest days. DTRs for the range are recomputed automatically.
@@ -550,11 +674,15 @@
                             $isWeekend   = $day->isWeekend();
 
                             if ($assignment === null) {
-                                $currentValue = 'default';
+                                $resolved     = $resolvedDefaults[$dateStr] ?? ['label' => 'Standard Day', 'value' => 'standard'];
+                                $currentValue = $resolved['value'];
                                 $stateClass   = '';
                             } elseif ($assignment->type === 'field_work') {
                                 $currentValue = 'field_work';
                                 $stateClass   = 'state-field-work';
+                            } elseif ($assignment->type === 'standard') {
+                                $currentValue = 'standard';
+                                $stateClass   = 'state-standard';
                             } elseif ($assignment->shift_id === null) {
                                 $currentValue = 'rest';
                                 $stateClass   = 'state-rest';
@@ -573,10 +701,11 @@
                                 <div class="ss-day-num" style="display:block;">{{ $day->format('j') }}</div>
                             @endif
                             <select name="assignments[{{ $dateStr }}]"
-                                    class="ss-day-select {{ $currentValue === 'rest' ? 'is-rest' : ($currentValue === 'field_work' ? 'is-field-work' : ($currentValue !== 'default' ? 'is-assigned' : '')) }}"
+                                    class="ss-day-select {{ $currentValue === 'rest' ? 'is-rest' : ($currentValue === 'field_work' ? 'is-field-work' : ($currentValue === 'standard' ? 'is-standard' : ($currentValue !== 'default' ? 'is-assigned' : ''))) }}"
                                     data-date="{{ $dateStr }}"
                                     onchange="onShiftChange(this)">
-                                <option value="default"     @selected($currentValue === 'default')>Default</option>
+                                <option value="default"     @selected($currentValue === 'default')>Default ({{ $resolvedDefaults[$dateStr]['label'] ?? 'Standard Day' }})</option>
+                                <option value="standard"    @selected($currentValue === 'standard')>Standard Day</option>
                                 <option value="rest"        @selected($currentValue === 'rest')>Rest Day / Off</option>
                                 <option value="field_work"  @selected($currentValue === 'field_work')>Field Work</option>
                                 @foreach($shifts as $shift)
@@ -591,6 +720,7 @@
                 <div class="ss-legend">
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#d1d5db;"></span> Default (no override)</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#3b82f6;"></span> Assigned shift</div>
+                    <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#64748b;"></span> Standard Day (forced)</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#ef4444;"></span> Rest day / Off</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#22c55e;"></span> Field work</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#3b82f6;border:2px solid #93c5fd;width:.6rem;height:.6rem;"></span> Today</div>
@@ -627,6 +757,7 @@ function onShiftChange(sel) {
     sel.className = 'ss-day-select' +
         (v === 'rest'       ? ' is-rest'       :
          v === 'field_work' ? ' is-field-work'  :
+         v === 'standard'   ? ' is-standard'    :
          v !== 'default'    ? ' is-assigned'    : '');
 
     card.className = card.className
@@ -635,15 +766,133 @@ function onShiftChange(sel) {
 
     if      (v === 'rest')       card.className += ' state-rest';
     else if (v === 'field_work') card.className += ' state-field-work';
+    else if (v === 'standard')   card.className += ' state-standard';
     else if (v !== 'default')    card.className += ' state-assigned';
 }
 
 /* ── Employee search ─────────────────────────────────────────── */
 function filterEmployees(q) {
     q = q.toLowerCase().trim();
-    document.querySelectorAll('#emp-list .ss-emp-row').forEach(row => {
+    document.querySelectorAll('#emp-list .ss-emp-row-wrap').forEach(row => {
         const name = row.dataset.name || '';
         row.style.display = name.includes(q) ? '' : 'none';
+    });
+}
+
+/* ── Rotation on/off preview ──────────────────────────────────── */
+// Mirrors the exact on/off math ShiftScheduleController::writeRotationForEmployee()
+// uses server-side: day 0 of the range is always "on"; the cycle is
+// on_days-many "on" days followed by off_days-many "off" days, repeating.
+function computeRotationDays(onDays, offDays, startStr, endStr) {
+    var cycleLength = onDays + offDays;
+    var cur = new Date(startStr + 'T00:00:00');
+    var end = new Date(endStr + 'T00:00:00');
+    var days = [];
+    var i = 0;
+    while (cur <= end && days.length < 400) {
+        days.push({ date: new Date(cur), isOff: offDays > 0 && (i % cycleLength) >= onDays });
+        cur.setDate(cur.getDate() + 1);
+        i++;
+    }
+    return days;
+}
+
+function renderRotationPreview(containerId, onDaysId, offDaysId, startId, endId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    var onDaysEl = document.getElementById(onDaysId);
+    var offDaysEl = document.getElementById(offDaysId);
+    var startEl = document.getElementById(startId);
+    var endEl = document.getElementById(endId);
+    if (!onDaysEl || !offDaysEl || !startEl || !endEl) return;
+
+    var onDays = parseInt(onDaysEl.value, 10);
+    var offDays = parseInt(offDaysEl.value, 10);
+    var start = startEl.value;
+    var end = endEl.value;
+
+    if (!start || !end || !onDays || onDays < 1 || isNaN(offDays) || offDays < 0 || end < start) {
+        container.innerHTML = '<p class="ss-preview-hint">Fill in days on/off and the date range to preview which days will be on vs. off.</p>';
+        return;
+    }
+
+    var MAX_SHOWN = 62;
+    var days = computeRotationDays(onDays, offDays, start, end);
+    var shown = days.slice(0, MAX_SHOWN);
+    var dow = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    var html = '<div class="ss-preview-grid">';
+    shown.forEach(function (d) {
+        html += '<div class="ss-preview-chip ' + (d.isOff ? 'ss-preview-off' : 'ss-preview-on') + '" title="' +
+            d.date.toDateString() + ': ' + (d.isOff ? 'Off' : 'On') + '">' +
+            '<span class="ss-preview-dow">' + dow[d.date.getDay()] + '</span>' +
+            '<span class="ss-preview-day">' + d.date.getDate() + '</span>' +
+            '</div>';
+    });
+    html += '</div>';
+
+    var onCount = days.length - days.filter(function (d) { return d.isOff; }).length;
+    var offCount = days.length - onCount;
+    html += '<p class="ss-preview-summary">' + days.length + ' day(s): <b>' + onCount + ' on</b>, <b>' + offCount + ' off</b>' +
+        (days.length > MAX_SHOWN ? ' (showing the first ' + MAX_SHOWN + ' - the pattern just keeps repeating)' : '') + '.</p>';
+
+    container.innerHTML = html;
+}
+
+function wireRotationPreview(containerId, onDaysId, offDaysId, startId, endId) {
+    var update = function () { renderRotationPreview(containerId, onDaysId, offDaysId, startId, endId); };
+    [onDaysId, offDaysId, startId, endId].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', update);
+    });
+    update();
+}
+
+wireRotationPreview('rotation-preview', 'rot_on_days', 'rot_off_days', 'rot_start_date', 'rot_end_date');
+wireRotationPreview('bulk-rotation-preview', 'bulk_on_days', 'bulk_off_days', 'bulk_start_date', 'bulk_end_date');
+
+/* ── Bulk rotation selection ──────────────────────────────────── */
+var bulkRotationForm = document.getElementById('bulk-rotation-form');
+var empCheckboxes    = document.querySelectorAll('.ss-emp-checkbox');
+var selectAllCb       = document.getElementById('ss-select-all');
+var bulkSubmitBtn     = document.getElementById('bulk-rotation-submit');
+var bulkCountEl       = document.getElementById('bulk-rotation-count');
+
+function updateBulkRotationState() {
+    var checked = document.querySelectorAll('.ss-emp-checkbox:checked').length;
+    if (bulkCountEl) bulkCountEl.textContent = checked;
+    if (bulkSubmitBtn) bulkSubmitBtn.disabled = checked === 0;
+    if (selectAllCb) selectAllCb.checked = checked > 0 && checked === empCheckboxes.length;
+}
+
+empCheckboxes.forEach(function (cb) { cb.addEventListener('change', updateBulkRotationState); });
+if (selectAllCb) {
+    selectAllCb.addEventListener('change', function () {
+        empCheckboxes.forEach(function (cb) { cb.checked = selectAllCb.checked; });
+        updateBulkRotationState();
+    });
+}
+updateBulkRotationState();
+
+if (bulkRotationForm) {
+    bulkRotationForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var select = document.getElementById('bulk_shift_id');
+        var shiftLabel = select.options[select.selectedIndex].text;
+        var count = document.querySelectorAll('.ss-emp-checkbox:checked').length;
+        if (count === 0) return;
+        var from = document.getElementById('bulk_start_date').value;
+        var to = document.getElementById('bulk_end_date').value;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Generate rotation pattern?',
+            html: 'This will generate a <b>' + shiftLabel + '</b> rotation for the <b>' + count + '</b> selected employee(s) from <b>' + from + '</b> to <b>' + to + '</b>.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, generate',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) { if (res.isConfirmed) bulkRotationForm.submit(); });
     });
 }
 

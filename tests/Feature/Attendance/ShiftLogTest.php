@@ -3,7 +3,9 @@
 namespace Tests\Feature\Attendance;
 
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\Shift;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -42,6 +44,29 @@ class ShiftLogTest extends TestCase
             ->assertStatus(200)
             ->assertSee('InDeptA')
             ->assertSee('InDeptB');
+    }
+
+    /**
+     * Regression: seeded/demo role accounts (see UsersTableSeeder) only ever
+     * set `name`, never first_name/last_name - the Actor column used to
+     * render blank for these accounts instead of falling back to `name`.
+     */
+    public function test_actor_column_falls_back_to_name_when_first_and_last_name_are_blank(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $tk = $this->createTimeKeeper([
+            'first_name' => null,
+            'last_name' => null,
+            'name' => 'Time Keeper User',
+        ]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'NameOnlyActor']);
+
+        $this->actingAs($tk)->put(route('attendance.schedules.exempt', $employee))->assertRedirect();
+
+        $this->actingAs($tk)
+            ->get(route('attendance.shift-logs'))
+            ->assertStatus(200)
+            ->assertSee('Time Keeper User');
     }
 
     public function test_employee_and_department_head_cannot_access_shift_logs(): void
@@ -91,6 +116,38 @@ class ShiftLogTest extends TestCase
             ->assertSee('Roster')
             ->assertSee('Day Shift')
             ->assertSee($tkName);
+    }
+
+    public function test_shift_assignment_with_days_of_week_shows_day_scope_in_log(): void
+    {
+        // Freeze on a day outside the assigned scope (Sat) so this can never
+        // pass by coincidence of which real-world day the suite happens to
+        // run on - the log must name the submitted shift regardless of
+        // whether it's cached as "today's" shift.
+        $this->travelTo(Carbon::parse('2026-07-11'));
+
+        $deptA = $this->makeDepartment('Dept A');
+        $tk = $this->createTimeKeeper();
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'Roster']);
+        $shift = Shift::create([
+            'name' => 'MWF 7-4',
+            'time_in' => '07:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '16:00',
+        ]);
+
+        $this->actingAs($tk)
+            ->put(route('attendance.schedules.update', $employee), [
+                'shift_id' => $shift->id,
+                'days_of_week' => [1, 3, 5],
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($tk)
+            ->get(route('attendance.shift-logs'))
+            ->assertSee('MWF 7-4')
+            ->assertSee('Mon, Wed, Fri');
     }
 
     public function test_exemption_toggle_is_logged(): void
@@ -156,6 +213,38 @@ class ShiftLogTest extends TestCase
             ->assertSee('Template Created')
             ->assertSee('Template Updated')
             ->assertSee('Template Deleted');
+    }
+
+    public function test_shift_template_work_days_persist_and_are_audited(): void
+    {
+        $tk = $this->createTimeKeeper();
+
+        $this->actingAs($tk)->post(route('attendance.shifts.store'), [
+            'name' => 'Mon-Sat Shift',
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+            'work_days' => [1, 2, 3, 4, 5, 6],
+        ])->assertRedirect();
+
+        $shift = Shift::where('name', 'Mon-Sat Shift')->firstOrFail();
+        $this->assertSame([1, 2, 3, 4, 5, 6], $shift->work_days);
+
+        $created = HRAuditTrail::where('target_id', $shift->id)
+            ->where('action', 'shift_template_created')->firstOrFail();
+        $this->assertSame([1, 2, 3, 4, 5, 6], $created->details['work_days']);
+
+        $this->actingAs($tk)->put(route('attendance.shifts.update', $shift), [
+            'name' => 'Mon-Sat Shift',
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+            'work_days' => [1, 2, 3, 4, 5],
+        ])->assertRedirect();
+
+        $this->assertSame([1, 2, 3, 4, 5], $shift->fresh()->work_days);
     }
 
     public function test_department_filter_scopes_the_change_log(): void

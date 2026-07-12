@@ -114,6 +114,8 @@ class LwopAggregationService
      */
     public function classifyWorkdays(User $user, Carbon $rangeStart, Carbon $rangeEnd): Collection
     {
+        $user->loadMissing('shift');
+
         $rangeStartStr = $rangeStart->toDateString();
         $rangeEndStr = $rangeEnd->toDateString();
 
@@ -126,6 +128,10 @@ class LwopAggregationService
             ->whereBetween('date', [$rangeStartStr, $rangeEndStr])
             ->get()
             ->keyBy(fn ($a) => $a->date->toDateString());
+
+        // Warm the shift-assignment-history memo once so the per-date
+        // WorkSchedule calls in the day-walk below stay O(1).
+        WorkSchedule::preloadShiftAssignments([$user->id]);
 
         $holidays = Holiday::whereBetween('holiday_date', [$rangeStartStr, $rangeEndStr])
             ->pluck('holiday_date')
@@ -166,9 +172,8 @@ class LwopAggregationService
         while ($cursor->lessThanOrEqualTo($rangeEnd)) {
             $dateStr = $cursor->toDateString();
 
-            $isWorkday = $cursor->isWeekday()
-                && ! isset($holidays[$dateStr])
-                && ! WorkSchedule::isRestDay($user, $cursor, $shiftSchedules);
+            $isWorkday = WorkSchedule::isWorkday($user, $cursor, $shiftSchedules)
+                && ! isset($holidays[$dateStr]);
 
             if (! $isWorkday) {
                 $cursor->addDay();

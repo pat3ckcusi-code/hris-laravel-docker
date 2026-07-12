@@ -227,6 +227,12 @@ class User extends Authenticatable
         return $this->hasMany(EmployeeShiftSchedule::class);
     }
 
+    /** Full effective-dated shift-assignment history (past, current, and scheduled). */
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(ShiftAssignment::class);
+    }
+
     /**
      * Send the password reset notification.
      */

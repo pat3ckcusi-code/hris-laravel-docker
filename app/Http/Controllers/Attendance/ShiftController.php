@@ -4,15 +4,14 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
-use App\Models\AttendanceLog;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
 use App\Support\RoleNormalizer;
-use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -98,7 +97,7 @@ class ShiftController extends Controller
         $actor = $request->user();
         $this->authorizeManager($actor);
 
-        if ($shift->employees()->exists()) {
+        if ($shift->employees()->exists() || ShiftAssignment::where('shift_id', $shift->id)->exists()) {
             return back()->with('shift_error', "Cannot delete \"{$shift->name}\" - employees are still assigned to it.");
         }
 
@@ -128,7 +127,7 @@ class ShiftController extends Controller
     }
 
     /**
-     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool, is_global: bool}
+     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool, is_global: bool, work_days: int[]}
      */
     private function validateShift(Request $request): array
     {
@@ -143,7 +142,19 @@ class ShiftController extends Controller
             'is_global' => ['nullable', 'boolean'],
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
+            'work_days' => ['sometimes', 'array'],
+            'work_days.*' => ['integer', 'between:0,6'],
         ]);
+
+        // Unchecked checkboxes send no key at all, indistinguishable from
+        // "selected none" - both safely fall back to Mon-Fri rather than
+        // ever persisting a zero-day shift.
+        $workDays = collect($v['work_days'] ?? [])
+            ->map(fn ($d) => (int) $d)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
 
         return [
             'name' => $v['name'],
@@ -155,23 +166,12 @@ class ShiftController extends Controller
             'no_break' => $noBreak,
             'is_active' => true,
             'is_global' => $request->boolean('is_global'),
+            'work_days' => $workDays !== [] ? $workDays : Shift::DEFAULT_WORK_DAYS,
         ];
     }
 
     private function recomputeEmployee(User $user): void
     {
-        $range = AttendanceLog::where('user_id', $user->id)
-            ->selectRaw('MIN(logdate) as min_d, MAX(logdate) as max_d')
-            ->first();
-
-        if ($range === null || $range->min_d === null) {
-            return;
-        }
-
-        $this->importService->recomputeDtr(
-            $user,
-            Carbon::parse($range->min_d)->toDateString(),
-            Carbon::parse($range->max_d)->toDateString(),
-        );
+        $this->importService->recomputeFullRange($user);
     }
 }

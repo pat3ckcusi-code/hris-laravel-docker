@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Setting;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -13,9 +15,14 @@ use Illuminate\Support\Collection;
  *
  * Every employee defaults to the global standard-day shift from the settings
  * table. An employee assigned a Shift template (User::shift_id) is scored
- * against that template's times instead. This is the single source of an
- * employee's shift, so the penalty code paths (DtrPunchResolver,
- * Form48ExportService::computeSlotPenalties, DtrController::data) never disagree.
+ * against that template's times instead. forUser() reads User::shift_id, a
+ * denormalized "today" cache kept in sync by ShiftAssignmentService; date-aware
+ * callers (forUserOnDate()/isWorkday()) resolve the shift_assignments row that
+ * actually covers that date, so a past or future shift change is reflected
+ * correctly even if it differs from what's cached for today. Together these are
+ * the single source of an employee's shift, so the penalty code paths
+ * (DtrPunchResolver, Form48ExportService::computeSlotPenalties, DtrController::data)
+ * never disagree.
  *
  * The five threshold fields map to the four CSC Form 48 slots plus the break
  * classification window:
@@ -32,6 +39,9 @@ class WorkSchedule
 {
     /** Per-request memo of the global schedule (bulk dept exports iterate many employees). */
     private static ?self $global = null;
+
+    /** Per-request memo of shift-assignment history, keyed by user_id (bulk dept exports iterate many employees). */
+    private static ?Collection $shiftAssignments = null;
 
     public function __construct(
         public readonly string $workStart,
@@ -87,16 +97,114 @@ class WorkSchedule
                 ->first();
         }
 
-        if ($assignment === null || $assignment->shift_id === null) {
-            return self::forUser($user);
+        if ($assignment !== null && $assignment->shift_id !== null) {
+            $shift = $assignment->relationLoaded('shift') ? $assignment->shift : $assignment->shift()->first();
+
+            if ($shift !== null) {
+                return self::fromShift($shift);
+            }
         }
 
-        $shift = $assignment->relationLoaded('shift') ? $assignment->shift : $assignment->shift()->first();
-
-        if ($shift === null) {
-            return self::forUser($user);
+        // An explicit "Standard Day" override on this date deliberately ignores
+        // the Shift Assignment history default - it exists specifically so a
+        // date can be forced to standard hours even while the employee has an
+        // ongoing shift_assignments row covering it.
+        if ($assignment !== null && $assignment->shift_id === null && $assignment->type === 'standard') {
+            return self::global();
         }
 
+        $historical = self::resolveShiftAssignment($user, $date);
+
+        if ($historical !== null) {
+            return $historical->shift_id === null ? self::global() : self::fromShift($historical->shift);
+        }
+
+        // Day-scoped assignments exist for this date range (e.g. an MWF+TTH
+        // split), just none of them apply to this particular day-of-week -
+        // there's nothing meaningful to return here since isWorkday() (which
+        // callers must check first) already reports this as a non-workday.
+        if (self::hasAnyAssignmentCoveringDate($user, $date)) {
+            return self::global();
+        }
+
+        return self::forUser($user);
+    }
+
+    /**
+     * The shift_assignments row covering $date for $user AND applying to that
+     * date's day-of-week, if any (either from the per-request memo warmed by
+     * preloadShiftAssignments(), or a direct query for single-employee call
+     * sites). Returns null when no dated, day-matching assignment exists, so
+     * callers fall back further (see hasAnyAssignmentCoveringDate()).
+     */
+    private static function resolveShiftAssignment(User $user, Carbon $date): ?ShiftAssignment
+    {
+        $rows = self::assignmentRowsFor($user);
+
+        return $rows->first(fn (ShiftAssignment $row) => self::coversDate($row, $date) && $row->appliesOnDate($date));
+    }
+
+    /**
+     * True when $user has an assignment covering $date by date range alone,
+     * regardless of day-of-week match - distinguishes "no assignment history
+     * at all" (falls back to the global Standard Day default, unchanged
+     * behavior) from "has day-scoped assignments, but none cover this
+     * weekday" (a deliberate non-workday, e.g. Saturday for an MWF+TTH-only
+     * employee).
+     */
+    private static function hasAnyAssignmentCoveringDate(User $user, Carbon $date): bool
+    {
+        return self::assignmentRowsFor($user)->contains(fn (ShiftAssignment $row) => self::coversDate($row, $date));
+    }
+
+    /**
+     * A warmed memo only ever omits a user it was never asked about (it
+     * groups exactly the IDs passed to preloadShiftAssignments()), so falling
+     * back to a live query for an unlisted user is always safe - it can't
+     * mean "no rows," only "wasn't part of this warm-up."
+     *
+     * @return Collection<int, ShiftAssignment>
+     */
+    private static function assignmentRowsFor(User $user): Collection
+    {
+        if (self::$shiftAssignments !== null && self::$shiftAssignments->has($user->id)) {
+            return self::$shiftAssignments->get($user->id);
+        }
+
+        return ShiftAssignment::forUser($user->id)->with('shift')->get();
+    }
+
+    private static function coversDate(ShiftAssignment $row, Carbon $date): bool
+    {
+        return $row->effective_from->lte($date)
+            && ($row->effective_until === null || $row->effective_until->gte($date));
+    }
+
+    /**
+     * Warm the per-request shift-assignment memo for a bulk loop, avoiding an
+     * N+1 query per employee per date. Call once before iterating; forgetting
+     * to call it just falls back to a per-user query, so it's an optimization,
+     * not a correctness requirement.
+     *
+     * @param  iterable<int>  $userIds
+     */
+    public static function preloadShiftAssignments(iterable $userIds): void
+    {
+        self::$shiftAssignments = ShiftAssignment::whereIn('user_id', collect($userIds)->all())
+            ->with('shift')
+            ->orderBy('effective_from')
+            ->get()
+            ->groupBy('user_id');
+    }
+
+    /** Clear the per-request shift-assignment memo (used in tests after seeding new rows). */
+    public static function flushShiftAssignmentMemo(): void
+    {
+        self::$shiftAssignments = null;
+    }
+
+    private static function fromShift(Shift $shift): self
+    {
         return new self(
             workStart: self::hm($shift->time_in),
             lunchReturn: self::hm($shift->break_in) ?? self::hm($shift->time_out),
@@ -109,7 +217,9 @@ class WorkSchedule
     }
 
     /**
-     * True when the employee is scheduled off on $date (assignment row with shift_id = null).
+     * True when the employee is scheduled off on $date (assignment row with shift_id
+     * = null and type 'rest' - excludes 'field_work' and 'standard', which are also
+     * shift_id = null but represent working days, not a day off).
      *
      * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
      */
@@ -125,7 +235,46 @@ class WorkSchedule
                 ->first();
         }
 
-        return $assignment !== null && $assignment->shift_id === null && $assignment->type !== 'field_work';
+        return $assignment !== null && $assignment->shift_id === null
+            && ! in_array($assignment->type, ['field_work', 'standard'], true);
+    }
+
+    /**
+     * True when $user is scheduled to work on $date: an explicit per-date
+     * override always wins (a rest-day row = no; an assigned-shift, field_work,
+     * or standard-day row = yes); otherwise falls back to the user's assigned
+     * shift's weekly work-days pattern, or Mon-Fri if no shift is assigned.
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function isWorkday(User $user, Carbon $date, ?Collection $preloaded = null): bool
+    {
+        $dateStr = $date->toDateString();
+
+        $assignment = $preloaded !== null
+            ? $preloaded->get($dateStr)
+            : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->first();
+
+        if ($assignment !== null) {
+            return ! ($assignment->shift_id === null && ! in_array($assignment->type, ['field_work', 'standard'], true));
+        }
+
+        $historical = self::resolveShiftAssignment($user, $date);
+
+        if ($historical !== null) {
+            return $historical->shift_id === null ? $date->isWeekday() : $historical->shift->worksOnDate($date);
+        }
+
+        // Day-scoped assignments cover this date range (e.g. an MWF+TTH
+        // split), just none apply to this day-of-week - a deliberate
+        // non-workday, not a fall-through to the global default.
+        if (self::hasAnyAssignmentCoveringDate($user, $date)) {
+            return false;
+        }
+
+        $shift = $user->relationLoaded('shift') ? $user->shift : $user->shift()->first();
+
+        return $shift === null ? $date->isWeekday() : $shift->worksOnDate($date);
     }
 
     /**
@@ -160,19 +309,7 @@ class WorkSchedule
 
         $shift = $user->relationLoaded('shift') ? $user->shift : $user->shift()->first();
 
-        if ($shift === null) {
-            return self::global();
-        }
-
-        return new self(
-            workStart: self::hm($shift->time_in),
-            lunchReturn: self::hm($shift->break_in) ?? self::hm($shift->time_out),
-            workEnd: self::hm($shift->time_out),
-            morningEnd: self::hm($shift->break_out) ?? self::hm($shift->time_out),
-            noonEnd: self::hm($shift->time_out),
-            crossesMidnight: (bool) $shift->crosses_midnight,
-            noBreak: (bool) $shift->no_break,
-        );
+        return $shift === null ? self::global() : self::fromShift($shift);
     }
 
     /** Clear the per-request global memo (used in tests after mutating settings). */
@@ -182,44 +319,34 @@ class WorkSchedule
     }
 
     /**
-     * The midpoint of the off-period (the non-working gap from workEnd to the
-     * next workStart), as 'HH:MM'. This is the single boundary that splits any
-     * punch into the shift it belongs to - see shiftDateFor().
-     */
-    public function offPeriodMidpoint(): string
-    {
-        $out = self::toMinutes($this->workEnd);
-        $in = self::toMinutes($this->workStart);
-
-        // A shift spanning exactly 24h (e.g. a guard's duty) has a zero-length
-        // off-period: the boundary between consecutive shift-days is simply
-        // the shift's own start/end time, not a midpoint.
-        if ($in === $out) {
-            return $this->workStart;
-        }
-
-        // Off-period runs from workEnd to the next workStart.
-        $offEnd = $in > $out ? $in : $in + 1440;
-        $mid = (int) round(($out + $offEnd) / 2) % 1440;
-
-        return self::fromMinutes($mid);
-    }
-
-    /**
-     * The logical shift date a punch belongs to. Evening punches (>= midpoint)
-     * keep their own logdate; post-midnight punches (< midpoint) fold onto the
-     * previous day's shift. For a non-crossing day shift the midpoint sits just
-     * after midnight, so every daytime punch maps to its own logdate (today's
-     * behaviour).
+     * The logical shift date a punch belongs to: punches at/after the boundary
+     * keep their own logdate; punches before it belong to the PREVIOUS day's
+     * shift (relevant for a crossing shift's post-midnight tail end).
+     *
+     * The boundary is today's workStart minus half the off-period duration -
+     * an absolute datetime, anchored to today's arrival time, rather than a
+     * bare 'HH:MM' comparison. That distinction matters: comparing bare
+     * time-of-day strings only works when the off-period's midpoint happens
+     * to land in the early morning of the FOLLOWING day (true whenever
+     * workStart + workEnd >= 24h, e.g. an 08:00-17:00 shift). A shift where
+     * that sum is under 24h (e.g. 07:00-16:00) puts the bare midpoint late in
+     * the SAME evening instead, which would make every normal morning
+     * arrival compare as "before the boundary" and incorrectly fold onto the
+     * previous day. Anchoring to a real datetime avoids that entirely.
      */
     public function shiftDateFor(string $logdate, string $logtime): string
     {
-        $boundary = $this->offPeriodMidpoint();
         $date = Carbon::parse($logdate)->startOfDay();
+        $punch = Carbon::parse("$logdate ".self::hm($logtime));
 
-        return self::hm($logtime) >= $boundary
-            ? $date->toDateString()
-            : $date->subDay()->toDateString();
+        $shiftDuration = $this->crossesMidnight
+            ? 1440 - self::toMinutes($this->workStart) + self::toMinutes($this->workEnd)
+            : self::toMinutes($this->workEnd) - self::toMinutes($this->workStart);
+
+        $todayStart = $date->copy()->addMinutes(self::toMinutes($this->workStart));
+        $boundary = $todayStart->copy()->subMinutes((int) round((1440 - $shiftDuration) / 2));
+
+        return $punch->gte($boundary) ? $date->toDateString() : $date->copy()->subDay()->toDateString();
     }
 
     /**
@@ -255,11 +382,6 @@ class WorkSchedule
         [$h, $m] = array_pad(explode(':', substr($hhmm, 0, 5)), 2, '0');
 
         return ((int) $h) * 60 + (int) $m;
-    }
-
-    private static function fromMinutes(int $minutes): string
-    {
-        return sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
     }
 
     /** Normalize a stored time (HH:MM or HH:MM:SS) to HH:MM; null/empty → null. */

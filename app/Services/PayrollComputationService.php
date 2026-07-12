@@ -223,23 +223,24 @@ class PayrollComputationService
 
         $dtrDates = $dtrs->pluck('date')->map(fn ($d) => $d->format('Y-m-d'))->toArray();
 
-        // Pre-load per-date shift assignments so rest-day checks are O(1).
-        $employee = User::find($employeeId);
+        // Pre-load per-date shift assignments so workday checks are O(1).
+        $employee = User::with('shift')->find($employeeId);
         $assignments = EmployeeShiftSchedule::where('user_id', $employeeId)
             ->whereBetween('date', [$run->period_start->toDateString(), $run->period_end->toDateString()])
             ->get()
             ->keyBy(fn ($a) => $a->date->toDateString());
 
+        // Warm the shift-assignment-history memo once so the per-date
+        // WorkSchedule::isWorkday() calls in the cursor loop below stay O(1).
+        WorkSchedule::preloadShiftAssignments([$employeeId]);
+
         $cursor = $run->period_start->copy();
         while ($cursor <= $run->period_end) {
-            if ($cursor->isWeekday()) {
-                // A scheduled rest/off day is neither worked nor absent.
-                if ($employee && WorkSchedule::isRestDay($employee, $cursor, $assignments)) {
-                    $cursor->addDay();
+            $isWorkday = $employee
+                ? WorkSchedule::isWorkday($employee, $cursor, $assignments)
+                : $cursor->isWeekday();
 
-                    continue;
-                }
-
+            if ($isWorkday) {
                 if (in_array($cursor->format('Y-m-d'), $dtrDates)) {
                     $dtr = $dtrs->first(fn ($d) => $d->date->format('Y-m-d') === $cursor->format('Y-m-d'));
                     if ($dtr && ! $dtr->is_absent && $dtr->status !== 'absent') {

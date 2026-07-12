@@ -12,6 +12,7 @@
         'shift_template_created' => ['bg' => '#dcfce7', 'color' => '#166534'],
         'shift_template_updated' => ['bg' => '#fef9c3', 'color' => '#713f12'],
         'shift_template_deleted' => ['bg' => '#fee2e2', 'color' => '#991b1b'],
+        'shift_assignment_corrected' => ['bg' => '#e0f2fe', 'color' => '#0369a1'],
     ];
 @endphp
 
@@ -34,6 +35,14 @@
             <tbody>
                 @forelse ($logs as $log)
                     @php $colors = $actionColors[$log->action] ?? ['bg' => '#f1f5f9', 'color' => '#475569']; @endphp
+                    @php
+                        // Seeded/demo role accounts (see UsersTableSeeder) only ever set
+                        // `name`, never first_name/last_name - trim() alone would render
+                        // an empty cell for them instead of falling back to `name`.
+                        $actorName = $log->actor
+                            ? (trim("{$log->actor->first_name} {$log->actor->last_name}") ?: $log->actor->name)
+                            : null;
+                    @endphp
                     <tr>
                         <td style="{{ $td }}white-space:nowrap;color:#6b7280;">{{ $log->created_at?->format('M d, Y g:i A') }}</td>
                         <td style="{{ $td }}">
@@ -44,7 +53,7 @@
                         </td>
                         <td style="{{ $td }}text-align:left;font-weight:600;">{{ $log->target_label }}</td>
                         <td style="{{ $td }}text-align:left;color:#374151;">{{ $log->summary }}</td>
-                        <td style="{{ $td }}text-align:left;">{{ $log->actor ? trim("{$log->actor->first_name} {$log->actor->last_name}") : '-' }}</td>
+                        <td style="{{ $td }}text-align:left;">{{ $actorName ?: '-' }}</td>
                     </tr>
                 @empty
                     <tr><td colspan="5" style="{{ $td }}color:#94a3b8;">{{ $emptyText ?? 'No shift changes logged yet.' }}</td></tr>

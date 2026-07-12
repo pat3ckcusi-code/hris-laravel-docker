@@ -574,6 +574,10 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
 
     Route::get('/attendance/schedules', [EmployeeScheduleController::class, 'index'])
         ->name('attendance.schedules');
+    Route::put('/attendance/schedules/bulk-assign', [EmployeeScheduleController::class, 'bulkAssign'])
+        ->name('attendance.schedules.bulk-assign');
+    Route::get('/attendance/schedules/{user}/history', [EmployeeScheduleController::class, 'history'])
+        ->name('attendance.schedules.history');
     Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
         ->name('attendance.schedules.update');
     Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
@@ -585,6 +589,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.shift-schedule.store');
     Route::post('/attendance/shift-schedule/generate-pattern', [ShiftScheduleController::class, 'generatePattern'])
         ->name('attendance.shift-schedule.generate-pattern');
+    Route::post('/attendance/shift-schedule/generate-pattern-bulk', [ShiftScheduleController::class, 'generatePatternBulk'])
+        ->name('attendance.shift-schedule.generate-pattern-bulk');
 });
 
 // Shift Management access grants + company-wide Shift Logs (Time Keeper / HR Manager only)

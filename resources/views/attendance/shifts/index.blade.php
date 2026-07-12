@@ -22,6 +22,9 @@
 .shift-dept-checklist { width:100%; min-width:14rem; max-height:9rem; overflow-y:auto; border:1px solid #cbd5e1; border-radius:.35rem; padding:.4rem .6rem; background:#fff; }
 .shift-dept-checklist label { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#374151; padding:.15rem 0; cursor:pointer; }
 .shift-dept-checklist input { width:auto; }
+.shift-days-picker { display:flex; flex-wrap:wrap; gap:.5rem; }
+.shift-days-picker label { display:flex; align-items:center; gap:.25rem; font-size:.75rem; color:#374151; cursor:pointer; }
+.shift-days-picker input { width:auto; }
 </style>
 @endsection
 
@@ -66,6 +69,17 @@
                     @endforeach
                 </div>
             </div>
+            <div class="shift-field">
+                <label>Work Days</label>
+                <div class="shift-days-picker">
+                    @foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 0 => 'Sun'] as $val => $label)
+                        <label>
+                            <input type="checkbox" name="work_days[]" value="{{ $val }}" {{ in_array($val, [1, 2, 3, 4, 5]) ? 'checked' : '' }}>
+                            <span>{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
             <div class="shift-field"><button type="submit" class="hris-btn hris-btn-primary">Add Shift</button></div>
         </div>
     </form>
@@ -88,6 +102,7 @@
                     <th>Time Out</th>
                     <th>No Break</th>
                     <th>Type</th>
+                    <th>Work Days</th>
                     <th class="shift-scope-cell">Scope</th>
                     <th>Employees</th>
                     <th></th>
@@ -115,6 +130,19 @@
                                 <span class="shift-badge-night">Night</span>
                             @else
                                 <span class="shift-badge-day">Day</span>
+                            @endif
+                        </td>
+                        <td>
+                            <div style="font-size:.78rem;color:#374151;margin-bottom:.35rem;">{{ $shift->workDaysLabel() }}</div>
+                            @if ($canManage)
+                                <div class="shift-days-picker">
+                                    @foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 0 => 'Sun'] as $val => $label)
+                                        <label>
+                                            <input form="{{ $fid }}" type="checkbox" name="work_days[]" value="{{ $val }}" {{ in_array($val, $shift->work_days ?: [1, 2, 3, 4, 5]) ? 'checked' : '' }}>
+                                            <span>{{ $label }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
                             @endif
                         </td>
                         <td class="shift-scope-cell">
@@ -169,7 +197,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
+                    <tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
                 @endforelse
             </tbody>
         </table>

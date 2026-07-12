@@ -39,6 +39,7 @@ class AttendanceMonitoringExportService
         $deptIds = $departments->pluck('Dept_id')->toArray();
 
         $employees = User::active()->whereIn('Dept_id', $deptIds)
+            ->with('shift')
             ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')
             ->orderBy('first_name')
@@ -106,6 +107,10 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id')
             ->map(fn ($group) => $group->keyBy(fn ($a) => $a->date->toDateString()));
+
+        // Warm the shift-assignment-history memo once for the whole department so
+        // the per-date WorkSchedule calls in the per-employee map() below stay O(1).
+        WorkSchedule::preloadShiftAssignments($employeeIds);
 
         $empNos = $employees->pluck('EmpNo')->filter()->values()->toArray();
         $officeOrdersByEmpNo = empty($empNos) ? collect() : DB::table('office_orders')
@@ -270,6 +275,13 @@ class AttendanceMonitoringExportService
             $periodEndDate = Carbon::parse($periodEnd);
 
             $unofficialExitDays = [];
+            $unfiledLeaveDays = [];
+
+            // Job Order staff are blocked from filing leave entirely (DenyJobOrder
+            // middleware) and Elected Officials don't accrue standard civil-service
+            // leave credits, so a fully blank day for them stays classified as
+            // Unofficial Exit rather than Unfiled Leave.
+            $exemptFromUnfiledLeave = in_array($emp->employee_type, ['Elected Officials', 'Job Orders'], true);
 
             if (! $emp->dtr_exempt) {
                 $serviceStart = ($emp->date_hired && $emp->date_hired->gt($periodStartDate))
@@ -283,9 +295,7 @@ class AttendanceMonitoringExportService
                         continue;
                     }
 
-                    $isRestDay = WorkSchedule::isRestDay($emp, $date, $empAssignments)
-                        || ($date->isWeekend() && ! $empAssignments->has($dateStr));
-                    if ($isRestDay || isset($holidays[$dateStr])) {
+                    if (! WorkSchedule::isWorkday($emp, $date, $empAssignments) || isset($holidays[$dateStr])) {
                         continue;
                     }
 
@@ -295,6 +305,18 @@ class AttendanceMonitoringExportService
                     }
 
                     $dtr = $empDtrsByDate->get($dateStr);
+
+                    // Punched in for the afternoon but never punched out - an unofficial
+                    // exit regardless of employee type, alongside (not instead of) the
+                    // phantom-undertime charge computed separately below for the same day.
+                    if ($dtr && $dtr->time_in_pm && ! $dtr->time_out_pm) {
+                        if (! $isSlotCovered($dateStr, 'pm_out')) {
+                            $unofficialExitDays[$dateStr] = 'no_time_out';
+                        }
+
+                        continue;
+                    }
+
                     if ($dtr && ($dtr->time_in_am || $dtr->time_in_pm)) {
                         continue;
                     }
@@ -303,7 +325,12 @@ class AttendanceMonitoringExportService
                         continue;
                     }
 
-                    $unofficialExitDays[$dateStr] = true;
+                    // A fully blank day - no punches at all.
+                    if ($exemptFromUnfiledLeave) {
+                        $unofficialExitDays[$dateStr] = 'absent';
+                    } else {
+                        $unfiledLeaveDays[$dateStr] = true;
+                    }
                 }
             }
 
@@ -316,6 +343,11 @@ class AttendanceMonitoringExportService
             // absence loop above actually found unexplained days, so an employee fully
             // covered by leave/etc. with no Dtr rows is never mislabeled.
             $unofficialExitNoData = $unofficialExitCount > 0 && $empDtrs->isEmpty();
+            $unfiledLeaveNoData = count($unfiledLeaveDays) > 0 && $empDtrs->isEmpty();
+
+            // Blank days for leave-accruing employee types add to the same "Unfiled
+            // Leave" total as any manually-flagged (is_absent) Dtr rows above.
+            $unfiledCount += count($unfiledLeaveDays);
 
             $totalMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
                 $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
@@ -393,15 +425,29 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$mins.' mins)']);
             }
 
-            // Fully absent days with no punches and nothing on file to explain them -
-            // collapsed to a single note when it's a whole-month data gap rather than
-            // per-day entries, to avoid flooding the Remarks column.
+            // Unofficial exits - either a punched-in-but-never-punched-out day, or (for
+            // employee types that don't accrue leave) a fully blank day. Collapsed to a
+            // single note when it's a whole-month data gap rather than per-day entries,
+            // to avoid flooding the Remarks column.
             if ($unofficialExitNoData) {
                 $remarkEntries->push(['day' => 0, 'label' => 'No DTR data recorded this month - verify biometric import']);
             } else {
-                foreach (array_keys($unofficialExitDays) as $dateStr) {
+                foreach ($unofficialExitDays as $dateStr => $reason) {
                     $day = Carbon::parse($dateStr)->day;
-                    $remarkEntries->push(['day' => $day, 'label' => $day.'-Absent (Unofficial Exit)']);
+                    $label = $reason === 'no_time_out'
+                        ? $day.'-Unofficial Exit (No Time Out)'
+                        : $day.'-Absent (Unofficial Exit)';
+                    $remarkEntries->push(['day' => $day, 'label' => $label]);
+                }
+            }
+
+            // Unfiled leave - a fully blank day for a leave-accruing employee type.
+            if ($unfiledLeaveNoData) {
+                $remarkEntries->push(['day' => 0, 'label' => 'No DTR data recorded this month - verify biometric import']);
+            } else {
+                foreach (array_keys($unfiledLeaveDays) as $dateStr) {
+                    $day = Carbon::parse($dateStr)->day;
+                    $remarkEntries->push(['day' => $day, 'label' => $day.'-Absent (Unfiled Leave)']);
                 }
             }
 
@@ -545,6 +591,7 @@ class AttendanceMonitoringExportService
                 'undertime_count' => $undertimeCount,
                 'tardiness_count' => $tardinessCount,
                 'unfiled_count' => $unfiledCount,
+                'unfiled_leave_no_data' => $unfiledLeaveNoData,
                 'official_leave_count' => $officialLeaveCount,
                 'unofficial_exit_count' => $unofficialExitCount,
                 'unofficial_exit_no_data' => $unofficialExitNoData,
@@ -679,7 +726,9 @@ class AttendanceMonitoringExportService
             // (they have no DTR), while leave/locator columns stay populated.
             $sheet->setCellValue("D{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['undertime_count'] ?: 0));
             $sheet->setCellValue("E{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['tardiness_count'] ?: 0));
-            $sheet->setCellValue("F{$rowNum}", $row['is_exempt'] ? 'EXEMPT' : ($row['unfiled_count'] ?: 0));
+            $sheet->setCellValue("F{$rowNum}", $row['is_exempt']
+                ? 'EXEMPT'
+                : ($row['unfiled_leave_no_data'] ? 'NO DTR DATA' : ($row['unfiled_count'] ?: 0)));
             $sheet->setCellValue("G{$rowNum}", $row['official_leave_count'] ?: 0);
             $sheet->setCellValue("H{$rowNum}", $row['is_exempt']
                 ? 'EXEMPT'

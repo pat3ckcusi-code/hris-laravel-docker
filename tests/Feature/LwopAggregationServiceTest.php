@@ -12,6 +12,7 @@ use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\MonthlyAttendance;
+use App\Models\Shift;
 use App\Services\LwopAggregationService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -424,6 +425,28 @@ class LwopAggregationServiceTest extends TestCase
         );
 
         $this->assertFalse($classified->has('2026-04-04'));
+    }
+
+    public function test_mon_sat_shift_counts_saturday_as_workday_and_sunday_as_rest(): void
+    {
+        // 2026-04-04 is a Saturday, 2026-04-05 is a Sunday.
+        $shift = Shift::create([
+            'name' => 'Mon-Sat',
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+            'work_days' => [1, 2, 3, 4, 5, 6],
+        ]);
+        $emp = $this->createEmployee(['shift_id' => $shift->id]);
+
+        $classified = app(LwopAggregationService::class)->classifyWorkdays(
+            $emp, Carbon::parse('2026-04-04'), Carbon::parse('2026-04-05')
+        );
+
+        $this->assertTrue($classified->has('2026-04-04'), 'Saturday must be a workday for a Mon-Sat shift.');
+        $this->assertTrue($classified->get('2026-04-04'), 'An unpunched Saturday workday is AWOL.');
+        $this->assertFalse($classified->has('2026-04-05'), 'Sunday stays excluded even for a Mon-Sat shift.');
     }
 
     public function test_awol_and_lwop_both_reduce_days_present_in_the_same_month(): void

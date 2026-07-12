@@ -91,7 +91,12 @@ class Form48ExportService
         // the fetch by a day on each side so night shifts at the range edges are
         // complete.
         $user = User::find($userId);
-        $schedule = WorkSchedule::forUser($user);
+
+        // Warm the shift-assignment-history memo once so the per-date
+        // WorkSchedule calls below (here and inside punchGrouper->group()) stay O(1).
+        WorkSchedule::preloadShiftAssignments([$userId]);
+
+        $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($from));
         $pad = $schedule->crossesMidnight ? 1 : 0;
 
         $logs = AttendanceLog::where('user_id', $userId)

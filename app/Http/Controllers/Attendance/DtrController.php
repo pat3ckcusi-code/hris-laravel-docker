@@ -201,9 +201,10 @@ class DtrController extends Controller
             ->orderBy('date')
             ->get();
 
-        // Effective shift for this employee (template or global standard day).
-        // Kept for any context that doesn't need per-date resolution (e.g. headers).
-        $schedule = WorkSchedule::forUser($employee);
+        // Effective shift for this employee as of the period start (template or
+        // global standard day). Kept for any context that doesn't need per-date
+        // resolution (e.g. headers).
+        $schedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($from));
 
         // Pre-load per-date shift assignments so each DTR row can use its own schedule.
         $shiftAssignments = EmployeeShiftSchedule::where('user_id', $employee->id)
@@ -612,6 +613,9 @@ class DtrController extends Controller
         foreach ($shiftAssignments as $dateStr => $assignment) {
             if ($assignment->shift_id !== null) {
                 continue; // normal shift override, handled via DTR rows
+            }
+            if ($assignment->type === 'standard') {
+                continue; // forced Standard Day is a normal working day, not a rest/field-work special row
             }
             if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr)) {
                 continue; // already represented by a DTR or leave row

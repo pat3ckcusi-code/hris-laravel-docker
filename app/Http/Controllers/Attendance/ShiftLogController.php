@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
+use App\Models\Shift;
 use App\Models\User;
 use App\Support\RoleNormalizer;
 use Illuminate\Contracts\View\View;
@@ -27,6 +28,7 @@ class ShiftLogController extends Controller
         'access_granted' => 'Access Granted',
         'access_revoked' => 'Access Revoked',
         'shift_assigned' => 'Shift Assigned',
+        'shift_assignment_corrected' => 'Shift Corrected',
         'dtr_exemption_toggled' => 'DTR Exemption',
         'shift_schedule_updated' => 'Schedule Updated',
         'rotation_generated' => 'Rotation Generated',
@@ -118,7 +120,12 @@ class ShiftLogController extends Controller
         $d = $log->details ?? [];
 
         return match ($log->action) {
-            'shift_assigned' => ! empty($d['shift_name']) ? "Assigned to {$d['shift_name']}" : 'Reverted to Standard Day',
+            'shift_assigned' => ! empty($d['shift_name'])
+                ? "Assigned to {$d['shift_name']}".(($label = Shift::daysOfWeekLabel($d['days_of_week'] ?? null)) !== null ? " — {$label}" : '')
+                : 'Reverted to Standard Day',
+            'shift_assignment_corrected' => ! empty($d['shift_name'])
+                ? "Corrected to {$d['shift_name']}".(($label = Shift::daysOfWeekLabel($d['days_of_week'] ?? null)) !== null ? " — {$label}" : '')
+                : 'Corrected to Standard Day',
             'dtr_exemption_toggled' => ! empty($d['exempt']) ? 'Marked exempt from DTR' : 'Restored to DTR tracking',
             'shift_schedule_updated' => "Week of {$d['week_start']} - {$d['days_changed']} day(s) changed",
             'rotation_generated' => "{$d['on_days']}-on / {$d['off_days']}-off, {$d['start_date']} to {$d['end_date']}",
