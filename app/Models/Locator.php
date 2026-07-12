@@ -86,4 +86,21 @@ class Locator extends Model
             $arr >= $schedule->workEnd ? 'pm_out' : null,
         ]));
     }
+
+    /**
+     * Same coverage as coveredSlotKeys(), but paired with the [departure, arrival]
+     * exclusion window for each covered slot instead of a bare slot key - a punch
+     * outside this window (before departure, or after arrival) is real and should
+     * never be excluded from its natural slot. DtrPunchResolver is the consumer:
+     * it only treats a covered slot as "no real punch expected" while a candidate
+     * punch falls inside this window.
+     *
+     * @return array<string, array{0:string,1:string}>
+     */
+    public static function coveredSlotWindows(string $departure, string $arrival, WorkSchedule $schedule): array
+    {
+        $window = [substr($departure, 0, 5), substr($arrival, 0, 5)];
+
+        return array_fill_keys(self::coveredSlotKeys($departure, $arrival, $schedule), $window);
+    }
 }

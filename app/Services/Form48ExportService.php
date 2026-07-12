@@ -111,7 +111,7 @@ class Form48ExportService
         // Excused/locator-covered slots have no real punch expected - keeps this
         // fallback in agreement with PersonnelLogImportService's resolution.
         $excuseMap = $this->buildExcuseMap($userId, $from, $to);
-        $locatorMap = $this->buildLocatorMap($userId, $from, $to);
+        $locatorSlotMap = $this->buildLocatorSlotWindowMap($userId, $from, $to);
 
         foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
             if ($date < $from || $date > $to) {
@@ -122,16 +122,10 @@ class Form48ExportService
                 continue;   // DTR entry already covers this shift
             }
 
-            $locatorSlots = [];
-            foreach (['am_in', 'am_out', 'pm_in', 'pm_out'] as $slotKey) {
-                if ($locatorMap[$day]["covers_{$slotKey}"] ?? false) {
-                    $locatorSlots[] = $slotKey;
-                }
-            }
-            $excludedSlots = array_values(array_unique(array_merge(
-                $excuseMap[$day]?->excludedSlotKeys() ?? [],
-                $locatorSlots
-            )));
+            $excludedSlots = array_merge(
+                array_fill_keys($excuseMap[$day]?->excludedSlotKeys() ?? [], null),
+                $locatorSlotMap[$date] ?? []
+            );
             $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);
 
             $records[$day] = [
@@ -302,6 +296,51 @@ class Form48ExportService
     }
 
     /**
+     * Build a date-string → slot-key → exclusion window map for a user's approved
+     * locators in range, for the DtrPunchResolver fallback in fill(). Unlike
+     * buildLocatorMap()'s day-level departure/arrival union (kept as-is for
+     * display), this unions per SLOT - two same-day locators covering different
+     * slots keep their own distinct windows instead of borrowing each other's -
+     * mirroring PersonnelLogImportService::buildLocatorSlotMap() so import and
+     * this export fallback can never disagree on a covered slot's window.
+     *
+     * @return array<string, array<string, array{0:string,1:string}>>
+     */
+    private function buildLocatorSlotWindowMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+        $user = User::find($userId);
+        $assignments = EmployeeShiftSchedule::where('user_id', $userId)
+            ->whereBetween('date', [$from, $to])
+            ->with('shift')
+            ->get()
+            ->keyBy(fn ($a) => $a->date->toDateString());
+
+        Locator::where('user_id', $userId)
+            ->where('status', 'approved')
+            ->whereBetween('travel_date', [$from, $to])
+            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->each(function ($locator) use (&$map, $user, $assignments): void {
+                $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
+                $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
+                $windows = Locator::coveredSlotWindows(
+                    (string) $locator->intended_departure_time,
+                    (string) $locator->intended_arrival_time,
+                    $schedule
+                );
+
+                foreach ($windows as $slotKey => $window) {
+                    $existing = $map[$dateStr][$slotKey] ?? null;
+                    $map[$dateStr][$slotKey] = $existing === null
+                        ? $window
+                        : [min($existing[0], $window[0]), max($existing[1], $window[1])];
+                }
+            });
+
+        return $map;
+    }
+
+    /**
      * Build a day-of-month → true map for scheduled rest days (null shift_id assignment).
      * Used by fill() to label those days as "Rest Day" instead of treating them as absences.
      *
@@ -342,7 +381,7 @@ class Form48ExportService
      * Build a day-of-month → office_order_num map for office orders covering this user.
      * Matches on effective_date when set, otherwise falls back to issued_date.
      *
-     * @return array<int, string>  e.g. [15 => '2026 - 003']
+     * @return array<int, string> e.g. [15 => '2026 - 003']
      */
     public function buildOfficeOrderMap(int $userId, string $from, string $to): array
     {
@@ -767,7 +806,10 @@ class Form48ExportService
                         match ($punchCount) {
                             0 => (function () use ($sheet, $i, $row): void {
                                 $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
-                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                try {
+                                    $sheet->mergeCells($range);
+                                } catch (\Throwable) {
+                                }
                                 $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Office Order');
                                 $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                             })(),
@@ -776,7 +818,10 @@ class Form48ExportService
                                 $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
                                 $sheet->getStyle(self::AM_IN_COLS[$i].$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                                 $range = self::AM_OUT_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
-                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                try {
+                                    $sheet->mergeCells($range);
+                                } catch (\Throwable) {
+                                }
                                 $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, 'Office Order');
                                 $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                             })(),
@@ -788,16 +833,19 @@ class Form48ExportService
                                     $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                                 }
                                 $range = self::PM_IN_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
-                                try { $sheet->mergeCells($range); } catch (\Throwable) {}
+                                try {
+                                    $sheet->mergeCells($range);
+                                } catch (\Throwable) {
+                                }
                                 $sheet->setCellValue(self::PM_IN_COLS[$i].$row, 'Office Order');
                                 $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                             })(),
 
                             default => (function () use ($sheet, $i, $row, $rec, $fmt): void {
                                 // 3 punches: show am_in, am_out, pm_in; pm_out = "Office Order"
-                                $sheet->setCellValue(self::AM_IN_COLS[$i].$row,  $fmt($rec['am_in']  ?? null));
+                                $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
                                 $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $fmt($rec['am_out'] ?? null));
-                                $sheet->setCellValue(self::PM_IN_COLS[$i].$row,  $fmt($rec['pm_in']  ?? null));
+                                $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $fmt($rec['pm_in'] ?? null));
                                 $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, 'Office Order');
                                 foreach ([
                                     self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i],

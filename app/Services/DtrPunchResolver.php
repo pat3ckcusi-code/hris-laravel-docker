@@ -32,9 +32,13 @@ class DtrPunchResolver
 {
     /**
      * @param  iterable<int, Carbon|string>  $punches  full punch datetimes for ONE shift
-     * @param  array<int, string>  $excludedSlots  slot keys ('am_in'|'am_out'|'pm_in'|'pm_out') known to
-     *                                             have no real punch (e.g. covered by a DtrExcuse), so the
-     *                                             1-4 punch case doesn't mis-slot a later punch into them
+     * @param  array<string, array{0:string,1:string}|null>  $excludedSlots  slot key ('am_in'|'am_out'|'pm_in'|'pm_out')
+     *                                                                       => exclusion window ['H:i', 'H:i'], or null for an unconditional
+     *                                                                       exclusion (e.g. a DtrExcuse, where no punch is physically possible
+     *                                                                       regardless of time). A windowed slot only has "no real punch
+     *                                                                       expected" while a punch falls inside the window (e.g. a locator's
+     *                                                                       [departure, arrival] span) - a punch outside it (before departure,
+     *                                                                       or after arrival) is real and must land in its natural slot.
      * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string, late_minutes:int, undertime_minutes:int}
      */
     public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
@@ -97,7 +101,7 @@ class DtrPunchResolver
      * Map sorted, de-duplicated punch datetimes to the four slots.
      *
      * @param  Collection<int, Carbon>  $sorted  ascending punch datetimes
-     * @param  array<int, string>  $excludedSlots  slot keys known to have no real punch
+     * @param  array<string, array{0:string,1:string}|null>  $excludedSlots  see resolve()
      * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon} [am_in, am_out, pm_in, pm_out]
      */
     private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
@@ -118,16 +122,10 @@ class DtrPunchResolver
         // anyway, trust the data and keep the full positional assignment.
         if ($count <= 4) {
             if ($excludedSlots !== []) {
-                $slotOrder = ['am_in', 'am_out', 'pm_in', 'pm_out'];
-                $eligibleSlots = array_values(array_diff($slotOrder, $excludedSlots));
+                $windowed = $this->assignWithExclusions($sorted, $shiftDate, $excludedSlots);
 
-                if ($count <= count($eligibleSlots)) {
-                    $values = array_fill_keys($slotOrder, null);
-                    foreach ($eligibleSlots as $i => $slotKey) {
-                        $values[$slotKey] = $sorted->get($i);
-                    }
-
-                    return [$values['am_in'], $values['am_out'], $values['pm_in'], $values['pm_out']];
+                if ($windowed !== null) {
+                    return $windowed;
                 }
             }
 
@@ -173,6 +171,60 @@ class DtrPunchResolver
         }
 
         return [$amIn, $amOut, $pmIn, $pmOut];
+    }
+
+    /**
+     * Walk the four canonical slots in order, consuming punches from the front of
+     * the queue. An excluded slot only skips (without consuming) when the next
+     * queued punch actually falls inside its exclusion window - a punch before a
+     * locator's departure, or after its arrival, is real and belongs in its
+     * natural slot rather than being swallowed by the coverage. Returns null when
+     * the punches don't fully reconcile against the slots (more real punches than
+     * the exclusions can explain), so the caller falls back to the plain
+     * positional/end-anchored assignment instead of silently dropping a punch.
+     *
+     * @param  Collection<int, Carbon>  $sorted
+     * @param  array<string, array{0:string,1:string}|null>  $excludedSlots
+     * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon}|null
+     */
+    private function assignWithExclusions(Collection $sorted, string $shiftDate, array $excludedSlots): ?array
+    {
+        $slotOrder = ['am_in', 'am_out', 'pm_in', 'pm_out'];
+        $values = array_fill_keys($slotOrder, null);
+        $count = $sorted->count();
+        $idx = 0;
+
+        foreach ($slotOrder as $slotKey) {
+            if ($idx >= $count) {
+                break;
+            }
+
+            $candidate = $sorted->get($idx);
+
+            if (array_key_exists($slotKey, $excludedSlots)) {
+                $window = $excludedSlots[$slotKey];
+
+                if ($window === null || $this->withinWindow($candidate, $shiftDate, $window)) {
+                    continue;
+                }
+            }
+
+            $values[$slotKey] = $candidate;
+            $idx++;
+        }
+
+        return $idx === $count
+            ? [$values['am_in'], $values['am_out'], $values['pm_in'], $values['pm_out']]
+            : null;
+    }
+
+    /** @param  array{0:string,1:string}  $window  ['H:i', 'H:i'] */
+    private function withinWindow(Carbon $candidate, string $shiftDate, array $window): bool
+    {
+        $start = Carbon::parse($shiftDate.' '.substr($window[0], 0, 5).':00');
+        $end = Carbon::parse($shiftDate.' '.substr($window[1], 0, 5).':00');
+
+        return $candidate->gte($start) && $candidate->lte($end);
     }
 
     private function minutesLate(Carbon $actual, Carbon $reference): int

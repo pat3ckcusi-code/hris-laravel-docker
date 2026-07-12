@@ -10,6 +10,7 @@ use App\Models\Locator;
 use App\Models\User;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class PersonnelLogImportService
@@ -294,22 +295,9 @@ class PersonnelLogImportService
 
         // Approved-locator-covered slots also have no real punch expected -
         // merge their coverage in the same way, unioning multiple locators
-        // on the same date.
-        $locatorSlotMap = [];
-        Locator::where('user_id', $user->id)
-            ->where('status', 'approved')
-            ->whereBetween('travel_date', [$fetchFrom, $fetchTo])
-            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
-            ->each(function (Locator $locator) use (&$locatorSlotMap, $user, $assignments): void {
-                $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
-                $locatorSchedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
-                $slots = Locator::coveredSlotKeys(
-                    (string) $locator->intended_departure_time,
-                    (string) $locator->intended_arrival_time,
-                    $locatorSchedule
-                );
-                $locatorSlotMap[$dateStr] = array_unique(array_merge($locatorSlotMap[$dateStr] ?? [], $slots));
-            });
+        // on the same date into a single [earliest departure, latest arrival]
+        // exclusion window per slot.
+        $locatorSlotMap = $this->buildLocatorSlotMap($user, $fetchFrom, $fetchTo, $assignments);
 
         foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
@@ -322,10 +310,10 @@ class PersonnelLogImportService
             // rest day (voluntary OT), still record the DTR using their assigned
             // rest-day shift (which falls back to the default if shift_id is null).
             $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date), $assignments);
-            $excludedSlots = array_values(array_unique(array_merge(
-                $excuseMap->get($date)?->excludedSlotKeys() ?? [],
+            $excludedSlots = array_merge(
+                array_fill_keys($excuseMap->get($date)?->excludedSlotKeys() ?? [], null),
                 $locatorSlotMap[$date] ?? []
-            )));
+            );
 
             $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);
 
@@ -347,6 +335,44 @@ class PersonnelLogImportService
     }
 
     // ── PRIVATE HELPERS ───────────────────────────────────────────────────────
+
+    /**
+     * Day-string → slot-key → exclusion window map for a user's approved locators
+     * in range. Multiple locators covering the same slot on the same date union
+     * into a single [earliest departure, latest arrival] window, matching
+     * Form48ExportService::buildLocatorMap()'s display-side union so the two
+     * never disagree on how far a covered slot's exclusion window reaches.
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $assignments
+     * @return array<string, array<string, array{0:string,1:string}>>
+     */
+    private function buildLocatorSlotMap(User $user, string $from, string $to, ?Collection $assignments): array
+    {
+        $map = [];
+
+        Locator::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereBetween('travel_date', [$from, $to])
+            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->each(function (Locator $locator) use (&$map, $user, $assignments): void {
+                $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
+                $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
+                $windows = Locator::coveredSlotWindows(
+                    (string) $locator->intended_departure_time,
+                    (string) $locator->intended_arrival_time,
+                    $schedule
+                );
+
+                foreach ($windows as $slotKey => $window) {
+                    $existing = $map[$dateStr][$slotKey] ?? null;
+                    $map[$dateStr][$slotKey] = $existing === null
+                        ? $window
+                        : [min($existing[0], $window[0]), max($existing[1], $window[1])];
+                }
+            });
+
+        return $map;
+    }
 
     private function sanitizeLogText(mixed $text): ?string
     {
