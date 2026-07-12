@@ -75,6 +75,44 @@ class TimeLogsMonitoringTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_time_keeper_can_browse_monitoring_matrix_across_departments(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'first_name' => 'Alice', 'last_name' => 'InDeptA']);
+        $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'first_name' => 'Bob', 'last_name' => 'InDeptB']);
+
+        $tk = $this->createTimeKeeper();
+
+        $this->actingAs($tk)
+            ->get(route('attendance.monitoring-matrix', ['department_id' => $deptA->Dept_id, 'month' => 6, 'year' => 2026]))
+            ->assertStatus(200)
+            ->assertSee('Dept A')
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+
+        $this->actingAs($tk)
+            ->get(route('attendance.monitoring-matrix', ['department_id' => $deptB->Dept_id, 'month' => 6, 'year' => 2026]))
+            ->assertStatus(200)
+            ->assertSee('Dept B')
+            ->assertSee('InDeptB')
+            ->assertDontSee('InDeptA');
+    }
+
+    public function test_hr_manager_can_view_monitoring_matrix_but_employee_cannot(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($this->createHRManager())
+            ->get(route('attendance.monitoring-matrix', ['department_id' => $deptA->Dept_id]))
+            ->assertStatus(200);
+
+        $this->actingAs($this->createEmployee())
+            ->get(route('attendance.monitoring-matrix'))
+            ->assertStatus(403);
+    }
+
     public function test_department_ranking_puts_worst_department_first(): void
     {
         $deptHeavy = $this->makeDepartment('Heavy Dept');

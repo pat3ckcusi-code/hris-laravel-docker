@@ -607,6 +607,9 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
 
     Route::get('/attendance/time-logs-monitoring', [TimeLogsMonitoringController::class, 'index'])
         ->name('attendance.time-logs-monitoring');
+
+    Route::get('/attendance/monitoring-matrix', [TimeLogsMonitoringController::class, 'monitoringMatrix'])
+        ->name('attendance.monitoring-matrix');
 });
 
 // Mayor's Office routes

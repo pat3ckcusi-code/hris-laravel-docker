@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\User;
+use App\Services\AttendanceMonitoringExportService;
 use App\Support\RoleNormalizer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -21,8 +22,10 @@ use Illuminate\Support\Facades\DB;
  * user's request, labeled "Frequent Undertime" since CSC does not define a
  * separate official category for it.
  *
- * Not extended to Department Head/Administrative Officer - they already have
- * their own dept-scoped Monitoring Matrix.
+ * Also owns a Monitoring Matrix action (unlike Department Head/Administrative
+ * Officer's own dept-scoped Monitoring Matrix, this one lets Time Keeper/HR
+ * Manager browse any single department via a picker, since they aren't
+ * scoped to a home department).
  */
 class TimeLogsMonitoringController extends Controller
 {
@@ -31,10 +34,37 @@ class TimeLogsMonitoringController extends Controller
     /** CSC MC No. 04, s. 1991: 10+ late instances in a calendar month is a violation month. */
     private const HABITUAL_MONTHLY_THRESHOLD = 10;
 
+    public function __construct(private readonly AttendanceMonitoringExportService $monitoringExportService) {}
+
     private function authorizeManager(User $user): void
     {
         $role = RoleNormalizer::normalize((string) ($user->access_level ?? ''));
         abort_unless(in_array($role, self::MANAGER_ROLES, true), 403);
+    }
+
+    public function monitoringMatrix(Request $request): View
+    {
+        $this->authorizeManager($request->user());
+
+        $departments = Department::orderBy('Dept_name')->get();
+
+        $departmentId = $request->integer('department_id') ?: ($departments->first()->Dept_id ?? null);
+        $dept = $departments->firstWhere('Dept_id', $departmentId);
+
+        $month = (int) $request->query('month', (int) date('n'));
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
+
+        $rows = $dept
+            ? $this->monitoringExportService->getRows(collect([$dept]), $month, $year)
+            : collect();
+
+        return view('attendance.monitoring-matrix', compact('departments', 'dept', 'departmentId', 'month', 'year', 'rows'));
     }
 
     public function index(Request $request): View
@@ -104,7 +134,7 @@ class TimeLogsMonitoringController extends Controller
      * happened to have a DTR row this month.
      *
      * @return Collection<int, object> departments ranked by combined tardiness
-     *                                  + undertime day-counts for the month, worst first
+     *                                 + undertime day-counts for the month, worst first
      */
     private function buildDepartmentRanking(int $month, int $year, ?int $deptId, ?string $employeeType): Collection
     {
@@ -134,7 +164,7 @@ class TimeLogsMonitoringController extends Controller
     /**
      * @param  string  $column  'late_minutes' or 'undertime_minutes'
      * @return Collection<int, Collection<int, array>> employees with at least
-     *                                                  one affected day this month, keyed by dept_id, worst first
+     *                                                 one affected day this month, keyed by dept_id, worst first
      */
     private function buildBreakdown(string $column, int $month, int $year, ?int $deptId, ?string $employeeType): Collection
     {

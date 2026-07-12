@@ -191,6 +191,7 @@
             ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',        'active' => ['hr-manager.attendance.import*']],
             ['label' => 'Shift Logs',         'icon' => 'audit',             'route' => 'attendance.shift-logs',               'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
+            ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
 
             ['section' => 'Reports'],
             ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
@@ -284,6 +285,7 @@
             ['label' => 'Import Logs',      'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',      'active' => ['hr-manager.attendance.import*']],
             ['label' => 'Shift Logs',       'icon' => 'audit',             'route' => 'attendance.shift-logs',             'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
+            ['label' => 'Monitoring Matrix', 'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',      'active' => ['attendance.monitoring-matrix*']],
         ],
 
         // ─── Front Desk ───────────────────────────────────

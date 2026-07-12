@@ -13,7 +13,9 @@ use Tests\Traits\CreatesTestUsers;
 /**
  * Time Keeper / HR Manager company-wide Shift Logs page: a full chronological
  * log of every shift-related change. Tardiness/undertime attendance
- * monitoring stays on the Administrative Officer's own Monitoring Matrix.
+ * monitoring is also available to Time Keeper/HR Manager via their own
+ * cross-department Monitoring Matrix, separate from the Administrative
+ * Officer's dept-scoped one.
  */
 class ShiftLogTest extends TestCase
 {
@@ -289,7 +291,7 @@ class ShiftLogTest extends TestCase
             ->assertSee('Template Created');
     }
 
-    public function test_time_keeper_cannot_trigger_monitoring_matrix_export(): void
+    public function test_time_keeper_cannot_trigger_monitoring_matrix_export_without_department_id(): void
     {
         $deptA = $this->makeDepartment('Dept A');
         $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
@@ -300,6 +302,19 @@ class ShiftLogTest extends TestCase
                 'params' => ['month' => 6, 'year' => 2026],
             ])
             ->assertStatus(403);
+    }
+
+    public function test_time_keeper_can_trigger_monitoring_matrix_export_for_any_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($this->createTimeKeeper())
+            ->postJson(route('export-jobs.create'), [
+                'type' => 'monitoring_matrix',
+                'params' => ['month' => 6, 'year' => 2026, 'department_id' => $deptA->Dept_id],
+            ])
+            ->assertStatus(200);
     }
 
     public function test_administrative_officer_export_stays_scoped_to_own_department(): void

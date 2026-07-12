@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessExportJob;
+use App\Models\Department;
 use App\Models\ExportJob;
 use App\Models\User;
 use App\Services\DepartmentService;
@@ -86,7 +87,7 @@ class ExportJobController extends Controller
             'form48' => $this->authForm48($user, $params),
             'form48_dept_zip',
             'form48_dept' => $this->authForm48Dept($user, $params),
-            'monitoring_matrix' => $this->authMonitoringMatrix($user),
+            'monitoring_matrix' => $this->authMonitoringMatrix($user, $params),
             'leave_card' => $this->authLeaveCard($user, $params),
             'hr_reports' => abort_unless(RoleNormalizer::normalize((string) $user->access_level) === 'hr manager', 403),
         };
@@ -141,9 +142,15 @@ class ExportJobController extends Controller
         abort_unless(in_array($role, ['leave manager', 'hr manager'], true), 403);
     }
 
-    private function authMonitoringMatrix(User $user): void
+    private function authMonitoringMatrix(User $user, array $params): void
     {
         $role = strtolower(trim((string) ($user->access_level ?? '')));
-        abort_unless($role === 'administrative officer', 403);
+
+        if ($role === 'administrative officer') {
+            return;
+        }
+
+        abort_unless(in_array($role, ['time keeper', 'hr manager'], true), 403);
+        abort_unless(Department::whereKey($params['department_id'] ?? null)->exists(), 403);
     }
 }

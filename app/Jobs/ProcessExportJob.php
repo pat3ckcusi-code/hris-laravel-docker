@@ -318,7 +318,11 @@ class ProcessExportJob implements ShouldQueue
         DepartmentService $departmentService
     ): array {
         $actor = User::findOrFail($job->user_id);
-        $depts = $departmentService->resolveAllDepartmentsForAdminOfficer($actor);
+        $role = strtolower(trim((string) ($actor->access_level ?? '')));
+
+        $depts = in_array($role, ['time keeper', 'hr manager'], true)
+            ? Department::where('Dept_id', $job->params['department_id'] ?? null)->get()
+            : $departmentService->resolveAllDepartmentsForAdminOfficer($actor);
 
         if ($depts->isEmpty()) {
             throw new \RuntimeException('No departments assigned to your account.');
