@@ -111,6 +111,13 @@
 .sched-history-list li { display:flex; align-items:center; gap:.4rem; line-height:1.7; }
 .sched-history-link { display:inline-block; margin-top:.4rem; font-size:.75rem; font-weight:600; color:#2563eb; }
 .sched-history-link:hover { text-decoration:underline; }
+
+/* ── Select-all-matching (across pages) ── */
+.sched-select-all-matching {
+    border:none; background:none; padding:0; margin:0 0 .5rem;
+    font-size:.78rem; font-weight:600; color:#2563eb; cursor:pointer; text-align:left;
+}
+.sched-select-all-matching:hover { text-decoration:underline; }
 </style>
 @endsection
 
@@ -133,6 +140,15 @@
 <form id="bulk-assign-form" method="POST" action="{{ route('attendance.schedules.bulk-assign') }}" class="sched-bulk-bar">
     @csrf
     @method('PUT')
+    {{-- Mirror the filters currently applied to this list, so
+         select_all_matching=1 (set by JS below) always targets exactly what
+         "Select all N matching employees" quoted the user, even if they've
+         edited the search box without re-submitting the filter form. --}}
+    <input type="hidden" name="search" value="{{ $search }}">
+    <input type="hidden" name="dept_id" value="{{ $deptId }}">
+    <input type="hidden" name="shift_id" value="{{ $shiftId }}">
+    <input type="hidden" name="employee_type" value="{{ $employeeType }}">
+    <input type="hidden" name="select_all_matching" id="select_all_matching" value="0">
     <div>
         <label for="assign_shift_id">Bulk assign shift</label>
         <select name="assign_shift_id" id="assign_shift_id" class="sched-shift-select">
@@ -238,6 +254,13 @@
             </div>
         </form>
     </div>
+
+    @unless ($showExempt)
+        <button type="button" id="select-all-matching-toggle" class="sched-select-all-matching"
+                data-total="{{ $employees->total() }}" style="margin:0 1.25rem .5rem;">
+            Select all {{ $employees->total() }} matching employees
+        </button>
+    @endunless
 
     <div style="overflow-x:auto;">
         <table class="hris-table sched-table" style="width:100%;">
@@ -499,18 +522,51 @@ var rowCheckboxes = document.querySelectorAll('.sched-row-select');
 var selectAllCb = document.getElementById('sched-select-all');
 var submitBtn = document.getElementById('bulk-assign-submit');
 var countEl = document.getElementById('bulk-assign-count');
+var selectAllMatching = false;
+var selectAllMatchingInput = document.getElementById('select_all_matching');
+var selectAllMatchingToggle = document.getElementById('select-all-matching-toggle');
+
+function stopSelectAllMatching() {
+    if (!selectAllMatching) return;
+    selectAllMatching = false;
+    if (selectAllMatchingInput) selectAllMatchingInput.value = '0';
+    rowCheckboxes.forEach(function (cb) { cb.disabled = false; });
+    if (selectAllCb) selectAllCb.disabled = false;
+}
 
 function updateBulkAssignState() {
+    if (selectAllMatching) {
+        var total = selectAllMatchingToggle ? parseInt(selectAllMatchingToggle.dataset.total, 10) : 0;
+        if (countEl) countEl.textContent = total;
+        if (submitBtn) submitBtn.disabled = total === 0;
+        if (selectAllCb) selectAllCb.checked = true;
+        return;
+    }
     var checked = document.querySelectorAll('.sched-row-select:checked').length;
     if (countEl) countEl.textContent = checked;
     if (submitBtn) submitBtn.disabled = checked === 0;
     if (selectAllCb) selectAllCb.checked = checked > 0 && checked === rowCheckboxes.length;
 }
 
-rowCheckboxes.forEach(function (cb) { cb.addEventListener('change', updateBulkAssignState); });
+rowCheckboxes.forEach(function (cb) {
+    cb.addEventListener('change', function () {
+        stopSelectAllMatching();
+        updateBulkAssignState();
+    });
+});
 if (selectAllCb) {
     selectAllCb.addEventListener('change', function () {
+        stopSelectAllMatching();
         rowCheckboxes.forEach(function (cb) { cb.checked = selectAllCb.checked; });
+        updateBulkAssignState();
+    });
+}
+if (selectAllMatchingToggle) {
+    selectAllMatchingToggle.addEventListener('click', function () {
+        selectAllMatching = true;
+        if (selectAllMatchingInput) selectAllMatchingInput.value = '1';
+        rowCheckboxes.forEach(function (cb) { cb.checked = true; cb.disabled = true; });
+        if (selectAllCb) selectAllCb.disabled = true;
         updateBulkAssignState();
     });
 }
@@ -521,7 +577,9 @@ if (bulkForm) {
         e.preventDefault();
         var select = document.getElementById('assign_shift_id');
         var shiftLabel = select.options[select.selectedIndex].text;
-        var count = document.querySelectorAll('.sched-row-select:checked').length;
+        var count = selectAllMatching
+            ? (selectAllMatchingToggle ? parseInt(selectAllMatchingToggle.dataset.total, 10) : 0)
+            : document.querySelectorAll('.sched-row-select:checked').length;
         if (count === 0) return;
         var from = document.getElementById('bulk_effective_from').value;
         var until = document.getElementById('bulk_effective_until').value;
@@ -531,10 +589,13 @@ if (bulkForm) {
         var checkedDays = Array.prototype.slice.call(document.querySelectorAll('input[name="days_of_week[]"]:checked'))
             .map(function (cb) { return dayLabels[parseInt(cb.value, 10)]; });
         var daysText = checkedDays.length ? (' on <b>' + checkedDays.join('/') + '</b> only') : '';
+        var targetText = selectAllMatching
+            ? ('all <b>' + count + '</b> employees matching your current filters (across all pages)')
+            : ('the <b>' + count + '</b> selected employee(s) (this page)');
         Swal.fire({
             icon: 'warning',
             title: 'Bulk-assign shift?',
-            html: 'This will assign <b>' + shiftLabel + '</b> to the <b>' + count + '</b> selected employee(s)' + daysText + windowText + '.',
+            html: 'This will assign <b>' + shiftLabel + '</b> to ' + targetText + daysText + windowText + '.',
             showCancelButton: true,
             confirmButtonText: 'Yes, assign',
             confirmButtonColor: '#2563eb',

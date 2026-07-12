@@ -19,6 +19,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Time Keeper screen for assigning a work-shift template to each employee.
@@ -243,17 +244,21 @@ class EmployeeScheduleController extends Controller
 
     /**
      * Assign one shift to a hand-picked set of employees (checked on the
-     * current page of the list), so HR doesn't have to save one row at a time.
-     * The shift_id update is a single query; DTR recompute for the (possibly
-     * large) affected set is deferred to a queued job.
+     * current page of the list, or every employee matching the current
+     * filters via select_all_matching), so HR doesn't have to save one row
+     * at a time. The shift_id update is a single query; DTR recompute for
+     * the (possibly large) affected set is deferred to a queued job.
      */
     public function bulkAssign(Request $request): RedirectResponse
     {
+        set_time_limit(120);
+
         $actor = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
 
         $validated = $request->validate([
-            'user_ids' => ['required', 'array', 'min:1'],
+            'select_all_matching' => ['nullable', 'boolean'],
+            'user_ids' => [Rule::requiredIf(fn () => ! $request->boolean('select_all_matching')), 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'assign_shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
             'effective_from' => ['nullable', 'date'],
@@ -262,13 +267,30 @@ class EmployeeScheduleController extends Controller
             'days_of_week.*' => ['integer', 'between:0,6'],
         ]);
 
-        $userIds = array_map('intval', $validated['user_ids']);
+        if ($request->boolean('select_all_matching')) {
+            $deptId = $request->integer('dept_id') ?: null;
+            $shiftId = $request->integer('shift_id') ?: null;
+            $employeeType = $request->input('employee_type') ?: null;
+            $search = trim((string) $request->input('search', ''));
 
-        if ($accessibleIds !== null) {
-            $unauthorized = array_diff($userIds, $accessibleIds);
-            if (! empty($unauthorized)) {
-                abort(403, 'You may only manage employees in your own department.');
+            // Auth is enforced here via $accessibleIds inside
+            // buildEmployeeQuery() - no separate array_diff() check needed
+            // for this branch (unlike the explicit-user_ids branch below).
+            $userIds = $this->buildEmployeeQuery($accessibleIds, $deptId, $shiftId, $employeeType, $search, false)
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        } else {
+            $userIds = array_map('intval', $validated['user_ids']);
+
+            if ($accessibleIds !== null) {
+                $unauthorized = array_diff($userIds, $accessibleIds);
+                if (! empty($unauthorized)) {
+                    abort(403, 'You may only manage employees in your own department.');
+                }
             }
+        }
+
+        if (empty($userIds)) {
+            return back()->with('schedule_error', 'No employees matched the current filters.');
         }
 
         $assignShiftId = $validated['assign_shift_id'] ?? null;
