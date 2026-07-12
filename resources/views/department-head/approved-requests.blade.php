@@ -112,6 +112,9 @@
                                     <th>Type</th>
                                     <th>Travel Date</th>
                                     <th>Location</th>
+                                    <th>Departure</th>
+                                    <th>Arrival</th>
+                                    <th>Actual Arrival</th>
                                     <th>Approved At</th>
                                     <th>Action</th>
                                 </tr>
@@ -271,6 +274,11 @@ document.addEventListener('DOMContentLoaded', function () {
             { data: 'application_type', title: 'Type', orderable: false },
             { data: 'travel_date',      title: 'Travel Date' },
             { data: 'location',         title: 'Location', orderable: false },
+            { data: 'departure',        title: 'Departure', orderable: false },
+            { data: 'arrival',          title: 'Arrival', orderable: false },
+            { data: 'actual_arrival',   title: 'Actual Arrival', orderable: false, render: function (data) {
+                return data || '<em style="color:#94a3b8">Not yet recorded</em>';
+            }},
             { data: 'approved_at',      title: 'Approved At' },
             {
                 data: null, title: 'Action', orderable: false, searchable: false,
@@ -343,9 +351,11 @@ document.addEventListener('DOMContentLoaded', function () {
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Type</strong></td><td style="padding:6px;border:1px solid #eee">' + r.application_type + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Travel Date</strong></td><td style="padding:6px;border:1px solid #eee">' + r.travel_date + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Location</strong></td><td style="padding:6px;border:1px solid #eee">' + r.location + '</td></tr>'
+            + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Departure</strong></td><td style="padding:6px;border:1px solid #eee">' + r.departure + '</td></tr>'
+            + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Arrival</strong></td><td style="padding:6px;border:1px solid #eee">' + r.arrival + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Purpose</strong></td><td style="padding:6px;border:1px solid #eee">' + r.purpose + '</td></tr>'
             + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Approved At</strong></td><td style="padding:6px;border:1px solid #eee">' + r.approved_at + '</td></tr>'
-            + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Actual Arrival</strong></td><td style="padding:6px;border:1px solid #eee">' + (r.actual_arrival_time || '<em style="color:#94a3b8">Not yet recorded</em>') + '</td></tr>'
+            + '<tr><td style="padding:6px;border:1px solid #eee"><strong>Actual Arrival</strong></td><td style="padding:6px;border:1px solid #eee">' + (r.actual_arrival || '<em style="color:#94a3b8">Not yet recorded</em>') + '</td></tr>'
             + '</tbody></table>';
         document.getElementById('approved-modal-print').onclick = function () {
             window.open('{{ url('dashboard/employee/locator') }}/' + id + '/print', '_blank');

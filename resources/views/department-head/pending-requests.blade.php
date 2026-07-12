@@ -131,6 +131,8 @@
                                     <th>Type</th>
                                     <th>Travel Date</th>
                                     <th>Location</th>
+                                    <th>Departure</th>
+                                    <th>Arrival</th>
                                     <th>Purpose of Travel</th>
                                     <th>Filed At</th>
                                     <th>Action</th>
@@ -301,6 +303,8 @@ document.addEventListener('DOMContentLoaded', function () {
             { data: 'application_type', title: 'Type', orderable: false },
             { data: 'travel_date',      title: 'Travel Date' },
             { data: 'location',         title: 'Location', orderable: false },
+            { data: 'departure',        title: 'Departure', orderable: false },
+            { data: 'arrival',          title: 'Arrival', orderable: false },
             { data: 'detail',           title: 'Purpose of Travel', orderable: false },
             { data: 'filed_at',         title: 'Filed At' },
             {
@@ -368,6 +372,8 @@ function openPendingLocatorModal(id) {
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.application_type + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Travel Date</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.travel_date + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Location</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.location + '</td></tr>'
+        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Departure</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.departure + '</td></tr>'
+        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Arrival</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.arrival + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Purpose</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.detail + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.filed_at + '</td></tr>'
         + '</tbody></table>';

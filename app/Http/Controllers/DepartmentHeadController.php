@@ -305,6 +305,8 @@ class DepartmentHeadController extends Controller
             'application_type' => $l->application_type,
             'travel_date' => $l->travel_date ? Carbon::parse($l->travel_date)->format('M d, Y') : '-',
             'location' => $l->location,
+            'departure' => $l->intended_departure_time ? Carbon::createFromFormat('H:i:s', $l->intended_departure_time)->format('g:i A') : '-',
+            'arrival' => $l->intended_arrival_time ? Carbon::createFromFormat('H:i:s', $l->intended_arrival_time)->format('g:i A') : '-',
             'detail' => $l->detail ?? '-',
             'filed_at' => $l->created_at ? $l->created_at->format('M d, Y') : '-',
         ]);
@@ -499,9 +501,12 @@ class DepartmentHeadController extends Controller
             'application_type' => $l->application_type,
             'travel_date' => Carbon::parse($l->travel_date)->format('M d, Y'),
             'location' => $l->location,
+            'departure' => $l->intended_departure_time ? Carbon::createFromFormat('H:i:s', $l->intended_departure_time)->format('g:i A') : '-',
+            'arrival' => $l->intended_arrival_time ? Carbon::createFromFormat('H:i:s', $l->intended_arrival_time)->format('g:i A') : '-',
             'purpose' => $l->purpose ?? '',
             'approved_at' => $l->updated_at ? $l->updated_at->format('M d, Y') : '-',
             'actual_arrival_time' => $l->actual_arrival_time,
+            'actual_arrival' => $l->actual_arrival_time ? Carbon::createFromFormat('H:i:s', $l->actual_arrival_time)->format('g:i A') : null,
         ]);
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
