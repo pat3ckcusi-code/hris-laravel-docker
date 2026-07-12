@@ -244,10 +244,6 @@
                             <input type="checkbox" name="leave_types[]" value="Study / Examination Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
                             <span class="text-sm text-slate-700">Study / Examination Leave</span>
                         </label>
-                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-blue-100 p-2 rounded">
-                            <input type="checkbox" name="leave_types[]" value="Others" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
-                            <span class="text-sm text-slate-700">Others</span>
-                        </label>
                     </div>
                 </div>
                 <div id="individualDateSection" class="border-t pt-6">
@@ -523,7 +519,6 @@
                                                     'Sick Leave': 'detailsSick',
                                                     'Special Leave (Gynecological)': 'detailsWomen',
                                                     'Study / Examination Leave': 'detailsStudy',
-                                                    'Others': 'detailsOtherPurpose',
                                                 };
                                                 const allSectionIds = [...new Set(Object.values(detailsMap))];
                                                 const sectionEls = {};
@@ -606,18 +601,6 @@
                                 <label class="form-check-label" for="detailsStudyBar">BAR / Board Examination Review</label>
                             </div>
                             <input type="text" class="form-control form-control-sm" name="details_study_other" id="detailsStudyOther" placeholder="Other study purpose (optional)">
-                        </div>
-
-                        <div id="detailsOtherPurpose" class="mb-1 d-none">
-                            <div class="font-weight-bold small mb-1">Other Purpose</div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="details_other_purpose[]" id="detailsMonetization" value="monetization">
-                                <label class="form-check-label" for="detailsMonetization">Monetization of Leave Credits</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="details_other_purpose[]" id="detailsTerminal" value="terminal_leave">
-                                <label class="form-check-label" for="detailsTerminal">Terminal Leave</label>
-                            </div>
                         </div>
                     </div>
                 </div>
