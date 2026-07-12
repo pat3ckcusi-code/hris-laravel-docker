@@ -586,7 +586,7 @@ if (bulkForm) {
         var windowText = until ? (' from <b>' + from + '</b> to <b>' + until + '</b>, reverting to Standard Day afterward')
             : (from ? (' starting <b>' + from + '</b>') : '');
         var dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        var checkedDays = Array.prototype.slice.call(document.querySelectorAll('input[name="days_of_week[]"]:checked'))
+        var checkedDays = Array.prototype.slice.call(bulkForm.querySelectorAll('input[name="days_of_week[]"]:checked'))
             .map(function (cb) { return dayLabels[parseInt(cb.value, 10)]; });
         var daysText = checkedDays.length ? (' on <b>' + checkedDays.join('/') + '</b> only') : '';
         var targetText = selectAllMatching
