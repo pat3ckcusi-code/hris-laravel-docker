@@ -79,7 +79,6 @@ class ShiftScheduleTest extends TestCase
             'time_out' => '08:00',
             'break_out' => null,
             'break_in' => null,
-            'no_break' => true,
             'crosses_midnight' => true,
             'is_active' => true,
         ]);
@@ -900,16 +899,14 @@ class ShiftScheduleTest extends TestCase
             'break_out' => '12:00',
             'break_in' => '13:00',
             'time_out' => '17:00',
-            'work_days' => [1, 2, 3, 4], // Mon-Thu only - Friday is not a scheduled workday.
         ]);
 
         // 2026-07-31 is a Friday and the last day of July - hiring exactly on it
         // narrows the classification loop to this single date.
-        $employee = $this->createEmployee([
-            'last_name' => 'Wfhperson',
-            'date_hired' => '2026-07-31',
-            'shift_id' => $shift->id,
-        ]);
+        $employee = $this->createEmployee(['last_name' => 'Wfhperson', 'date_hired' => '2026-07-31']);
+        app(ShiftAssignmentService::class)->assign(
+            $employee, $shift->id, Carbon::parse('2026-07-31'), null, null, null, [1, 2, 3, 4] // Mon-Thu only - Friday is not a scheduled workday.
+        );
 
         $row = $this->unofficialExitRowFor($employee, 7, 2026);
 
@@ -1679,43 +1676,32 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame($shift->id, $employee->refresh()->shift_id);
     }
 
-    // ── Work Days pattern ───────────────────────────────────────────────────────
+    // ── Work Days pattern (now a ShiftAssignment property, not a Shift one) ──────
 
-    public function test_shift_without_work_days_defaults_to_mon_fri(): void
+    public function test_shift_assignment_without_work_days_defaults_to_mon_fri(): void
     {
-        $shift = $this->nightShiftModel();
+        $assignment = new ShiftAssignment(['work_days' => null]);
 
-        $this->assertSame([1, 2, 3, 4, 5], $shift->fresh()->work_days);
-        $this->assertSame('Mon-Fri', $shift->workDaysLabel());
+        $this->assertSame('Mon-Fri', $assignment->workDaysLabel());
+        // 2026-04-07 is a Tuesday, 2026-04-04 is a Saturday.
+        $this->assertTrue($assignment->worksOnDate(Carbon::parse('2026-04-07')));
+        $this->assertFalse($assignment->worksOnDate(Carbon::parse('2026-04-04')));
     }
 
-    public function test_shift_works_on_date_matches_its_work_days_pattern(): void
+    public function test_shift_assignment_works_on_date_matches_its_work_days_pattern(): void
     {
-        $shift = Shift::create([
-            'name' => 'Tue-Thu',
-            'time_in' => '08:00',
-            'break_out' => '12:00',
-            'break_in' => '13:00',
-            'time_out' => '17:00',
-            'work_days' => [2, 4],
-        ]);
+        $assignment = new ShiftAssignment(['work_days' => [2, 4]]);
 
         // 2026-04-07 is a Tuesday, 2026-04-08 is a Wednesday.
-        $this->assertTrue($shift->worksOnDate(Carbon::parse('2026-04-07')));
-        $this->assertFalse($shift->worksOnDate(Carbon::parse('2026-04-08')));
-        $this->assertSame('Tue, Thu', $shift->workDaysLabel());
+        $this->assertTrue($assignment->worksOnDate(Carbon::parse('2026-04-07')));
+        $this->assertFalse($assignment->worksOnDate(Carbon::parse('2026-04-08')));
+        $this->assertSame('Tue, Thu', $assignment->workDaysLabel());
     }
 
     public function test_work_days_label_covers_mon_sat_and_every_day(): void
     {
-        $monSat = Shift::create([
-            'name' => 'Mon-Sat', 'time_in' => '08:00', 'break_out' => '12:00',
-            'break_in' => '13:00', 'time_out' => '17:00', 'work_days' => [1, 2, 3, 4, 5, 6],
-        ]);
-        $everyDay = Shift::create([
-            'name' => 'Every Day', 'time_in' => '08:00', 'break_out' => '12:00',
-            'break_in' => '13:00', 'time_out' => '17:00', 'work_days' => [0, 1, 2, 3, 4, 5, 6],
-        ]);
+        $monSat = new ShiftAssignment(['work_days' => [1, 2, 3, 4, 5, 6]]);
+        $everyDay = new ShiftAssignment(['work_days' => [0, 1, 2, 3, 4, 5, 6]]);
 
         $this->assertSame('Mon-Sat', $monSat->workDaysLabel());
         $this->assertSame('Every day', $everyDay->workDaysLabel());
@@ -1723,10 +1709,10 @@ class ShiftScheduleTest extends TestCase
 
     public function test_days_of_week_label_handles_null_and_custom_lists(): void
     {
-        $this->assertNull(Shift::daysOfWeekLabel(null));
-        $this->assertSame('Mon-Fri', Shift::daysOfWeekLabel([1, 2, 3, 4, 5]));
-        $this->assertSame('Tue, Thu', Shift::daysOfWeekLabel([2, 4]));
-        $this->assertSame('Mon, Wed, Fri', Shift::daysOfWeekLabel([1, 3, 5]));
+        $this->assertNull(ShiftAssignment::daysOfWeekLabel(null));
+        $this->assertSame('Mon-Fri', ShiftAssignment::daysOfWeekLabel([1, 2, 3, 4, 5]));
+        $this->assertSame('Tue, Thu', ShiftAssignment::daysOfWeekLabel([2, 4]));
+        $this->assertSame('Mon, Wed, Fri', ShiftAssignment::daysOfWeekLabel([1, 3, 5]));
     }
 
     public function test_work_schedule_is_workday_falls_back_to_weekday_when_no_shift_assigned(): void
@@ -1738,13 +1724,33 @@ class ShiftScheduleTest extends TestCase
         $this->assertFalse(WorkSchedule::isWorkday($emp, Carbon::parse('2026-04-04')));
     }
 
+    /**
+     * Regression guard: users.shift_id with no covering shift_assignments row
+     * (the createEmployee(['shift_id' => ...]) test-only bypass, since that
+     * helper uses forceCreate() and never writes a shift_assignments row)
+     * must fall back to a plain Mon-Fri weekday, not consult a Shift-level
+     * work_days pattern that no longer exists.
+     */
+    public function test_work_schedule_is_workday_falls_back_to_weekday_when_shift_id_has_no_covering_assignment(): void
+    {
+        $shift = $this->nightShiftModel();
+        $emp = $this->createEmployee(['shift_id' => $shift->id]);
+
+        // 2026-04-07 is a Tuesday, 2026-04-04 is a Saturday.
+        $this->assertTrue(WorkSchedule::isWorkday($emp, Carbon::parse('2026-04-07')));
+        $this->assertFalse(WorkSchedule::isWorkday($emp, Carbon::parse('2026-04-04')));
+    }
+
     public function test_work_schedule_is_workday_uses_shift_pattern_when_assigned(): void
     {
         $shift = Shift::create([
             'name' => 'Mon-Sat', 'time_in' => '08:00', 'break_out' => '12:00',
-            'break_in' => '13:00', 'time_out' => '17:00', 'work_days' => [1, 2, 3, 4, 5, 6],
+            'break_in' => '13:00', 'time_out' => '17:00',
         ]);
-        $emp = $this->createEmployee(['shift_id' => $shift->id]);
+        $emp = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-01-01'), null, null, null, [1, 2, 3, 4, 5, 6]
+        );
 
         // 2026-04-04 is a Saturday, 2026-04-05 is a Sunday.
         $this->assertTrue(WorkSchedule::isWorkday($emp, Carbon::parse('2026-04-04')));
@@ -1755,11 +1761,11 @@ class ShiftScheduleTest extends TestCase
     {
         $shift = Shift::create([
             'name' => 'Mon-Sat', 'time_in' => '08:00', 'break_out' => '12:00',
-            'break_in' => '13:00', 'time_out' => '17:00', 'work_days' => [1, 2, 3, 4, 5, 6],
+            'break_in' => '13:00', 'time_out' => '17:00',
         ]);
         $emp = $this->createEmployee(['shift_id' => $shift->id]);
 
-        // 2026-04-04 is a Saturday - a pattern workday, overridden to rest.
+        // 2026-04-04 is a Saturday - overridden to rest regardless of any shift pattern.
         EmployeeShiftSchedule::create([
             'user_id' => $emp->id, 'date' => '2026-04-04', 'shift_id' => null, 'type' => 'rest',
         ]);
@@ -1771,16 +1777,55 @@ class ShiftScheduleTest extends TestCase
     {
         $shift = Shift::create([
             'name' => 'Mon-Fri', 'time_in' => '08:00', 'break_out' => '12:00',
-            'break_in' => '13:00', 'time_out' => '17:00', 'work_days' => [1, 2, 3, 4, 5],
+            'break_in' => '13:00', 'time_out' => '17:00',
         ]);
         $emp = $this->createEmployee(['shift_id' => $shift->id]);
 
-        // 2026-04-04 is a Saturday - a pattern off-day, overridden via field work.
+        // 2026-04-04 is a Saturday - overridden via field work regardless of any shift pattern.
         EmployeeShiftSchedule::create([
             'user_id' => $emp->id, 'date' => '2026-04-04', 'shift_id' => null, 'type' => 'field_work',
         ]);
 
         $this->assertTrue(WorkSchedule::isWorkday($emp, Carbon::parse('2026-04-04')));
+    }
+
+    // ── No Break (2-punch), now a per-assignment property ────────────────────────
+
+    public function test_shift_assignment_no_break_flows_into_work_schedule_via_from_user_on_date(): void
+    {
+        $shift = Shift::create([
+            'name' => 'Guard Duty', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00',
+        ]);
+        $noBreakEmp = $this->createEmployee();
+        $fullBreakEmp = $this->createEmployee();
+
+        app(ShiftAssignmentService::class)->assign($noBreakEmp, $shift->id, Carbon::parse('2026-01-01'), null, null, null, null, true);
+        app(ShiftAssignmentService::class)->assign($fullBreakEmp, $shift->id, Carbon::parse('2026-01-01'), null, null, null, null, false);
+
+        $this->assertTrue(WorkSchedule::forUserOnDate($noBreakEmp, Carbon::parse('2026-04-07'))->noBreak);
+        $this->assertFalse(WorkSchedule::forUserOnDate($fullBreakEmp, Carbon::parse('2026-04-07'))->noBreak);
+    }
+
+    /**
+     * Known, documented limitation (see EmployeeShiftSchedule's docblock): a
+     * one-off day override has no shift_assignments row of its own, so
+     * no_break always resolves false there regardless of how the same shift
+     * is scheduled elsewhere. This test pins that as intentional.
+     */
+    public function test_employee_shift_schedule_override_always_resolves_full_break(): void
+    {
+        $shift = Shift::create([
+            'name' => 'Guard Duty', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00',
+        ]);
+        $emp = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-01-01'), null, null, null, null, true);
+
+        EmployeeShiftSchedule::create(['user_id' => $emp->id, 'date' => '2026-04-08', 'shift_id' => $shift->id]);
+
+        $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-07'))->noBreak, 'Normal assignment resolution keeps no_break = true.');
+        $this->assertFalse(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-08'))->noBreak, 'A one-off EmployeeShiftSchedule override has no row to read no_break from.');
     }
 
     // ── Bulk shift assignment (checkbox-selected employees) ─────────────────
@@ -1873,6 +1918,34 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
+     * Regression for a configuration trap: days_of_week=[Mon,Wed,Fri] on a
+     * row means the row only GOVERNS Mon/Wed/Fri (ShiftAssignment::appliesOnDate()),
+     * so a broader work_days=[Mon..Fri] submitted alongside it was previously
+     * stored as-is even though Tue/Thu could never actually be worked under
+     * this row - WorkSchedule::isWorkday() silently treated them as rest days
+     * regardless of what work_days said. ShiftAssignmentService::assign() now
+     * forces work_days to equal days_of_week whenever the latter is set, so
+     * the stored data can never lie about what will actually be worked.
+     */
+    public function test_assign_forces_work_days_to_match_days_of_week_when_restricted(): void
+    {
+        $shift = Shift::create([
+            'name' => 'Day 8-5', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $row = app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-08-03'), null, null,
+            [1, 3, 5], // days_of_week: Mon/Wed/Fri only
+            [1, 2, 3, 4, 5], // work_days submitted as the full Mon-Fri week
+        );
+
+        $this->assertSame([1, 3, 5], $row->days_of_week);
+        $this->assertSame([1, 3, 5], $row->work_days, 'work_days must be forced to match the narrower days_of_week, not stored as the broader submitted value.');
+    }
+
+    /**
      * Regression: HTML checkboxes always submit values as strings over real
      * HTTP ("1", not 1). ShiftAssignment::appliesOnDate() used to compare
      * against Carbon::dayOfWeek (an int) with strict in_array(..., true),
@@ -1932,7 +2005,7 @@ class ShiftScheduleTest extends TestCase
         // templates does this employee have," regardless of count.
         $singleResponse = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Single']));
         $singleResponse->assertSee('<ul class="sched-shift-list">', false);
-        $singleResponse->assertSee('MWF 7-4 — Every day', false);
+        $singleResponse->assertSee('MWF 7-4 - Mon-Fri', false);
     }
 
     /**
@@ -2088,8 +2161,141 @@ class ShiftScheduleTest extends TestCase
 
         // Shown under History instead.
         $response->assertSee('History (1)');
-        $response->assertSee('CCC Shift 1 — Mon, Wed, Fri', false);
+        $response->assertSee('CCC Shift 1 - Mon, Wed, Fri', false);
         $response->assertSee('Jul 1, 2026 – Jul 10, 2026', false);
+    }
+
+    /**
+     * A future-dated row fully swallowed by a later assign() call is never
+     * deleted (see ShiftAssignmentTest::test_swallowing_a_future_scheduled_row_never_deletes_it),
+     * it's truncated into a permanently unmatchable, inverted date range
+     * instead. The History panel must not show that raw backwards range -
+     * it reads as a data-entry bug ("from Jul 18 to Jul 12") rather than
+     * what actually happened.
+     */
+    public function test_schedules_index_shows_a_swallowed_future_row_as_superseded_not_a_backwards_range(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shiftB = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $shiftC = Shift::create([
+            'name' => 'CCC Shift 2', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Swallowed']);
+
+        app(ShiftAssignmentService::class)->assign($emp, $shiftB->id, Carbon::parse('2026-07-18'), null, $tk->id, [6]);
+        app(ShiftAssignmentService::class)->assign($emp, $shiftC->id, Carbon::parse('2026-07-13'), null, $tk->id);
+
+        $swallowed = ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $shiftB->id)->firstOrFail();
+        $this->assertTrue($swallowed->isSuperseded());
+
+        $this->travelTo(Carbon::parse('2026-07-13'));
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Swallowed']));
+
+        $response->assertSee('superseded before it took effect');
+        $response->assertDontSee('Jul 18, 2026 – Jul 12, 2026', false);
+    }
+
+    /**
+     * A ShiftAssignment row only reflects assignment history - a per-date
+     * EmployeeShiftSchedule override (Rest Day, Field Work, forced Standard
+     * Day, or a one-off shift) on the Shift Schedule week-grid silently wins
+     * over it for that exact date. The Shift Assignment screen must warn
+     * when a row's range contains one of these, instead of showing the row
+     * as if it will simply apply.
+     */
+    public function test_schedules_index_flags_a_row_overridden_by_a_rest_day_on_shift_schedule(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Overridden']);
+
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-07-18'), Carbon::parse('2026-07-18'), $tk->id, [6]
+        );
+        EmployeeShiftSchedule::create([
+            'user_id' => $emp->id, 'date' => '2026-07-18', 'shift_id' => null, 'type' => 'rest', 'created_by' => $tk->id,
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-07-13'));
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Overridden']));
+
+        $response->assertSee('CCC Shift 1 - Sat', false);
+        $response->assertSee('overridden on Jul 18, 2026', false);
+        // Blade's {{ }} HTML-escapes the "&" between query params, so check
+        // for both params rather than the raw route() string verbatim.
+        $response->assertSee('attendance/shift-schedule?employee_id='.$emp->id, false);
+        $response->assertSee('week_start=2026-07-13', false);
+    }
+
+    /**
+     * The same row with no conflicting override on file must not show the
+     * warning at all - it's opt-in noise, not a permanent fixture.
+     */
+    public function test_schedules_index_does_not_flag_a_row_with_no_override(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Clean']);
+
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-07-18'), Carbon::parse('2026-07-18'), $tk->id, [6]
+        );
+
+        $this->travelTo(Carbon::parse('2026-07-13'));
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Clean']));
+
+        $response->assertSee('CCC Shift 1 - Sat', false);
+        $response->assertDontSee('overridden on', false);
+    }
+
+    /**
+     * Consecutive overridden dates must collapse into one range ("Jul 13,
+     * 2026 – Jul 17, 2026") instead of naming all 5 dates individually -
+     * spelling each one out just repeats the row's own date-range label
+     * with no added information.
+     */
+    public function test_schedules_index_collapses_consecutive_overridden_dates_into_a_range(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'Standard Day Shift', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Ranged']);
+
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-07-13'), Carbon::parse('2026-07-17'), $tk->id
+        );
+        foreach (['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16'] as $date) {
+            EmployeeShiftSchedule::create([
+                'user_id' => $emp->id, 'date' => $date, 'shift_id' => null, 'type' => 'field_work', 'created_by' => $tk->id,
+            ]);
+        }
+        // A non-consecutive extra override elsewhere in the row's range must
+        // form its own separate range rather than merging into the first.
+        EmployeeShiftSchedule::create([
+            'user_id' => $emp->id, 'date' => '2026-07-17', 'shift_id' => null, 'type' => 'standard', 'created_by' => $tk->id,
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-07-13'));
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Ranged']));
+
+        $response->assertSee('overridden on Jul 13, 2026 – Jul 17, 2026', false);
+        $response->assertDontSee('Jul 13, 2026, Jul 14, 2026', false);
     }
 
     /**
@@ -2262,6 +2468,80 @@ class ShiftScheduleTest extends TestCase
         $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
 
         $this->actingAs($dh)->get(route('attendance.schedules.history', $outsider))
+            ->assertStatus(403);
+    }
+
+    /**
+     * The resolved-schedule calendar (ResolvedScheduleService) must show the
+     * ShiftAssignment source and its hours on a plain day with no per-date
+     * override on file - the common case.
+     */
+    public function test_resolved_schedule_shows_assignment_source_and_hours_on_a_plain_day(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Resolved']);
+
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-07-01'), null, $tk->id);
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules.resolved', ['user' => $emp, 'month' => 7, 'year' => 2026]));
+
+        $response->assertOk();
+        $response->assertSee('CCC Shift 1');
+        $response->assertSee('07:00-16:00', false);
+        $response->assertSee('Assignment');
+        $response->assertDontSee('Assignment says', false);
+    }
+
+    /**
+     * A day with an EmployeeShiftSchedule override AND a ShiftAssignment row
+     * covering it must show the override's outcome as the label, tagged
+     * "Override", plus a warning naming the shadowed assignment - the exact
+     * scenario reported for employee "CCC Shift 1 - Sat" being silently
+     * overridden by a Rest Day on the Shift Schedule page.
+     */
+    public function test_resolved_schedule_flags_a_shadowed_assignment(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'Shadowed']);
+
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-07-18'), Carbon::parse('2026-07-18'), $tk->id, [6]
+        );
+        EmployeeShiftSchedule::create([
+            'user_id' => $emp->id, 'date' => '2026-07-18', 'shift_id' => null, 'type' => 'rest', 'created_by' => $tk->id,
+        ]);
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules.resolved', ['user' => $emp, 'month' => 7, 'year' => 2026]));
+
+        $response->assertOk();
+        $response->assertSee('Rest Day');
+        $response->assertSee('Override');
+        $response->assertSee('Assignment says CCC Shift 1', false);
+    }
+
+    /**
+     * A department head/administrative officer without shift management
+     * access to the employee's department must not be able to view their
+     * resolved schedule.
+     */
+    public function test_granted_department_head_cannot_view_resolved_schedule_outside_own_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
+
+        $this->actingAs($dh)->get(route('attendance.schedules.resolved', $outsider))
             ->assertStatus(403);
     }
 

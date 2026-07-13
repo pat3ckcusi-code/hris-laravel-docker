@@ -13,7 +13,6 @@
 .shift-field input[type="time"] { width: 7rem; }
 .shift-badge-night { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#e0e7ff; color:#3730a3; }
 .shift-badge-day { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#e5e7eb; color:#374151; }
-.shift-badge-nobreak { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#d1fae5; color:#065f46; }
 .shift-inline-form { display:inline; }
 .shift-badge-shared { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#dbeafe; color:#1e40af; }
 .shift-badge-dept { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#e5e7eb; color:#374151; white-space:nowrap; }
@@ -22,9 +21,6 @@
 .shift-dept-checklist { width:100%; min-width:14rem; max-height:9rem; overflow-y:auto; border:1px solid #cbd5e1; border-radius:.35rem; padding:.4rem .6rem; background:#fff; }
 .shift-dept-checklist label { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#374151; padding:.15rem 0; cursor:pointer; }
 .shift-dept-checklist input { width:auto; }
-.shift-days-picker { display:flex; flex-wrap:wrap; gap:.5rem; }
-.shift-days-picker label { display:flex; align-items:center; gap:.25rem; font-size:.75rem; color:#374151; cursor:pointer; }
-.shift-days-picker input { width:auto; }
 </style>
 @endsection
 
@@ -38,20 +34,19 @@
 @if ($canManage)
 <div class="shift-form-card">
     <h3 style="margin:0 0 .75rem;font-size:.9rem;font-weight:600;color:#0f172a;">New Shift Template</h3>
+    <p style="margin:0 0 .75rem;font-size:.78rem;color:#64748b;">
+        A template is just clock times - Work Days and No Break (2-punch) are set per employee on the
+        <a href="{{ route('attendance.schedules') }}">Shift Assignment</a> screen, so the same template can be
+        scheduled differently for different employees.
+    </p>
     <form method="POST" action="{{ route('attendance.shifts.store') }}" id="create-shift-form">
         @csrf
         <div class="shift-form-grid">
             <div class="shift-field"><label>Name</label><input type="text" name="name" placeholder="e.g. Night" required></div>
             <div class="shift-field"><label>Time In</label><input type="time" name="time_in" value="08:00" required></div>
-            <div class="shift-field create-break-field"><label>Break Out</label><input type="time" name="break_out" value="12:00" required></div>
-            <div class="shift-field create-break-field"><label>Break In</label><input type="time" name="break_in" value="13:00" required></div>
+            <div class="shift-field"><label>Break Out</label><input type="time" name="break_out" value="12:00" required></div>
+            <div class="shift-field"><label>Break In</label><input type="time" name="break_in" value="13:00" required></div>
             <div class="shift-field"><label>Time Out</label><input type="time" name="time_out" value="17:00" required></div>
-            <div class="shift-field" style="align-self:center;">
-                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
-                    <input type="checkbox" name="no_break" value="1" id="create-no-break" style="width:auto;" onchange="toggleCreateBreak(this)">
-                    <span>No Break (2-punch)</span>
-                </label>
-            </div>
             <div class="shift-field" style="align-self:center;">
                 <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
                     <input type="checkbox" name="is_global" value="1" id="create-is-global" style="width:auto;" checked onchange="toggleCreateDeptPicker(this)">
@@ -65,17 +60,6 @@
                         <label>
                             <input type="checkbox" name="department_ids[]" value="{{ $d->Dept_id }}">
                             <span>{{ $d->Dept_name }}</span>
-                        </label>
-                    @endforeach
-                </div>
-            </div>
-            <div class="shift-field">
-                <label>Work Days</label>
-                <div class="shift-days-picker">
-                    @foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 0 => 'Sun'] as $val => $label)
-                        <label>
-                            <input type="checkbox" name="work_days[]" value="{{ $val }}" {{ in_array($val, [1, 2, 3, 4, 5]) ? 'checked' : '' }}>
-                            <span>{{ $label }}</span>
                         </label>
                     @endforeach
                 </div>
@@ -100,9 +84,7 @@
                     <th>Break Out</th>
                     <th>Break In</th>
                     <th>Time Out</th>
-                    <th>No Break</th>
                     <th>Type</th>
-                    <th>Work Days</th>
                     <th class="shift-scope-cell">Scope</th>
                     <th>Employees</th>
                     <th></th>
@@ -114,35 +96,14 @@
                     <tr>
                         <td><input form="{{ $fid }}" type="text" name="name" value="{{ $shift->name }}" style="padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:.35rem;font-size:.8rem;" {{ $canManage ? '' : 'disabled' }}></td>
                         <td><input form="{{ $fid }}" type="time" name="time_in" value="{{ substr($shift->time_in,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
-                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ ($shift->no_break || ! $canManage) ? 'disabled' : '' }}></td>
-                        <td class="row-break-field-{{ $shift->id }}"><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ ($shift->no_break || ! $canManage) ? 'disabled' : '' }}></td>
+                        <td><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
+                        <td><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
                         <td><input form="{{ $fid }}" type="time" name="time_out" value="{{ substr($shift->time_out,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
-                        <td style="text-align:center;">
-                            <input form="{{ $fid }}" type="checkbox" name="no_break" value="1"
-                                {{ $shift->no_break ? 'checked' : '' }}
-                                onchange="toggleRowBreak(this, {{ $shift->id }})"
-                                style="width:auto;cursor:pointer;" {{ $canManage ? '' : 'disabled' }}>
-                        </td>
                         <td>
-                            @if ($shift->no_break)
-                                <span class="shift-badge-nobreak">2-Punch</span>
-                            @elseif ($shift->crosses_midnight)
+                            @if ($shift->crosses_midnight)
                                 <span class="shift-badge-night">Night</span>
                             @else
                                 <span class="shift-badge-day">Day</span>
-                            @endif
-                        </td>
-                        <td>
-                            <div style="font-size:.78rem;color:#374151;margin-bottom:.35rem;">{{ $shift->workDaysLabel() }}</div>
-                            @if ($canManage)
-                                <div class="shift-days-picker">
-                                    @foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 0 => 'Sun'] as $val => $label)
-                                        <label>
-                                            <input form="{{ $fid }}" type="checkbox" name="work_days[]" value="{{ $val }}" {{ in_array($val, $shift->work_days ?: [1, 2, 3, 4, 5]) ? 'checked' : '' }}>
-                                            <span>{{ $label }}</span>
-                                        </label>
-                                    @endforeach
-                                </div>
                             @endif
                         </td>
                         <td class="shift-scope-cell">
@@ -197,7 +158,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
+                    <tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -207,21 +168,6 @@
 
 @section('page_scripts')
 <script>
-function toggleCreateBreak(cb) {
-    const fields = document.querySelectorAll('.create-break-field input');
-    fields.forEach(function(input) {
-        input.disabled = cb.checked;
-        input.required = !cb.checked;
-    });
-}
-
-function toggleRowBreak(cb, shiftId) {
-    const cells = document.querySelectorAll('.row-break-field-' + shiftId + ' input');
-    cells.forEach(function(input) {
-        input.disabled = cb.checked;
-    });
-}
-
 function toggleCreateDeptPicker(cb) {
     document.getElementById('create-dept-field').style.display = cb.checked ? 'none' : 'block';
 }

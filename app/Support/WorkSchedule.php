@@ -101,6 +101,9 @@ class WorkSchedule
             $shift = $assignment->relationLoaded('shift') ? $assignment->shift : $assignment->shift()->first();
 
             if ($shift !== null) {
+                // A per-date EmployeeShiftSchedule override has no
+                // shift_assignments row of its own, so there's no per-row
+                // no_break to read here - it always resolves full-break.
                 return self::fromShift($shift);
             }
         }
@@ -116,7 +119,7 @@ class WorkSchedule
         $historical = self::resolveShiftAssignment($user, $date);
 
         if ($historical !== null) {
-            return $historical->shift_id === null ? self::global() : self::fromShift($historical->shift);
+            return $historical->shift_id === null ? self::global() : self::fromAssignment($historical);
         }
 
         // Day-scoped assignments exist for this date range (e.g. an MWF+TTH
@@ -203,7 +206,15 @@ class WorkSchedule
         self::$shiftAssignments = null;
     }
 
-    private static function fromShift(Shift $shift): self
+    /**
+     * Low-level builder from a bare Shift, with no per-assignment context -
+     * $noBreak defaults to false since a template no longer carries its own
+     * no_break value. Used directly only by the EmployeeShiftSchedule
+     * per-date-override path (no shift_assignments row exists there) and as
+     * forUser()'s defensive fallback. Everywhere a real ShiftAssignment is in
+     * hand, use fromAssignment() instead so no_break resolves correctly.
+     */
+    private static function fromShift(Shift $shift, bool $noBreak = false): self
     {
         return new self(
             workStart: self::hm($shift->time_in),
@@ -212,8 +223,14 @@ class WorkSchedule
             morningEnd: self::hm($shift->break_out) ?? self::hm($shift->time_out),
             noonEnd: self::hm($shift->time_out),
             crossesMidnight: (bool) $shift->crosses_midnight,
-            noBreak: (bool) $shift->no_break,
+            noBreak: $noBreak,
         );
+    }
+
+    /** Builds from a resolved ShiftAssignment row, reading no_break from the row itself. */
+    private static function fromAssignment(ShiftAssignment $assignment): self
+    {
+        return self::fromShift($assignment->shift, (bool) $assignment->no_break);
     }
 
     /**
@@ -262,7 +279,7 @@ class WorkSchedule
         $historical = self::resolveShiftAssignment($user, $date);
 
         if ($historical !== null) {
-            return $historical->shift_id === null ? $date->isWeekday() : $historical->shift->worksOnDate($date);
+            return $historical->shift_id === null ? $date->isWeekday() : $historical->worksOnDate($date);
         }
 
         // Day-scoped assignments cover this date range (e.g. an MWF+TTH
@@ -272,9 +289,12 @@ class WorkSchedule
             return false;
         }
 
-        $shift = $user->relationLoaded('shift') ? $user->shift : $user->shift()->first();
-
-        return $shift === null ? $date->isWeekday() : $shift->worksOnDate($date);
+        // No shift_assignments row covers this date at all (a transient
+        // stale-cache case - users.shift_id is normally always backed by a
+        // covering row). Work Days no longer lives on the Shift template, so
+        // there's no per-employee pattern left to consult here; fall back to
+        // the same Mon-Fri default used when no shift was ever assigned.
+        return $date->isWeekday();
     }
 
     /**
@@ -298,6 +318,53 @@ class WorkSchedule
     }
 
     /**
+     * Read-only reporting helper (e.g. the per-employee resolved-schedule
+     * calendar) describing WHICH layer decided $date's schedule and what
+     * shift name that layer names - never consulted by DTR/payroll
+     * resolution itself, which only cares about the resolved VALUE (see
+     * forUserOnDate()/isWorkday()), not which layer produced it. Also flags
+     * when an EmployeeShiftSchedule override is silently shadowing a
+     * ShiftAssignment row that would otherwise apply - the exact situation
+     * that makes the Shift Assignment screen look "active" while a
+     * different outcome actually governs the date.
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloadedOverrides
+     * @return array{source: 'override'|'assignment'|'default', shiftName: ?string, shadowedAssignmentShiftName: ?string}
+     */
+    public static function resolutionSource(User $user, Carbon $date, ?Collection $preloadedOverrides = null): array
+    {
+        $dateStr = $date->toDateString();
+        $override = $preloadedOverrides !== null
+            ? $preloadedOverrides->get($dateStr)
+            : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->with('shift')->first();
+
+        $historical = self::resolveShiftAssignment($user, $date);
+        $historicalShiftName = $historical !== null
+            ? ($historical->shift_id === null ? 'Standard Day' : $historical->shift?->name)
+            : null;
+
+        if ($override !== null) {
+            $shift = $override->shift_id !== null
+                ? ($override->relationLoaded('shift') ? $override->shift : $override->shift()->first())
+                : null;
+
+            $shiftName = match (true) {
+                $override->shift_id !== null => $shift?->name,
+                $override->type === 'standard' => 'Standard Day',
+                default => null, // rest / field_work - no shift hours apply
+            };
+
+            return ['source' => 'override', 'shiftName' => $shiftName, 'shadowedAssignmentShiftName' => $historicalShiftName];
+        }
+
+        if ($historical !== null) {
+            return ['source' => 'assignment', 'shiftName' => $historicalShiftName, 'shadowedAssignmentShiftName' => null];
+        }
+
+        return ['source' => 'default', 'shiftName' => 'Standard Day', 'shadowedAssignmentShiftName' => null];
+    }
+
+    /**
      * The effective schedule for a user: the global standard day unless the
      * user is assigned a Shift template.
      */
@@ -309,7 +376,21 @@ class WorkSchedule
 
         $shift = $user->relationLoaded('shift') ? $user->shift : $user->shift()->first();
 
-        return $shift === null ? self::global() : self::fromShift($shift);
+        if ($shift === null) {
+            return self::global();
+        }
+
+        // users.shift_id is a denormalized "today" cache of whichever
+        // shift_assignments row currently governs - resolve that row too, so
+        // no_break (which now lives on the row, not the Shift template) is
+        // read correctly. Falls back to a bare full-break Shift build if no
+        // matching row is found (a stale-cache edge case).
+        $today = Carbon::today();
+        $assignment = self::assignmentRowsFor($user)->first(
+            fn (ShiftAssignment $row) => $row->shift_id === $shift->id && self::coversDate($row, $today) && $row->appliesOnDate($today)
+        );
+
+        return $assignment !== null ? self::fromAssignment($assignment) : self::fromShift($shift);
     }
 
     /** Clear the per-request global memo (used in tests after mutating settings). */

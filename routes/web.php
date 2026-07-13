@@ -579,6 +579,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.schedules.bulk-assign');
     Route::get('/attendance/schedules/{user}/history', [EmployeeScheduleController::class, 'history'])
         ->name('attendance.schedules.history');
+    Route::get('/attendance/schedules/{user}/resolved', [EmployeeScheduleController::class, 'resolved'])
+        ->name('attendance.schedules.resolved');
     Route::put('/attendance/schedules/{user}', [EmployeeScheduleController::class, 'update'])
         ->name('attendance.schedules.update');
     Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])

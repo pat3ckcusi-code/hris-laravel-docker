@@ -19,6 +19,12 @@
 .sched-shift-select { padding:.4rem .55rem; border:1px solid #cbd5e1; border-radius:.4rem; font-size:.82rem; min-width:13rem; background:#fff; }
 .sched-days-group { display:flex; gap:.5rem; flex-wrap:wrap; }
 .sched-day-chip { display:flex; align-items:center; gap:.25rem; font-size:.75rem; color:#475569; font-weight:500; cursor:pointer; }
+.sched-days-hint { font-size:.72rem; color:#94a3b8; margin:.35rem 0 0; }
+.sched-advanced-split { margin-top:.2rem; }
+.sched-advanced-split summary { cursor:pointer; font-size:.72rem; font-weight:600; color:#6b7280; list-style:none; }
+.sched-advanced-split summary::-webkit-details-marker { display:none; }
+.sched-advanced-split > .sched-days-group,
+.sched-advanced-split > p.sched-days-hint { margin-top:.4rem; }
 .sched-edit-shift { display:inline-block; }
 .sched-edit-shift summary { cursor:pointer; font-size:.72rem; font-weight:600; color:#0369a1; list-style:none; }
 .sched-edit-shift summary::-webkit-details-marker { display:none; }
@@ -47,11 +53,13 @@
         @foreach ($assignments as $row)
             @php
                 $rowShiftLabel = $row->shift?->name ?? 'Standard Day';
-                $rowDaysLabel = \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day';
-                $rowDateLabel = $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString();
+                $rowDaysLabel = $row->workDaysLabel();
+                $rowDateLabel = $row->isSuperseded()
+                    ? 'superseded before it took effect'
+                    : $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString();
             @endphp
             <li>
-                <span>{{ $rowShiftLabel }} — {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
+                <span>{{ $rowShiftLabel }} - {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
                 @include('attendance.schedules._edit-shift-form', ['emp' => $user, 'empName' => $empName, 'row' => $row, 'shifts' => $shifts])
             </li>
         @endforeach
@@ -64,11 +72,45 @@
 
 @section('page_scripts')
 <script>
+// Mirrors the "Advanced: split into concurrent shifts" day selection onto
+// this same form's Work Days picker and locks it while open - see
+// index.blade.php for the fuller explanation, duplicated here since this is
+// a standalone page.
+function bindAdvancedSplit(detailsEl) {
+    if (!detailsEl) return;
+    var form = detailsEl.closest('form');
+    if (!form) return;
+    var workDaysBoxes = Array.prototype.slice.call(form.querySelectorAll('.sched-workdays-group input[type=checkbox]'));
+    var splitBoxes = Array.prototype.slice.call(detailsEl.querySelectorAll('input[type=checkbox]'));
+
+    function mirror() {
+        var checkedValues = splitBoxes.filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
+        workDaysBoxes.forEach(function (cb) { cb.checked = checkedValues.indexOf(cb.value) !== -1; });
+    }
+
+    function applyOpenState() {
+        if (detailsEl.open) {
+            mirror();
+            workDaysBoxes.forEach(function (cb) { cb.disabled = true; });
+        } else {
+            splitBoxes.forEach(function (cb) { cb.checked = false; });
+            workDaysBoxes.forEach(function (cb) { cb.disabled = false; });
+        }
+    }
+
+    splitBoxes.forEach(function (cb) { cb.addEventListener('change', mirror); });
+    detailsEl.addEventListener('toggle', applyOpenState);
+    applyOpenState();
+}
+
+document.querySelectorAll('.sched-advanced-split').forEach(bindAdvancedSplit);
+
 document.querySelectorAll('.sched-edit-shift-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         var name  = form.dataset.name || 'this employee';
         var dates = form.dataset.dates || 'this period';
+
         Swal.fire({
             icon: 'warning',
             title: 'Save this correction?',

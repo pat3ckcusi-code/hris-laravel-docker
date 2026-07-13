@@ -49,6 +49,8 @@
 
 .sched-table td { vertical-align:middle; }
 .sched-emp-name { font-weight:600; color:#1f2937; }
+.sched-resolved-link { display:block; font-size:.7rem; font-weight:600; color:#2563eb; text-decoration:none; margin-top:.15rem; }
+.sched-resolved-link:hover { text-decoration:underline; }
 
 /* ── Bulk assign bar ── */
 .sched-bulk-bar {
@@ -63,11 +65,26 @@
 .sched-day-chip { display:flex; align-items:center; gap:.25rem; font-size:.75rem; color:#475569; font-weight:500; cursor:pointer; }
 .sched-days-hint { font-size:.72rem; color:#94a3b8; margin:.35rem 0 0; flex-basis:100%; }
 
+/* ── Advanced: split into concurrent shifts ── */
+.sched-advanced-split { margin-top:.2rem; flex-basis:100%; }
+.sched-advanced-split summary {
+    cursor:pointer; font-size:.72rem; font-weight:600; color:#6b7280; list-style:none;
+}
+.sched-advanced-split summary::-webkit-details-marker { display:none; }
+.sched-advanced-split > .sched-days-group,
+.sched-advanced-split > p.sched-days-hint { margin-top:.4rem; }
+
 /* ── Per-employee shift list ── */
 .sched-shift-empty { font-size:.82rem; color:#94a3b8; }
 .sched-shift-list { list-style:none; margin:0; padding:0; font-size:.82rem; color:#1f2937; }
 .sched-shift-list li { display:flex; align-items:center; gap:.4rem; line-height:1.6; }
 .sched-shift-dates { font-size:.74rem; color:#94a3b8; font-weight:400; }
+.sched-override-warning {
+    display:inline-block; margin-left:.4rem; font-size:.7rem; font-weight:600;
+    color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:.3rem;
+    padding:.05rem .4rem; cursor:pointer; text-decoration:none;
+}
+.sched-override-warning:hover { background:#fef3c7; }
 .sched-remove-shift-form { display:inline-flex; }
 .sched-remove-btn {
     border:none; background:none; color:#b91c1c; font-size:.95rem; line-height:1;
@@ -167,14 +184,20 @@
         <input type="date" name="effective_until" id="bulk_effective_until" class="sched-shift-select">
     </div>
     <div>
-        <label>Days (optional)</label>
-        <div class="sched-days-group">
+        <label>Work Days</label>
+        <div class="sched-days-group sched-workdays-group">
             @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
                 <label class="sched-day-chip">
-                    <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"> {{ $label }}
+                    <input type="checkbox" name="work_days[]" value="{{ $dow }}" {{ in_array($dow, [1, 2, 3, 4, 5]) ? 'checked' : '' }}> {{ $label }}
                 </label>
             @endforeach
         </div>
+    </div>
+    <div>
+        <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+            <input type="checkbox" name="no_break" value="1" style="width:auto;">
+            <span>No Break (2-punch)</span>
+        </label>
     </div>
     <div>
         <button type="submit" class="hris-btn hris-btn-primary" id="bulk-assign-submit" disabled>
@@ -182,10 +205,23 @@
         </button>
     </div>
     <p class="sched-days-hint">
-        Leave no day checked to apply the shift every day (the default). Check specific days to scope this
-        assignment to only those weekdays - e.g. to give an employee two concurrent shifts, submit this form
-        twice: once with one shift + Mon/Wed/Fri checked, once with a different shift + Tue/Thu checked.
+        <b>Work Days</b> sets which days of the week this assignment is scheduled to work (defaults to Mon-Fri).
     </p>
+    <details class="sched-advanced-split">
+        <summary>Advanced: split into concurrent shifts</summary>
+        <div class="sched-days-group">
+            @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
+                <label class="sched-day-chip">
+                    <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"> {{ $label }}
+                </label>
+            @endforeach
+        </div>
+        <p class="sched-days-hint">
+            Only needed to give an employee two concurrent shifts on different days - submit this form once
+            per set of days (e.g. Mon/Wed/Fri for one shift, then Tue/Thu for another). While open, Work Days
+            above follows this selection, since a day this covers can never be worked under a different pattern.
+        </p>
+    </details>
 </form>
 @endunless
 
@@ -285,7 +321,10 @@
                                 <input type="checkbox" form="bulk-assign-form" name="user_ids[]" value="{{ $emp->id }}" class="sched-row-select" style="cursor:pointer;">
                             </td>
                         @endunless
-                        <td><span class="sched-emp-name">{{ $empName }}</span></td>
+                        <td>
+                            <span class="sched-emp-name">{{ $empName }}</span>
+                            <a href="{{ route('attendance.schedules.resolved', $emp) }}" class="sched-resolved-link">View resolved schedule</a>
+                        </td>
                         <td>
                             @if ($emp->dtr_exempt)
                                 <span class="sched-badge sched-badge-exempt">
@@ -296,7 +335,7 @@
                                 @php $empAssignments = $activeAssignments->get($emp->id, collect()); @endphp
                                 @php $empExpiredPreview = $expiredAssignments->get($emp->id, collect()); @endphp
                                 @php $empExpiredTotal = $expiredCounts[$emp->id] ?? 0; @endphp
-                                @php $existingLabel = $empAssignments->map(fn ($r) => ($r->shift?->name ?? 'Standard Day').' — '.(\App\Models\Shift::daysOfWeekLabel($r->days_of_week) ?? 'Every day'))->implode('|'); @endphp
+                                @php $existingLabel = $empAssignments->map(fn ($r) => ($r->shift?->name ?? 'Standard Day').' - '.$r->workDaysLabel())->implode('|'); @endphp
 
                                 @php $allStandardDay = $empAssignments->isNotEmpty() && $empAssignments->every(fn ($r) => $r->shift_id === null); @endphp
                                 @if ($empAssignments->isEmpty() || $allStandardDay)
@@ -306,19 +345,27 @@
                                         @foreach ($empAssignments as $row)
                                             @php
                                                 $rowShiftLabel = $row->shift?->name ?? 'Standard Day';
-                                                $rowDaysLabel = \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day';
-                                                $rowDateLabel = $row->effective_until
-                                                    ? $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString()
-                                                    : 'from '.$row->effective_from->toFormattedDateString();
+                                                $rowDaysLabel = $row->workDaysLabel();
+                                                $rowDateLabel = match (true) {
+                                                    $row->isSuperseded() => 'superseded before it took effect',
+                                                    $row->effective_until !== null => $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString(),
+                                                    default => 'from '.$row->effective_from->toFormattedDateString(),
+                                                };
                                                 // Only scope the removal to this row's own days when other
                                                 // entries remain (a day-scoped combo) - otherwise this is the
                                                 // employee's one and only assignment, so removing it should
                                                 // fully clear back to plain Standard Day (default), not leave
                                                 // behind a day-scoped "Standard Day" row.
                                                 $keepDayScope = $empAssignments->count() > 1 && $row->days_of_week;
+                                                $conflict = $rowOverrides[$row->id] ?? null;
                                             @endphp
                                             <li>
-                                                <span>{{ $rowShiftLabel }} — {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
+                                                <span>{{ $rowShiftLabel }} - {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
+                                                @if ($conflict)
+                                                    <a href="{{ $conflict['link'] }}" class="sched-override-warning" title="Overridden on the Shift Schedule page for: {{ $conflict['dates'] }}. That override wins over this assignment on those dates.">
+                                                        &#9888; overridden on {{ $conflict['dates'] }}
+                                                    </a>
+                                                @endif
                                                 <form method="POST" action="{{ route('attendance.schedules.update', $emp) }}"
                                                       class="sched-remove-shift-form" data-name="{{ $empName }}"
                                                       data-shift="{{ $rowShiftLabel }}" data-days="{{ $rowDaysLabel }}">
@@ -346,11 +393,13 @@
                                             @foreach ($empExpiredPreview as $row)
                                                 @php
                                                     $rowShiftLabel = $row->shift?->name ?? 'Standard Day';
-                                                    $rowDaysLabel = \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day';
-                                                    $rowDateLabel = $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString();
+                                                    $rowDaysLabel = $row->workDaysLabel();
+                                                    $rowDateLabel = $row->isSuperseded()
+                                                        ? 'superseded before it took effect'
+                                                        : $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString();
                                                 @endphp
                                                 <li>
-                                                    <span>{{ $rowShiftLabel }} — {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
+                                                    <span>{{ $rowShiftLabel }} - {{ $rowDaysLabel }} <span class="sched-shift-dates">({{ $rowDateLabel }})</span></span>
                                                     @include('attendance.schedules._edit-shift-form', ['emp' => $emp, 'empName' => $empName, 'row' => $row, 'shifts' => $shifts])
                                                 </li>
                                             @endforeach
@@ -374,13 +423,32 @@
                                                 <option value="{{ $s->id }}">{{ $s->name }}</option>
                                             @endforeach
                                         </select>
-                                        <div class="sched-days-group">
+                                        <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>
+                                        <div class="sched-days-group sched-workdays-group">
                                             @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
                                                 <label class="sched-day-chip">
-                                                    <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"> {{ $label }}
+                                                    <input type="checkbox" name="work_days[]" value="{{ $dow }}" {{ in_array($dow, [1, 2, 3, 4, 5]) ? 'checked' : '' }}> {{ $label }}
                                                 </label>
                                             @endforeach
                                         </div>
+                                        <label class="sched-day-chip">
+                                            <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
+                                        </label>
+                                        <details class="sched-advanced-split">
+                                            <summary>Advanced: split into concurrent shifts</summary>
+                                            <div class="sched-days-group">
+                                                @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
+                                                    <label class="sched-day-chip">
+                                                        <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"> {{ $label }}
+                                                    </label>
+                                                @endforeach
+                                            </div>
+                                            <p class="sched-days-hint">
+                                                Only needed to give this employee a second, concurrent shift on
+                                                different days - submit this form again for the other shift/days.
+                                                While open, Work Days above follows this selection.
+                                            </p>
+                                        </details>
                                         <div class="sched-add-dates">
                                             <input type="date" name="effective_from" title="Effective from (required)" required>
                                             <input type="date" name="effective_until" title="Effective until (required)" required>
@@ -430,6 +498,43 @@
 
 @section('page_scripts')
 <script>
+// Mirrors the "Advanced: split into concurrent shifts" day selection onto
+// this same form's Work Days picker and locks it while the disclosure is
+// open, since ShiftAssignmentService::assign() always forces work_days to
+// equal days_of_week whenever the latter is set - a day this row doesn't
+// govern can never be "worked" under it, so letting Work Days show something
+// different would just be lying about what gets stored. Closing the
+// disclosure clears the split selection so nothing stray gets submitted from
+// a panel the user only glanced at.
+function bindAdvancedSplit(detailsEl) {
+    if (!detailsEl) return;
+    var form = detailsEl.closest('form');
+    if (!form) return;
+    var workDaysBoxes = Array.prototype.slice.call(form.querySelectorAll('.sched-workdays-group input[type=checkbox]'));
+    var splitBoxes = Array.prototype.slice.call(detailsEl.querySelectorAll('input[type=checkbox]'));
+
+    function mirror() {
+        var checkedValues = splitBoxes.filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
+        workDaysBoxes.forEach(function (cb) { cb.checked = checkedValues.indexOf(cb.value) !== -1; });
+    }
+
+    function applyOpenState() {
+        if (detailsEl.open) {
+            mirror();
+            workDaysBoxes.forEach(function (cb) { cb.disabled = true; });
+        } else {
+            splitBoxes.forEach(function (cb) { cb.checked = false; });
+            workDaysBoxes.forEach(function (cb) { cb.disabled = false; });
+        }
+    }
+
+    splitBoxes.forEach(function (cb) { cb.addEventListener('change', mirror); });
+    detailsEl.addEventListener('toggle', applyOpenState);
+    applyOpenState();
+}
+
+document.querySelectorAll('.sched-advanced-split').forEach(bindAdvancedSplit);
+
 // Confirm before toggling exemption - explain the consequence in plain language.
 document.querySelectorAll('.sched-exempt-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
@@ -474,13 +579,14 @@ document.querySelectorAll('.sched-remove-shift-form').forEach(function (form) {
 // truncation rule the bulk-assign bar already relies on).
 document.querySelectorAll('.sched-add-shift-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
-        var existingRaw = form.dataset.existing;
-        if (!existingRaw) return; // nothing on file yet - submit normally.
-
         e.preventDefault();
+        var select = form.elements['shift_id'];
+
+        var existingRaw = form.dataset.existing;
+        if (!existingRaw) { form.submit(); return; } // nothing on file yet - submit normally.
+
         var name = form.dataset.name || 'This employee';
         var existing = existingRaw.split('|');
-        var select = form.elements['shift_id'];
         var newLabel = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : 'Standard Day';
 
         Swal.fire({
@@ -504,6 +610,7 @@ document.querySelectorAll('.sched-edit-shift-form').forEach(function (form) {
         e.preventDefault();
         var name  = form.dataset.name || 'this employee';
         var dates = form.dataset.dates || 'this period';
+
         Swal.fire({
             icon: 'warning',
             title: 'Save this correction?',
@@ -576,11 +683,12 @@ if (bulkForm) {
     bulkForm.addEventListener('submit', function (e) {
         e.preventDefault();
         var select = document.getElementById('assign_shift_id');
-        var shiftLabel = select.options[select.selectedIndex].text;
         var count = selectAllMatching
             ? (selectAllMatchingToggle ? parseInt(selectAllMatchingToggle.dataset.total, 10) : 0)
             : document.querySelectorAll('.sched-row-select:checked').length;
         if (count === 0) return;
+
+        var shiftLabel = select.options[select.selectedIndex].text;
         var from = document.getElementById('bulk_effective_from').value;
         var until = document.getElementById('bulk_effective_until').value;
         var windowText = until ? (' from <b>' + from + '</b> to <b>' + until + '</b>, reverting to Standard Day afterward')
@@ -589,13 +697,17 @@ if (bulkForm) {
         var checkedDays = Array.prototype.slice.call(bulkForm.querySelectorAll('input[name="days_of_week[]"]:checked'))
             .map(function (cb) { return dayLabels[parseInt(cb.value, 10)]; });
         var daysText = checkedDays.length ? (' on <b>' + checkedDays.join('/') + '</b> only') : '';
+        var checkedWorkDays = Array.prototype.slice.call(bulkForm.querySelectorAll('input[name="work_days[]"]:checked'))
+            .map(function (cb) { return dayLabels[parseInt(cb.value, 10)]; });
+        var workDaysText = checkedWorkDays.length ? (', Work Days <b>' + checkedWorkDays.join('/') + '</b>') : '';
+        var noBreakText = bulkForm.elements['no_break'] && bulkForm.elements['no_break'].checked ? ', no break' : '';
         var targetText = selectAllMatching
             ? ('all <b>' + count + '</b> employees matching your current filters (across all pages)')
             : ('the <b>' + count + '</b> selected employee(s) (this page)');
         Swal.fire({
             icon: 'warning',
             title: 'Bulk-assign shift?',
-            html: 'This will assign <b>' + shiftLabel + '</b> to ' + targetText + daysText + windowText + '.',
+            html: 'This will assign <b>' + shiftLabel + '</b> to ' + targetText + daysText + workDaysText + noBreakText + windowText + '.',
             showCancelButton: true,
             confirmButtonText: 'Yes, assign',
             confirmButtonColor: '#2563eb',

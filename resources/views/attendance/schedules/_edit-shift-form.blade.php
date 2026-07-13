@@ -9,10 +9,12 @@
 --}}
 @php
     $rowShiftLabel = $row->shift?->name ?? 'Standard Day';
-    $rowDaysLabel = \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day';
-    $rowDateLabel = $row->effective_until
-        ? $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString()
-        : 'from '.$row->effective_from->toFormattedDateString();
+    $rowDaysLabel = $row->workDaysLabel();
+    $rowDateLabel = match (true) {
+        $row->isSuperseded() => 'superseded before it took effect',
+        $row->effective_until !== null => $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString(),
+        default => 'from '.$row->effective_from->toFormattedDateString(),
+    };
     // A shift template can be deactivated after a row was assigned it - keep
     // it selectable (flagged inactive) rather than silently swapping the
     // pre-selected value to "Standard Day" on a form meant to preserve data.
@@ -35,14 +37,33 @@
                 <option value="{{ $s->id }}" @selected($row->shift_id === $s->id)>{{ $s->name }}</option>
             @endforeach
         </select>
-        <div class="sched-days-group">
+        <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>
+        <div class="sched-days-group sched-workdays-group">
             @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
                 <label class="sched-day-chip">
-                    <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"
-                           @checked($row->days_of_week && in_array($dow, $row->days_of_week, true))> {{ $label }}
+                    <input type="checkbox" name="work_days[]" value="{{ $dow }}"
+                           @checked(in_array($dow, $row->work_days ?: \App\Models\ShiftAssignment::DEFAULT_WORK_DAYS, true))> {{ $label }}
                 </label>
             @endforeach
         </div>
+        <label class="sched-day-chip">
+            <input type="checkbox" name="no_break" value="1" @checked($row->no_break)> No Break (2-punch)
+        </label>
+        <details class="sched-advanced-split" @if ($row->days_of_week) open @endif>
+            <summary>Advanced: split into concurrent shifts</summary>
+            <div class="sched-days-group">
+                @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow => $label)
+                    <label class="sched-day-chip">
+                        <input type="checkbox" name="days_of_week[]" value="{{ $dow }}"
+                               @checked($row->days_of_week && in_array($dow, $row->days_of_week, true))> {{ $label }}
+                    </label>
+                @endforeach
+            </div>
+            <p class="sched-days-hint">
+                Only needed for a concurrent second shift on different days. While open, Work Days above
+                follows this selection.
+            </p>
+        </details>
         <div class="sched-add-dates">
             <input type="date" name="effective_from" value="{{ $row->effective_from->toDateString() }}"
                    title="Effective from (required)" required>

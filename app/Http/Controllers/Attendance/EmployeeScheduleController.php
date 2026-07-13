@@ -6,12 +6,14 @@ use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkShiftRecomputeJob;
 use App\Models\Department;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\HRAuditTrail;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
+use App\Services\ResolvedScheduleService;
 use App\Services\ShiftAssignmentService;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
@@ -19,6 +21,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 /**
@@ -42,6 +45,7 @@ class EmployeeScheduleController extends Controller
         private readonly PersonnelLogImportService $importService,
         private readonly DepartmentService $departmentService,
         private readonly ShiftAssignmentService $shiftAssignmentService,
+        private readonly ResolvedScheduleService $resolvedScheduleService,
     ) {}
 
     private function authorizeManager(User $user): void
@@ -122,10 +126,105 @@ class EmployeeScheduleController extends Controller
             }
         }
 
+        $rowOverrides = $this->findConflictingOverrides($employees->pluck('id'), $activeAssignments);
+
         return view('attendance.schedules.index', compact(
             'departments', 'lockedDepartments', 'shifts', 'employees', 'deptId', 'shiftId', 'employeeType', 'search',
-            'showExempt', 'canManageExemption', 'activeAssignments', 'expiredAssignments', 'expiredCounts'
+            'showExempt', 'canManageExemption', 'activeAssignments', 'expiredAssignments', 'expiredCounts', 'rowOverrides'
         ));
+    }
+
+    /**
+     * A ShiftAssignment row only reflects assignment HISTORY - a per-date
+     * override on the Shift Schedule week-grid (EmployeeShiftSchedule: rest
+     * day, field work, forced Standard Day, or a one-off different shift)
+     * silently wins over it for that exact date (see WorkSchedule::isWorkday()).
+     * This flags rows whose range contains one, so this screen doesn't look
+     * confidently "current" while the actual DTR/payroll outcome differs.
+     * Bounded to the next 30 days - a far-future conflict on an open-ended
+     * row isn't yet actionable, and scanning years of overrides isn't worth it.
+     *
+     * @param  Collection<int, int>  $employeeIds
+     * @param  Collection<int, Collection<int, ShiftAssignment>>  $activeAssignments
+     * @return array<int, array{dates: string, link: string}> assignment row id => conflicting dates + a link to that week on the Shift Schedule page
+     */
+    private function findConflictingOverrides($employeeIds, $activeAssignments): array
+    {
+        $windowEnd = Carbon::today()->addDays(30);
+
+        $overridesByUser = EmployeeShiftSchedule::whereIn('user_id', $employeeIds)
+            ->whereBetween('date', [Carbon::today()->toDateString(), $windowEnd->toDateString()])
+            ->orderBy('date')
+            ->get(['user_id', 'date'])
+            ->groupBy('user_id');
+
+        $rowOverrides = [];
+        foreach ($activeAssignments as $userId => $rows) {
+            $userOverrides = $overridesByUser->get($userId, collect());
+            if ($userOverrides->isEmpty()) {
+                continue;
+            }
+
+            foreach ($rows as $row) {
+                $rangeEnd = $row->effective_until ?? $windowEnd;
+                $conflicting = $userOverrides->filter(
+                    fn (EmployeeShiftSchedule $o) => $o->date->gte($row->effective_from) && $o->date->lte($rangeEnd)
+                );
+
+                if ($conflicting->isNotEmpty()) {
+                    $firstConflict = $conflicting->first()->date;
+                    $rowOverrides[$row->id] = [
+                        'dates' => $this->compressDatesToRanges($conflicting->pluck('date')),
+                        'link' => route('attendance.shift-schedule.index', [
+                            'employee_id' => $userId,
+                            'week_start' => $firstConflict->copy()->startOfWeek(Carbon::MONDAY)->toDateString(),
+                        ]),
+                    ];
+                }
+            }
+        }
+
+        return $rowOverrides;
+    }
+
+    /**
+     * Collapses a set of dates into "Jul 13, 2026" / "Jul 13 – 17, 2026"
+     * style spans wherever they're actually consecutive, instead of naming
+     * every single date - so a fully-overridden 5-day week reads as one
+     * range rather than 5 comma-separated dates that just repeat the row's
+     * own date-range label.
+     *
+     * @param  Collection<int, Carbon>  $dates
+     */
+    private function compressDatesToRanges($dates): string
+    {
+        $sorted = $dates->sort()->values();
+        $ranges = [];
+        $start = null;
+        $end = null;
+
+        foreach ($sorted as $date) {
+            if ($start === null) {
+                $start = $end = $date;
+
+                continue;
+            }
+
+            if ($date->isSameDay($end->copy()->addDay())) {
+                $end = $date;
+
+                continue;
+            }
+
+            $ranges[] = $start->isSameDay($end) ? $start->toFormattedDateString() : $start->toFormattedDateString().' – '.$end->toFormattedDateString();
+            $start = $end = $date;
+        }
+
+        if ($start !== null) {
+            $ranges[] = $start->isSameDay($end) ? $start->toFormattedDateString() : $start->toFormattedDateString().' – '.$end->toFormattedDateString();
+        }
+
+        return implode(', ', $ranges);
     }
 
     /**
@@ -154,6 +253,38 @@ class EmployeeScheduleController extends Controller
             ->withQueryString();
 
         return view('attendance.schedules.history', compact('user', 'shifts', 'assignments'));
+    }
+
+    /**
+     * A single employee's actual day-by-day schedule for one month, combining
+     * ShiftAssignment history and EmployeeShiftSchedule per-date overrides via
+     * ResolvedScheduleService - the same precedence DTR/payroll already use,
+     * surfaced so a Time Keeper doesn't have to cross-reference this screen
+     * against the Shift Schedule page to know what will actually happen on a
+     * given date (see the "overridden on ..." warning on the shift list above).
+     */
+    public function resolved(Request $request, User $user): View
+    {
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
+
+        if ($accessibleIds !== null && ! in_array((int) $user->id, $accessibleIds, true)) {
+            abort(403, 'You may only manage employees in your own department.');
+        }
+
+        $month = (int) $request->query('month', (int) now()->month);
+        $year = (int) $request->query('year', (int) now()->year);
+        if ($month < 1 || $month > 12) {
+            $month = (int) now()->month;
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) now()->year;
+        }
+
+        $monthStart = Carbon::createFromDate($year, $month, 1)->startOfDay();
+        $days = $this->resolvedScheduleService->buildMonth($user, $monthStart);
+
+        return view('attendance.schedules.resolved', compact('user', 'monthStart', 'days', 'month', 'year'));
     }
 
     /**
@@ -202,6 +333,9 @@ class EmployeeScheduleController extends Controller
             'effective_until' => ['nullable', 'required_if:form_type,add,edit', 'date', 'after_or_equal:effective_from'],
             'days_of_week' => ['nullable', 'array'],
             'days_of_week.*' => ['integer', 'between:0,6'],
+            'work_days' => ['nullable', 'array'],
+            'work_days.*' => ['integer', 'between:0,6'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         if ($validated['shift_id'] !== null) {
@@ -211,6 +345,11 @@ class EmployeeScheduleController extends Controller
         $from = isset($validated['effective_from']) ? Carbon::parse($validated['effective_from']) : Carbon::today();
         $until = isset($validated['effective_until']) ? Carbon::parse($validated['effective_until']) : null;
         $daysOfWeek = $validated['days_of_week'] ?? null;
+        // Mirror ShiftAssignmentService::assign()'s own forcing rule here so
+        // the audit log and flash message below describe what actually gets
+        // persisted, not the raw (possibly narrower/broader) submitted value.
+        $workDays = $daysOfWeek ?? ($validated['work_days'] ?? null);
+        $noBreak = (bool) ($validated['no_break'] ?? false);
         $isCorrection = ($validated['form_type'] ?? null) === 'edit';
 
         // Named from what was actually submitted, not users.shift_id (today's
@@ -225,13 +364,13 @@ class EmployeeScheduleController extends Controller
         // same-start-date replacement rule (delete-and-recreate) rather than
         // the usual truncate-and-append history rule - see
         // ShiftAssignmentService::assign() for why that's already safe here.
-        $this->shiftAssignmentService->assign($user, $submittedShiftId, $from, $until, $actor->id, $daysOfWeek);
+        $this->shiftAssignmentService->assign($user, $submittedShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak);
 
         $this->recomputeEmployee($user);
-        $this->logShiftAssigned($actor, $user, $submittedShiftId, $assignedShift?->name, $from, $until, $daysOfWeek, $isCorrection);
+        $this->logShiftAssigned($actor, $user, $submittedShiftId, $assignedShift?->name, $from, $until, $daysOfWeek, $isCorrection, $workDays, $noBreak);
 
         $name = trim("{$user->first_name} {$user->last_name}");
-        $daysLabel = Shift::daysOfWeekLabel($daysOfWeek);
+        $daysLabel = ShiftAssignment::daysOfWeekLabel($daysOfWeek);
         $scopeText = $daysLabel !== null ? " ({$daysLabel})" : '';
         $window = $until !== null ? " from {$from->toFormattedDateString()} to {$until->toFormattedDateString()}" : '';
 
@@ -265,6 +404,9 @@ class EmployeeScheduleController extends Controller
             'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'days_of_week' => ['nullable', 'array'],
             'days_of_week.*' => ['integer', 'between:0,6'],
+            'work_days' => ['nullable', 'array'],
+            'work_days.*' => ['integer', 'between:0,6'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         if ($request->boolean('select_all_matching')) {
@@ -297,6 +439,9 @@ class EmployeeScheduleController extends Controller
         $from = isset($validated['effective_from']) ? Carbon::parse($validated['effective_from']) : Carbon::today();
         $until = isset($validated['effective_until']) ? Carbon::parse($validated['effective_until']) : null;
         $daysOfWeek = $validated['days_of_week'] ?? null;
+        // Mirror ShiftAssignmentService::assign()'s own forcing rule (see update()).
+        $workDays = $daysOfWeek ?? ($validated['work_days'] ?? null);
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
         $employees = User::whereIn('id', $userIds)->get(['id', 'Dept_id', 'dtr_exempt']);
 
@@ -309,10 +454,10 @@ class EmployeeScheduleController extends Controller
         $employeeIds = $employees->pluck('id')->all();
 
         foreach ($employees as $employee) {
-            $this->shiftAssignmentService->assign($employee, $assignShiftId, $from, $until, $actor->id, $daysOfWeek);
+            $this->shiftAssignmentService->assign($employee, $assignShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak);
         }
 
-        $this->logBulkShiftAssigned($actor, $employeeIds, $assignShiftId, $from, $until, $daysOfWeek);
+        $this->logBulkShiftAssigned($actor, $employeeIds, $assignShiftId, $from, $until, $daysOfWeek, $workDays, $noBreak);
 
         BulkShiftRecomputeJob::dispatch($employeeIds);
 
@@ -384,7 +529,7 @@ class EmployeeScheduleController extends Controller
      * Change Log clearly flags a retroactive fix to already-recorded history,
      * rather than reading like a fresh assignment.
      */
-    private function logShiftAssigned(User $actor, User $employee, ?int $shiftId, ?string $shiftName, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, bool $isCorrection = false): void
+    private function logShiftAssigned(User $actor, User $employee, ?int $shiftId, ?string $shiftName, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, bool $isCorrection = false, ?array $workDays = null, bool $noBreak = false): void
     {
         try {
             HRAuditTrail::create([
@@ -400,6 +545,8 @@ class EmployeeScheduleController extends Controller
                     'effective_from' => $from->toDateString(),
                     'effective_until' => $until?->toDateString(),
                     'days_of_week' => $daysOfWeek,
+                    'work_days' => $workDays,
+                    'no_break' => $noBreak,
                 ],
             ]);
         } catch (\Exception) {
@@ -415,7 +562,7 @@ class EmployeeScheduleController extends Controller
      *
      * @param  int[]  $employeeIds
      */
-    private function logBulkShiftAssigned(User $actor, array $employeeIds, ?int $assignShiftId, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null): void
+    private function logBulkShiftAssigned(User $actor, array $employeeIds, ?int $assignShiftId, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false): void
     {
         $shiftName = $assignShiftId ? Shift::find($assignShiftId)?->name : null;
         $now = now();
@@ -434,6 +581,8 @@ class EmployeeScheduleController extends Controller
                 'effective_from' => $from->toDateString(),
                 'effective_until' => $until?->toDateString(),
                 'days_of_week' => $daysOfWeek,
+                'work_days' => $workDays,
+                'no_break' => $noBreak,
             ]),
             'created_at' => $now,
             'updated_at' => $now,

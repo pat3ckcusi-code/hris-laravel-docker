@@ -607,11 +607,13 @@
                         <ul class="ss-multi-shift-list">
                             @foreach ($activeAssignments as $row)
                                 @php
-                                    $rowDateLabel = $row->effective_until
-                                        ? $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString()
-                                        : 'from '.$row->effective_from->toFormattedDateString();
+                                    $rowDateLabel = match (true) {
+                                        $row->isSuperseded() => 'superseded before it took effect',
+                                        $row->effective_until !== null => $row->effective_from->toFormattedDateString().' – '.$row->effective_until->toFormattedDateString(),
+                                        default => 'from '.$row->effective_from->toFormattedDateString(),
+                                    };
                                 @endphp
-                                <li>{{ $row->shift?->name ?? 'Standard Day' }} — {{ \App\Models\Shift::daysOfWeekLabel($row->days_of_week) ?? 'Every day' }} <span class="ss-shift-dates">({{ $rowDateLabel }})</span></li>
+                                <li>{{ $row->shift?->name ?? 'Standard Day' }} - {{ $row->workDaysLabel() }} <span class="ss-shift-dates">({{ $rowDateLabel }})</span></li>
                             @endforeach
                         </ul>
                     @endif

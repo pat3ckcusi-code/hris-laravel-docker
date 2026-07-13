@@ -10,12 +10,14 @@ use App\Models\Plantilla;
 use App\Models\SalaryMatrix;
 use App\Models\Shift;
 use App\Services\PayrollComputationService;
+use App\Services\ShiftAssignmentService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
 /**
- * A shift template's Work Days pattern (not just the hardcoded Mon-Fri
+ * A shift assignment's Work Days pattern (not just the hardcoded Mon-Fri
  * assumption) drives which dates count as workable/absent for payroll.
  */
 class PayrollDtrWorkdayTest extends TestCase
@@ -32,9 +34,11 @@ class PayrollDtrWorkdayTest extends TestCase
             'break_out' => '12:00',
             'break_in' => '13:00',
             'time_out' => '17:00',
-            'work_days' => [1, 2, 3, 4, 5, 6],
         ]);
-        $employee = $this->createEmployee(['shift_id' => $shift->id]);
+        $employee = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $employee, $shift->id, Carbon::parse('2026-01-01'), null, null, null, [1, 2, 3, 4, 5, 6]
+        );
 
         $plantilla = Plantilla::create(['title' => 'Clerk', 'salary_grade' => 6, 'step' => 1, 'employment_type' => 'permanent']);
         EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantilla->id, 'start_date' => '2026-01-01']);

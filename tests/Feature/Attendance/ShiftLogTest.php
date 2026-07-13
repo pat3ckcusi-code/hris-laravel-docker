@@ -5,6 +5,7 @@ namespace Tests\Feature\Attendance;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -217,36 +218,42 @@ class ShiftLogTest extends TestCase
             ->assertSee('Template Deleted');
     }
 
-    public function test_shift_template_work_days_persist_and_are_audited(): void
+    /**
+     * Work Days and No Break moved from the Shift template to the
+     * shift_assignments row - this test now exercises assignment-level
+     * persistence and audit logging instead of template-level.
+     */
+    public function test_shift_assignment_work_days_and_no_break_persist_and_are_audited(): void
     {
         $tk = $this->createTimeKeeper();
-
-        $this->actingAs($tk)->post(route('attendance.shifts.store'), [
+        $employee = $this->createEmployee(['last_name' => 'WorkDaysAudited']);
+        $shift = Shift::create([
             'name' => 'Mon-Sat Shift',
             'time_in' => '08:00',
             'break_out' => '12:00',
             'break_in' => '13:00',
             'time_out' => '17:00',
+        ]);
+
+        $this->actingAs($tk)->put(route('attendance.schedules.update', $employee), [
+            'shift_id' => $shift->id,
             'work_days' => [1, 2, 3, 4, 5, 6],
+            'no_break' => '1',
         ])->assertRedirect();
 
-        $shift = Shift::where('name', 'Mon-Sat Shift')->firstOrFail();
-        $this->assertSame([1, 2, 3, 4, 5, 6], $shift->work_days);
+        $row = ShiftAssignment::where('user_id', $employee->id)->firstOrFail();
+        $this->assertSame([1, 2, 3, 4, 5, 6], $row->work_days);
+        $this->assertTrue($row->no_break);
 
-        $created = HRAuditTrail::where('target_id', $shift->id)
-            ->where('action', 'shift_template_created')->firstOrFail();
+        $created = HRAuditTrail::where('target_id', $employee->id)
+            ->where('action', 'shift_assigned')->firstOrFail();
         $this->assertSame([1, 2, 3, 4, 5, 6], $created->details['work_days']);
+        $this->assertTrue($created->details['no_break']);
 
-        $this->actingAs($tk)->put(route('attendance.shifts.update', $shift), [
-            'name' => 'Mon-Sat Shift',
-            'time_in' => '08:00',
-            'break_out' => '12:00',
-            'break_in' => '13:00',
-            'time_out' => '17:00',
-            'work_days' => [1, 2, 3, 4, 5],
-        ])->assertRedirect();
-
-        $this->assertSame([1, 2, 3, 4, 5], $shift->fresh()->work_days);
+        $this->actingAs($tk)
+            ->get(route('attendance.shift-logs'))
+            ->assertSee('Mon-Sat')
+            ->assertSee('no break');
     }
 
     public function test_department_filter_scopes_the_change_log(): void

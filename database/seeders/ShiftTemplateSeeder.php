@@ -23,7 +23,6 @@ class ShiftTemplateSeeder extends Seeder
                     'time_out' => $t['time_out'],
                     'break_out' => null,
                     'break_in' => null,
-                    'no_break' => true,
                     'crosses_midnight' => Shift::isCrossMidnight($t['time_in'], $t['time_out']),
                     'is_active' => true,
                 ]

@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Carbon\Carbon;
 
 /**
  * A named, reusable work-shift template. Assigned to employees via
@@ -18,6 +18,11 @@ use Carbon\Carbon;
  * department, including ones created later) or scoped to the specific
  * departments attached via the departments() pivot.
  *
+ * Work Days and No Break (2-punch) are NOT template properties - they're
+ * decided per employee/period on the shift_assignments row (see
+ * App\Models\ShiftAssignment), so the same template's clock times can be
+ * scheduled differently for different employees.
+ *
  * @property int $id
  * @property string $name
  * @property string $time_in
@@ -25,10 +30,8 @@ use Carbon\Carbon;
  * @property string|null $break_in
  * @property string $time_out
  * @property bool $crosses_midnight
- * @property bool $no_break
  * @property bool $is_active
  * @property bool $is_global
- * @property array $work_days
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -36,11 +39,6 @@ use Carbon\Carbon;
  */
 class Shift extends Model
 {
-    /** Mon-Fri, Carbon's dayOfWeek numbering (0=Sunday..6=Saturday). */
-    public const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5];
-
-    private const DAY_LABELS = [0 => 'Sun', 1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat'];
-
     protected $fillable = [
         'name',
         'time_in',
@@ -48,72 +46,17 @@ class Shift extends Model
         'break_in',
         'time_out',
         'crosses_midnight',
-        'no_break',
         'is_active',
         'is_global',
-        'work_days',
     ];
 
     protected function casts(): array
     {
         return [
             'crosses_midnight' => 'boolean',
-            'no_break' => 'boolean',
             'is_active' => 'boolean',
             'is_global' => 'boolean',
-            'work_days' => 'array',
         ];
-    }
-
-    protected static function booted(): void
-    {
-        static::creating(function (self $shift) {
-            if (empty($shift->work_days)) {
-                $shift->work_days = self::DEFAULT_WORK_DAYS;
-            }
-        });
-    }
-
-    /** True when this shift is scheduled to work on the given Carbon day-of-week (0=Sun..6=Sat). */
-    public function worksOnDayOfWeek(int $dayOfWeek): bool
-    {
-        return in_array($dayOfWeek, $this->work_days ?: self::DEFAULT_WORK_DAYS, true);
-    }
-
-    /** True when this shift is scheduled to work on $date's calendar day-of-week. */
-    public function worksOnDate(Carbon $date): bool
-    {
-        return $this->worksOnDayOfWeek($date->dayOfWeek);
-    }
-
-    /** Compact "Mon-Fri" / "Mon-Sat" / "Every day" / custom-list label for the templates table. */
-    public function workDaysLabel(): string
-    {
-        return self::daysOfWeekLabel($this->work_days ?: self::DEFAULT_WORK_DAYS);
-    }
-
-    /**
-     * Same compact label as workDaysLabel(), for any array of 0-6 day-of-week
-     * values - e.g. a shift_assignments row's days_of_week scope. Null (no
-     * restriction, applies every day) passes through as null so callers can
-     * distinguish "unscoped" from "every day was explicitly listed."
-     */
-    public static function daysOfWeekLabel(?array $days): ?string
-    {
-        if ($days === null) {
-            return null;
-        }
-
-        // Defensive int cast: request input (checkboxes, query strings)
-        // always arrives as strings, and match() below compares strictly.
-        $days = collect($days)->map(fn ($d) => (int) $d)->unique()->sort()->values()->all();
-
-        return match ($days) {
-            [1, 2, 3, 4, 5] => 'Mon-Fri',
-            [1, 2, 3, 4, 5, 6] => 'Mon-Sat',
-            [0, 1, 2, 3, 4, 5, 6] => 'Every day',
-            default => collect($days)->map(fn ($d) => self::DAY_LABELS[$d])->implode(', '),
-        };
     }
 
     /** Departments this (non-global) template is explicitly scoped to. */

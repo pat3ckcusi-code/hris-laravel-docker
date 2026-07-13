@@ -14,6 +14,7 @@ use App\Models\Locator;
 use App\Models\MonthlyAttendance;
 use App\Models\Shift;
 use App\Services\LwopAggregationService;
+use App\Services\ShiftAssignmentService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -436,9 +437,11 @@ class LwopAggregationServiceTest extends TestCase
             'break_out' => '12:00',
             'break_in' => '13:00',
             'time_out' => '17:00',
-            'work_days' => [1, 2, 3, 4, 5, 6],
         ]);
-        $emp = $this->createEmployee(['shift_id' => $shift->id]);
+        $emp = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $emp, $shift->id, Carbon::parse('2026-01-01'), null, null, null, [1, 2, 3, 4, 5, 6]
+        );
 
         $classified = app(LwopAggregationService::class)->classifyWorkdays(
             $emp, Carbon::parse('2026-04-04'), Carbon::parse('2026-04-05')

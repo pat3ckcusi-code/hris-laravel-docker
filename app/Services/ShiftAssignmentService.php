@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ShiftAssignmentService
 {
-    public function assign(User $user, ?int $shiftId, Carbon $from, ?Carbon $until, ?int $createdBy, ?array $daysOfWeek = null): ShiftAssignment
+    public function assign(User $user, ?int $shiftId, Carbon $from, ?Carbon $until, ?int $createdBy, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false): ShiftAssignment
     {
         // Normalize here (not just in the model's cast) so overlaps()'s
         // comparison below is guaranteed to work regardless of whether the
@@ -29,8 +29,22 @@ class ShiftAssignmentService
         if ($daysOfWeek !== null) {
             $daysOfWeek = array_values(array_unique(array_map('intval', $daysOfWeek)));
         }
+        if ($workDays !== null) {
+            $workDays = array_values(array_unique(array_map('intval', $workDays)));
+        }
 
-        return DB::transaction(function () use ($user, $shiftId, $from, $until, $createdBy, $daysOfWeek) {
+        // When days_of_week restricts which dates this row even governs,
+        // work_days must match exactly - a day this row doesn't govern can
+        // never be "worked" under it regardless of what was submitted, and a
+        // day it does govern but work_days excludes silently became an
+        // unexplained rest day even though a broader Work Days selection
+        // said otherwise. Forcing equality here removes that trap at the
+        // single write path rather than relying on UI/validation to catch it.
+        if ($daysOfWeek !== null) {
+            $workDays = $daysOfWeek;
+        }
+
+        return DB::transaction(function () use ($user, $shiftId, $from, $until, $createdBy, $daysOfWeek, $workDays, $noBreak) {
             $existing = ShiftAssignment::forUser($user->id)->lockForUpdate()->get();
 
             foreach ($existing as $row) {
@@ -52,6 +66,8 @@ class ShiftAssignmentService
                 'user_id' => $user->id,
                 'shift_id' => $shiftId,
                 'days_of_week' => $daysOfWeek,
+                'work_days' => $workDays,
+                'no_break' => $noBreak,
                 'effective_from' => $from,
                 'effective_until' => $until,
                 'created_by' => $createdBy,

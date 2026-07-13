@@ -127,46 +127,36 @@ class ShiftController extends Controller
     }
 
     /**
-     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, no_break: bool, is_active: bool, is_global: bool, work_days: int[]}
+     * A template always fully describes a 4-slot day (in / break-out /
+     * break-in / out) - whether a given employee's assignment actually uses
+     * the break slots is a per-assignment decision (ShiftAssignment::no_break),
+     * not a template one, so break_out/break_in are unconditionally required
+     * here regardless of how any assignment ends up using this template.
+     *
+     * @return array{name: string, time_in: string, break_out: string, break_in: string, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool}
      */
     private function validateShift(Request $request): array
     {
-        $noBreak = (bool) $request->input('no_break', false);
-
         $v = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'time_in' => ['required', 'date_format:H:i'],
-            'break_out' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
-            'break_in' => $noBreak ? ['nullable'] : ['required', 'date_format:H:i'],
+            'break_out' => ['required', 'date_format:H:i'],
+            'break_in' => ['required', 'date_format:H:i'],
             'time_out' => ['required', 'date_format:H:i'],
             'is_global' => ['nullable', 'boolean'],
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
-            'work_days' => ['sometimes', 'array'],
-            'work_days.*' => ['integer', 'between:0,6'],
         ]);
-
-        // Unchecked checkboxes send no key at all, indistinguishable from
-        // "selected none" - both safely fall back to Mon-Fri rather than
-        // ever persisting a zero-day shift.
-        $workDays = collect($v['work_days'] ?? [])
-            ->map(fn ($d) => (int) $d)
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
 
         return [
             'name' => $v['name'],
             'time_in' => $v['time_in'],
-            'break_out' => $noBreak ? null : $v['break_out'],
-            'break_in' => $noBreak ? null : $v['break_in'],
+            'break_out' => $v['break_out'],
+            'break_in' => $v['break_in'],
             'time_out' => $v['time_out'],
             'crosses_midnight' => Shift::isCrossMidnight($v['time_in'], $v['time_out']),
-            'no_break' => $noBreak,
             'is_active' => true,
             'is_global' => $request->boolean('is_global'),
-            'work_days' => $workDays !== [] ? $workDays : Shift::DEFAULT_WORK_DAYS,
         ];
     }
 
