@@ -275,25 +275,37 @@ class DtrController extends Controller
             ->get()
             ->keyBy(fn ($e) => Carbon::parse($e->date)->format('Y-m-d'));
 
-        // Build office-order date map: 'Y-m-d' → office_order_num.
+        // Build office-order date map: 'Y-m-d' → office_order_num, expanding each
+        // order to every day from issued_date through effective_date (or just
+        // issued_date if effective_date isn't set), clamped to the period.
         $officeOrderDateMap = [];
         if ($employee->EmpNo) {
+            $rangeStart = Carbon::parse($from);
+            $rangeEnd = Carbon::parse($to);
+
             DB::table('office_orders')
                 ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
                 ->where('office_order_employees.emp_no', $employee->EmpNo)
-                ->where(function ($q) use ($from, $to): void {
-                    $q->whereBetween('office_orders.effective_date', [$from, $to])
-                        ->orWhere(function ($q2) use ($from, $to): void {
+                ->where('office_orders.issued_date', '<=', $to)
+                ->where(function ($q) use ($from): void {
+                    $q->where('office_orders.effective_date', '>=', $from)
+                        ->orWhere(function ($q2) use ($from): void {
                             $q2->whereNull('office_orders.effective_date')
-                                ->whereBetween('office_orders.issued_date', [$from, $to]);
+                                ->where('office_orders.issued_date', '>=', $from);
                         });
                 })
                 ->select('office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
                 ->get()
-                ->each(function ($o) use (&$officeOrderDateMap): void {
-                    $date = $o->effective_date ?? $o->issued_date;
-                    if ($date) {
-                        $officeOrderDateMap[Carbon::parse($date)->format('Y-m-d')] = $o->office_order_num;
+                ->each(function ($o) use (&$officeOrderDateMap, $rangeStart, $rangeEnd): void {
+                    if (! $o->issued_date) {
+                        return;
+                    }
+                    $cursor = Carbon::parse($o->issued_date)->startOfDay();
+                    $until = Carbon::parse($o->effective_date ?? $o->issued_date)->startOfDay();
+                    $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
+                    $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
+                    for (; $cursor->lte($until); $cursor->addDay()) {
+                        $officeOrderDateMap[$cursor->format('Y-m-d')] = $o->office_order_num;
                     }
                 });
         }

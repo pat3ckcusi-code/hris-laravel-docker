@@ -116,11 +116,12 @@ class AttendanceMonitoringExportService
         $officeOrdersByEmpNo = empty($empNos) ? collect() : DB::table('office_orders')
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->whereIn('office_order_employees.emp_no', $empNos)
-            ->where(function ($q) use ($periodStart, $periodEnd): void {
-                $q->whereBetween('office_orders.effective_date', [$periodStart, $periodEnd])
-                    ->orWhere(function ($q2) use ($periodStart, $periodEnd): void {
+            ->where('office_orders.issued_date', '<=', $periodEnd)
+            ->where(function ($q) use ($periodStart): void {
+                $q->where('office_orders.effective_date', '>=', $periodStart)
+                    ->orWhere(function ($q2) use ($periodStart): void {
                         $q2->whereNull('office_orders.effective_date')
-                            ->whereBetween('office_orders.issued_date', [$periodStart, $periodEnd]);
+                            ->where('office_orders.issued_date', '>=', $periodStart);
                     });
             })
             ->select('office_order_employees.emp_no', 'office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
@@ -223,12 +224,19 @@ class AttendanceMonitoringExportService
                 }
             }
 
-            // Office Order covers the whole day it's effective/issued on.
+            // Office Order covers every day from issued_date through effective_date
+            // (or just issued_date if effective_date isn't set), clamped to the period.
             $officeOrderCoveredDates = [];
             foreach ($officeOrdersByEmpNo->get($emp->EmpNo, collect()) as $oo) {
-                $date = $oo->effective_date ?? $oo->issued_date;
-                if ($date) {
-                    $officeOrderCoveredDates[Carbon::parse($date)->toDateString()] = true;
+                if (! $oo->issued_date) {
+                    continue;
+                }
+                $start = Carbon::parse($oo->issued_date)->startOfDay();
+                $end = Carbon::parse($oo->effective_date ?? $oo->issued_date)->startOfDay();
+                $start = $start->lt(Carbon::parse($periodStart)) ? Carbon::parse($periodStart) : $start;
+                $end = $end->gt(Carbon::parse($periodEnd)) ? Carbon::parse($periodEnd) : $end;
+                for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+                    $officeOrderCoveredDates[$d->toDateString()] = true;
                 }
             }
 
@@ -545,14 +553,19 @@ class AttendanceMonitoringExportService
                 $remarkEntries->push(['day' => $day, 'label' => $label]);
             }
 
-            // Office orders
+            // Office orders - expand each order to individual days within the month
             foreach ($officeOrdersByEmpNo->get($emp->EmpNo, collect()) as $oo) {
-                $date = $oo->effective_date ?? $oo->issued_date;
-                if (! $date) {
+                if (! $oo->issued_date) {
                     continue;
                 }
-                $day = Carbon::parse($date)->day;
-                $remarkEntries->push(['day' => $day, 'label' => $day.'-Office Order No. '.$oo->office_order_num]);
+                $start = Carbon::parse($oo->issued_date)->startOfDay();
+                $end = Carbon::parse($oo->effective_date ?? $oo->issued_date)->startOfDay();
+                $start = $start->lt($periodStartDate) ? $periodStartDate->copy() : $start;
+                $end = $end->gt($periodEndDate) ? $periodEndDate->copy() : $end;
+                for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
+                    $day = $cursor->day;
+                    $remarkEntries->push(['day' => $day, 'label' => $day.'-Office Order']);
+                }
             }
 
             // Travel orders - expand each order to individual days within the month

@@ -16,9 +16,11 @@ use Illuminate\Support\Facades\DB;
  * AttendanceMonitoringExportService already uses for the same five sources
  * (that service's coverage-building logic is private to one large per-employee
  * method, so this reimplements the same conventions per-date instead of
- * reaching into it). Office Order intentionally has no status filter, matching
- * that existing behavior - the office_orders.status column has no observed
- * approve/reject workflow.
+ * reaching into it). Office Order covers every day from issued_date through
+ * effective_date (or just issued_date if effective_date isn't set), the same
+ * range expansion as Travel Order. Office Order intentionally has no status
+ * filter, matching that existing behavior - the office_orders.status column
+ * has no observed approve/reject workflow.
  */
 class WorkforceCalendarService
 {
@@ -163,25 +165,34 @@ class WorkforceCalendarService
         $rows = DB::table('office_orders')
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->whereIn('office_order_employees.emp_no', array_keys($idsByEmpNo))
-            ->where(function ($q) use ($start, $end): void {
-                $q->whereBetween('office_orders.effective_date', [$start, $end])
-                    ->orWhere(function ($q2) use ($start, $end): void {
+            ->where('office_orders.issued_date', '<=', $end)
+            ->where(function ($q) use ($start): void {
+                $q->where('office_orders.effective_date', '>=', $start)
+                    ->orWhere(function ($q2) use ($start): void {
                         $q2->whereNull('office_orders.effective_date')
-                            ->whereBetween('office_orders.issued_date', [$start, $end]);
+                            ->where('office_orders.issued_date', '>=', $start);
                     });
             })
             ->select('office_order_employees.emp_no', 'office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
             ->get();
 
+        $rangeStart = Carbon::parse($start);
+        $rangeEnd = Carbon::parse($end);
+
         foreach ($rows as $row) {
             $userId = $idsByEmpNo[$row->emp_no] ?? null;
-            $date = $row->effective_date ?? $row->issued_date;
-            if (! $userId || ! $date) {
+            if (! $userId || ! $row->issued_date) {
                 continue;
             }
-            $dateStr = Carbon::parse($date)->toDateString();
+            $cursor = Carbon::parse($row->issued_date)->startOfDay();
+            $until = Carbon::parse($row->effective_date ?? $row->issued_date)->startOfDay();
+            $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
+            $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
             $label = 'Office Order No. '.$row->office_order_num;
-            $this->addEntry($calendar, $dateStr, 'office_order', $userId, $namesById[$userId] ?? '', $label);
+
+            for (; $cursor->lte($until); $cursor->addDay()) {
+                $this->addEntry($calendar, $cursor->toDateString(), 'office_order', $userId, $namesById[$userId] ?? '', $label);
+            }
         }
     }
 
