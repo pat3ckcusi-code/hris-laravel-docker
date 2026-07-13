@@ -218,53 +218,9 @@ class ShiftScheduleController extends Controller
         $employee = User::findOrFail($validated['user_id']);
         $weekStart = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::MONDAY);
         $weekEnd = $weekStart->copy()->endOfWeek(Carbon::SUNDAY);
-
-        // Validate that all submitted dates fall within the selected week.
         $validDates = collect(range(0, 6))->map(fn ($i) => $weekStart->copy()->addDays($i)->toDateString());
 
-        $recomputeNeeded = false;
-
-        foreach ($validated['assignments'] as $dateStr => $value) {
-            if (! $validDates->contains($dateStr)) {
-                continue;
-            }
-
-            if ($value === 'default' || $value === '') {
-                // Remove the override - employee reverts to their default shift.
-                $deleted = EmployeeShiftSchedule::where('user_id', $employee->id)
-                    ->where('date', $dateStr)
-                    ->delete();
-                if ($deleted) {
-                    $recomputeNeeded = true;
-                }
-            } elseif ($value === 'rest') {
-                EmployeeShiftSchedule::updateOrCreate(
-                    ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $request->user()->id]
-                );
-                $recomputeNeeded = true;
-            } elseif ($value === 'field_work') {
-                EmployeeShiftSchedule::updateOrCreate(
-                    ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'field_work', 'created_by' => $request->user()->id]
-                );
-                $recomputeNeeded = true;
-            } elseif ($value === 'standard') {
-                EmployeeShiftSchedule::updateOrCreate(
-                    ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'standard', 'created_by' => $request->user()->id]
-                );
-                $recomputeNeeded = true;
-            } else {
-                $shiftId = (int) $value;
-                $this->assertShiftAssignable($shiftId, $employee->Dept_id, $actor);
-                EmployeeShiftSchedule::updateOrCreate(
-                    ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => $shiftId, 'created_by' => $request->user()->id]
-                );
-                $recomputeNeeded = true;
-            }
-        }
+        $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor);
 
         // Recompute DTRs for the affected week so stored late/undertime update immediately.
         if ($recomputeNeeded) {
@@ -287,6 +243,138 @@ class ShiftScheduleController extends Controller
             'employee_id' => $employee->id,
             'week_start' => $weekStart->toDateString(),
         ])->with('schedule_status', "Shift schedule for {$name} saved.");
+    }
+
+    /**
+     * Shared by store()/storeBulk(): writes/deletes the EmployeeShiftSchedule
+     * rows for one employee's week per the day-by-day $assignments values (see
+     * store()'s docblock for the value vocabulary). Returns whether anything
+     * changed, so the caller knows whether a DTR recompute is needed.
+     */
+    private function applyWeekAssignments(User $employee, array $assignments, Collection $validDates, User $actor): bool
+    {
+        $recomputeNeeded = false;
+
+        foreach ($assignments as $dateStr => $value) {
+            if (! $validDates->contains($dateStr)) {
+                continue;
+            }
+
+            if ($value === 'default' || $value === '') {
+                // Remove the override - employee reverts to their default shift.
+                $deleted = EmployeeShiftSchedule::where('user_id', $employee->id)
+                    ->where('date', $dateStr)
+                    ->delete();
+                if ($deleted) {
+                    $recomputeNeeded = true;
+                }
+            } elseif ($value === 'rest') {
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $actor->id]
+                );
+                $recomputeNeeded = true;
+            } elseif ($value === 'field_work') {
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => null, 'type' => 'field_work', 'created_by' => $actor->id]
+                );
+                $recomputeNeeded = true;
+            } elseif ($value === 'standard') {
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => null, 'type' => 'standard', 'created_by' => $actor->id]
+                );
+                $recomputeNeeded = true;
+            } else {
+                $shiftId = (int) $value;
+                $this->assertShiftAssignable($shiftId, $employee->Dept_id, $actor);
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => $shiftId, 'created_by' => $actor->id]
+                );
+                $recomputeNeeded = true;
+            }
+        }
+
+        return $recomputeNeeded;
+    }
+
+    /**
+     * Apply the same day-by-day week schedule (from the week grid) to a
+     * hand-picked set of employees (checked on the Shift Schedule screen), so
+     * a schedule dialed in for one employee can be broadcast to the rest of a
+     * rotating/24-7 crew without repeating it one employee at a time. Mirrors
+     * generatePatternBulk()'s reasoning: recompute stays synchronous per
+     * employee since it's bounded to one week.
+     */
+    public function storeBulk(Request $request): RedirectResponse
+    {
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
+
+        $validated = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+            'week_start' => ['required', 'date'],
+            'assignments' => ['required', 'array'],
+            'assignments.*' => ['nullable', 'string'],
+        ]);
+
+        $userIds = array_map('intval', $validated['user_ids']);
+
+        if ($accessibleIds !== null) {
+            $unauthorized = array_diff($userIds, $accessibleIds);
+            if (! empty($unauthorized)) {
+                abort(403, 'You may only schedule employees in your own department.');
+            }
+        }
+
+        $employees = User::whereIn('id', $userIds)->get();
+        $weekStart = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::MONDAY);
+        $weekEnd = $weekStart->copy()->endOfWeek(Carbon::SUNDAY);
+        $validDates = collect(range(0, 6))->map(fn ($i) => $weekStart->copy()->addDays($i)->toDateString());
+
+        // Validate every distinct (department, assigned shift) pair up front,
+        // before writing anything - same reasoning as generatePatternBulk():
+        // a shift that's out of scope for even one employee must reject the
+        // whole request rather than leaving a partial bulk write behind.
+        $shiftIds = collect($validated['assignments'])
+            ->reject(fn ($value) => in_array($value, ['default', '', 'rest', 'field_work', 'standard'], true))
+            ->map(fn ($value) => (int) $value)
+            ->unique();
+
+        foreach ($employees->pluck('Dept_id')->unique() as $deptId) {
+            foreach ($shiftIds as $shiftId) {
+                $this->assertShiftAssignable($shiftId, $deptId, $actor);
+            }
+        }
+
+        $changedEmployeeIds = [];
+
+        foreach ($employees as $employee) {
+            $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor);
+
+            if ($recomputeNeeded) {
+                $this->importService->recomputeDtr($employee, $weekStart->toDateString(), $weekEnd->toDateString());
+                $changedEmployeeIds[] = $employee->id;
+            }
+        }
+
+        if (! empty($changedEmployeeIds)) {
+            $this->logBulkScheduleAction($actor, $changedEmployeeIds, 'shift_schedule_updated', [
+                'week_start' => $weekStart->toDateString(),
+                'days_changed' => count($validated['assignments']),
+            ]);
+        }
+
+        $count = count($changedEmployeeIds);
+
+        return redirect()->route('attendance.shift-schedule.index', [
+            'dept_id' => $request->input('dept_id'),
+            'employee_id' => $request->input('employee_id'),
+            'week_start' => $weekStart->toDateString(),
+        ])->with('schedule_status', "Shift schedule saved for {$count} employee(s).");
     }
 
     /**

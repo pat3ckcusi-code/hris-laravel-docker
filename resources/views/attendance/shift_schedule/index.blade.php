@@ -659,7 +659,9 @@
                 </p>
             </details>
 
-            <form method="POST" action="{{ route('attendance.shift-schedule.store') }}" id="week-form">
+            <form method="POST" action="{{ route('attendance.shift-schedule.store') }}" id="week-form"
+                  data-single-action="{{ route('attendance.shift-schedule.store') }}"
+                  data-bulk-action="{{ route('attendance.shift-schedule.store-bulk') }}">
                 @csrf
                 <input type="hidden" name="user_id"    value="{{ $selectedEmployee->id }}">
                 <input type="hidden" name="week_start"  value="{{ $weekStart->toDateString() }}">
@@ -730,6 +732,7 @@
                 <div class="ss-form-actions">
                     <button type="submit" class="hris-btn hris-btn-primary">Save Week Schedule</button>
                     <span style="font-size:.78rem;color:#6b7280;">DTRs for this week will be recomputed on save.</span>
+                    <span id="week-save-bulk-hint" style="font-size:.78rem;color:#1d4ed8;font-weight:600;display:none;"></span>
                 </div>
             </form>
 
@@ -858,12 +861,22 @@ var empCheckboxes    = document.querySelectorAll('.ss-emp-checkbox');
 var selectAllCb       = document.getElementById('ss-select-all');
 var bulkSubmitBtn     = document.getElementById('bulk-rotation-submit');
 var bulkCountEl       = document.getElementById('bulk-rotation-count');
+var weekSaveBulkHint  = document.getElementById('week-save-bulk-hint');
 
 function updateBulkRotationState() {
     var checked = document.querySelectorAll('.ss-emp-checkbox:checked').length;
     if (bulkCountEl) bulkCountEl.textContent = checked;
     if (bulkSubmitBtn) bulkSubmitBtn.disabled = checked === 0;
     if (selectAllCb) selectAllCb.checked = checked > 0 && checked === empCheckboxes.length;
+
+    if (weekSaveBulkHint) {
+        if (checked > 0) {
+            weekSaveBulkHint.textContent = 'Will apply to ' + checked + ' selected employee(s) instead of just this one.';
+            weekSaveBulkHint.style.display = '';
+        } else {
+            weekSaveBulkHint.style.display = 'none';
+        }
+    }
 }
 
 empCheckboxes.forEach(function (cb) { cb.addEventListener('change', updateBulkRotationState); });
@@ -893,6 +906,48 @@ if (bulkRotationForm) {
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#6b7280',
         }).then(function (res) { if (res.isConfirmed) bulkRotationForm.submit(); });
+    });
+}
+
+/* ── Save Week Schedule: broadcast to checked employees ────────── */
+var weekForm = document.getElementById('week-form');
+if (weekForm) {
+    weekForm.addEventListener('submit', function (e) {
+        var checked = document.querySelectorAll('.ss-emp-checkbox:checked');
+
+        // Clear any stale user_ids[] left over from a previously cancelled bulk attempt.
+        weekForm.querySelectorAll('input[name="user_ids[]"]').forEach(function (el) { el.remove(); });
+
+        if (checked.length === 0) {
+            weekForm.action = weekForm.dataset.singleAction;
+            return;
+        }
+
+        e.preventDefault();
+
+        checked.forEach(function (cb) {
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'user_ids[]';
+            hidden.value = cb.value;
+            weekForm.appendChild(hidden);
+        });
+
+        var count = checked.length;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Save week schedule for multiple employees?',
+            html: 'This will apply the currently displayed week\'s schedule to <b>' + count + '</b> selected employee(s). DTRs for the week will be recomputed for each.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, save for all',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) {
+            if (res.isConfirmed) {
+                weekForm.action = weekForm.dataset.bulkAction;
+                weekForm.submit();
+            }
+        });
     });
 }
 

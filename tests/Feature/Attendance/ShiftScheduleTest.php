@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Attendance;
 
+use App\Console\Commands\SyncShiftAssignmentCache;
 use App\Jobs\BulkShiftRecomputeJob;
 use App\Models\AttendanceLog;
 use App\Models\Department;
@@ -9,18 +10,19 @@ use App\Models\Dtr;
 use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
-use App\Models\HRAuditTrail;
 use App\Models\Holiday;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\OicAssignment;
 use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\ShiftManagementGrant;
 use App\Models\User;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
+use App\Services\ShiftAssignmentService;
 use App\Services\ShiftPunchGrouper;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -413,7 +415,7 @@ class ShiftScheduleTest extends TestCase
     {
         $shift = $this->nightShiftModel();
         $employee = $this->createEmployee();
-        app(\App\Services\ShiftAssignmentService::class)->assign($employee, $shift->id, Carbon::today(), null, null);
+        app(ShiftAssignmentService::class)->assign($employee, $shift->id, Carbon::today(), null, null);
 
         $this->actingAs($this->createTimeKeeper())
             ->put(route('attendance.schedules.update', $employee), [
@@ -1517,7 +1519,7 @@ class ShiftScheduleTest extends TestCase
 
         // Employee already has a future-dated assignment from the Shift
         // Assignment screen that overlaps the rotation's date range.
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $employee, $staleShift->id, Carbon::parse('2026-08-01'), null, null
         );
 
@@ -1537,7 +1539,7 @@ class ShiftScheduleTest extends TestCase
             'effective_until' => '2026-08-09',
         ]);
 
-        $onDay = \App\Support\WorkSchedule::forUserOnDate($employee, Carbon::parse('2026-08-11'));
+        $onDay = WorkSchedule::forUserOnDate($employee, Carbon::parse('2026-08-11'));
         $this->assertSame(
             '08:00', $onDay->workStart,
             'The rotation shift (08:00 start), not the stale future assignment (22:00 start), must resolve for an "on" day.'
@@ -1853,14 +1855,14 @@ class ShiftScheduleTest extends TestCase
             'days_of_week' => [2, 4],
         ])->assertRedirect();
 
-        $mwfRow = \App\Models\ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $mwfShift->id)->firstOrFail();
+        $mwfRow = ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $mwfShift->id)->firstOrFail();
         $this->assertSame([1, 3, 5], $mwfRow->days_of_week);
-        $tthRow = \App\Models\ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $tthShift->id)->firstOrFail();
+        $tthRow = ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $tthShift->id)->firstOrFail();
         $this->assertSame([2, 4], $tthRow->days_of_week);
 
-        $monday = \App\Support\WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
+        $monday = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
         $this->assertSame('07:00', $monday->workStart);
-        $tuesday = \App\Support\WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-04'));
+        $tuesday = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-04'));
         $this->assertSame('08:30', $tuesday->workStart);
 
         $this->assertDatabaseHas('hr_audit_trails', [
@@ -1892,13 +1894,13 @@ class ShiftScheduleTest extends TestCase
             'days_of_week' => ['1', '3', '5'],
         ])->assertRedirect();
 
-        $row = \App\Models\ShiftAssignment::where('user_id', $emp->id)->firstOrFail();
+        $row = ShiftAssignment::where('user_id', $emp->id)->firstOrFail();
         $this->assertSame([1, 3, 5], $row->days_of_week, 'Must be normalized to ints regardless of the request payload type.');
 
-        \App\Support\WorkSchedule::flushShiftAssignmentMemo();
-        $monday = \App\Support\WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
+        WorkSchedule::flushShiftAssignmentMemo();
+        $monday = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
         $this->assertSame('07:00', $monday->workStart, 'A string-typed day scope must still resolve on its scoped weekday.');
-        $this->assertTrue(\App\Support\WorkSchedule::isWorkday($emp, Carbon::parse('2026-08-03')));
+        $this->assertTrue(WorkSchedule::isWorkday($emp, Carbon::parse('2026-08-03')));
     }
 
     public function test_schedules_index_shows_both_shifts_for_an_employee_with_a_concurrent_pair(): void
@@ -1915,9 +1917,9 @@ class ShiftScheduleTest extends TestCase
         $emp = $this->createEmployee(['last_name' => 'Concurrent']);
         $single = $this->createEmployee(['last_name' => 'Single']);
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($single, $mwfShift->id, Carbon::today(), null, $tk->id);
+        app(ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
+        app(ShiftAssignmentService::class)->assign($single, $mwfShift->id, Carbon::today(), null, $tk->id);
 
         $response = $this->actingAs($tk)->get(route('attendance.schedules', ['search' => 'Concurrent']));
         $response->assertSee('MWF 7-4');
@@ -1951,7 +1953,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $shift->id, Carbon::parse('2026-09-01'), Carbon::parse('2026-09-30'), $tk->id
         );
 
@@ -1973,8 +1975,8 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
+        app(ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
 
         // "Remove" submits shift_id='' scoped to exactly the removed row's
         // days - same mechanism the × button in the UI uses.
@@ -1983,7 +1985,7 @@ class ShiftScheduleTest extends TestCase
             'days_of_week' => [2, 4],
         ])->assertRedirect();
 
-        $rows = \App\Models\ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
+        $rows = ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
         $this->assertCount(2, $rows, 'The MWF row stays; the removed TTH row becomes an explicit Standard Day row for Tue/Thu.');
         $this->assertTrue($rows->contains(fn ($r) => $r->shift_id === $mwfShift->id && $r->days_of_week === [1, 3, 5]));
         $this->assertTrue($rows->contains(fn ($r) => $r->shift_id === null && $r->days_of_week === [2, 4]));
@@ -2007,7 +2009,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee(['last_name' => 'Solo']);
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
 
         // The rendered × button's form must NOT carry days_of_week, since
         // this is the employee's only assignment.
@@ -2022,7 +2024,7 @@ class ShiftScheduleTest extends TestCase
             'shift_id' => '',
         ])->assertRedirect();
 
-        $rows = \App\Models\ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
+        $rows = ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
         $this->assertCount(1, $rows);
         $this->assertNull($rows->first()->shift_id);
         $this->assertNull($rows->first()->days_of_week, 'Must be a plain, unscoped Standard Day row, not scoped to the removed days.');
@@ -2072,7 +2074,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee(['last_name' => 'Expired']);
 
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $shift->id, Carbon::parse('2026-07-01'), Carbon::parse('2026-07-10'), $tk->id, [1, 3, 5]
         );
 
@@ -2109,7 +2111,7 @@ class ShiftScheduleTest extends TestCase
         for ($i = 0; $i < 7; $i++) {
             $from = Carbon::parse('2026-01-01')->addWeeks($i * 2);
             $until = $from->copy()->addDays(6);
-            app(\App\Services\ShiftAssignmentService::class)->assign($emp, $shift->id, $from, $until, $tk->id);
+            app(ShiftAssignmentService::class)->assign($emp, $shift->id, $from, $until, $tk->id);
         }
 
         $this->travelTo(Carbon::parse('2026-07-12'));
@@ -2121,7 +2123,7 @@ class ShiftScheduleTest extends TestCase
         // The full history page shows all 7, paginated.
         $historyResponse = $this->actingAs($tk)->get(route('attendance.schedules.history', $emp));
         $historyResponse->assertOk();
-        $this->assertCount(7, \App\Models\ShiftAssignment::forUser($emp->id)->get());
+        $this->assertCount(7, ShiftAssignment::forUser($emp->id)->get());
     }
 
     /**
@@ -2142,7 +2144,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $wrongShift->id, Carbon::parse('2026-07-01'), Carbon::parse('2026-07-10'), $tk->id, [1, 3, 5]
         );
 
@@ -2156,7 +2158,7 @@ class ShiftScheduleTest extends TestCase
             'effective_until' => '2026-07-10',
         ])->assertRedirect();
 
-        $rows = \App\Models\ShiftAssignment::forUser($emp->id)->get();
+        $rows = ShiftAssignment::forUser($emp->id)->get();
         $this->assertCount(1, $rows, 'Same start date must replace the row outright, not leave a second one behind.');
         $this->assertSame($correctShift->id, $rows->first()->shift_id);
         $this->assertSame([1, 3, 5], $rows->first()->days_of_week);
@@ -2180,8 +2182,8 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::parse('2026-07-01'), null, $tk->id, [1, 3, 5]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::parse('2026-07-01'), null, $tk->id, [2, 4]);
+        app(ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::parse('2026-07-01'), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::parse('2026-07-01'), null, $tk->id, [2, 4]);
 
         $this->actingAs($tk)->put(route('attendance.schedules.update', $emp), [
             'form_type' => 'edit',
@@ -2191,7 +2193,7 @@ class ShiftScheduleTest extends TestCase
             'effective_until' => '2026-12-31',
         ])->assertRedirect();
 
-        $rows = \App\Models\ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
+        $rows = ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::today())->get();
         $this->assertCount(2, $rows);
         $this->assertTrue($rows->contains(fn ($r) => $r->shift_id === $correctedMwfShift->id && $r->days_of_week === [1, 3, 5]));
         $this->assertTrue($rows->contains(fn ($r) => $r->shift_id === $tthShift->id && $r->days_of_week === [2, 4]), 'The TTH row must be untouched by editing the MWF row.');
@@ -2207,7 +2209,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-07-01'), null, $tk->id);
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-07-01'), null, $tk->id);
 
         $response = $this->actingAs($tk)->put(route('attendance.schedules.update', $emp), [
             'form_type' => 'edit',
@@ -2276,8 +2278,8 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
+        app(ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::today(), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::today(), null, $tk->id, [2, 4]);
 
         $this->actingAs($tk)
             ->get(route('attendance.shift-schedule.index', ['employee_id' => $emp->id]))
@@ -2296,7 +2298,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $shift->id, Carbon::parse('2026-09-01'), Carbon::parse('2026-09-30'), $tk->id
         );
 
@@ -2328,8 +2330,8 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::parse('2026-08-01'), null, $tk->id, [1, 3, 5]);
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::parse('2026-08-01'), null, $tk->id, [2, 4]);
+        app(ShiftAssignmentService::class)->assign($emp, $mwfShift->id, Carbon::parse('2026-08-01'), null, $tk->id, [1, 3, 5]);
+        app(ShiftAssignmentService::class)->assign($emp, $tthShift->id, Carbon::parse('2026-08-01'), null, $tk->id, [2, 4]);
 
         // Week of Mon 2026-08-03 - Sun 2026-08-09. Mon/Wed/Fri -> MWF shift,
         // Tue/Thu -> TTH shift, Sat/Sun -> no covering day, so a rest day.
@@ -2371,10 +2373,10 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $mwfShift->id, Carbon::parse('2026-07-01'), Carbon::parse('2026-07-10'), $tk->id, [1, 3, 5]
         );
-        app(\App\Services\ShiftAssignmentService::class)->assign(
+        app(ShiftAssignmentService::class)->assign(
             $emp, $tthShift->id, Carbon::parse('2026-07-01'), Carbon::parse('2026-07-10'), $tk->id, [2, 4]
         );
 
@@ -2403,7 +2405,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-08-01'), null, $tk->id);
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-08-01'), null, $tk->id);
 
         $response = $this->actingAs($tk)->get(route('attendance.shift-schedule.index', [
             'employee_id' => $emp->id,
@@ -2426,7 +2428,7 @@ class ShiftScheduleTest extends TestCase
         ]);
         $emp = $this->createEmployee();
 
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-08-01'), null, $tk->id);
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-08-01'), null, $tk->id);
 
         $this->actingAs($tk)->post(route('attendance.shift-schedule.store'), [
             'user_id' => $emp->id,
@@ -2442,11 +2444,11 @@ class ShiftScheduleTest extends TestCase
         ]);
 
         $emp->refresh();
-        $this->assertTrue(\App\Support\WorkSchedule::isWorkday($emp, Carbon::parse('2026-08-03')));
-        $this->assertFalse(\App\Support\WorkSchedule::isRestDay($emp, Carbon::parse('2026-08-03')));
+        $this->assertTrue(WorkSchedule::isWorkday($emp, Carbon::parse('2026-08-03')));
+        $this->assertFalse(WorkSchedule::isRestDay($emp, Carbon::parse('2026-08-03')));
 
-        $resolved = \App\Support\WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
-        $global = \App\Support\WorkSchedule::global();
+        $resolved = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
+        $global = WorkSchedule::global();
         $this->assertEquals($global->workStart, $resolved->workStart);
         $this->assertEquals($global->workEnd, $resolved->workEnd);
 
@@ -2456,6 +2458,103 @@ class ShiftScheduleTest extends TestCase
             'week_start' => '2026-08-03',
         ]));
         $response->assertSee('<option value="standard"    selected>Standard Day</option>', false);
+    }
+
+    // ── Bulk week schedule save (checkbox-selected employees) ───────────────
+
+    public function test_time_keeper_bulk_saves_week_schedule_for_checked_employees_only(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $checked1 = $this->createEmployee();
+        $checked2 = $this->createEmployee();
+        $unchecked = $this->createEmployee();
+
+        // Punches on the target date so we can prove recompute actually ran
+        // per checked employee (no Dtr row exists until recomputeDtr writes one).
+        foreach ([$checked1, $checked2] as $emp) {
+            foreach (['08:00:00', '17:00:00'] as $time) {
+                AttendanceLog::create([
+                    'user_id' => $emp->id, 'emp_no' => $emp->EmpNo,
+                    'logdate' => '2026-08-03', 'logtime' => $time, 'in_out' => 'IN',
+                ]);
+            }
+        }
+
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $checked1->id, 'date' => '2026-08-03']);
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.store-bulk'), [
+            'user_ids' => [$checked1->id, $checked2->id],
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => 'standard'],
+        ])->assertRedirect();
+
+        foreach ([$checked1, $checked2] as $emp) {
+            $this->assertDatabaseHas('employee_shift_schedules', [
+                'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => null, 'type' => 'standard',
+            ]);
+            $this->assertDatabaseHas('dtrs', ['employee_id' => $emp->id, 'date' => '2026-08-03']);
+            $this->assertDatabaseHas('hr_audit_trails', [
+                'module' => 'shift_management',
+                'action' => 'shift_schedule_updated',
+                'target_id' => $emp->id,
+            ]);
+        }
+
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $unchecked->id]);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $unchecked->id]);
+    }
+
+    public function test_granted_department_head_cannot_bulk_save_week_schedule_outside_own_department(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $inDept = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
+
+        // Mixing in an out-of-scope employee must reject the whole request - no partial writes.
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.store-bulk'), [
+            'user_ids' => [$inDept->id, $outsider->id],
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => 'rest'],
+        ])->assertStatus(403);
+
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $inDept->id]);
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $outsider->id]);
+    }
+
+    public function test_bulk_save_week_schedule_rejects_shift_out_of_scope_for_any_selected_employee_before_writing(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $tk = $this->createTimeKeeper();
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $tk->id]);
+        ShiftManagementGrant::create(['dept_id' => $deptB->Dept_id, 'granted_by' => $tk->id]);
+
+        OicAssignment::create([
+            'user_id' => $dh->id,
+            'dept_id' => $deptB->Dept_id,
+            'role' => 'department head',
+            'appointed_by' => $this->createHRManager()->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+        ]);
+
+        $outOfScopeShift = $this->scopedShiftModel('Dept B Only', [$deptB->Dept_id]);
+        $inScope = $this->createEmployee(['Dept_id' => $deptB->Dept_id]);
+        $outOfScope = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+
+        $this->actingAs($dh)->post(route('attendance.shift-schedule.store-bulk'), [
+            'user_ids' => [$inScope->id, $outOfScope->id],
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => (string) $outOfScopeShift->id],
+        ])->assertStatus(403);
+
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $inScope->id]);
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $outOfScope->id]);
     }
 
     public function test_bulk_assign_with_no_shift_selected_reverts_checked_employees_to_standard_day(): void
@@ -2514,7 +2613,7 @@ class ShiftScheduleTest extends TestCase
 
         // Give the employee a real, open-ended standing assignment beforehand,
         // to prove the temporary window doesn't resume it afterward.
-        app(\App\Services\ShiftAssignmentService::class)->assign($emp, $standing->id, Carbon::parse('2000-01-01'), null, null);
+        app(ShiftAssignmentService::class)->assign($emp, $standing->id, Carbon::parse('2000-01-01'), null, null);
 
         $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $temporary->id,
@@ -2524,11 +2623,11 @@ class ShiftScheduleTest extends TestCase
         ])->assertRedirect();
 
         $this->travelTo(Carbon::parse('2026-09-01'));
-        $this->artisan(\App\Console\Commands\SyncShiftAssignmentCache::class)->assertExitCode(0);
+        $this->artisan(SyncShiftAssignmentCache::class)->assertExitCode(0);
 
         $this->assertNull($emp->refresh()->shift_id, 'After the window closes the employee falls back to Standard Day, not their prior standing shift.');
         $this->assertNull(
-            \App\Models\ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::parse('2026-09-01'))->first()
+            ShiftAssignment::forUser($emp->id)->effectiveOn(Carbon::parse('2026-09-01'))->first()
         );
     }
 
