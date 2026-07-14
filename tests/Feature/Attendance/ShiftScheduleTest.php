@@ -1845,14 +1845,16 @@ class ShiftScheduleTest extends TestCase
         $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $shift->id,
             'user_ids' => [$checked1->id, $checked2->id],
+            'effective_from' => Carbon::today()->toDateString(),
+            'effective_until' => Carbon::today()->addYear()->toDateString(),
         ])->assertRedirect();
 
         $this->assertSame($shift->id, $checked1->refresh()->shift_id);
         $this->assertSame($shift->id, $checked2->refresh()->shift_id);
         $this->assertNull($unchecked->refresh()->shift_id, 'An unchecked employee must be untouched.');
 
-        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked1->id, 'shift_id' => $shift->id, 'effective_until' => null]);
-        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked2->id, 'shift_id' => $shift->id, 'effective_until' => null]);
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked1->id, 'shift_id' => $shift->id, 'effective_until' => Carbon::today()->addYear()->toDateString()]);
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked2->id, 'shift_id' => $shift->id, 'effective_until' => Carbon::today()->addYear()->toDateString()]);
         $this->assertDatabaseMissing('shift_assignments', ['user_id' => $unchecked->id]);
 
         Queue::assertPushed(BulkShiftRecomputeJob::class, function ($job) use ($checked1, $checked2, $unchecked) {
@@ -1892,12 +1894,16 @@ class ShiftScheduleTest extends TestCase
             'assign_shift_id' => $mwfShift->id,
             'user_ids' => [$emp->id],
             'days_of_week' => [1, 3, 5],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
         ])->assertRedirect();
 
         $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $tthShift->id,
             'user_ids' => [$emp->id],
             'days_of_week' => [2, 4],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
         ])->assertRedirect();
 
         $mwfRow = ShiftAssignment::where('user_id', $emp->id)->where('shift_id', $mwfShift->id)->firstOrFail();
@@ -2848,10 +2854,12 @@ class ShiftScheduleTest extends TestCase
         $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => '',
             'user_ids' => [$emp->id],
+            'effective_from' => Carbon::today()->toDateString(),
+            'effective_until' => Carbon::today()->addYear()->toDateString(),
         ])->assertRedirect();
 
         $this->assertNull($emp->refresh()->shift_id);
-        $this->assertDatabaseHas('shift_assignments', ['user_id' => $emp->id, 'shift_id' => null, 'effective_until' => null]);
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $emp->id, 'shift_id' => null, 'effective_until' => Carbon::today()->addYear()->toDateString()]);
     }
 
     public function test_bulk_assign_with_effective_dates_creates_dated_assignment_and_does_not_touch_cache_early(): void
@@ -2943,6 +2951,8 @@ class ShiftScheduleTest extends TestCase
         $this->actingAs($dh)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $shift->id,
             'user_ids' => [$inDept->id],
+            'effective_from' => Carbon::today()->toDateString(),
+            'effective_until' => Carbon::today()->addYear()->toDateString(),
         ])->assertRedirect();
 
         $this->assertSame($shift->id, $inDept->refresh()->shift_id);
@@ -2951,6 +2961,8 @@ class ShiftScheduleTest extends TestCase
         $this->actingAs($dh)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $shift->id,
             'user_ids' => [$outsider->id],
+            'effective_from' => Carbon::today()->toDateString(),
+            'effective_until' => Carbon::today()->addYear()->toDateString(),
         ])->assertStatus(403);
 
         $this->assertNull($outsider->refresh()->shift_id);
@@ -2971,6 +2983,8 @@ class ShiftScheduleTest extends TestCase
         $this->actingAs($dh)->put(route('attendance.schedules.bulk-assign'), [
             'assign_shift_id' => $outOfScopeShift->id,
             'user_ids' => [$emp->id],
+            'effective_from' => Carbon::today()->toDateString(),
+            'effective_until' => Carbon::today()->addYear()->toDateString(),
         ])->assertStatus(403);
 
         $this->assertNull($emp->refresh()->shift_id);

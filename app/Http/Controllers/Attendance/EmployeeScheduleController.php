@@ -152,8 +152,13 @@ class EmployeeScheduleController extends Controller
     {
         $windowEnd = Carbon::today()->addDays(30);
 
+        // Excludes is_rotation_generated rows - those are the rotation
+        // generator's own rest days, written by the same action as the
+        // assignment they'd otherwise appear to "conflict" with, not an
+        // independent edit worth flagging.
         $overridesByUser = EmployeeShiftSchedule::whereIn('user_id', $employeeIds)
             ->whereBetween('date', [Carbon::today()->toDateString(), $windowEnd->toDateString()])
+            ->where('is_rotation_generated', false)
             ->orderBy('date')
             ->get(['user_id', 'date'])
             ->groupBy('user_id');
@@ -400,8 +405,8 @@ class EmployeeScheduleController extends Controller
             'user_ids' => [Rule::requiredIf(fn () => ! $request->boolean('select_all_matching')), 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'assign_shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
-            'effective_from' => ['nullable', 'date'],
-            'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'],
+            'effective_from' => ['required', 'date'],
+            'effective_until' => ['required', 'date', 'after_or_equal:effective_from'],
             'days_of_week' => ['nullable', 'array'],
             'days_of_week.*' => ['integer', 'between:0,6'],
             'work_days' => ['nullable', 'array'],
@@ -436,8 +441,8 @@ class EmployeeScheduleController extends Controller
         }
 
         $assignShiftId = $validated['assign_shift_id'] ?? null;
-        $from = isset($validated['effective_from']) ? Carbon::parse($validated['effective_from']) : Carbon::today();
-        $until = isset($validated['effective_until']) ? Carbon::parse($validated['effective_until']) : null;
+        $from = Carbon::parse($validated['effective_from']);
+        $until = Carbon::parse($validated['effective_until']);
         $daysOfWeek = $validated['days_of_week'] ?? null;
         // Mirror ShiftAssignmentService::assign()'s own forcing rule (see update()).
         $workDays = $daysOfWeek ?? ($validated['work_days'] ?? null);

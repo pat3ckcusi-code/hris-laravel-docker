@@ -176,12 +176,12 @@
         </select>
     </div>
     <div>
-        <label for="bulk_effective_from">Effective from (optional)</label>
-        <input type="date" name="effective_from" id="bulk_effective_from" class="sched-shift-select">
+        <label for="bulk_effective_from">Effective from (required)</label>
+        <input type="date" name="effective_from" id="bulk_effective_from" class="sched-shift-select" required>
     </div>
     <div>
-        <label for="bulk_effective_until">Effective until (optional)</label>
-        <input type="date" name="effective_until" id="bulk_effective_until" class="sched-shift-select">
+        <label for="bulk_effective_until">Effective until (required)</label>
+        <input type="date" name="effective_until" id="bulk_effective_until" class="sched-shift-select" required>
     </div>
     <div>
         <label>Work Days</label>

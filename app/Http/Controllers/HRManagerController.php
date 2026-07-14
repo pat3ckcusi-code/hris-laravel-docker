@@ -978,19 +978,7 @@ class HRManagerController extends Controller
         $file = $request->file('backup_file');
         $sql = file_get_contents($file->getRealPath());
 
-        // Split on statement-ending semicolons (handles both LF and CRLF line endings).
-        // Each chunk may start with one or more SQL comment lines (-- ...) that our backup
-        // generator emits before DROP TABLE statements. Strip those leading comments so the
-        // actual SQL (e.g. DROP TABLE) is not silently discarded together with them.
-        $statements = array_filter(
-            array_map(function ($raw) {
-                // Remove every leading "-- comment\n" line, then trim whitespace.
-                $s = preg_replace('/\A(--[^\r\n]*\r?\n)+/', '', trim($raw));
-
-                return trim($s);
-            }, preg_split('/;\s*\r?\n/', $sql)),
-            fn ($s) => $s !== ''
-        );
+        $statements = $this->splitSqlStatements($sql);
 
         set_time_limit(300);
 
@@ -1000,6 +988,17 @@ class HRManagerController extends Controller
                 if (trim($stmt) === '') {
                     continue;
                 }
+
+                // A row already re-inserted by a concurrently-running attendance
+                // import (or any other background writer) while the restore is
+                // in progress must not abort the rest of the restore — skip just
+                // that row via INSERT IGNORE instead of letting the unique-key
+                // violation propagate. Non-INSERT statements (DROP/CREATE/SET)
+                // are left untouched and still abort on a genuine error.
+                if (preg_match('/^INSERT\s+INTO\s+/i', $stmt)) {
+                    $stmt = preg_replace('/^INSERT\s+INTO\s+/i', 'INSERT IGNORE INTO ', $stmt, 1);
+                }
+
                 DB::unprepared($stmt);
             }
         } finally {
@@ -1017,6 +1016,97 @@ class HRManagerController extends Controller
 
         return redirect()->route('hr-manager.settings')
             ->with('success', 'Database restored successfully from "'.$file->getClientOriginalName().'".');
+    }
+
+    /**
+     * Splits a SQL dump into individual statements, tracking single-/double-quoted
+     * string state so a `;` inside a free-text value (e.g. a multi-paragraph Office
+     * Order memo) is never mistaken for a statement terminator. Backslash-escaping
+     * inside strings is honored to match how backupDatabase() escapes values with
+     * addslashes(). Leading "-- comment" lines on each statement are stripped, since
+     * the backup generator emits them before DROP TABLE/CREATE TABLE statements.
+     *
+     * @return array<int, string>
+     */
+    private function splitSqlStatements(string $sql): array
+    {
+        $len = strlen($sql);
+        $statements = [];
+        $start = 0;
+        $i = 0;
+        $inSingle = false;
+        $inDouble = false;
+
+        while ($i < $len) {
+            if ($inSingle) {
+                $i += strcspn($sql, "'\\", $i);
+                if ($i >= $len) {
+                    break;
+                }
+                if ($sql[$i] === '\\') {
+                    $i += 2;
+
+                    continue;
+                }
+                $inSingle = false;
+                $i++;
+
+                continue;
+            }
+
+            if ($inDouble) {
+                $i += strcspn($sql, '"\\', $i);
+                if ($i >= $len) {
+                    break;
+                }
+                if ($sql[$i] === '\\') {
+                    $i += 2;
+
+                    continue;
+                }
+                $inDouble = false;
+                $i++;
+
+                continue;
+            }
+
+            $i += strcspn($sql, "'\";", $i);
+            if ($i >= $len) {
+                break;
+            }
+
+            if ($sql[$i] === "'") {
+                $inSingle = true;
+                $i++;
+
+                continue;
+            }
+
+            if ($sql[$i] === '"') {
+                $inDouble = true;
+                $i++;
+
+                continue;
+            }
+
+            // Unquoted ';' — genuine statement terminator.
+            $statements[] = substr($sql, $start, $i - $start);
+            $i++;
+            $start = $i;
+        }
+
+        if ($start < $len) {
+            $statements[] = substr($sql, $start);
+        }
+
+        return array_filter(
+            array_map(function ($raw) {
+                $s = preg_replace('/\A(--[^\r\n]*\r?\n)+/', '', trim($raw));
+
+                return trim($s);
+            }, $statements),
+            fn ($s) => $s !== ''
+        );
     }
 
     /**

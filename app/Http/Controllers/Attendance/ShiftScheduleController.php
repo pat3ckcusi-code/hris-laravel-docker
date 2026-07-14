@@ -271,19 +271,19 @@ class ShiftScheduleController extends Controller
             } elseif ($value === 'rest') {
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $actor->id]
+                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $actor->id, 'is_rotation_generated' => false]
                 );
                 $recomputeNeeded = true;
             } elseif ($value === 'field_work') {
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'field_work', 'created_by' => $actor->id]
+                    ['shift_id' => null, 'type' => 'field_work', 'created_by' => $actor->id, 'is_rotation_generated' => false]
                 );
                 $recomputeNeeded = true;
             } elseif ($value === 'standard') {
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'standard', 'created_by' => $actor->id]
+                    ['shift_id' => null, 'type' => 'standard', 'created_by' => $actor->id, 'is_rotation_generated' => false]
                 );
                 $recomputeNeeded = true;
             } else {
@@ -291,7 +291,7 @@ class ShiftScheduleController extends Controller
                 $this->assertShiftAssignable($shiftId, $employee->Dept_id, $actor);
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => $shiftId, 'created_by' => $actor->id]
+                    ['shift_id' => $shiftId, 'created_by' => $actor->id, 'is_rotation_generated' => false]
                 );
                 $recomputeNeeded = true;
             }
@@ -407,6 +407,7 @@ class ShiftScheduleController extends Controller
             'off_days' => ['required', 'integer', 'min:0'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
@@ -418,9 +419,10 @@ class ShiftScheduleController extends Controller
 
         $start = Carbon::parse($validated['start_date'])->startOfDay();
         $end = Carbon::parse($validated['end_date'])->startOfDay();
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
         $this->writeRotationForEmployee(
-            $employee, $validated['shift_id'], $validated['on_days'], $validated['off_days'], $start, $end, $actor
+            $employee, $validated['shift_id'], $validated['on_days'], $validated['off_days'], $start, $end, $actor, $noBreak
         );
 
         $this->logScheduleAction($actor, $employee, 'rotation_generated', [
@@ -429,6 +431,7 @@ class ShiftScheduleController extends Controller
             'off_days' => $validated['off_days'],
             'start_date' => $start->toDateString(),
             'end_date' => $end->toDateString(),
+            'no_break' => $noBreak,
         ]);
 
         $name = trim("{$employee->first_name} {$employee->last_name}");
@@ -461,6 +464,7 @@ class ShiftScheduleController extends Controller
             'off_days' => ['required', 'integer', 'min:0'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         $userIds = array_map('intval', $validated['user_ids']);
@@ -483,10 +487,11 @@ class ShiftScheduleController extends Controller
 
         $start = Carbon::parse($validated['start_date'])->startOfDay();
         $end = Carbon::parse($validated['end_date'])->startOfDay();
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
         foreach ($employees as $employee) {
             $this->writeRotationForEmployee(
-                $employee, $validated['shift_id'], $validated['on_days'], $validated['off_days'], $start, $end, $actor
+                $employee, $validated['shift_id'], $validated['on_days'], $validated['off_days'], $start, $end, $actor, $noBreak
             );
         }
 
@@ -496,6 +501,7 @@ class ShiftScheduleController extends Controller
             'off_days' => $validated['off_days'],
             'start_date' => $start->toDateString(),
             'end_date' => $end->toDateString(),
+            'no_break' => $noBreak,
         ]);
 
         $count = $employees->count();
@@ -512,11 +518,16 @@ class ShiftScheduleController extends Controller
      * update - see generatePattern()'s docblock for why) and writes explicit
      * 'rest' rows only for the "off" days in the cycle.
      */
-    private function writeRotationForEmployee(User $employee, int $shiftId, int $onDays, int $offDays, Carbon $start, Carbon $end, User $actor): void
+    private function writeRotationForEmployee(User $employee, int $shiftId, int $onDays, int $offDays, Carbon $start, Carbon $end, User $actor, bool $noBreak = false): void
     {
         $cycleLength = $onDays + $offDays;
 
-        $this->shiftAssignmentService->assign($employee, $shiftId, $start, null, $actor->id);
+        // Every day defaults to a workday here (not the usual Mon-Fri default) -
+        // the cycle's off days are already fully carved out by the explicit
+        // EmployeeShiftSchedule rows below, so an "on" day must never be
+        // silently downgraded to non-workday just because it lands on a
+        // weekend (which any cycle length not a multiple of 7 will do).
+        $this->shiftAssignmentService->assign($employee, $shiftId, $start, null, $actor->id, null, [0, 1, 2, 3, 4, 5, 6], $noBreak);
 
         for ($date = $start->copy(), $i = 0; $date->lte($end); $date->addDay(), $i++) {
             $dateStr = $date->toDateString();
@@ -525,7 +536,7 @@ class ShiftScheduleController extends Controller
             if ($isOffDay) {
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $actor->id]
+                    ['shift_id' => null, 'type' => 'rest', 'created_by' => $actor->id, 'is_rotation_generated' => true]
                 );
             } else {
                 EmployeeShiftSchedule::where('user_id', $employee->id)

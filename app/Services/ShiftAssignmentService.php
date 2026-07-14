@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EmployeeShiftSchedule;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use Carbon\Carbon;
@@ -18,6 +19,13 @@ use Illuminate\Support\Facades\DB;
  * global default), the same as an employee who was never assigned a shift.
  * Also keeps users.shift_id (a denormalized "today" cache read by
  * WorkSchedule::forUser() and most of the UI) in sync on every write.
+ *
+ * Truncating or replacing a row also deletes any is_rotation_generated
+ * EmployeeShiftSchedule rows that fall outside its new (possibly nonexistent)
+ * coverage - otherwise a rotation's own rest-day markers, written for the
+ * whole rotation up front, keep dictating "Rest Day" past the point where a
+ * newer assignment (e.g. from Remove, or a plain re-assignment) takes over,
+ * leaving a stale half-cancelled-looking rotation instead of a clean handoff.
  */
 class ShiftAssignmentService
 {
@@ -55,10 +63,15 @@ class ShiftAssignmentService
                 if ($row->effective_from->equalTo($from)) {
                     // Same start date being re-specified: this is a correction,
                     // not a new historical fact, so replace it outright rather
-                    // than leave a same-day row behind.
+                    // than leave a same-day row behind. Its entire original
+                    // range no longer has a row backing it, so clean up any
+                    // rotation-generated overrides across the whole thing.
+                    $this->deleteStaleRotationOverrides($user, $row->effective_from, $row->effective_until);
                     $row->delete();
                 } else {
-                    $row->update(['effective_until' => $from->copy()->subDay()]);
+                    $newUntil = $from->copy()->subDay();
+                    $this->deleteStaleRotationOverrides($user, $from, $row->effective_until);
+                    $row->update(['effective_until' => $newUntil]);
                 }
             }
 
@@ -96,6 +109,22 @@ class ShiftAssignmentService
             ->first(fn (ShiftAssignment $row) => $row->appliesOnDate($today));
 
         $user->update(['shift_id' => $applicable?->shift_id]);
+    }
+
+    /**
+     * Deletes is_rotation_generated EmployeeShiftSchedule rows for dates
+     * between $from and $until (inclusive; $until null means unbounded) -
+     * the gap a rotation-generated assignment no longer covers after being
+     * truncated or replaced. Overrides that aren't rotation-generated (a
+     * deliberate manual entry on the Shift Schedule page) are never touched.
+     */
+    private function deleteStaleRotationOverrides(User $user, Carbon $from, ?Carbon $until): void
+    {
+        EmployeeShiftSchedule::where('user_id', $user->id)
+            ->where('is_rotation_generated', true)
+            ->where('date', '>=', $from)
+            ->when($until !== null, fn ($q) => $q->where('date', '<=', $until))
+            ->delete();
     }
 
     /**

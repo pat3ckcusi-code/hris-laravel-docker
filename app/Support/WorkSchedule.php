@@ -354,11 +354,24 @@ class WorkSchedule
                 default => null, // rest / field_work - no shift hours apply
             };
 
-            return ['source' => 'override', 'shiftName' => $shiftName, 'shadowedAssignmentShiftName' => $historicalShiftName];
+            // A rotation-generated override was written by the same action
+            // that wrote the assignment it would otherwise appear to shadow -
+            // that's not a real conflict between two independently-edited
+            // screens, so don't surface the shadow warning for it.
+            $shadowedAssignmentShiftName = $override->is_rotation_generated ? null : $historicalShiftName;
+
+            return ['source' => 'override', 'shiftName' => $shiftName, 'shadowedAssignmentShiftName' => $shadowedAssignmentShiftName];
         }
 
         if ($historical !== null) {
             return ['source' => 'assignment', 'shiftName' => $historicalShiftName, 'shadowedAssignmentShiftName' => null];
+        }
+
+        // Day-scoped assignments cover this date range (e.g. an MWF+TTH
+        // split), just none apply to this day-of-week - still governed by
+        // the employee's Shift Assignment history, not "no shift assigned".
+        if (self::hasAnyAssignmentCoveringDate($user, $date)) {
+            return ['source' => 'assignment', 'shiftName' => null, 'shadowedAssignmentShiftName' => null];
         }
 
         return ['source' => 'default', 'shiftName' => 'Standard Day', 'shadowedAssignmentShiftName' => null];

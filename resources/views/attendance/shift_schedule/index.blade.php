@@ -523,6 +523,11 @@
             <label for="bulk_off_days">Days off</label>
             <input type="number" name="off_days" id="bulk_off_days" min="0" value="0" required>
         </div>
+        <div class="ss-bulk-field ss-bulk-checkbox">
+            <label for="bulk_no_break">
+                <input type="checkbox" name="no_break" value="1" id="bulk_no_break"> No Break (2-punch)
+            </label>
+        </div>
         <div class="ss-bulk-field">
             <label for="bulk_start_date">From</label>
             <input type="date" name="start_date" id="bulk_start_date" required>
@@ -643,6 +648,9 @@
                     <label class="ss-rotation-field">
                         Days off
                         <input type="number" name="off_days" id="rot_off_days" min="0" value="0" required>
+                    </label>
+                    <label class="ss-rotation-field ss-rotation-checkbox">
+                        <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
                     </label>
                     <label class="ss-rotation-field">
                         From

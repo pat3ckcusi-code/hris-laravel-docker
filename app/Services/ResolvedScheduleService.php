@@ -43,6 +43,13 @@ class ResolvedScheduleService
             $isWorkday = WorkSchedule::isWorkday($user, $date, $overrides);
             $resolution = WorkSchedule::resolutionSource($user, $date, $overrides);
 
+            // Display-only: any day that's neither a workday nor field work is
+            // effectively a rest day, whether it's an explicit override or an
+            // implicit day-of-week gap between assignments - see
+            // WorkSchedule::isRestDay()'s docblock for why that narrower,
+            // override-only definition must stay untouched for DTR/payroll.
+            $isEffectiveRestDay = $isRestDay || (! $isWorkday && ! $isFieldWork);
+
             $hours = null;
             if ($isWorkday && ! $isRestDay) {
                 $ws = WorkSchedule::forUserOnDate($user, $date, $overrides);
@@ -50,7 +57,7 @@ class ResolvedScheduleService
             }
 
             $label = match (true) {
-                $isRestDay => 'Rest Day',
+                $isEffectiveRestDay => 'Rest Day',
                 $isFieldWork => 'Field Work',
                 $isWorkday => $resolution['shiftName'] ?? 'Standard Day',
                 default => 'Off',
@@ -63,7 +70,7 @@ class ResolvedScheduleService
                 'shiftName' => $resolution['shiftName'],
                 'hours' => $hours,
                 'isWorkday' => $isWorkday,
-                'isRestDay' => $isRestDay,
+                'isRestDay' => $isEffectiveRestDay,
                 'isFieldWork' => $isFieldWork,
                 'shadowedAssignmentShiftName' => $resolution['shadowedAssignmentShiftName'],
             ]);
