@@ -975,12 +975,13 @@ class HRManagerController extends Controller
             'restore_confirm.accepted' => 'You must tick the confirmation checkbox before restoring.',
         ]);
 
+        set_time_limit(300);
+        ini_set('memory_limit', '1024M');
+
         $file = $request->file('backup_file');
         $sql = file_get_contents($file->getRealPath());
 
         $statements = $this->splitSqlStatements($sql);
-
-        set_time_limit(300);
 
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
         try {
