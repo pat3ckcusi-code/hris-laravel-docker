@@ -370,28 +370,25 @@ class AttendanceMonitoringExportService
 
             // A day whose PM Out is missing (but PM In exists) means the employee never
             // logged their departure - since there's no punch proving they stayed later,
-            // charge the remainder of the shift (PM In -> shift end) as undertime, unless
-            // something (Locator/ETA/Office Order/DtrExcuse) explains the gap.
+            // charge the shift's afternoon block (break-in -> shift end) as undertime,
+            // unless something (Locator/ETA/Office Order/DtrExcuse) explains the gap.
+            // Mirrors DtrController's identical imputation for the DTR page so the two
+            // screens never disagree.
+            $punchResolver = new DtrPunchResolver;
             $phantomUndertimeByDate = [];
             foreach ($workDtrs as $d) {
-                if (! $d->time_in_pm || $d->time_out_pm) {
-                    continue;
-                }
-
                 $dateStr = Carbon::parse($d->date)->toDateString();
+
+                if ($isSlotCovered($dateStr, 'pm_out')) {
+                    continue;
+                }
+
                 $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
-                $endRef = $schedule->referenceDateTime($dateStr, $schedule->workEnd);
+                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_pm, $d->time_out_pm, $dateStr, $schedule);
 
-                if (Carbon::now()->lt($endRef) || $isSlotCovered($dateStr, 'pm_out')) {
-                    continue;
+                if ($mins > 0) {
+                    $phantomUndertimeByDate[$dateStr] = $mins;
                 }
-
-                $pmInAt = $schedule->referenceDateTime($dateStr, (string) $d->time_in_pm);
-                if ($pmInAt->gte($endRef)) {
-                    continue;
-                }
-
-                $phantomUndertimeByDate[$dateStr] = (int) $pmInAt->diffInMinutes($endRef);
             }
 
             $undertimeCount += count($phantomUndertimeByDate);

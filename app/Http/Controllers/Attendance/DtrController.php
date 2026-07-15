@@ -12,6 +12,7 @@ use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\User;
 use App\Services\DepartmentService;
+use App\Services\DtrPunchResolver;
 use App\Services\Form48ExportService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -30,6 +31,7 @@ class DtrController extends Controller
 
     public function __construct(
         private DepartmentService $departmentService,
+        private DtrPunchResolver $punchResolver,
     ) {}
 
     // ── PERIOD HELPERS ────────────────────────────────────────────────────────
@@ -341,25 +343,22 @@ class DtrController extends Controller
             $excuse = (! $leaveCode && ! $isEtaDay && ! $isOoDay) ? ($excuseMap[$dateStr] ?? null) : null;
             $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
-            // Missing PM Out (PM In present) with nothing else explaining the gap - impute
-            // the shortfall from PM In to shift end, mirroring the Monitoring Matrix
-            // report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
+            // Missing AM In / PM Out with nothing else explaining the gap - impute the
+            // full half-day block from the shift template, mirroring the Monitoring
+            // Matrix report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
+            $amInImputed = false;
+            $imputeAmInLate = function () use ($dtr, $rowSchedule, $dateStr, &$amInImputed): int {
+                $mins = $this->punchResolver->imputedLateMinutes($dtr->time_in_am, $dtr->time_out_am, $dateStr, $rowSchedule);
+                $amInImputed = $mins > 0;
+
+                return $mins;
+            };
             $pmOutImputed = false;
             $imputePmOutUndertime = function () use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
-                if (! $dtr->time_in_pm || $dtr->time_out_pm) {
-                    return 0;
-                }
-                $endRef = $rowSchedule->referenceDateTime($dateStr, $rowSchedule->workEnd);
-                if (Carbon::now()->lt($endRef)) {
-                    return 0;
-                }
-                $pmInAt = $rowSchedule->referenceDateTime($dateStr, (string) $dtr->time_in_pm);
-                if ($pmInAt->gte($endRef)) {
-                    return 0;
-                }
-                $pmOutImputed = true;
+                $mins = $this->punchResolver->imputedUndertimeMinutes($dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule);
+                $pmOutImputed = $mins > 0;
 
-                return (int) $pmInAt->diffInMinutes($endRef);
+                return $mins;
             };
 
             // Resolve effective display values for each slot.
@@ -388,7 +387,8 @@ class DtrController extends Controller
                 $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
                 $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
                 $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
-                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($dtr->late_minutes ?? 0);
+                $storedLate = $dtr->late_minutes ?? 0;
+                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
                 $storedUt = $dtr->undertime_minutes ?? 0;
                 $utMin = $coversPmOut ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
             } elseif ($loc) {
@@ -406,6 +406,9 @@ class DtrController extends Controller
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
                     $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $rowSchedule
                 );
+                if ($lateMin === 0 && ! ($loc['covers_am_in'] ?? false)) {
+                    $lateMin = $imputeAmInLate();
+                }
                 if ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
                     $utMin = $imputePmOutUndertime();
                 }
@@ -414,7 +417,8 @@ class DtrController extends Controller
                 $tAmOut = $dtr->time_out_am ?? '-';
                 $tPmIn = $dtr->time_in_pm ?? '-';
                 $tPmOut = $dtr->time_out_pm ?? '-';
-                $lateMin = $dtr->late_minutes ?? 0;
+                $storedLate = $dtr->late_minutes ?? 0;
+                $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate();
                 $storedUt = $dtr->undertime_minutes ?? 0;
                 $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime();
             }
@@ -436,7 +440,7 @@ class DtrController extends Controller
             $amInHm = $slotHm($tAmIn);
             $pmInHm = $slotHm($tPmIn);
             $pmOutHm = $slotHm($tPmOut);
-            $isAmInLate = $lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd;
+            $isAmInLate = $amInImputed || ($lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd);
             $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd;
             $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
             $isPmOutUndertime = $pmOutImputed || ($utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd);

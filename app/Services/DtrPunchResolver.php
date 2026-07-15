@@ -21,6 +21,19 @@ use Illuminate\Support\Collection;
  * Slot assignment:
  *  - 1–4 punches: SEQUENTIAL - 1st → arrival, 2nd → break-out, 3rd → break-in,
  *    4th → departure. Fewer than four fill only the leading slots.
+ *  - A punch at/after shift end anchors to departure regardless of position
+ *    (nobody returns from lunch after the shift already ended).
+ *  - A FIRST punch at/after lunchReturn means no punch that day is a plausible
+ *    AM arrival OR a late break-out: the whole day is PM-only. 1 punch →
+ *    break-in (before shift end) or departure (at/after); 2-4 punches →
+ *    first → break-in, last → departure, any middle punches dropped as
+ *    re-scan noise. Arrival and break-out stay null.
+ *  - Exactly 3 punches whose first gap is roughly break-sized (0.4x-1.75x this
+ *    schedule's actual break duration) and clearly shorter than the second gap:
+ *    read as break-out/break-in/departure with arrival genuinely missing (the
+ *    gap comparison is what distinguishes a real lunch break from an ordinary
+ *    multi-hour work stretch - a single punch time can't tell "arrival" from
+ *    "tardy break-out" apart on its own).
  *  - 5+ punches (re-scans): the bookends anchor arrival (first) and departure
  *    (last), and the midday cluster collapses to the break pair (first/last
  *    punch inside the [break-out, shift-end) window).
@@ -73,8 +86,10 @@ class DtrPunchResolver
             $late += $this->minutesLate($amIn, $startRef);
         }
 
-        // Break-return lateness - only when the return lands inside the break window.
-        if ($pmIn !== null && $pmIn->gte($breakOutRef) && $pmIn->lt($endRef)) {
+        // Break-return lateness - only when the return lands inside the break window
+        // AND there was a genuine AM departure to return late from (a PM-only day has
+        // neither am_in nor am_out, so there's no lunch break it could be "late" from).
+        if ($pmIn !== null && ($amIn !== null || $amOut !== null) && $pmIn->gte($breakOutRef) && $pmIn->lt($endRef)) {
             $late += $this->minutesLate($pmIn, $breakInRef);
         }
 
@@ -126,6 +141,61 @@ class DtrPunchResolver
 
                 if ($windowed !== null) {
                     return $windowed;
+                }
+            }
+
+            // A FIRST punch at/after lunchReturn means no punch that day is a
+            // plausible AM arrival OR a late am_out - the whole day is PM-only
+            // (e.g. a very late arrival, or an employee who only worked the
+            // afternoon). Reclassify before the positional fallback below would
+            // otherwise misread the earliest PM punch as am_in. lunchReturn
+            // (not morningEnd) is the threshold here because a first punch
+            // between morningEnd and lunchReturn is still plausibly a late
+            // am_out, not a PM arrival - see the missing-am_in case below.
+            $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+            $lunchReturnRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+            $first = $sorted->first();
+
+            if ($first->gte($lunchReturnRef)) {
+                if ($count === 1) {
+                    $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+                    return $first->gte($endRef)
+                        ? [null, null, null, $first]   // lone punch at/after shift end -> departure
+                        : [null, null, $first, null];  // lone punch before shift end -> arrival
+                }
+
+                // 2-4 punches, all PM: first -> pm_in, last -> pm_out, any middle
+                // punches dropped as re-scan noise (same treatment the 5+ branch
+                // gives a midday cluster).
+                return [null, null, $sorted->first(), $sorted->last()];
+            }
+
+            // Exactly 3 punches whose FIRST gap (punch 1 -> punch 2) is roughly
+            // break-sized relative to this schedule's actual break duration, and
+            // clearly shorter than the second gap (punch 2 -> punch 3, a normal
+            // work stretch): read as am_out/pm_in/pm_out with am_in genuinely
+            // missing (e.g. the employee's morning arrival punch never
+            // registered, but they did tap out for lunch, back in, and out for
+            // the day). A single punch time can't tell "arrival" from "tardy
+            // break-out" apart on its own (a lone 10:55 or 11:50 punch is equally
+            // plausible as either) - the gap to the NEXT punch is the only signal
+            // that distinguishes a real lunch break from an ordinary morning/
+            // afternoon work session, which is why this needs both gaps rather
+            // than a single time boundary. Bounds are deliberately generous
+            // (0.4x-1.75x the scheduled break length) to tolerate an early or
+            // tardy break without mistaking a genuine ~4h work stretch (the
+            // existing "missing pm_in" pattern below) for a break.
+            if ($count === 3) {
+                $breakDurationMinutes = $breakOutRef->diffInMinutes($lunchReturnRef);
+                $gap01 = $sorted->get(0)->diffInMinutes($sorted->get(1));
+                $gap12 = $sorted->get(1)->diffInMinutes($sorted->get(2));
+
+                $firstGapLooksLikeABreak = $gap01 >= $breakDurationMinutes * 0.4
+                    && $gap01 <= $breakDurationMinutes * 1.75;
+
+                if ($firstGapLooksLikeABreak && $gap01 < $gap12) {
+                    return [null, $sorted->get(0), $sorted->get(1), $sorted->get(2)];
                 }
             }
 
@@ -225,6 +295,52 @@ class DtrPunchResolver
         $end = Carbon::parse($shiftDate.' '.substr($window[1], 0, 5).':00');
 
         return $candidate->gte($start) && $candidate->lte($end);
+    }
+
+    /**
+     * Display/reporting-only estimate for a missing arrival punch: when the
+     * AM Out punch exists (proving the employee was there that morning) but
+     * AM In never got recorded, charge the full workStart→morningEnd block as
+     * late rather than leaving it at 0. Unlike resolve(), this never runs at
+     * import time and is never persisted - the AM Out punch already existing
+     * is itself the "this half-day is over" signal, so no separate now()
+     * gate is needed the way imputedUndertimeMinutes() needs one.
+     */
+    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, string $shiftDate, WorkSchedule $schedule): int
+    {
+        if ($timeInAm || ! $timeOutAm) {
+            return 0;
+        }
+
+        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+
+        return (int) $startRef->diffInMinutes($breakOutRef);
+    }
+
+    /**
+     * Display/reporting-only estimate for a missing departure punch: when PM
+     * In exists but PM Out never got recorded, charge the full
+     * lunchReturn→workEnd block as undertime rather than leaving it at 0.
+     * Gated on the shift having already ended, since (unlike resolve(), which
+     * only ever runs once punches exist) this may be evaluated mid-shift and
+     * can't assume a punch is "missing" before its window has passed.
+     */
+    public function imputedUndertimeMinutes(?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
+    {
+        if (! $timeInPm || $timeOutPm) {
+            return 0;
+        }
+
+        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+        if (Carbon::now()->lt($endRef)) {
+            return 0;
+        }
+
+        $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+
+        return (int) $breakInRef->diffInMinutes($endRef);
     }
 
     private function minutesLate(Carbon $actual, Carbon $reference): int

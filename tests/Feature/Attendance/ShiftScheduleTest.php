@@ -195,6 +195,146 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame('17:00:00', $r['pm_out']);
     }
 
+    public function test_single_pm_punch_before_shift_end_maps_to_pm_in(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 14:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertNull($r['am_out']);
+        $this->assertSame('14:00:00', $r['pm_in']);
+        $this->assertNull($r['pm_out']);
+    }
+
+    public function test_single_pm_punch_at_shift_end_maps_to_pm_out(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 17:30:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertNull($r['am_out']);
+        $this->assertNull($r['pm_in']);
+        $this->assertSame('17:30:00', $r['pm_out']);
+    }
+
+    public function test_two_pm_punches_before_shift_end_map_to_pm_in_and_pm_out(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 13:05:00', '2026-06-11 15:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertNull($r['am_out']);
+        $this->assertSame('13:05:00', $r['pm_in']);
+        $this->assertSame('15:00:00', $r['pm_out']);
+    }
+
+    public function test_two_pm_punches_with_last_at_shift_end_anchors_pm_out(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 14:00:00', '2026-06-11 17:15:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertNull($r['am_out']);
+        $this->assertSame('14:00:00', $r['pm_in']);
+        $this->assertSame('17:15:00', $r['pm_out']);
+    }
+
+    /**
+     * Regression guard: a PM-only day must not spuriously score break-return
+     * lateness - there is no antecedent AM departure to return late from.
+     */
+    public function test_pm_only_day_scores_zero_late_minutes(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 14:00:00', '2026-06-11 17:15:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame(0, $r['late_minutes']);
+        $this->assertSame(0, $r['undertime_minutes']);
+    }
+
+    /**
+     * A tardy am_out (11:50, between morningEnd 11:00 and lunchReturn 13:00)
+     * followed by pm_in and pm_out must not be misread as a PM-only day - the
+     * missing punch is am_in, not pm_in.
+     */
+    public function test_three_punch_day_with_tardy_am_out_infers_missing_am_in(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 11:50:00', '2026-06-11 13:00:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertSame('11:50:00', $r['am_out']);
+        $this->assertSame('13:00:00', $r['pm_in']);
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertSame(0, $r['late_minutes']);
+    }
+
+    /** A late pm_in in the inferred-missing-am_in shape must still score break-return lateness. */
+    public function test_three_punch_day_with_tardy_am_out_still_scores_late_pm_in(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 11:50:00', '2026-06-11 13:20:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame('11:50:00', $r['am_out']);
+        $this->assertSame('13:20:00', $r['pm_in']);
+        $this->assertSame(20, $r['late_minutes']);
+    }
+
+    /**
+     * A punctual-ish am_out BEFORE morningEnd (10:55 vs. an 11:00 morningEnd)
+     * is just as ambiguous, on its own, as a tardy one - only the ~2h gap to
+     * the next punch (roughly this schedule's actual break length) reveals
+     * it's a break-out, not an arrival. Regression guard for the false
+     * multi-hour late charge this shape used to produce (10:55 read as am_in
+     * scored 175 minutes late against an 08:00 workStart).
+     */
+    public function test_three_punch_day_with_punctual_am_out_infers_missing_am_in_via_gap(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 10:55:00', '2026-06-11 13:00:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertNull($r['am_in']);
+        $this->assertSame('10:55:00', $r['am_out']);
+        $this->assertSame('13:00:00', $r['pm_in']);
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertSame(0, $r['late_minutes']);
+    }
+
+    /**
+     * The gap heuristic must not swallow the existing "missing pm_in" pattern:
+     * an ~08:00 arrival, an on-time-ish am_out, and a punch at/after shift end
+     * has a first gap (~4h, a real work session) far too long to read as a
+     * break, even though it's technically shorter than the second gap.
+     */
+    public function test_three_punch_day_long_first_gap_does_not_get_misread_as_missing_am_in(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 08:00:00', '2026-06-11 12:00:00', '2026-06-11 17:00:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame('08:00:00', $r['am_in']);
+        $this->assertSame('12:00:00', $r['am_out']);
+        $this->assertNull($r['pm_in']);
+        $this->assertSame('17:00:00', $r['pm_out']);
+    }
+
     // ── Grouping ──────────────────────────────────────────────────────────────
 
     public function test_night_shift_punches_fold_onto_start_date(): void
