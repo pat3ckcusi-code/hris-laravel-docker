@@ -34,6 +34,11 @@ use Illuminate\Support\Collection;
  *    gap comparison is what distinguishes a real lunch break from an ordinary
  *    multi-hour work stretch - a single punch time can't tell "arrival" from
  *    "tardy break-out" apart on its own).
+ *  - Exactly 3 punches, last still before shift end, whose SECOND gap is too
+ *    long to be just a break (> 1.75x the break duration): read as arrival/
+ *    break-out/departure with break-in genuinely missing (the gap swallowed
+ *    both the break and part of the afternoon, so punch 3 is a departure, not
+ *    an implausibly late break-return).
  *  - 5+ punches (re-scans): the bookends anchor arrival (first) and departure
  *    (last), and the midday cluster collapses to the break pair (first/last
  *    punch inside the [break-out, shift-end) window).
@@ -171,6 +176,18 @@ class DtrPunchResolver
                 return [null, null, $sorted->first(), $sorted->last()];
             }
 
+            // Gaps between consecutive punches, only meaningful with exactly 3 -
+            // shared by the missing-am_in and missing-pm_in checks below, both of
+            // which distinguish a real lunch break from a missing boundary punch
+            // by comparing gap sizes rather than a single time threshold.
+            $breakDurationMinutes = $gap01 = $gap12 = null;
+
+            if ($count === 3) {
+                $breakDurationMinutes = $breakOutRef->diffInMinutes($lunchReturnRef);
+                $gap01 = $sorted->get(0)->diffInMinutes($sorted->get(1));
+                $gap12 = $sorted->get(1)->diffInMinutes($sorted->get(2));
+            }
+
             // Exactly 3 punches whose FIRST gap (punch 1 -> punch 2) is roughly
             // break-sized relative to this schedule's actual break duration, and
             // clearly shorter than the second gap (punch 2 -> punch 3, a normal
@@ -185,12 +202,8 @@ class DtrPunchResolver
             // than a single time boundary. Bounds are deliberately generous
             // (0.4x-1.75x the scheduled break length) to tolerate an early or
             // tardy break without mistaking a genuine ~4h work stretch (the
-            // existing "missing pm_in" pattern below) for a break.
+            // missing-pm_in patterns below) for a break.
             if ($count === 3) {
-                $breakDurationMinutes = $breakOutRef->diffInMinutes($lunchReturnRef);
-                $gap01 = $sorted->get(0)->diffInMinutes($sorted->get(1));
-                $gap12 = $sorted->get(1)->diffInMinutes($sorted->get(2));
-
                 $firstGapLooksLikeABreak = $gap01 >= $breakDurationMinutes * 0.4
                     && $gap01 <= $breakDurationMinutes * 1.75;
 
@@ -213,6 +226,18 @@ class DtrPunchResolver
 
                     return [$leading->get(0), $leading->get(1), $leading->get(2), $last];
                 }
+            }
+
+            // Exactly 3 punches, last still before workEnd (so the anchor above
+            // didn't fire), whose SECOND gap (punch 2 -> punch 3) is too long to
+            // plausibly be just a lunch break (> 1.75x the break duration - same
+            // upper bound as the missing-am_in check above): the gap has
+            // swallowed both the break AND part of the afternoon, meaning pm_in
+            // is what's missing (e.g. the return-from-lunch punch never
+            // registered), not that punch 3 is an implausibly late lunch return.
+            // Read as am_in/am_out/pm_out with pm_in genuinely missing.
+            if ($count === 3 && $gap12 > $breakDurationMinutes * 1.75) {
+                return [$sorted->get(0), $sorted->get(1), null, $sorted->get(2)];
             }
 
             return [$sorted->get(0), $sorted->get(1), $sorted->get(2), $sorted->get(3)];

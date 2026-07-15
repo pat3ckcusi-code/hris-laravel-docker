@@ -335,6 +335,48 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame('17:00:00', $r['pm_out']);
     }
 
+    /**
+     * Real production case (Manalo, Ma. Haidee, 2026-07-03): punches
+     * [07:16, 12:29, 16:11] used to resolve positionally to
+     * am_in/am_out/pm_in, scoring a bogus 191-minute "late return from lunch"
+     * charge against a pm_in that was actually 3h42m after am_out - far too
+     * long to be a real lunch break. The second gap being that long means
+     * pm_in is what's missing; 16:11 is really an early pm_out.
+     */
+    public function test_three_punch_day_with_long_second_gap_infers_missing_pm_in(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-07-03 07:16:00', '2026-07-03 12:29:00', '2026-07-03 16:11:00'];
+
+        $r = $resolver->resolve($punches, '2026-07-03', $this->dayShift());
+
+        $this->assertSame('07:16:00', $r['am_in']);
+        $this->assertSame('12:29:00', $r['am_out']);
+        $this->assertNull($r['pm_in']);
+        $this->assertSame('16:11:00', $r['pm_out']);
+        $this->assertSame(0, $r['late_minutes']);
+        $this->assertSame(49, $r['undertime_minutes']);
+    }
+
+    /**
+     * Boundary guard: a second gap of exactly 1.75x the break duration (210
+     * minutes for this schedule's 120-minute break) must NOT trigger the
+     * missing-pm_in reinterpretation - only a gap strictly longer than that
+     * does. Positional fallback (am_in/am_out/pm_in) must still win here.
+     */
+    public function test_three_punch_day_second_gap_at_threshold_keeps_positional_fallback(): void
+    {
+        $resolver = new DtrPunchResolver;
+        $punches = ['2026-06-11 08:00:00', '2026-06-11 12:00:00', '2026-06-11 15:30:00'];
+
+        $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
+
+        $this->assertSame('08:00:00', $r['am_in']);
+        $this->assertSame('12:00:00', $r['am_out']);
+        $this->assertSame('15:30:00', $r['pm_in']);
+        $this->assertNull($r['pm_out']);
+    }
+
     // ── Grouping ──────────────────────────────────────────────────────────────
 
     public function test_night_shift_punches_fold_onto_start_date(): void
