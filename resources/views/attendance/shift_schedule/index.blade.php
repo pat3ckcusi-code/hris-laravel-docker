@@ -669,6 +669,44 @@
                 </p>
             </details>
 
+            <details class="ss-rotation-panel">
+                <summary class="ss-rotation-summary">Apply weekly pattern to a date range</summary>
+                <form method="POST" action="{{ route('attendance.shift-schedule.apply-weekly-pattern') }}" class="ss-rotation-form">
+                    @csrf
+                    <input type="hidden" name="user_id" value="{{ $selectedEmployee->id }}">
+                    <input type="hidden" name="dept_id" value="{{ $deptId }}">
+
+                    @foreach ([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'] as $iso => $dowLabel)
+                        <label class="ss-rotation-field">
+                            {{ $dowLabel }}
+                            <select name="pattern[{{ $iso }}]">
+                                <option value="default">Clear / Default</option>
+                                <option value="standard">Standard Day</option>
+                                <option value="rest" @selected($iso >= 6)>Rest Day / Off</option>
+                                <option value="field_work">Field Work</option>
+                                @foreach($shifts as $shift)
+                                    <option value="{{ $shift->id }}">{{ $shift->name }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    @endforeach
+
+                    <label class="ss-rotation-field">
+                        From
+                        <input type="date" name="start_date" required>
+                    </label>
+                    <label class="ss-rotation-field">
+                        To
+                        <input type="date" name="end_date" required>
+                    </label>
+                    <button type="submit" class="hris-btn hris-btn-primary">Apply Weekly Pattern</button>
+                </form>
+                <p class="ss-rotation-hint">
+                    Repeats this Mon–Sun pattern across every week in the range, matched by actual day of week (a
+                    partial first/last week still lines up correctly). DTRs for the range are recomputed automatically.
+                </p>
+            </details>
+
             <form method="POST" action="{{ route('attendance.shift-schedule.store') }}" id="week-form"
                   data-single-action="{{ route('attendance.shift-schedule.store') }}"
                   data-bulk-action="{{ route('attendance.shift-schedule.store-bulk') }}">

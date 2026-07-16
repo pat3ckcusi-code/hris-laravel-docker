@@ -246,6 +246,66 @@ class ShiftScheduleController extends Controller
     }
 
     /**
+     * Apply a Mon-Sun override pattern (see store()'s docblock for the value
+     * vocabulary) repeated across every week in an arbitrary date-to-date
+     * range for one employee - the same underlying write as store(), just
+     * over N days picked by each date's actual day-of-week instead of one
+     * fixed Monday-anchored week. Aligned by ISO weekday (Carbon::isoWeekday(),
+     * 1=Mon..7=Sun), so a range that doesn't start on a Monday still matches
+     * each date to its correct weekday slot in the pattern.
+     */
+    public function applyWeeklyPattern(Request $request): RedirectResponse
+    {
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'start_date' => ['required', 'date'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'pattern' => ['required', 'array', 'size:7'],
+            'pattern.*' => ['nullable', 'string'],
+        ]);
+
+        if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
+            abort(403, 'You may only schedule employees in your own department.');
+        }
+
+        $employee = User::findOrFail($validated['user_id']);
+        $start = Carbon::parse($validated['start_date'])->startOfDay();
+        $end = Carbon::parse($validated['end_date'])->startOfDay();
+        $pattern = $validated['pattern'];
+
+        $validDates = collect();
+        $assignments = [];
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $dateStr = $date->toDateString();
+            $validDates->push($dateStr);
+            $assignments[$dateStr] = $pattern[(string) $date->isoWeekday()] ?? 'default';
+        }
+
+        $recomputeNeeded = $this->applyWeekAssignments($employee, $assignments, $validDates, $actor);
+
+        if ($recomputeNeeded) {
+            $this->importService->recomputeDtr($employee, $start->toDateString(), $end->toDateString());
+
+            $this->logScheduleAction($actor, $employee, 'shift_schedule_updated', [
+                'start_date' => $start->toDateString(),
+                'end_date' => $end->toDateString(),
+                'pattern' => $pattern,
+                'days_changed' => $validDates->count(),
+            ]);
+        }
+
+        $name = trim("{$employee->first_name} {$employee->last_name}");
+
+        return redirect()->route('attendance.shift-schedule.index', [
+            'dept_id' => $request->input('dept_id'),
+            'employee_id' => $employee->id,
+        ])->with('schedule_status', "Weekly schedule for {$name} applied from {$start->toDateString()} to {$end->toDateString()}.");
+    }
+
+    /**
      * Shared by store()/storeBulk(): writes/deletes the EmployeeShiftSchedule
      * rows for one employee's week per the day-by-day $assignments values (see
      * store()'s docblock for the value vocabulary). Returns whether anything
