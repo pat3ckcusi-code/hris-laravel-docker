@@ -18,6 +18,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $status
  * @property int $late_minutes
  * @property int $undertime_minutes
+ * @property float|null $hours_worked decimal hours between matched in/out pairs; null until recomputed
+ * @property array|null $unmatched_logs punches no expected event claimed, as H:i:s strings on the shift
+ *                                      date (a cross-midnight shift's post-midnight punch belongs to the
+ *                                      following calendar day)
  * @property bool $is_absent
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -40,6 +44,8 @@ class Dtr extends Model
         'source',
         'late_minutes',
         'undertime_minutes',
+        'hours_worked',
+        'unmatched_logs',
         'is_absent',
     ];
 
@@ -48,6 +54,8 @@ class Dtr extends Model
         return [
             'date' => 'date',
             'is_absent' => 'boolean',
+            'hours_worked' => 'float',
+            'unmatched_logs' => 'array',
         ];
     }
 

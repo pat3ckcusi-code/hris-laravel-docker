@@ -464,8 +464,14 @@ class Form48ExportService
 
     /**
      * Recompute tardiness + undertime from RESOLVED slot values (after locator redistribution).
-     * Mirrors DtrPunchResolver's time-aware penalty logic per slot so that only the
-     * specific slot covered by the locator loses its penalty - not all tardiness at once.
+     * Mirrors the general shape of the App\Services\Attendance calculators (late from IN
+     * events, undertime from OUT events) per slot, so that only the specific slot covered
+     * by the locator loses its penalty - not all tardiness at once. Deliberately NOT a
+     * byte-for-byte match: this only recomputes am_in/pm_in/pm_out (no am_out undertime
+     * term - a locator never displaces a break-out punch) and bounds pm_in lateness at
+     * noonEnd rather than workEnd. Both are pre-existing, intentional divergences from
+     * UndertimeCalculator/LateCalculator; this method exists purely to redraw the display
+     * after locator substitution, never to write dtrs columns.
      *
      * @return array{0: int, 1: int} [tardiness_minutes, undertime_minutes]
      */

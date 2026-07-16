@@ -2,14 +2,18 @@
 
 namespace App\Services;
 
+use App\Services\Attendance\AttendanceMatcher;
+use App\Services\Attendance\AttendanceStatusResolver;
+use App\Services\Attendance\HoursWorkedCalculator;
+use App\Services\Attendance\LateCalculator;
+use App\Services\Attendance\UndertimeCalculator;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 
 /**
  * Resolves a single shift's raw biometric punches into the four CSC Form 48
- * slots (arrival, break-out, break-in, departure) plus tardiness and undertime
- * minutes.
+ * slots (arrival, break-out, break-in, departure) plus tardiness, undertime,
+ * hours worked, and an attendance status.
  *
  * Shared by PersonnelLogImportService (writes the dtrs table) and
  * Form48ExportService (export fallback) so the two can never disagree.
@@ -18,36 +22,33 @@ use Illuminate\Support\Collection;
  * (see ShiftPunchGrouper), so a night shift's pre-midnight arrival and
  * post-midnight departure sort and score correctly across the day boundary.
  *
- * Slot assignment:
- *  - 1–4 punches: SEQUENTIAL - 1st → arrival, 2nd → break-out, 3rd → break-in,
- *    4th → departure. Fewer than four fill only the leading slots.
- *  - A punch at/after shift end anchors to departure regardless of position
- *    (nobody returns from lunch after the shift already ended).
- *  - A FIRST punch at/after lunchReturn means no punch that day is a plausible
- *    AM arrival OR a late break-out: the whole day is PM-only. 1 punch →
- *    break-in (before shift end) or departure (at/after); 2-4 punches →
- *    first → break-in, last → departure, any middle punches dropped as
- *    re-scan noise. Arrival and break-out stay null.
- *  - Exactly 3 punches whose first gap is roughly break-sized (0.4x-1.75x this
- *    schedule's actual break duration) and clearly shorter than the second gap:
- *    read as break-out/break-in/departure with arrival genuinely missing (the
- *    gap comparison is what distinguishes a real lunch break from an ordinary
- *    multi-hour work stretch - a single punch time can't tell "arrival" from
- *    "tardy break-out" apart on its own).
- *  - Exactly 3 punches, last still before shift end, whose SECOND gap is too
- *    long to be just a break (> 1.75x the break duration): read as arrival/
- *    break-out/departure with break-in genuinely missing (the gap swallowed
- *    both the break and part of the afternoon, so punch 3 is a departure, not
- *    an implausibly late break-return).
- *  - 5+ punches (re-scans): the bookends anchor arrival (first) and departure
- *    (last), and the midday cluster collapses to the break pair (first/last
- *    punch inside the [break-out, shift-end) window).
+ * This class is a thin orchestrator over app/Services/Attendance:
  *
- * Penalties are TIME-AWARE: a slot is only scored when its datetime is plausible
- * for the role, so misread punches on malformed shifts don't inflate totals.
+ *   1. AttendanceMatcher aligns the punches to the schedule's expected events
+ *      (nearest-scheduled-time within eligibility windows, order-preserving -
+ *      NEVER positional, so a missing punch stays null instead of pulling a
+ *      later log upward). Punches no event can claim come back unmatched, for
+ *      review. Matching completes fully before anything is computed.
+ *   2. LateCalculator / UndertimeCalculator / HoursWorkedCalculator score the
+ *      match result (late from IN events only, undertime from OUT events only,
+ *      hours from complete in->out spans only).
+ *   3. AttendanceStatusResolver names the day (present / late / undertime /
+ *      half_day_am / half_day_pm / missing_in / missing_out / incomplete).
+ *      Absent is never produced here - a punchless day gets no dtrs row at
+ *      all, and absence stays a read-time classification.
+ *
+ * Matching tunables (windows, dedupe, late bias) live in config/attendance.php.
  */
 class DtrPunchResolver
 {
+    public function __construct(
+        private readonly AttendanceMatcher $matcher = new AttendanceMatcher,
+        private readonly LateCalculator $lateCalculator = new LateCalculator,
+        private readonly UndertimeCalculator $undertimeCalculator = new UndertimeCalculator,
+        private readonly HoursWorkedCalculator $hoursWorkedCalculator = new HoursWorkedCalculator,
+        private readonly AttendanceStatusResolver $statusResolver = new AttendanceStatusResolver,
+    ) {}
+
     /**
      * @param  iterable<int, Carbon|string>  $punches  full punch datetimes for ONE shift
      * @param  array<string, array{0:string,1:string}|null>  $excludedSlots  slot key ('am_in'|'am_out'|'pm_in'|'pm_out')
@@ -57,269 +58,31 @@ class DtrPunchResolver
      *                                                                       expected" while a punch falls inside the window (e.g. a locator's
      *                                                                       [departure, arrival] span) - a punch outside it (before departure,
      *                                                                       or after arrival) is real and must land in its natural slot.
-     * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string, late_minutes:int, undertime_minutes:int}
+     * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string,
+     *               late_minutes:int, undertime_minutes:int,
+     *               worked_minutes:int, hours_worked:float, status:string, unmatched:list<string>}
      */
     public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
     {
-        // Normalize to Carbon, de-duplicate (repeated scans within a minute), sort ascending.
-        $sorted = collect($punches)
-            ->map(fn ($p) => $p instanceof Carbon ? $p->copy() : Carbon::parse((string) $p))
-            ->sortBy(fn (Carbon $c) => $c->getTimestamp())
-            ->values();
+        $result = $this->matcher->match($punches, $shiftDate, $schedule, $excludedSlots);
 
-        $deduped = collect();
-        foreach ($sorted as $punch) {
-            $last = $deduped->last();
-            if ($last === null || abs($punch->getTimestamp() - $last->getTimestamp()) >= 60) {
-                $deduped->push($punch);
-            }
-        }
-
-        [$amIn, $amOut, $pmIn, $pmOut] = $this->assignSlots($deduped, $shiftDate, $schedule, $excludedSlots);
-
-        // ── Reference datetimes (rolled past midnight for crossing shifts) ──
-        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
-        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
-        $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
-        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
-
-        // ── Time-aware penalties ──
-        $late = 0;
-
-        // Arrival lateness - only when the arrival is genuinely a shift-start punch.
-        if ($amIn !== null && $amIn->lt($breakOutRef)) {
-            $late += $this->minutesLate($amIn, $startRef);
-        }
-
-        // Break-return lateness - only when the return lands inside the break window
-        // AND there was a genuine AM departure to return late from (a PM-only day has
-        // neither am_in nor am_out, so there's no lunch break it could be "late" from).
-        if ($pmIn !== null && ($amIn !== null || $amOut !== null) && $pmIn->gte($breakOutRef) && $pmIn->lt($endRef)) {
-            $late += $this->minutesLate($pmIn, $breakInRef);
-        }
-
-        // Undertime - only when the departure is genuinely a shift-end punch.
-        // For no-break shifts pm_out is the only departure punch, so use workStart
-        // as the lower bound instead of breakInRef (which has no meaning without a break).
-        $undertime = 0;
-        $pmOutLower = $schedule->noBreak ? $startRef : $breakInRef;
-        if ($pmOut !== null && $pmOut->gte($pmOutLower)) {
-            $undertime = $this->minutesEarly($pmOut, $endRef);
-        }
+        $late = $this->lateCalculator->minutes($result, $shiftDate, $schedule);
+        $undertime = $this->undertimeCalculator->minutes($result, $shiftDate, $schedule);
+        $workedMinutes = $this->hoursWorkedCalculator->workedMinutes($result, $schedule->noBreak);
+        $status = $this->statusResolver->resolve($result, $late, $undertime, $schedule->noBreak);
 
         return [
-            'am_in' => $this->fmt($amIn),
-            'am_out' => $this->fmt($amOut),
-            'pm_in' => $this->fmt($pmIn),
-            'pm_out' => $this->fmt($pmOut),
+            'am_in' => $this->fmt($result->slot('am_in')),
+            'am_out' => $this->fmt($result->slot('am_out')),
+            'pm_in' => $this->fmt($result->slot('pm_in')),
+            'pm_out' => $this->fmt($result->slot('pm_out')),
             'late_minutes' => $late,
             'undertime_minutes' => $undertime,
+            'worked_minutes' => $workedMinutes,
+            'hours_worked' => round($workedMinutes / 60, 2),
+            'status' => $status->value,
+            'unmatched' => array_map(fn (Carbon $c) => $c->format('H:i:s'), $result->unmatched),
         ];
-    }
-
-    /**
-     * Map sorted, de-duplicated punch datetimes to the four slots.
-     *
-     * @param  Collection<int, Carbon>  $sorted  ascending punch datetimes
-     * @param  array<string, array{0:string,1:string}|null>  $excludedSlots  see resolve()
-     * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon} [am_in, am_out, pm_in, pm_out]
-     */
-    private function assignSlots(Collection $sorted, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
-    {
-        $count = $sorted->count();
-
-        // No-break shifts: employees only punch IN and OUT (no lunch break).
-        // Map first punch → am_in, last punch → pm_out; middle punches are re-scans.
-        if ($schedule->noBreak) {
-            return [$sorted->get(0), null, null, $count >= 2 ? $sorted->last() : null];
-        }
-
-        // 1–4 punches map straight to the four slots in chronological order, unless
-        // some slots are known excused (no real punch expected there) - then skip
-        // those slots so later punches land in their correct slot instead of being
-        // pushed into the excused one. Only applies when there are few enough
-        // punches that the exclusion is plausible; if punches exist for every slot
-        // anyway, trust the data and keep the full positional assignment.
-        if ($count <= 4) {
-            if ($excludedSlots !== []) {
-                $windowed = $this->assignWithExclusions($sorted, $shiftDate, $excludedSlots);
-
-                if ($windowed !== null) {
-                    return $windowed;
-                }
-            }
-
-            // A FIRST punch at/after lunchReturn means no punch that day is a
-            // plausible AM arrival OR a late am_out - the whole day is PM-only
-            // (e.g. a very late arrival, or an employee who only worked the
-            // afternoon). Reclassify before the positional fallback below would
-            // otherwise misread the earliest PM punch as am_in. lunchReturn
-            // (not morningEnd) is the threshold here because a first punch
-            // between morningEnd and lunchReturn is still plausibly a late
-            // am_out, not a PM arrival - see the missing-am_in case below.
-            $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
-            $lunchReturnRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
-            $first = $sorted->first();
-
-            if ($first->gte($lunchReturnRef)) {
-                if ($count === 1) {
-                    $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
-
-                    return $first->gte($endRef)
-                        ? [null, null, null, $first]   // lone punch at/after shift end -> departure
-                        : [null, null, $first, null];  // lone punch before shift end -> arrival
-                }
-
-                // 2-4 punches, all PM: first -> pm_in, last -> pm_out, any middle
-                // punches dropped as re-scan noise (same treatment the 5+ branch
-                // gives a midday cluster).
-                return [null, null, $sorted->first(), $sorted->last()];
-            }
-
-            // Gaps between consecutive punches, only meaningful with exactly 3 -
-            // shared by the missing-am_in and missing-pm_in checks below, both of
-            // which distinguish a real lunch break from a missing boundary punch
-            // by comparing gap sizes rather than a single time threshold.
-            $breakDurationMinutes = $gap01 = $gap12 = null;
-
-            if ($count === 3) {
-                $breakDurationMinutes = $breakOutRef->diffInMinutes($lunchReturnRef);
-                $gap01 = $sorted->get(0)->diffInMinutes($sorted->get(1));
-                $gap12 = $sorted->get(1)->diffInMinutes($sorted->get(2));
-            }
-
-            // Exactly 3 punches whose FIRST gap (punch 1 -> punch 2) is roughly
-            // break-sized relative to this schedule's actual break duration, and
-            // clearly shorter than the second gap (punch 2 -> punch 3, a normal
-            // work stretch): read as am_out/pm_in/pm_out with am_in genuinely
-            // missing (e.g. the employee's morning arrival punch never
-            // registered, but they did tap out for lunch, back in, and out for
-            // the day). A single punch time can't tell "arrival" from "tardy
-            // break-out" apart on its own (a lone 10:55 or 11:50 punch is equally
-            // plausible as either) - the gap to the NEXT punch is the only signal
-            // that distinguishes a real lunch break from an ordinary morning/
-            // afternoon work session, which is why this needs both gaps rather
-            // than a single time boundary. Bounds are deliberately generous
-            // (0.4x-1.75x the scheduled break length) to tolerate an early or
-            // tardy break without mistaking a genuine ~4h work stretch (the
-            // missing-pm_in patterns below) for a break.
-            if ($count === 3) {
-                $firstGapLooksLikeABreak = $gap01 >= $breakDurationMinutes * 0.4
-                    && $gap01 <= $breakDurationMinutes * 1.75;
-
-                if ($firstGapLooksLikeABreak && $gap01 < $gap12) {
-                    return [null, $sorted->get(0), $sorted->get(1), $sorted->get(2)];
-                }
-            }
-
-            // A punch at/after shift end is unambiguously a departure (nobody returns
-            // from lunch after the shift already ended) - anchor it to pm_out even with
-            // fewer than 4 total punches, instead of leaving it in its naive positional
-            // slot where it reads as a lunch punch. No-op when count === 4, since the
-            // last punch is already positionally pm_out there.
-            if ($count >= 2) {
-                $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
-                $last = $sorted->last();
-
-                if ($last->gte($endRef)) {
-                    $leading = $sorted->slice(0, $count - 1)->values();
-
-                    return [$leading->get(0), $leading->get(1), $leading->get(2), $last];
-                }
-            }
-
-            // Exactly 3 punches, last still before workEnd (so the anchor above
-            // didn't fire), whose SECOND gap (punch 2 -> punch 3) is too long to
-            // plausibly be just a lunch break (> 1.75x the break duration - same
-            // upper bound as the missing-am_in check above): the gap has
-            // swallowed both the break AND part of the afternoon, meaning pm_in
-            // is what's missing (e.g. the return-from-lunch punch never
-            // registered), not that punch 3 is an implausibly late lunch return.
-            // Read as am_in/am_out/pm_out with pm_in genuinely missing.
-            if ($count === 3 && $gap12 > $breakDurationMinutes * 1.75) {
-                return [$sorted->get(0), $sorted->get(1), null, $sorted->get(2)];
-            }
-
-            return [$sorted->get(0), $sorted->get(1), $sorted->get(2), $sorted->get(3)];
-        }
-
-        // 5+ punches: the shift has re-scans. Anchor the bookends, then collapse
-        // the midday cluster inside the [break-out, shift-end) window.
-        $amIn = $sorted->first();
-        $pmOut = $sorted->last();
-
-        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
-        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
-
-        $break = $sorted
-            ->slice(1, $count - 2)
-            ->filter(fn (Carbon $t) => $t->gte($breakOutRef) && $t->lt($endRef))
-            ->values();
-
-        if ($break->count() >= 2) {
-            $amOut = $break->first();   // first break-window punch = out for break
-            $pmIn = $break->last();     // last break-window punch  = back from break
-        } else {
-            // No clear cluster - fall back to the 2nd and 2nd-to-last punch.
-            $amOut = $sorted->get(1);
-            $pmIn = $sorted->get($count - 2);
-        }
-
-        return [$amIn, $amOut, $pmIn, $pmOut];
-    }
-
-    /**
-     * Walk the four canonical slots in order, consuming punches from the front of
-     * the queue. An excluded slot only skips (without consuming) when the next
-     * queued punch actually falls inside its exclusion window - a punch before a
-     * locator's departure, or after its arrival, is real and belongs in its
-     * natural slot rather than being swallowed by the coverage. Returns null when
-     * the punches don't fully reconcile against the slots (more real punches than
-     * the exclusions can explain), so the caller falls back to the plain
-     * positional/end-anchored assignment instead of silently dropping a punch.
-     *
-     * @param  Collection<int, Carbon>  $sorted
-     * @param  array<string, array{0:string,1:string}|null>  $excludedSlots
-     * @return array{0: ?Carbon, 1: ?Carbon, 2: ?Carbon, 3: ?Carbon}|null
-     */
-    private function assignWithExclusions(Collection $sorted, string $shiftDate, array $excludedSlots): ?array
-    {
-        $slotOrder = ['am_in', 'am_out', 'pm_in', 'pm_out'];
-        $values = array_fill_keys($slotOrder, null);
-        $count = $sorted->count();
-        $idx = 0;
-
-        foreach ($slotOrder as $slotKey) {
-            if ($idx >= $count) {
-                break;
-            }
-
-            $candidate = $sorted->get($idx);
-
-            if (array_key_exists($slotKey, $excludedSlots)) {
-                $window = $excludedSlots[$slotKey];
-
-                if ($window === null || $this->withinWindow($candidate, $shiftDate, $window)) {
-                    continue;
-                }
-            }
-
-            $values[$slotKey] = $candidate;
-            $idx++;
-        }
-
-        return $idx === $count
-            ? [$values['am_in'], $values['am_out'], $values['pm_in'], $values['pm_out']]
-            : null;
-    }
-
-    /** @param  array{0:string,1:string}  $window  ['H:i', 'H:i'] */
-    private function withinWindow(Carbon $candidate, string $shiftDate, array $window): bool
-    {
-        $start = Carbon::parse($shiftDate.' '.substr($window[0], 0, 5).':00');
-        $end = Carbon::parse($shiftDate.' '.substr($window[1], 0, 5).':00');
-
-        return $candidate->gte($start) && $candidate->lte($end);
     }
 
     /**
@@ -366,16 +129,6 @@ class DtrPunchResolver
         $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
 
         return (int) $breakInRef->diffInMinutes($endRef);
-    }
-
-    private function minutesLate(Carbon $actual, Carbon $reference): int
-    {
-        return $actual->gt($reference) ? (int) $reference->diffInMinutes($actual) : 0;
-    }
-
-    private function minutesEarly(Carbon $actual, Carbon $reference): int
-    {
-        return $actual->lt($reference) ? (int) $actual->diffInMinutes($reference) : 0;
     }
 
     private function fmt(?Carbon $time): ?string

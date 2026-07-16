@@ -326,8 +326,13 @@ class PersonnelLogImportService
                     'time_out_pm' => $resolved['pm_out'],
                     'late_minutes' => $resolved['late_minutes'],
                     'undertime_minutes' => $resolved['undertime_minutes'],
+                    'hours_worked' => $resolved['hours_worked'],
+                    'unmatched_logs' => $resolved['unmatched'] ?: null,
+                    // Never true from an automatic import: absence stays a
+                    // read-time classification (no dtrs row = absent), and the
+                    // status resolver can't return 'absent' either.
                     'is_absent' => false,
-                    'status' => 'present',
+                    'status' => $resolved['status'],
                     'source' => 'biometric',
                 ]
             );

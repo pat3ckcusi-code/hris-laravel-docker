@@ -169,7 +169,7 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame('17:00:00', $r['pm_out']);
     }
 
-    public function test_three_punch_day_before_shift_end_keeps_positional_fallback(): void
+    public function test_three_punch_day_before_shift_end_reads_early_pm_return(): void
     {
         $resolver = new DtrPunchResolver;
         $punches = ['2026-06-30 08:00:00', '2026-06-30 12:00:00', '2026-06-30 12:45:00'];
@@ -178,8 +178,8 @@ class ShiftScheduleTest extends TestCase
 
         $this->assertSame('08:00:00', $r['am_in']);
         $this->assertSame('12:00:00', $r['am_out']);
-        $this->assertSame('12:45:00', $r['pm_in']);
-        $this->assertNull($r['pm_out']);
+        $this->assertSame('12:45:00', $r['pm_in'], '12:45 sits nearer the 13:00 lunch return than the 11:00 break-out.');
+        $this->assertNull($r['pm_out'], 'The departure punch is genuinely missing - never borrowed from pm_in.');
     }
 
     public function test_two_punch_day_anchors_end_of_shift_punch_to_pm_out(): void
@@ -248,18 +248,22 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
-     * Regression guard: a PM-only day must not spuriously score break-return
-     * lateness - there is no antecedent AM departure to return late from.
+     * A PM-only day charges break-return lateness from lunchReturn: late is
+     * computed from every matched IN event (spec: AM In and PM In), so a
+     * 14:00 return against a 13:00 lunchReturn scores 60 minutes even with
+     * the whole morning missing. The morning itself is a structural problem
+     * (status half_day_pm / read-time coverage), not a lateness charge.
      */
-    public function test_pm_only_day_scores_zero_late_minutes(): void
+    public function test_pm_only_day_charges_pm_in_lateness_from_lunch_return(): void
     {
         $resolver = new DtrPunchResolver;
         $punches = ['2026-06-11 14:00:00', '2026-06-11 17:15:00'];
 
         $r = $resolver->resolve($punches, '2026-06-11', $this->dayShift());
 
-        $this->assertSame(0, $r['late_minutes']);
+        $this->assertSame(60, $r['late_minutes']);
         $this->assertSame(0, $r['undertime_minutes']);
+        $this->assertSame('half_day_pm', $r['status']);
     }
 
     /**
@@ -296,13 +300,12 @@ class ShiftScheduleTest extends TestCase
 
     /**
      * A punctual-ish am_out BEFORE morningEnd (10:55 vs. an 11:00 morningEnd)
-     * is just as ambiguous, on its own, as a tardy one - only the ~2h gap to
-     * the next punch (roughly this schedule's actual break length) reveals
-     * it's a break-out, not an arrival. Regression guard for the false
-     * multi-hour late charge this shape used to produce (10:55 read as am_in
-     * scored 175 minutes late against an 08:00 workStart).
+     * must read as the break-out (5 minutes early) rather than a wildly late
+     * arrival. Regression guard for the false multi-hour late charge this
+     * shape used to produce (10:55 read as am_in scored 175 minutes late
+     * against an 08:00 workStart).
      */
-    public function test_three_punch_day_with_punctual_am_out_infers_missing_am_in_via_gap(): void
+    public function test_three_punch_day_with_punctual_am_out_infers_missing_am_in(): void
     {
         $resolver = new DtrPunchResolver;
         $punches = ['2026-06-11 10:55:00', '2026-06-11 13:00:00', '2026-06-11 17:00:00'];
@@ -317,10 +320,10 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
-     * The gap heuristic must not swallow the existing "missing pm_in" pattern:
-     * an ~08:00 arrival, an on-time-ish am_out, and a punch at/after shift end
-     * has a first gap (~4h, a real work session) far too long to read as a
-     * break, even though it's technically shorter than the second gap.
+     * An ~08:00 arrival, an on-time-ish am_out, and a punch at/after shift
+     * end: the arrival must stay am_in (it is at the scheduled start) and the
+     * missing punch is pm_in - a 17:00 punch is a departure, never an
+     * implausibly late lunch return.
      */
     public function test_three_punch_day_long_first_gap_does_not_get_misread_as_missing_am_in(): void
     {
@@ -339,9 +342,12 @@ class ShiftScheduleTest extends TestCase
      * Real production case (Manalo, Ma. Haidee, 2026-07-03): punches
      * [07:16, 12:29, 16:11] used to resolve positionally to
      * am_in/am_out/pm_in, scoring a bogus 191-minute "late return from lunch"
-     * charge against a pm_in that was actually 3h42m after am_out - far too
-     * long to be a real lunch break. The second gap being that long means
-     * pm_in is what's missing; 16:11 is really an early pm_out.
+     * charge against a pm_in that was actually 3h42m after am_out. Ground
+     * truth: 12:29 was a LATE LUNCH-OUT (verified), pm_in is what's missing,
+     * and 16:11 is an early departure. This is what calibrates
+     * attendance.matching.out_late_bias: at 0.33 the AM Out / PM In
+     * switchover on this schedule sits at ~12:30, so 12:29 reads as the
+     * break-out while a typical 12:45+ early return still reads as pm_in.
      */
     public function test_three_punch_day_with_long_second_gap_infers_missing_pm_in(): void
     {
@@ -359,12 +365,12 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
-     * Boundary guard: a second gap of exactly 1.75x the break duration (210
-     * minutes for this schedule's 120-minute break) must NOT trigger the
-     * missing-pm_in reinterpretation - only a gap strictly longer than that
-     * does. Positional fallback (am_in/am_out/pm_in) must still win here.
+     * A mid-afternoon punch (15:30) with the departure missing reads as a
+     * (very) late lunch return, not an early departure: 15:30 sits nearer
+     * the 13:00 lunch return (late side of an IN event) than the 17:00
+     * shift end, so pm_out stays genuinely NULL.
      */
-    public function test_three_punch_day_second_gap_at_threshold_keeps_positional_fallback(): void
+    public function test_three_punch_day_mid_afternoon_punch_reads_as_late_pm_in(): void
     {
         $resolver = new DtrPunchResolver;
         $punches = ['2026-06-11 08:00:00', '2026-06-11 12:00:00', '2026-06-11 15:30:00'];

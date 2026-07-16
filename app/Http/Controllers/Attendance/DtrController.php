@@ -59,6 +59,25 @@ class DtrController extends Controller
         return [$carbon->format('Y-m-d'), $carbon->copy()->endOfMonth()->format('Y-m-d')];
     }
 
+    /**
+     * Badge for the eight punch-path AttendanceStatus values written by the
+     * new engine. Any legacy/unknown value (old rows stored plain 'present'
+     * before this column carried richer statuses) falls through to Present.
+     */
+    private function punchStatusBadge(?string $status): string
+    {
+        return match ($status) {
+            'late' => '<span class="hris-badge" style="background:#fee2e2;color:#991b1b;">Late</span>',
+            'undertime' => '<span class="hris-badge" style="background:#ffedd5;color:#9a3412;">Undertime</span>',
+            'half_day_am' => '<span class="hris-badge" style="background:#e0f2fe;color:#075985;">Half Day AM</span>',
+            'half_day_pm' => '<span class="hris-badge" style="background:#e0f2fe;color:#075985;">Half Day PM</span>',
+            'missing_in' => '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Missing IN</span>',
+            'missing_out' => '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Missing OUT</span>',
+            'incomplete' => '<span class="hris-badge" style="background:#f3e8ff;color:#6b21a8;">Incomplete Logs</span>',
+            default => '<span class="hris-badge badge-approved">Present</span>',
+        };
+    }
+
     /** Human-readable label written into the Form 48 "For the Month of" cells. */
     private function resolveMonthYearLabel(string $from, string $to, string $dtrType): string
     {
@@ -413,10 +432,18 @@ class DtrController extends Controller
                     $utMin = $imputePmOutUndertime();
                 }
             } else {
-                $tAmIn = $dtr->time_in_am ?? '-';
-                $tAmOut = $dtr->time_out_am ?? '-';
-                $tPmIn = $dtr->time_in_pm ?? '-';
-                $tPmOut = $dtr->time_out_pm ?? '-';
+                // A null slot only reads as "Missing" (vs. a plain "-") once its
+                // window has passed - a shift still in progress shouldn't accuse
+                // an employee of a missing punch that simply hasn't happened yet.
+                // No-break schedules only ever expect am_in/pm_out, so am_out/pm_in
+                // stay a plain dash regardless (they're not real slots to miss).
+                $shiftEnded = Carbon::now()->gte($rowSchedule->referenceDateTime($dateStr, $rowSchedule->workEnd));
+                $missing = fn (?string $v, bool $eligible): string => $v ?? ($eligible && $shiftEnded ? 'Missing' : '-');
+
+                $tAmIn = $missing($dtr->time_in_am, true);
+                $tAmOut = $missing($dtr->time_out_am, ! $rowSchedule->noBreak);
+                $tPmIn = $missing($dtr->time_in_pm, ! $rowSchedule->noBreak);
+                $tPmOut = $missing($dtr->time_out_pm, true);
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate();
                 $storedUt = $dtr->undertime_minutes ?? 0;
@@ -434,7 +461,7 @@ class DtrController extends Controller
 
             // Per-cell late/undertime flags: only highlight the slot that actually caused the penalty.
             // Using the row-level is_late class to color AM In was wrong when lateness came from PM In.
-            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'LOCATOR', 'ETA', 'EXCUSED'], true) && strlen($v) >= 5
+            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'Missing', 'LOCATOR', 'ETA', 'EXCUSED'], true) && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $slotHm($tAmIn);
@@ -465,6 +492,25 @@ class DtrController extends Controller
                 return '<div style="display:flex;flex-direction:column;align-items:center;gap:.2rem;line-height:1.2;"><span>'.e($raw).'</span>'.$badge.'</div>';
             };
 
+            $statusBadge = $leaveCode
+                ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">On Leave ('.$leaveCode.')</span>'
+                : ($showEta
+                    ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">On Official Travel</span>'
+                    : ($showOo
+                        ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">Office Order</span>'
+                        : ($excuse
+                            ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
+                            : ($loc
+                                ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
+                                : ($dtr->is_absent
+                                    ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                    : $this->punchStatusBadge($dtr->status))))));
+
+            if (! empty($dtr->unmatched_logs)) {
+                $unmatchedTitle = e(implode(', ', array_map(fn ($t) => substr((string) $t, 0, 5), $dtr->unmatched_logs)));
+                $statusBadge .= ' <span class="hris-badge" style="background:#fef9c3;color:#854d0e;" title="Unreconciled punch(es): '.$unmatchedTitle.'">&#9888; '.count($dtr->unmatched_logs).'</span>';
+            }
+
             $data->push([
                 'date' => Carbon::parse($dtr->date)->format('M d, Y (D)'),
                 'time_in_am' => $decorateSlot($tAmIn, $coversAmIn),
@@ -473,6 +519,7 @@ class DtrController extends Controller
                 'time_out_pm' => $decorateSlot($tPmOut, $coversPmOut),
                 'late_minutes' => $lateMin,
                 'undertime_minutes' => $utMin,
+                'hours_worked' => $dtr->hours_worked !== null ? number_format($dtr->hours_worked, 2) : '-',
                 'is_late' => $lateMin > 0,
                 'is_undertime' => $utMin > 0,
                 'is_am_in_late' => $isAmInLate,
@@ -483,19 +530,7 @@ class DtrController extends Controller
                     'manual' => '<span class="hris-badge" style="background:#e5e7eb;color:#374151;">Manual</span>',
                     default => '<span style="color:#9ca3af;">-</span>',
                 },
-                'status_badge' => $leaveCode
-                    ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">On Leave ('.$leaveCode.')</span>'
-                    : ($showEta
-                        ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">On Official Travel</span>'
-                        : ($showOo
-                            ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">Office Order</span>'
-                            : ($excuse
-                                ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
-                                : ($loc
-                                    ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
-                                    : ($dtr->is_absent
-                                        ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                        : '<span class="hris-badge badge-approved">Present</span>'))))),
+                'status_badge' => $statusBadge,
                 'office_order_badge' => $ooNum
                     ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">OO #'.e($ooNum).'</span>'
                     : '',
@@ -515,6 +550,7 @@ class DtrController extends Controller
                 'time_out_pm' => $leaveCode,
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'hours_worked' => '-',
                 'is_late' => false,
                 'is_undertime' => false,
                 'is_am_in_late' => false,
@@ -539,6 +575,7 @@ class DtrController extends Controller
                 'time_out_pm' => 'ETA',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'hours_worked' => '-',
                 'is_late' => false,
                 'is_undertime' => false,
                 'is_am_in_late' => false,
@@ -563,6 +600,7 @@ class DtrController extends Controller
                 'time_out_pm' => 'Office Order',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'hours_worked' => '-',
                 'is_late' => false,
                 'is_undertime' => false,
                 'is_am_in_late' => false,
@@ -590,6 +628,7 @@ class DtrController extends Controller
                 'time_out_pm' => ($excuse->excuse_pm_out || $excuse->is_full_day) ? $excuseBadge : '-',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'hours_worked' => '-',
                 'is_late' => false,
                 'is_undertime' => false,
                 'is_am_in_late' => false,
@@ -614,6 +653,7 @@ class DtrController extends Controller
                 'time_out_pm' => $loc['covers_pm_out'] ? 'LOCATOR' : '-',
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'hours_worked' => '-',
                 'is_late' => false,
                 'is_undertime' => false,
                 'is_am_in_late' => false,
@@ -642,7 +682,7 @@ class DtrController extends Controller
                     'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
                     'time_in_am' => '-', 'time_out_am' => '-',
                     'time_in_pm' => '-', 'time_out_pm' => '-',
-                    'late_minutes' => 0, 'undertime_minutes' => 0,
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-',
                     'is_late' => false, 'is_undertime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
@@ -654,7 +694,7 @@ class DtrController extends Controller
                     'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
                     'time_in_am' => '-', 'time_out_am' => '-',
                     'time_in_pm' => '-', 'time_out_pm' => '-',
-                    'late_minutes' => 0, 'undertime_minutes' => 0,
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-',
                     'is_late' => false, 'is_undertime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',

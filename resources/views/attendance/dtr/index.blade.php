@@ -225,6 +225,7 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                             <th class="text-center">PM Out</th>
                             <th class="text-center">Late (min)</th>
                             <th class="text-center">Undertime (min)</th>
+                            <th class="text-center">Hours</th>
                             <th class="text-center">Source</th>
                             <th class="text-center">Status</th>
                             <th class="text-center">Office Order</th>
@@ -609,6 +610,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
                 { data: 'time_out_pm',       orderable: false, className: 'text-center' },
                 { data: 'late_minutes',      orderable: false, className: 'text-center' },
                 { data: 'undertime_minutes', orderable: false, className: 'text-center' },
+                { data: 'hours_worked',      orderable: false, className: 'text-center' },
                 { data: 'source_badge',        orderable: false, className: 'text-center' },
                 { data: 'status_badge',        orderable: false, className: 'text-center' },
                 { data: 'office_order_badge',  orderable: false, className: 'text-center', title: 'Office Order' },
