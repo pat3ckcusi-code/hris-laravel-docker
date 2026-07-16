@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdministrativeOfficerCancellationController;
 use App\Http\Controllers\AdministrativeOfficerController;
+use App\Http\Controllers\Attendance\AttendanceAdjustmentSummaryController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Attendance\DtrExcuseController;
@@ -623,6 +624,19 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
 
     Route::get('/attendance/monitoring-matrix', [TimeLogsMonitoringController::class, 'monitoringMatrix'])
         ->name('attendance.monitoring-matrix');
+
+    Route::get('/attendance/adjustment-summary', [AttendanceAdjustmentSummaryController::class, 'index'])
+        ->name('attendance.adjustment-summary.index');
+    Route::get('/attendance/adjustment-summary/data', [AttendanceAdjustmentSummaryController::class, 'data'])
+        ->name('attendance.adjustment-summary.data');
+    Route::post('/attendance/adjustment-summary/submit', [AttendanceAdjustmentSummaryController::class, 'submit'])
+        ->name('attendance.adjustment-summary.submit');
+    Route::get('/attendance/adjustment-summary/print', [AttendanceAdjustmentSummaryController::class, 'print'])
+        ->name('attendance.adjustment-summary.print');
+    Route::get('/attendance/adjustment-summary/pdf', [AttendanceAdjustmentSummaryController::class, 'pdf'])
+        ->name('attendance.adjustment-summary.pdf');
+    Route::get('/attendance/adjustment-summary/submissions', [AttendanceAdjustmentSummaryController::class, 'submissions'])
+        ->name('attendance.adjustment-summary.submissions');
 });
 
 // Mayor's Office routes

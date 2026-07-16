@@ -21,7 +21,7 @@ class ExportJobController extends Controller
     public function create(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'type' => ['required', 'string', 'in:pds,form48,form48_dept_zip,form48_dept,monitoring_matrix,leave_card,hr_reports'],
+            'type' => ['required', 'string', 'in:pds,form48,form48_dept_zip,form48_dept,monitoring_matrix,leave_card,hr_reports,adjustment_summary'],
             'params' => ['required', 'array'],
         ]);
 
@@ -90,6 +90,7 @@ class ExportJobController extends Controller
             'monitoring_matrix' => $this->authMonitoringMatrix($user, $params),
             'leave_card' => $this->authLeaveCard($user, $params),
             'hr_reports' => abort_unless(RoleNormalizer::normalize((string) $user->access_level) === 'hr manager', 403),
+            'adjustment_summary' => $this->authAdjustmentSummary($user, $params),
         };
     }
 
@@ -152,5 +153,16 @@ class ExportJobController extends Controller
 
         abort_unless(in_array($role, ['time keeper', 'hr manager'], true), 403);
         abort_unless(Department::whereKey($params['department_id'] ?? null)->exists(), 403);
+    }
+
+    private function authAdjustmentSummary(User $user, array $params): void
+    {
+        $role = strtolower(trim((string) ($user->access_level ?? '')));
+        abort_unless(in_array($role, ['time keeper', 'hr manager'], true), 403);
+
+        // department_id is optional here (null = all departments, the default scope).
+        if (! empty($params['department_id'])) {
+            abort_unless(Department::whereKey($params['department_id'])->exists(), 403);
+        }
     }
 }

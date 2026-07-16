@@ -506,7 +506,7 @@ $(function () {
                 var d = result.data;
                 window.alert(d.changed
                     ? 'Corrected. VL change: ' + d.delta_vl + ', SL change: ' + d.delta_sl
-                    : 'No change needed — figures were already correct.');
+                    : 'No change needed - figures were already correct.');
                 loadMonthly();
             })
             .catch(function () {

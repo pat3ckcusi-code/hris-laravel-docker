@@ -240,10 +240,10 @@
 <div class="hris-table-card">
     <div class="hris-table-header">
         <div class="hris-table-header-title">
-            <h2 class="hris-table-title"><i class="fas fa-triangle-exclamation" style="color:#ea580c;margin-right:.5rem;"></i>CSC Habitual Violations &mdash; {{ $year }}</h2>
+            <h2 class="hris-table-title"><i class="fas fa-triangle-exclamation" style="color:#ea580c;margin-right:.5rem;"></i>CSC Habitual Violations - {{ $year }}</h2>
             <p class="hris-table-subtitle">
                 Per CSC MC No. 04, s. 1991: late 10+ times in a month, in at least 2 months within a semester (Jan&ndash;Jun / Jul&ndash;Dec) or 2 consecutive months.
-                The same threshold is mirrored for undertime as &ldquo;Frequent Undertime&rdquo; &mdash; not an official separate CSC category.
+                The same threshold is mirrored for undertime as &ldquo;Frequent Undertime&rdquo; - not an official separate CSC category.
                 @if ($violationSearch !== '')
                     Filtered by &ldquo;{{ $violationSearch }}&rdquo;.
                 @endif

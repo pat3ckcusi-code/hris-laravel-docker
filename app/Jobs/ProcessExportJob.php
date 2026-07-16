@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Department;
 use App\Models\ExportJob;
 use App\Models\User;
+use App\Services\AttendanceAdjustmentSummaryService;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DepartmentService;
 use App\Services\Form48ExportService;
@@ -36,6 +37,7 @@ class ProcessExportJob implements ShouldQueue
         AttendanceMonitoringExportService $monitoringService,
         HRDashboardService $dashboardService,
         DepartmentService $departmentService,
+        AttendanceAdjustmentSummaryService $summaryService,
     ): void {
         $job = $this->exportJob;
 
@@ -55,6 +57,7 @@ class ProcessExportJob implements ShouldQueue
                 'monitoring_matrix' => $this->handleMonitoringMatrix($job, $monitoringService, $departmentService),
                 'leave_card' => $this->handleLeaveCard($job, $leaveCardService),
                 'hr_reports' => $this->handleHrReports($job, $dashboardService),
+                'adjustment_summary' => $this->handleAdjustmentSummary($job, $summaryService),
                 default => throw new \RuntimeException("Unknown export type: {$job->type}"),
             };
 
@@ -387,6 +390,42 @@ class ProcessExportJob implements ShouldQueue
         fclose($handle);
 
         return [$path, $filename, 'text/csv'];
+    }
+
+    // ── ATTENDANCE ADJUSTMENT SUMMARY ────────────────────────────────────────
+
+    private function handleAdjustmentSummary(ExportJob $job, AttendanceAdjustmentSummaryService $summaryService): array
+    {
+        $params = $job->params;
+
+        $departments = ! empty($params['department_id'])
+            ? Department::where('Dept_id', $params['department_id'])->get()
+            : Department::orderBy('Dept_name')->get();
+
+        if ($departments->isEmpty()) {
+            throw new \RuntimeException('No departments found for the selected filter.');
+        }
+
+        $month = (int) $params['month'];
+        $year = (int) $params['year'];
+        $employeeType = $params['employee_type'] ?? null;
+        $issue = $params['issue'] ?? null;
+        $search = $params['search'] ?? null;
+        $minCount = (isset($params['min_count']) && $params['min_count'] !== '') ? (int) $params['min_count'] : null;
+
+        $rows = $summaryService->buildExportRows($departments, $month, $year, $employeeType, $issue, $search, $minCount);
+        $departmentLabel = $departments->count() > 3
+            ? 'All Departments'
+            : $departments->pluck('Dept_name')->filter()->implode(' / ');
+
+        [$spreadsheet, $filename] = $summaryService->buildSpreadsheet($rows, $month, $year, $departmentLabel);
+
+        $path = "exports/{$job->id}.xlsx";
+        $absPath = storage_path("app/{$path}");
+        IOFactory::createWriter($spreadsheet, 'Xlsx')->save($absPath);
+        $spreadsheet->disconnectWorksheets();
+
+        return [$path, $filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
     }
 
     // ── DTR helpers (mirrors DtrController private methods) ───────────────────

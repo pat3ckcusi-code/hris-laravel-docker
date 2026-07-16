@@ -39,7 +39,7 @@ class AttendanceMonitoringExportService
         $deptIds = $departments->pluck('Dept_id')->toArray();
 
         $employees = User::active()->whereIn('Dept_id', $deptIds)
-            ->with('shift')
+            ->with('shift', 'department')
             ->when($employeeType, fn ($q, $t) => $q->where('employee_type', $t))
             ->orderBy('last_name')
             ->orderBy('first_name')
@@ -357,16 +357,25 @@ class AttendanceMonitoringExportService
             // Leave" total as any manually-flagged (is_absent) Dtr rows above.
             $unfiledCount += count($unfiledLeaveDays);
 
-            $totalMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
+            $tardinessMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
                 $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
                 if (! $excuse) {
-                    return (int) $d->late_minutes + (int) $d->undertime_minutes;
+                    return (int) $d->late_minutes;
                 }
-                $late = ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in) ? 0 : (int) $d->late_minutes;
-                $ut = ($excuse->is_full_day || $excuse->excuse_pm_out) ? 0 : (int) $d->undertime_minutes;
 
-                return $late + $ut;
+                return ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in) ? 0 : (int) $d->late_minutes;
             });
+
+            $undertimeMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
+                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
+                if (! $excuse) {
+                    return (int) $d->undertime_minutes;
+                }
+
+                return ($excuse->is_full_day || $excuse->excuse_pm_out) ? 0 : (int) $d->undertime_minutes;
+            });
+
+            $totalMinutes = $tardinessMinutes + $undertimeMinutes;
 
             // A day whose PM Out is missing (but PM In exists) means the employee never
             // logged their departure - since there's no punch proving they stayed later,
@@ -392,6 +401,7 @@ class AttendanceMonitoringExportService
             }
 
             $undertimeCount += count($phantomUndertimeByDate);
+            $undertimeMinutes += array_sum($phantomUndertimeByDate);
             $totalMinutes += array_sum($phantomUndertimeByDate);
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
@@ -594,6 +604,9 @@ class AttendanceMonitoringExportService
             }
 
             return [
+                'user_id' => $emp->id,
+                'emp_no' => $emp->EmpNo,
+                'department' => $emp->department->Dept_name ?? '',
                 'name' => $name,
                 'position' => $emp->designation ?? $emp->position ?? '',
                 'employee_type' => $emp->employee_type ?? '',
@@ -606,6 +619,8 @@ class AttendanceMonitoringExportService
                 'unofficial_exit_count' => $unofficialExitCount,
                 'unofficial_exit_no_data' => $unofficialExitNoData,
                 'total_minutes' => $totalMinutes,
+                'tardiness_minutes' => $tardinessMinutes,
+                'undertime_minutes' => $undertimeMinutes,
                 'personal_locator_minutes' => $personalLocatorMinutes,
                 'remarks' => $fullRemarks,
             ];

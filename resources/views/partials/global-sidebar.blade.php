@@ -50,6 +50,7 @@
         'filed_office'        => 'fas fa-archive fa-fw',
         'oic'                 => 'fas fa-user-clock fa-fw',
         'monitoring_matrix'   => 'fas fa-table-list fa-fw',
+        'adjustment_summary'  => 'fas fa-paper-plane fa-fw',
         'workforce_calendar'  => 'fas fa-calendar-days fa-fw',
 
         // Records & HR
@@ -195,6 +196,7 @@
             ['label' => 'Shift Logs',         'icon' => 'audit',             'route' => 'attendance.shift-logs',               'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
+            ['label' => 'Adjustment Summary', 'icon' => 'adjustment_summary', 'route' => 'attendance.adjustment-summary.index', 'active' => ['attendance.adjustment-summary*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
 
             ['section' => 'Reports'],
@@ -290,6 +292,7 @@
             ['label' => 'Shift Logs',       'icon' => 'audit',             'route' => 'attendance.shift-logs',             'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix', 'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',      'active' => ['attendance.monitoring-matrix*']],
+            ['label' => 'Adjustment Summary', 'icon' => 'adjustment_summary', 'route' => 'attendance.adjustment-summary.index', 'active' => ['attendance.adjustment-summary*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
         ],
 
