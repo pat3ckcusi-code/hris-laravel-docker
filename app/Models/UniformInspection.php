@@ -50,4 +50,9 @@ class UniformInspection extends Model
     {
         return $this->hasMany(UniformInspectionDetail::class);
     }
+
+    public function deductions(): HasMany
+    {
+        return $this->hasMany(UniformInspectionDeduction::class);
+    }
 }

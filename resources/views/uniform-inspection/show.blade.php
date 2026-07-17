@@ -16,16 +16,43 @@
        class="hris-btn hris-btn-secondary hris-btn-sm" style="margin-left:6px;">
         <i class="fas fa-pencil-alt fa-fw" aria-hidden="true"></i> Edit
     </a>
-    <form method="POST"
+    <form id="delete-inspection-form" method="POST"
           action="{{ route('leave-manager.uniform-inspections.destroy', $inspection) }}"
-          style="display:inline;margin-left:6px;"
-          onsubmit="return confirm('Permanently delete this inspection and all its records?')">
+          style="display:inline;margin-left:6px;">
         @csrf
         @method('DELETE')
-        <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm">
+        <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeleteInspection()">
             <i class="fas fa-trash fa-fw" aria-hidden="true"></i> Delete
         </button>
     </form>
+@endsection
+
+@section('page_scripts_after')
+<script>
+function confirmDeleteInspection() {
+    var form = document.getElementById('delete-inspection-form');
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Delete this inspection?',
+            html: 'This permanently removes Inspection #{{ $inspection->id }} and <strong>all violation records</strong> in it.<br>Any VL already deducted for it will be refunded automatically.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '<i class="fas fa-trash fa-fw"></i> Delete',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true,
+            focusCancel: true,
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                form.submit();
+            }
+        });
+    } else if (confirm('Permanently delete this inspection and all its records?')) {
+        form.submit();
+    }
+}
+</script>
 @endsection
 
 @section('content')
@@ -33,6 +60,12 @@
 @if(session('success'))
     <div style="background:#f0fdf4;border:1px solid #86efac;border-left:4px solid #16a34a;border-radius:8px;padding:12px 16px;color:#166534;font-size:0.9rem;margin-bottom:18px;">
         <i class="fas fa-check-circle fa-fw"></i> {{ session('success') }}
+    </div>
+@endif
+
+@if(session('warning'))
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ea580c;border-radius:8px;padding:12px 16px;color:#9a3412;font-size:0.9rem;margin-bottom:18px;">
+        <i class="fas fa-exclamation-triangle fa-fw"></i> {{ session('warning') }}
     </div>
 @endif
 

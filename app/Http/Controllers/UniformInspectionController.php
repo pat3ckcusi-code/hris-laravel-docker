@@ -7,6 +7,7 @@ use App\Models\HRAuditTrail;
 use App\Models\UniformInspection;
 use App\Models\UniformInspectionDetail;
 use App\Models\User;
+use App\Services\UniformInspectionDeductionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,8 @@ use Illuminate\View\View;
 
 class UniformInspectionController extends Controller
 {
+    public function __construct(private readonly UniformInspectionDeductionService $deductionService) {}
+
     public function index(Request $request): View
     {
         $query = UniformInspection::with(['details.employee']);
@@ -70,7 +73,7 @@ class UniformInspectionController extends Controller
             'details.*.remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $inspection = DB::transaction(function () use ($validated) {
+        $result = DB::transaction(function () use ($validated) {
             $inspection = UniformInspection::create([
                 'inspection_date' => $validated['inspection_date'],
                 'inspection_time' => $validated['inspection_time'],
@@ -90,6 +93,9 @@ class UniformInspectionController extends Controller
                 ]);
             }
 
+            $employeeIds = collect($validated['details'])->pluck('employee_id')->unique()->all();
+            $deductionResult = $this->deductionService->applyForNewEmployees($inspection, $employeeIds, Auth::user());
+
             HRAuditTrail::create([
                 'actor_user_id' => Auth::id(),
                 'module' => 'uniform_inspection',
@@ -102,8 +108,17 @@ class UniformInspectionController extends Controller
                 ],
             ]);
 
-            return $inspection;
+            return ['inspection' => $inspection, 'deduction' => $deductionResult];
         });
+
+        $inspection = $result['inspection'];
+
+        if (! empty($result['deduction']['skipped'])) {
+            $names = collect($result['deduction']['skipped'])
+                ->map(fn ($u) => trim(($u->last_name ?? '').', '.($u->first_name ?? '')) ?: 'Employee #'.$u->id)
+                ->implode('; ');
+            session()->flash('warning', "VL deduction skipped (insufficient balance) for: {$names}. Violation record was saved.");
+        }
 
         return redirect()
             ->route('leave-manager.uniform-inspections.show', $inspection)
@@ -144,7 +159,7 @@ class UniformInspectionController extends Controller
             'details.*.remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        DB::transaction(function () use ($validated, $uniformInspection) {
+        $deductionResult = DB::transaction(function () use ($validated, $uniformInspection) {
             $uniformInspection->update([
                 'inspection_date' => $validated['inspection_date'],
                 'inspection_time' => $validated['inspection_time'],
@@ -187,6 +202,9 @@ class UniformInspectionController extends Controller
                 }
             }
 
+            $currentEmployeeIds = $uniformInspection->details()->pluck('employee_id')->unique()->all();
+            $deductionResult = $this->deductionService->reconcile($uniformInspection, $currentEmployeeIds, Auth::user());
+
             HRAuditTrail::create([
                 'actor_user_id' => Auth::id(),
                 'module' => 'uniform_inspection',
@@ -195,7 +213,16 @@ class UniformInspectionController extends Controller
                 'target_id' => $uniformInspection->id,
                 'details' => ['inspection_date' => $validated['inspection_date']],
             ]);
+
+            return $deductionResult;
         });
+
+        if (! empty($deductionResult['skipped'])) {
+            $names = collect($deductionResult['skipped'])
+                ->map(fn ($u) => trim(($u->last_name ?? '').', '.($u->first_name ?? '')) ?: 'Employee #'.$u->id)
+                ->implode('; ');
+            session()->flash('warning', "VL deduction skipped (insufficient balance) for: {$names}. Violation record was saved.");
+        }
 
         return redirect()
             ->route('leave-manager.uniform-inspections.show', $uniformInspection)
@@ -207,6 +234,8 @@ class UniformInspectionController extends Controller
         $id = $uniformInspection->id;
 
         DB::transaction(function () use ($uniformInspection, $id) {
+            $this->deductionService->refundAllForInspection($uniformInspection, Auth::user());
+
             $uniformInspection->delete();
 
             HRAuditTrail::create([

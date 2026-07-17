@@ -25,6 +25,8 @@ class LeaveLedger extends Model
         'LWOP_DEDUCTION',
         'OPENING_BALANCE',
         'ATTENDANCE_DEDUCTION',
+        'UNIFORM_INSPECTION_DEDUCTION',
+        'UNIFORM_INSPECTION_REFUND',
     ];
 
     protected $fillable = [
