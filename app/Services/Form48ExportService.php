@@ -158,18 +158,18 @@ class Form48ExportService
             ->where('leave_requests.status', 'approved')
             ->where('leave_dates.is_cancelled', false)
             ->whereBetween('leave_dates.leave_date', [$from, $to])
-            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type')
+            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type', 'leave_requests.details_others_type')
             ->get()
             ->each(function ($row) use (&$map): void {
                 $day = (int) Carbon::parse($row->leave_date)->day;
-                $map[$day] = $row->is_lwop ? 'LWOP' : self::toLeaveCode($row->leave_type);
+                $map[$day] = $row->is_lwop ? 'LWOP' : self::toLeaveCode($row->leave_type, $row->details_others_type);
             });
 
         return $map;
     }
 
     /** Map full leave-type text to CSC Form 48 abbreviation. */
-    public static function toLeaveCode(?string $leaveType): string
+    public static function toLeaveCode(?string $leaveType, ?string $othersType = null): string
     {
         $lt = $leaveType ?? '';
 
@@ -184,6 +184,7 @@ class Form48ExportService
             str_contains($lt, 'Paternity') => 'PL',
             str_contains($lt, 'Forced') => 'FL',
             str_contains($lt, 'Mandatory') => 'FL',
+            str_contains(strtolower($lt), 'others') => $othersType ?: 'OTHERS',
             default => strtoupper(trim($lt)) ?: 'LEAVE',
         };
     }

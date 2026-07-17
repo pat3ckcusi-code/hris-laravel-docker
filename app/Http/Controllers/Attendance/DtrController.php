@@ -241,10 +241,10 @@ class DtrController extends Controller
             ->where('leave_requests.status', 'approved')
             ->where('leave_dates.is_cancelled', false)
             ->whereBetween('leave_dates.leave_date', [$from, $to])
-            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type')
+            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type', 'leave_requests.details_others_type')
             ->get()
             ->keyBy(fn ($r) => Carbon::parse($r->leave_date)->format('Y-m-d'))
-            ->map(fn ($r) => $r->is_lwop ? 'LWOP' : Form48ExportService::toLeaveCode($r->leave_type));
+            ->map(fn ($r) => $r->is_lwop ? 'LWOP' : Form48ExportService::toLeaveCode($r->leave_type, $r->details_others_type));
 
         // Build ETA date set: date string → true for all days covered by approved ETA.
         $etaDateSet = [];
