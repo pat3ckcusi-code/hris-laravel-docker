@@ -627,14 +627,14 @@
 
             <details class="ss-rotation-panel">
                 <summary class="ss-rotation-summary">Generate rotation pattern (e.g. 24-on/24-off duty)</summary>
-                <form method="POST" action="{{ route('attendance.shift-schedule.generate-pattern') }}" class="ss-rotation-form">
+                <form method="POST" action="{{ route('attendance.shift-schedule.generate-pattern') }}" class="ss-rotation-form" id="rotation-form">
                     @csrf
                     <input type="hidden" name="user_id" value="{{ $selectedEmployee->id }}">
                     <input type="hidden" name="dept_id" value="{{ $deptId }}">
 
                     <label class="ss-rotation-field">
                         Shift
-                        <select name="shift_id" required>
+                        <select name="shift_id" id="rot_shift_id" required>
                             <option value="">Select shift…</option>
                             @foreach($shifts as $shift)
                                 <option value="{{ $shift->id }}">{{ $shift->name }}</option>
@@ -671,7 +671,7 @@
 
             <details class="ss-rotation-panel">
                 <summary class="ss-rotation-summary">Apply weekly pattern to a date range</summary>
-                <form method="POST" action="{{ route('attendance.shift-schedule.apply-weekly-pattern') }}" class="ss-rotation-form">
+                <form method="POST" action="{{ route('attendance.shift-schedule.apply-weekly-pattern') }}" class="ss-rotation-form" id="weekly-pattern-form">
                     @csrf
                     <input type="hidden" name="user_id" value="{{ $selectedEmployee->id }}">
                     <input type="hidden" name="dept_id" value="{{ $deptId }}">
@@ -693,11 +693,11 @@
 
                     <label class="ss-rotation-field">
                         From
-                        <input type="date" name="start_date" required>
+                        <input type="date" name="start_date" id="wp_start_date" required>
                     </label>
                     <label class="ss-rotation-field">
                         To
-                        <input type="date" name="end_date" required>
+                        <input type="date" name="end_date" id="wp_end_date" required>
                     </label>
                     <button type="submit" class="hris-btn hris-btn-primary">Apply Weekly Pattern</button>
                 </form>
@@ -957,10 +957,52 @@ if (bulkRotationForm) {
     });
 }
 
+/* ── Generate rotation pattern (single employee): confirm before submit ── */
+var rotationForm = document.getElementById('rotation-form');
+if (rotationForm) {
+    rotationForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var select = document.getElementById('rot_shift_id');
+        var shiftLabel = select.options[select.selectedIndex].text;
+        var from = document.getElementById('rot_start_date').value;
+        var to = document.getElementById('rot_end_date').value;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Generate rotation pattern?',
+            html: 'This will generate a <b>' + shiftLabel + '</b> rotation for <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, generate',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) { if (res.isConfirmed) rotationForm.submit(); });
+    });
+}
+
+/* ── Apply weekly pattern (single employee): confirm before submit ──── */
+var weeklyPatternForm = document.getElementById('weekly-pattern-form');
+if (weeklyPatternForm) {
+    weeklyPatternForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var from = document.getElementById('wp_start_date').value;
+        var to = document.getElementById('wp_end_date').value;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Apply weekly pattern?',
+            html: 'This will apply the selected Mon–Sun pattern to <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, apply',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) { if (res.isConfirmed) weeklyPatternForm.submit(); });
+    });
+}
+
 /* ── Save Week Schedule: broadcast to checked employees ────────── */
 var weekForm = document.getElementById('week-form');
 if (weekForm) {
     weekForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+
         var checked = document.querySelectorAll('.ss-emp-checkbox:checked');
 
         // Clear any stale user_ids[] left over from a previously cancelled bulk attempt.
@@ -968,10 +1010,17 @@ if (weekForm) {
 
         if (checked.length === 0) {
             weekForm.action = weekForm.dataset.singleAction;
+            Swal.fire({
+                icon: 'warning',
+                title: 'Save week schedule?',
+                html: 'This will save the displayed week\'s schedule for <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b>. DTRs for the week will be recomputed.',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, save',
+                confirmButtonColor: '#2563eb',
+                cancelButtonColor: '#6b7280',
+            }).then(function (res) { if (res.isConfirmed) weekForm.submit(); });
             return;
         }
-
-        e.preventDefault();
 
         checked.forEach(function (cb) {
             var hidden = document.createElement('input');

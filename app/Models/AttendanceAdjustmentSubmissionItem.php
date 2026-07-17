@@ -23,7 +23,20 @@ class AttendanceAdjustmentSubmissionItem extends Model
         'undertime_count',
         'undertime_minutes',
         'remarks',
+        'processed_status',
+        'processed_by',
+        'processed_at',
+        'deducted_days',
+        'action_remarks',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'deducted_days' => 'float',
+            'processed_at' => 'datetime',
+        ];
+    }
 
     public function submission(): BelongsTo
     {
@@ -33,5 +46,15 @@ class AttendanceAdjustmentSubmissionItem extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function processedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'processed_by');
+    }
+
+    public function scopePending($query)
+    {
+        return $query->where('processed_status', 'pending');
     }
 }

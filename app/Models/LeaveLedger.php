@@ -24,6 +24,7 @@ class LeaveLedger extends Model
         'COMMUTED',
         'LWOP_DEDUCTION',
         'OPENING_BALANCE',
+        'ATTENDANCE_DEDUCTION',
     ];
 
     protected $fillable = [

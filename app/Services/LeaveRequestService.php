@@ -816,7 +816,8 @@ class LeaveRequestService
 
         $column = null;
         $label = strtolower($leave->leave_type ?? '');
-        if (str_contains($label, 'vacation') || str_contains($label, 'vl') || str_contains($label, 'mandatory') || str_contains($label, 'forced')) {
+        if (str_contains($label, 'vacation') || str_contains($label, 'vl') || str_contains($label, 'mandatory') || str_contains($label, 'forced') || str_contains($label, 'others')) {
+            // "Others" (e.g. Mourning Leave) is deducted from Vacation Leave credits, same as Vacation Leave itself
             $column = 'VL';
         } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
             $column = 'SL';
@@ -834,7 +835,7 @@ class LeaveRequestService
             $parts = array_map('trim', explode(',', $leave->leave_type));
             foreach ($parts as $p) {
                 $pl = strtolower($p);
-                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl') || str_contains($pl, 'mandatory') || str_contains($pl, 'forced')) {
+                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl') || str_contains($pl, 'mandatory') || str_contains($pl, 'forced') || str_contains($pl, 'others')) {
                     $column = 'VL';
                     break;
                 }
@@ -1194,6 +1195,10 @@ class LeaveRequestService
             if ($row) {
                 if ($row === 39 && ($normalized === 'wellness leave' || $normalized === 'wlns')) {
                     $sheet->setCellValue('C40', 'Wellness');
+                } elseif ($row === 39 && $normalized === 'others') {
+                    if (! empty($leave->details_others_type)) {
+                        $sheet->setCellValue('C40', $leave->details_others_type);
+                    }
                 } else {
                     $sheet->setCellValue("B{$row}", $checkMark);
                 }

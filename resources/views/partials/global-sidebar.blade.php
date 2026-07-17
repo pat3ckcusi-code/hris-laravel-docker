@@ -231,6 +231,7 @@
             ['label' => 'Leave Ledger',                       'icon' => 'audit',              'route' => 'leave-manager.leave-ledger',                      'active' => ['leave-manager.leave-ledger']],
             ['label' => 'Approved Leaves',                    'icon' => 'approved_leaves',    'route' => 'leave-manager.approved-leaves',                   'active' => ['leave-manager.approved-leaves']],
             ['label' => 'Employee Cancellation Requests',     'icon' => 'leave',              'route' => 'leave-manager.employee-cancellation-requests',    'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
+            ['label' => 'Attendance Deductions',               'icon' => 'leave_credits',      'route' => 'leave-manager.attendance-deductions',              'active' => ['leave-manager.attendance-deductions'], 'badge' => 'pending_attendance_deductions'],
             ['label' => 'Uniform Inspections',                'icon' => 'uniform_inspection', 'route' => 'leave-manager.uniform-inspections.index',         'active' => ['leave-manager.uniform-inspections.*']],
 
             ['section' => 'Attendance'],
@@ -378,6 +379,9 @@
         },
         'pending_employee_cancellation_requests' => fn () => \App\Models\LeaveRequest::where('status', 'approved')
             ->where('cancellation_status', 'AO Endorsed')
+            ->count(),
+        'pending_attendance_deductions' => fn () => \App\Models\AttendanceAdjustmentSubmissionItem::where('processed_status', 'pending')
+            ->whereHas('submission', fn ($q) => $q->where('status', 'submitted'))
             ->count(),
         'pending_cancellation_dh' => function () {
             $user = auth()->user();

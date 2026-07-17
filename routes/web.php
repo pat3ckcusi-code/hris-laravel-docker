@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdministrativeOfficerCancellationController;
 use App\Http\Controllers\AdministrativeOfficerController;
+use App\Http\Controllers\Attendance\AttendanceAdjustmentReviewController;
 use App\Http\Controllers\Attendance\AttendanceAdjustmentSummaryController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
@@ -439,6 +440,19 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
 
     Route::get('/api/uniform-inspection/employee-history', [UniformInspectionController::class, 'apiEmployeeViolationHistory'])
         ->name('api.uniform-inspection.employee-history');
+
+    // Attendance Adjustment Summary review - Leave Manager acts on submissions
+    // forwarded from the Timekeeper/HR Manager screen (attendance.adjustment-summary.*)
+    Route::get('/leave-manager/attendance-deductions', [AttendanceAdjustmentReviewController::class, 'index'])
+        ->name('leave-manager.attendance-deductions');
+    Route::post('/api/leave-manager/attendance-deductions/{item}/deduct', [AttendanceAdjustmentReviewController::class, 'apiDeduct'])
+        ->name('api.leave-manager.attendance-deductions.deduct');
+    Route::post('/api/leave-manager/attendance-deductions/{item}/dismiss', [AttendanceAdjustmentReviewController::class, 'apiDismiss'])
+        ->name('api.leave-manager.attendance-deductions.dismiss');
+    Route::post('/api/leave-manager/attendance-deductions/bulk-deduct', [AttendanceAdjustmentReviewController::class, 'apiBulkDeduct'])
+        ->name('api.leave-manager.attendance-deductions.bulk-deduct');
+    Route::post('/api/leave-manager/attendance-deductions/bulk-dismiss', [AttendanceAdjustmentReviewController::class, 'apiBulkDismiss'])
+        ->name('api.leave-manager.attendance-deductions.bulk-dismiss');
 });
 
 Route::middleware(['auth', 'role:leave-manager,hr-manager'])->group(function () {
@@ -639,6 +653,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
         ->name('attendance.adjustment-summary.pdf');
     Route::get('/attendance/adjustment-summary/submissions', [AttendanceAdjustmentSummaryController::class, 'submissions'])
         ->name('attendance.adjustment-summary.submissions');
+    Route::get('/attendance/adjustment-summary/submissions/{submission}/items', [AttendanceAdjustmentSummaryController::class, 'submissionItems'])
+        ->name('attendance.adjustment-summary.submissions.items');
 });
 
 // Mayor's Office routes

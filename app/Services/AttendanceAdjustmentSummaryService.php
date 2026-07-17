@@ -6,7 +6,9 @@ use App\Models\AttendanceAdjustmentSubmission;
 use App\Models\AttendanceAdjustmentSubmissionItem;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
+use App\Models\LeaveBalance;
 use App\Models\User;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -37,7 +39,17 @@ class AttendanceAdjustmentSummaryService
      */
     private const CACHE_TTL_SECONDS = 180;
 
-    public function __construct(private readonly AttendanceMonitoringExportService $monitoringExportService) {}
+    /**
+     * Minutes-per-workday divisor used to convert tardiness/undertime
+     * minutes into VL days for the Leave Manager deduction screen (8-hour
+     * workday). See computeSuggestedDeduction().
+     */
+    private const MINUTES_PER_DAY = 480;
+
+    public function __construct(
+        private readonly AttendanceMonitoringExportService $monitoringExportService,
+        private readonly LeaveLedgerService $leaveLedgerService,
+    ) {}
 
     /**
      * @param  Collection<int, Department>  $departments
@@ -178,13 +190,21 @@ class AttendanceAdjustmentSummaryService
     }
 
     /**
-     * @return Collection<int, int> user_id set already submitted (non-voided) for month/year
+     * user_id set already submitted (non-voided) for month/year and not
+     * eligible for resubmission. A dismissed item deliberately does NOT
+     * block resubmission - the Leave Manager's dismiss reason (e.g. "remake
+     * the DTR data") is only actionable if the Timekeeper can resubmit that
+     * employee for the same month; a pending or already-deducted item still
+     * blocks it, same as before.
+     *
+     * @return Collection<int, int>
      */
     public function alreadySubmittedUserIds(int $month, int $year): Collection
     {
         return AttendanceAdjustmentSubmissionItem::query()
             ->where('month', $month)
             ->where('year', $year)
+            ->where('processed_status', '!=', 'dismissed')
             ->whereHas('submission', fn ($q) => $q->where('status', 'submitted'))
             ->pluck('user_id');
     }
@@ -269,6 +289,219 @@ class AttendanceAdjustmentSummaryService
                 'skipped_names' => $skipped->pluck('name')->all(),
             ];
         });
+    }
+
+    /**
+     * Fixed formula (no editable override, no rounding beyond the 3-decimal
+     * DB precision this codebase already uses for balance math elsewhere):
+     * 1 VL day per unfiled-leave day, plus tardiness+undertime minutes
+     * converted at MINUTES_PER_DAY.
+     */
+    public function computeSuggestedDeduction(AttendanceAdjustmentSubmissionItem $item): float
+    {
+        return $item->unfiled_count * 1.0
+            + ($item->tardiness_minutes + $item->undertime_minutes) / self::MINUTES_PER_DAY;
+    }
+
+    /**
+     * Pending (not yet processed) items forwarded to the Leave Manager,
+     * scoped to submissions that are still 'submitted' (not voided).
+     *
+     * @param  array{month?: int, year?: int, department?: string, search?: string, issue?: string}  $filters
+     */
+    public function pendingItemsForLeaveManager(array $filters, int $perPage = 25): LengthAwarePaginator
+    {
+        $query = AttendanceAdjustmentSubmissionItem::query()
+            ->pending()
+            ->whereHas('submission', fn ($q) => $q->where('status', 'submitted'));
+
+        if (! empty($filters['month'])) {
+            $query->where('month', (int) $filters['month']);
+        }
+        if (! empty($filters['year'])) {
+            $query->where('year', (int) $filters['year']);
+        }
+        if (! empty($filters['department'])) {
+            $query->where('department', $filters['department']);
+        }
+
+        match ($filters['issue'] ?? null) {
+            'unfiled' => $query->where('unfiled_count', '>', 0),
+            'tardiness' => $query->where('tardiness_count', '>', 0),
+            'undertime' => $query->where('undertime_count', '>', 0),
+            default => null,
+        };
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
+                ->orWhere('emp_no', 'like', "%{$search}%"));
+        }
+
+        return $query->orderByDesc('created_at')->paginate($perPage);
+    }
+
+    /**
+     * Apply the fixed-formula VL deduction for one pending item: decrements
+     * leave_balances.VL, writes a leave_ledgers entry, marks the item
+     * processed, and logs an hr_audit_trails row - mirroring the exact
+     * balance-mutation/insufficient-balance-guard pattern used by
+     * LeaveRequestService::approveLeave().
+     *
+     * @return array{deducted_days: float, balance_before: float, balance_after: float}
+     *
+     * @throws \RuntimeException if the item was already actioned or the
+     *                           employee's VL balance is insufficient
+     */
+    public function deductForItem(AttendanceAdjustmentSubmissionItem $item, User $actor): array
+    {
+        if ($item->processed_status !== 'pending') {
+            throw new \RuntimeException('This item has already been processed.');
+        }
+
+        $days = round($this->computeSuggestedDeduction($item), 3);
+
+        return DB::transaction(function () use ($item, $days, $actor) {
+            $balance = LeaveBalance::where('user_id', $item->user_id)->lockForUpdate()->first();
+
+            if (! $balance) {
+                throw new \RuntimeException('No leave balance record found for this employee.');
+            }
+
+            $before = (float) ($balance->VL ?? 0);
+
+            if ($before < $days) {
+                throw new \RuntimeException('Insufficient VL balance.');
+            }
+
+            $balance->VL = round($before - $days, 3);
+            $balance->save();
+
+            $item->processed_status = 'processed';
+            $item->processed_by = $actor->id;
+            $item->processed_at = now();
+            $item->deducted_days = $days;
+            $item->save();
+
+            $this->leaveLedgerService->writeLedgerEntry([
+                'user_id' => $item->user_id,
+                'transaction_date' => now()->toDateString(),
+                'transaction_type' => 'ATTENDANCE_DEDUCTION',
+                'leave_type' => 'VL',
+                'debit_vl' => $days,
+                'reference_id' => $item->id,
+                'reference_type' => 'attendance_adjustment_item',
+                'remarks' => "Attendance deficiency deduction ({$item->month}/{$item->year}): unfiled {$item->unfiled_count}, tardiness {$item->tardiness_minutes}m, undertime {$item->undertime_minutes}m",
+                'created_by' => $actor->id,
+            ]);
+
+            try {
+                HRAuditTrail::create([
+                    'actor_user_id' => $actor->id,
+                    'module' => 'leave',
+                    'action' => 'attendance_deficiency_vl_deducted',
+                    'target_type' => 'attendance_adjustment_submission_item',
+                    'target_id' => $item->id,
+                    'details' => [
+                        'user_id' => $item->user_id,
+                        'month' => $item->month,
+                        'year' => $item->year,
+                        'unfiled_count' => $item->unfiled_count,
+                        'tardiness_minutes' => $item->tardiness_minutes,
+                        'undertime_minutes' => $item->undertime_minutes,
+                        'deducted_days' => $days,
+                        'vl_balance_before' => $before,
+                        'vl_balance_after' => $balance->VL,
+                    ],
+                ]);
+            } catch (\Exception) {
+                // audit failure must not block the deduction
+            }
+
+            return [
+                'deducted_days' => $days,
+                'balance_before' => $before,
+                'balance_after' => (float) $balance->VL,
+            ];
+        });
+    }
+
+    /**
+     * Dismiss a pending item with no deduction (e.g. a false-positive flag).
+     *
+     * @throws \RuntimeException if the item was already actioned
+     */
+    public function dismissItem(AttendanceAdjustmentSubmissionItem $item, string $remarks, User $actor): void
+    {
+        if ($item->processed_status !== 'pending') {
+            throw new \RuntimeException('This item has already been processed.');
+        }
+
+        $item->processed_status = 'dismissed';
+        $item->processed_by = $actor->id;
+        $item->processed_at = now();
+        $item->action_remarks = $remarks;
+        $item->save();
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $actor->id,
+                'module' => 'leave',
+                'action' => 'attendance_deficiency_dismissed',
+                'target_type' => 'attendance_adjustment_submission_item',
+                'target_id' => $item->id,
+                'details' => [
+                    'user_id' => $item->user_id,
+                    'month' => $item->month,
+                    'year' => $item->year,
+                    'remarks' => $remarks,
+                ],
+            ]);
+        } catch (\Exception) {
+            // audit failure must not block the dismissal
+        }
+    }
+
+    /**
+     * @param  array<int, int>  $itemIds
+     * @return array{processed: array<int, int>, errors: array<int, array{item_id: int, message: string}>}
+     */
+    public function bulkDeduct(array $itemIds, User $actor): array
+    {
+        $processed = [];
+        $errors = [];
+
+        foreach (AttendanceAdjustmentSubmissionItem::whereIn('id', $itemIds)->get() as $item) {
+            try {
+                $this->deductForItem($item, $actor);
+                $processed[] = $item->id;
+            } catch (\RuntimeException $e) {
+                $errors[] = ['item_id' => $item->id, 'message' => $e->getMessage()];
+            }
+        }
+
+        return ['processed' => $processed, 'errors' => $errors];
+    }
+
+    /**
+     * @param  array<int, int>  $itemIds
+     * @return array{processed: array<int, int>, errors: array<int, array{item_id: int, message: string}>}
+     */
+    public function bulkDismiss(array $itemIds, string $remarks, User $actor): array
+    {
+        $processed = [];
+        $errors = [];
+
+        foreach (AttendanceAdjustmentSubmissionItem::whereIn('id', $itemIds)->get() as $item) {
+            try {
+                $this->dismissItem($item, $remarks, $actor);
+                $processed[] = $item->id;
+            } catch (\RuntimeException $e) {
+                $errors[] = ['item_id' => $item->id, 'message' => $e->getMessage()];
+            }
+        }
+
+        return ['processed' => $processed, 'errors' => $errors];
     }
 
     /**

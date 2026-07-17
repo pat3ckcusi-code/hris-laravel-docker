@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceAdjustmentSubmission;
+use App\Models\AttendanceAdjustmentSubmissionItem;
 use App\Models\Department;
 use App\Models\User;
 use App\Services\AttendanceAdjustmentSummaryService;
@@ -170,10 +171,52 @@ class AttendanceAdjustmentSummaryController extends Controller
         $this->authorizeManager($request->user());
 
         $submissions = AttendanceAdjustmentSubmission::with('submittedBy')
+            ->withCount([
+                'items as pending_count' => fn ($q) => $q->where('processed_status', 'pending'),
+                'items as processed_count' => fn ($q) => $q->where('processed_status', 'processed'),
+                'items as dismissed_count' => fn ($q) => $q->where('processed_status', 'dismissed'),
+            ])
             ->orderByDesc('created_at')
             ->paginate(15);
 
         return view('attendance.adjustment-summary.submissions', compact('submissions'));
+    }
+
+    /**
+     * Per-item Leave Manager review outcome for one submission - lets the
+     * Timekeeper/HR Manager see which employees were dismissed (and why) so
+     * they can re-review/adjust, without duplicating the Leave Manager's own
+     * pending-items screen (AttendanceAdjustmentReviewController).
+     */
+    public function submissionItems(Request $request, AttendanceAdjustmentSubmission $submission): JsonResponse
+    {
+        $this->authorizeManager($request->user());
+
+        $items = $submission->items()
+            ->with('processedBy:id,name,first_name,last_name')
+            ->orderBy('name')
+            ->get([
+                'id', 'name', 'emp_no', 'department', 'unfiled_count',
+                'tardiness_minutes', 'undertime_minutes', 'processed_status',
+                'deducted_days', 'action_remarks', 'processed_by', 'processed_at',
+            ])
+            ->map(fn (AttendanceAdjustmentSubmissionItem $item) => [
+                'name' => $item->name,
+                'emp_no' => $item->emp_no,
+                'department' => $item->department,
+                'unfiled_count' => $item->unfiled_count,
+                'tardiness_minutes' => $item->tardiness_minutes,
+                'undertime_minutes' => $item->undertime_minutes,
+                'processed_status' => $item->processed_status,
+                'deducted_days' => $item->deducted_days,
+                'action_remarks' => $item->action_remarks,
+                'processed_by' => $item->processedBy
+                    ? (trim(($item->processedBy->first_name ?? '').' '.($item->processedBy->last_name ?? '')) ?: $item->processedBy->name)
+                    : null,
+                'processed_at' => $item->processed_at?->format('M d, Y g:i A'),
+            ]);
+
+        return response()->json(['items' => $items]);
     }
 
     private function resolveMonthYear(Request $request): array

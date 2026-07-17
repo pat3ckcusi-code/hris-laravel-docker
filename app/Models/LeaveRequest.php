@@ -88,6 +88,7 @@ class LeaveRequest extends Model
         'details_location_specify',
         'details_sick_illness',
         'details_sick_treatment',
+        'details_others_type',
         //  balances at time of filing (for auditing/printing)
         'balance_vacation_leave',
         'balance_sick_leave',

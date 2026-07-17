@@ -244,8 +244,38 @@
                             <input type="checkbox" name="leave_types[]" value="Study / Examination Leave" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
                             <span class="text-sm text-slate-700">Study / Examination Leave</span>
                         </label>
+                        <div class="flex items-center space-x-2 p-2 rounded hover:bg-blue-100">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="leave_types[]" value="Others" id="othersCheckbox" class="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500">
+                                <span class="text-sm text-slate-700">Others</span>
+                            </label>
+                            <select name="details_others_type" id="detailsOthersType" class="d-none text-sm border border-gray-300 rounded px-1 py-0.5" style="display:none;">
+                                <option value="">-- Select type --</option>
+                                <option value="Mourning Leave">Mourning Leave</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    const othersCheckbox = document.getElementById('othersCheckbox');
+                    const othersDropdown = document.getElementById('detailsOthersType');
+                    function toggleOthersDropdown() {
+                        if (!othersCheckbox || !othersDropdown) return;
+                        if (othersCheckbox.checked) {
+                            othersDropdown.classList.remove('d-none');
+                            othersDropdown.style.display = 'inline-block';
+                        } else {
+                            othersDropdown.classList.add('d-none');
+                            othersDropdown.style.display = 'none';
+                        }
+                    }
+                    if (othersCheckbox) {
+                        othersCheckbox.addEventListener('change', toggleOthersDropdown);
+                        toggleOthersDropdown();
+                    }
+                });
+                </script>
                 <div id="individualDateSection" class="border-t pt-6">
                     <h3 class="text-lg font-semibold text-slate-900 mb-4">Select Dates & Allocate Days</h3>
                     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -432,6 +462,7 @@
                             const needsStudy = checked.filter(v => /study/i.test(v));
                             const needsStudyReason = needsStudy.slice();
                             const needsSick = isRangeMode ? [] : checked.filter(v => /sick/i.test(v));
+                            const needsOthers = checked.filter(v => v === 'Others');
                             const msgs = [];
 
                             if (isRangeMode) {
@@ -468,6 +499,14 @@
                                 if (!sickRadio && !sickIllness) {
                                     msgs.push('6.B Details of Leave (In Hospital / Out Patient) required for Sick Leave.');
                                 }
+                            }
+
+                            if (needsOthers.length) {
+                                const othersType = (document.getElementById('detailsOthersType') && document.getElementById('detailsOthersType').value || '').trim();
+                                if (!othersType) {
+                                    msgs.push('Please select a type for "Others" leave.');
+                                }
+                                if (!reasonVal) msgs.push('Reason / Purpose is required for Others leave.');
                             }
 
                             if (msgs.length) {

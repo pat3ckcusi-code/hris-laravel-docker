@@ -133,7 +133,12 @@ class ShiftLogController extends Controller
                     .(($d['no_break'] ?? false) ? ', no break' : '')
                 : 'Corrected to Standard Day',
             'dtr_exemption_toggled' => ! empty($d['exempt']) ? 'Marked exempt from DTR' : 'Restored to DTR tracking',
-            'shift_schedule_updated' => "Week of {$d['week_start']} - {$d['days_changed']} day(s) changed",
+            // Two distinct write paths log the same action: store()/storeBulk()
+            // (week grid) stamp 'week_start'; applyWeeklyPattern() (date-range
+            // panel) stamps 'start_date'/'end_date' instead - never both.
+            'shift_schedule_updated' => isset($d['week_start'])
+                ? "Week of {$d['week_start']} - {$d['days_changed']} day(s) changed"
+                : "{$d['start_date']} to {$d['end_date']} - {$d['days_changed']} day(s) changed",
             'rotation_generated' => "{$d['on_days']}-on / {$d['off_days']}-off, {$d['start_date']} to {$d['end_date']}",
             'shift_template_created', 'shift_template_updated' => "{$d['time_in']}-{$d['time_out']}"
                 .(($d['is_global'] ?? true) ? ', Shared' : ', scoped to '.count($d['department_ids'] ?? []).' dept(s)'),

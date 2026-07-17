@@ -276,6 +276,7 @@ class LeaveRequestController extends Controller
                 'details_location_specify' => 'nullable|string|max:255',
                 'details_sick_illness' => 'nullable|string|max:255',
                 'details_sick_treatment' => 'nullable|string|max:50',
+                'details_others_type' => 'nullable|string|max:100',
                 'allocation' => 'nullable|array|max:90',
                 'allocation.*.type' => 'nullable|string|max:100',
                 'allocation.*.days' => 'nullable|numeric|min:0|max:1',
@@ -403,6 +404,7 @@ class LeaveRequestController extends Controller
             $needsVacationSpecial = false;
             $needsStudy = false;
             $needsSick = false;
+            $needsOthers = false;
             $requiredForReason = [];
             foreach ($selectedTypes as $t) {
                 $tn = strtolower(trim($t));
@@ -416,6 +418,10 @@ class LeaveRequestController extends Controller
                 }
                 if (strpos($tn, 'sick') !== false) {
                     $needsSick = true;
+                }
+                if ($tn === 'others') {
+                    $needsOthers = true;
+                    $requiredForReason[] = $t;
                 }
             }
 
@@ -448,6 +454,14 @@ class LeaveRequestController extends Controller
                 $sickIllness = $request->input('details_sick_illness');
                 if (empty($sick) && empty(trim((string) $sickIllness))) {
                     return redirect()->back()->withErrors(['details_sick_treatment' => '6.B Details of Leave (In Hospital / Out Patient) required for Sick Leave.'])->withInput();
+                }
+            }
+
+            // Server-side: require a selected type for "Others" leave
+            if ($needsOthers) {
+                $othersType = $request->input('details_others_type');
+                if (empty(trim((string) $othersType))) {
+                    return redirect()->back()->withErrors(['details_others_type' => 'Please select a type for "Others" leave.'])->withInput();
                 }
             }
 
@@ -552,6 +566,17 @@ class LeaveRequestController extends Controller
                             $lwopDays += $rem;
                         }
                         break;
+                    case 'Others':
+                        // Mourning Leave (currently the only "Others" dropdown value) draws from Vacation Leave credits
+                        $ded = min($vl, $totalDaysForDate);
+                        $vl -= $ded;
+                        $dedVL += $ded;
+                        $paidDays += $ded;
+                        $rem = $totalDaysForDate - $ded;
+                        if ($rem > 0) {
+                            $lwopDays += $rem;
+                        }
+                        break;
                     default:
                         // other leave types do not deduct from balances
                         $paidDays += $totalDaysForDate;
@@ -598,6 +623,7 @@ class LeaveRequestController extends Controller
                     'details_location_specify' => $request->input('details_location_specify'),
                     'details_sick_illness' => $request->input('details_sick_illness'),
                     'details_sick_treatment' => $request->input('details_sick_treatment'),
+                    'details_others_type' => $request->input('details_others_type'),
                     'status' => 'pending',
                     'total_days' => $totalDays,
                     'paid_days' => $paidDays,

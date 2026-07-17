@@ -7,6 +7,7 @@ use App\Models\AttendanceAdjustmentSubmissionItem;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\HRAuditTrail;
+use App\Services\AttendanceAdjustmentSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -213,6 +214,52 @@ class AttendanceAdjustmentSummaryTest extends TestCase
         $this->assertSame(2, AttendanceAdjustmentSubmissionItem::where('user_id', $employee->id)->count());
     }
 
+    public function test_dismissed_item_can_be_resubmitted_same_month(): void
+    {
+        $deptOther = $this->makeDepartment('Other Dept');
+        $dept = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $dept->Dept_id]);
+        Dtr::create(['employee_id' => $employee->id, 'date' => '2026-06-01', 'late_minutes' => 15, 'undertime_minutes' => 0, 'is_absent' => false]);
+
+        $tk = $this->createTimeKeeper(['Dept_id' => $deptOther->Dept_id]);
+        $params = ['department_id' => $dept->Dept_id, 'month' => 6, 'year' => 2026];
+
+        $this->actingAs($tk)->postJson(route('attendance.adjustment-summary.submit'), $params)
+            ->assertJson(['submitted_count' => 1, 'skipped_count' => 0]);
+
+        $item = AttendanceAdjustmentSubmissionItem::where('user_id', $employee->id)->first();
+        app(AttendanceAdjustmentSummaryService::class)->dismissItem($item, 'remake', $this->createLeaveManager());
+
+        // A dismissed item must not block resubmission - otherwise the Leave
+        // Manager's dismiss reason (e.g. "remake the DTR data") is never
+        // actionable, since the Timekeeper could never resubmit this
+        // employee for the same month.
+        $this->actingAs($tk)->postJson(route('attendance.adjustment-summary.submit'), $params)
+            ->assertJson(['submitted_count' => 1, 'skipped_count' => 0]);
+
+        $this->assertSame(2, AttendanceAdjustmentSubmissionItem::where('user_id', $employee->id)->count());
+    }
+
+    public function test_pending_or_processed_item_still_blocks_resubmission_same_month(): void
+    {
+        $deptOther = $this->makeDepartment('Other Dept');
+        $dept = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $dept->Dept_id]);
+        Dtr::create(['employee_id' => $employee->id, 'date' => '2026-06-01', 'late_minutes' => 15, 'undertime_minutes' => 0, 'is_absent' => false]);
+
+        $tk = $this->createTimeKeeper(['Dept_id' => $deptOther->Dept_id]);
+        $params = ['department_id' => $dept->Dept_id, 'month' => 6, 'year' => 2026];
+
+        $this->actingAs($tk)->postJson(route('attendance.adjustment-summary.submit'), $params)
+            ->assertJson(['submitted_count' => 1, 'skipped_count' => 0]);
+
+        // Item stays 'pending' (untouched by the Leave Manager) - still blocks.
+        $this->actingAs($tk)->postJson(route('attendance.adjustment-summary.submit'), $params)
+            ->assertJson(['submitted_count' => 0, 'skipped_count' => 1]);
+
+        $this->assertSame(1, AttendanceAdjustmentSubmissionItem::where('user_id', $employee->id)->count());
+    }
+
     public function test_audit_trail_logged_on_submission(): void
     {
         $dept = $this->makeDepartment('Dept A');
@@ -237,5 +284,76 @@ class AttendanceAdjustmentSummaryTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertStringContainsString('application/pdf', $response->headers->get('Content-Type'));
+    }
+
+    public function test_submissions_view_shows_reviewed_counts(): void
+    {
+        $dept = $this->makeDepartment('Dept A');
+        $employeeA = $this->createEmployee(['Dept_id' => $dept->Dept_id, 'last_name' => 'DeductMe']);
+        $employeeB = $this->createEmployee(['Dept_id' => $dept->Dept_id, 'last_name' => 'DismissMe']);
+        $this->createLeaveBalance($employeeA, ['VL' => 15]);
+
+        $submission = AttendanceAdjustmentSubmission::create([
+            'submitted_by' => $this->createTimeKeeper()->id, 'month' => 6, 'year' => 2026,
+            'department_ids' => [$dept->Dept_id], 'department_label' => 'Dept A',
+            'item_count' => 2, 'skipped_count' => 0, 'status' => 'submitted',
+        ]);
+        $itemA = AttendanceAdjustmentSubmissionItem::create([
+            'submission_id' => $submission->id, 'user_id' => $employeeA->id, 'month' => 6, 'year' => 2026,
+            'name' => 'DeductMe', 'unfiled_count' => 1,
+        ]);
+        AttendanceAdjustmentSubmissionItem::create([
+            'submission_id' => $submission->id, 'user_id' => $employeeB->id, 'month' => 6, 'year' => 2026,
+            'name' => 'DismissMe', 'unfiled_count' => 1,
+        ]);
+
+        app(AttendanceAdjustmentSummaryService::class)->deductForItem($itemA->fresh(), $this->createLeaveManager());
+
+        $response = $this->actingAs($this->createTimeKeeper())->get(route('attendance.adjustment-summary.submissions'));
+
+        $response->assertStatus(200);
+        $response->assertSee('1 deducted');
+        $response->assertSee('1 pending');
+    }
+
+    public function test_submission_items_endpoint_returns_status_and_dismiss_remarks(): void
+    {
+        $dept = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $dept->Dept_id, 'last_name' => 'Dismissed']);
+
+        $submission = AttendanceAdjustmentSubmission::create([
+            'submitted_by' => $this->createTimeKeeper()->id, 'month' => 6, 'year' => 2026,
+            'department_ids' => [$dept->Dept_id], 'department_label' => 'Dept A',
+            'item_count' => 1, 'skipped_count' => 0, 'status' => 'submitted',
+        ]);
+        $item = AttendanceAdjustmentSubmissionItem::create([
+            'submission_id' => $submission->id, 'user_id' => $employee->id, 'month' => 6, 'year' => 2026,
+            'emp_no' => $employee->EmpNo, 'name' => 'Dismissed', 'unfiled_count' => 1,
+        ]);
+
+        $leaveManager = $this->createLeaveManager();
+        app(AttendanceAdjustmentSummaryService::class)->dismissItem($item->fresh(), 'Already excused via ETA.', $leaveManager);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.adjustment-summary.submissions.items', $submission));
+
+        $response->assertStatus(200);
+        $row = collect($response->json('items'))->firstWhere('emp_no', $employee->EmpNo);
+        $this->assertSame('dismissed', $row['processed_status']);
+        $this->assertSame('Already excused via ETA.', $row['action_remarks']);
+    }
+
+    public function test_submission_items_endpoint_denies_leave_manager(): void
+    {
+        $dept = $this->makeDepartment('Dept A');
+        $submission = AttendanceAdjustmentSubmission::create([
+            'submitted_by' => $this->createTimeKeeper()->id, 'month' => 6, 'year' => 2026,
+            'department_ids' => [$dept->Dept_id], 'department_label' => 'Dept A',
+            'item_count' => 0, 'skipped_count' => 0, 'status' => 'submitted',
+        ]);
+
+        $this->actingAs($this->createLeaveManager())
+            ->getJson(route('attendance.adjustment-summary.submissions.items', $submission))
+            ->assertStatus(403);
     }
 }
