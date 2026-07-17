@@ -283,6 +283,14 @@
         'time keeper' => [
             ['label' => 'Dashboard',   'icon' => 'dashboard', 'route' => 'dashboard', 'active' => ['dashboard']],
 
+            ['section' => 'Self-Service'],
+            ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',               'active' => ['dashboard.employee.pds']],
+            ['label' => 'ETA',               'icon' => 'eta',       'route' => 'dashboard.employee.eta',               'active' => ['dashboard.employee.eta']],
+            ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
+            ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
             ['label' => 'Shift Templates',  'icon' => 'work_schedule',     'route' => 'attendance.shifts',                 'active' => ['attendance.shifts*']],
