@@ -969,7 +969,7 @@ if (rotationForm) {
         Swal.fire({
             icon: 'warning',
             title: 'Generate rotation pattern?',
-            html: 'This will generate a <b>' + shiftLabel + '</b> rotation for <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
+            html: 'This will generate a <b>' + shiftLabel + '</b> rotation for <b>{{ $selectedEmployee?->first_name }} {{ $selectedEmployee?->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
             showCancelButton: true,
             confirmButtonText: 'Yes, generate',
             confirmButtonColor: '#2563eb',
@@ -988,7 +988,7 @@ if (weeklyPatternForm) {
         Swal.fire({
             icon: 'warning',
             title: 'Apply weekly pattern?',
-            html: 'This will apply the selected Mon–Sun pattern to <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
+            html: 'This will apply the selected Mon–Sun pattern to <b>{{ $selectedEmployee?->first_name }} {{ $selectedEmployee?->last_name }}</b> from <b>' + from + '</b> to <b>' + to + '</b>.',
             showCancelButton: true,
             confirmButtonText: 'Yes, apply',
             confirmButtonColor: '#2563eb',
@@ -1013,7 +1013,7 @@ if (weekForm) {
             Swal.fire({
                 icon: 'warning',
                 title: 'Save week schedule?',
-                html: 'This will save the displayed week\'s schedule for <b>{{ $selectedEmployee->first_name }} {{ $selectedEmployee->last_name }}</b>. DTRs for the week will be recomputed.',
+                html: 'This will save the displayed week\'s schedule for <b>{{ $selectedEmployee?->first_name }} {{ $selectedEmployee?->last_name }}</b>. DTRs for the week will be recomputed.',
                 showCancelButton: true,
                 confirmButtonText: 'Yes, save',
                 confirmButtonColor: '#2563eb',
