@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\LeaveCardExportService;
 use App\Services\LeaveCreditComputationService;
+use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveLedgerService;
 use App\Services\LwopAggregationService;
 use App\Support\HrisConstants;
@@ -74,7 +75,7 @@ class LeaveManagerController extends Controller
      */
     public function approvedLeaves(Request $request)
     {
-        $query = LeaveRequest::with('user')
+        $query = LeaveRequest::with(['user', 'pendingCancellationDates'])
             ->where('status', 'approved');
 
         $month = $request->query('month', date('Y-m'));
@@ -124,7 +125,10 @@ class LeaveManagerController extends Controller
                 'total_days' => $item->total_days ?? '-',
                 'date_filed' => $item->date_filed
                     ? Carbon::parse($item->date_filed)->format('M d, Y') : '-',
-                'cancellation_status' => $item->cancellation_status ?? '',
+                // Whole-row status takes priority; a partial (per-date) cancellation has
+                // no whole-row status of its own, so fall back to whichever stage its
+                // pending dates are at (see LeaveRequest::pendingCancellationDates()).
+                'cancellation_status' => $item->cancellation_status ?? $item->pendingCancellationDates->first()?->cancellation_status ?? '',
             ]);
 
             return response()->json(['rows' => $rows]);
@@ -146,7 +150,12 @@ class LeaveManagerController extends Controller
     {
         $query = LeaveRequest::with(['user', 'leaveDates'])
             ->where('status', 'approved')
-            ->where('cancellation_status', 'AO Endorsed');
+            ->where(function ($q) {
+                $q->where('cancellation_status', 'AO Endorsed')
+                    ->orWhereHas('leaveDates', function ($dq) {
+                        $dq->where('cancellation_status', 'AO Endorsed');
+                    });
+            });
 
         $emp = $request->query('emp');
         if ($emp) {
@@ -159,31 +168,40 @@ class LeaveManagerController extends Controller
 
         if ($request->ajax()) {
             $items = $query->orderBy('cancellation_requested_at', 'desc')->get();
-            $rows = $items->map(fn ($item) => [
-                'id' => $item->id,
-                'employee' => $item->user
-                    ? trim(($item->user->last_name ?? '').', '.($item->user->first_name ?? ''))
-                    : '-',
-                'department' => ($item->user && isset($departments[$item->user->Dept_id]))
-                    ? $departments[$item->user->Dept_id]
-                    : '-',
-                'leave_type' => strtoupper($item->leave_type ?? ''),
-                'start_date' => $item->start_date ? Carbon::parse($item->start_date)->format('M d, Y') : '-',
-                'end_date' => $item->end_date ? Carbon::parse($item->end_date)->format('M d, Y') : '-',
-                'start_date_raw' => $item->start_date ?? '',
-                'end_date_raw' => $item->end_date ?? '',
-                'designation' => $item->user?->designation ?? '',
-                'cancellation_reason' => $item->cancellation_reason ?? '-',
-                'status' => ucfirst($item->status ?? '-'),
-                'requested_at' => $item->cancellation_requested_at
-                    ? Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i')
-                    : '-',
-                'requested_human' => $item->cancellation_requested_at
-                    ? Carbon::parse($item->cancellation_requested_at)->diffForHumans()
-                    : '-',
-                'dh_remarks' => $item->cancellation_dh_remarks ?? '-',
-                'ao_remarks' => $item->cancellation_ao_remarks ?? '-',
-            ]);
+            $rows = $items->map(function ($item) use ($departments) {
+                $pendingDates = $item->cancellation_status === 'AO Endorsed'
+                    ? collect()
+                    : $item->leaveDates->where('cancellation_status', 'AO Endorsed');
+
+                return [
+                    'id' => $item->id,
+                    'employee' => $item->user
+                        ? trim(($item->user->last_name ?? '').', '.($item->user->first_name ?? ''))
+                        : '-',
+                    'department' => ($item->user && isset($departments[$item->user->Dept_id]))
+                        ? $departments[$item->user->Dept_id]
+                        : '-',
+                    'leave_type' => strtoupper($item->leave_type ?? ''),
+                    'start_date' => $item->start_date ? Carbon::parse($item->start_date)->format('M d, Y') : '-',
+                    'end_date' => $item->end_date ? Carbon::parse($item->end_date)->format('M d, Y') : '-',
+                    'start_date_raw' => $item->start_date ?? '',
+                    'end_date_raw' => $item->end_date ?? '',
+                    'designation' => $item->user?->designation ?? '',
+                    'cancellation_reason' => $item->cancellation_reason ?? ($pendingDates->first()->cancellation_reason ?? '-'),
+                    'status' => ucfirst($item->status ?? '-'),
+                    'requested_at' => $item->cancellation_requested_at
+                        ? Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i')
+                        : '-',
+                    'requested_human' => $item->cancellation_requested_at
+                        ? Carbon::parse($item->cancellation_requested_at)->diffForHumans()
+                        : '-',
+                    'dh_remarks' => $item->cancellation_dh_remarks ?? ($pendingDates->first()->cancellation_dh_remarks ?? '-'),
+                    'ao_remarks' => $item->cancellation_ao_remarks ?? ($pendingDates->first()->cancellation_ao_remarks ?? '-'),
+                    'partial' => $pendingDates->isNotEmpty(),
+                    'pending_date_ids' => $pendingDates->pluck('id')->values(),
+                    'pending_dates' => $pendingDates->pluck('leave_date')->map(fn ($d) => Carbon::parse($d)->format('M d, Y'))->values(),
+                ];
+            });
 
             return response()->json(['rows' => $rows]);
         }
@@ -202,7 +220,12 @@ class LeaveManagerController extends Controller
     public function apiPendingCancellationCount(): JsonResponse
     {
         $count = LeaveRequest::where('status', 'approved')
-            ->where('cancellation_status', 'AO Endorsed')
+            ->where(function ($q) {
+                $q->where('cancellation_status', 'AO Endorsed')
+                    ->orWhereHas('leaveDates', function ($dq) {
+                        $dq->where('cancellation_status', 'AO Endorsed');
+                    });
+            })
             ->count();
 
         return response()->json(['count' => $count]);
@@ -488,6 +511,183 @@ class LeaveManagerController extends Controller
                         ],
                         actor: Auth::user()->name,
                         notes: $leave->cancellation_remarks ?? null,
+                    ));
+                }
+            } catch (\Exception $ex) {
+            }
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json(['error' => 'Failed to reject cancellation: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Per-date variant of apiApproveCancellation(): final approval + balance refund for
+     * a subset of dates on an approved multi-date leave. Leaves the untouched dates
+     * approved; the parent row's aggregates are recomputed rather than the row being
+     * unconditionally marked cancelled. Refund always uses the is_lwop-gated per-date
+     * loop (the whole-row "applied" JSON shortcut can't be attributed to a subset).
+     */
+    public function apiApproveDateCancellation(Request $request, $leave): JsonResponse
+    {
+        $request->validate([
+            'leave_date_ids' => 'required|array|min:1',
+            'leave_date_ids.*' => 'integer',
+            'remarks' => 'nullable|string|max:2000',
+        ]);
+
+        $leave = LeaveRequest::with(['user', 'leaveDates'])->find($leave);
+        if (! $leave) {
+            return response()->json(['error' => 'Leave not found'], 404);
+        }
+
+        if ($leave->status !== 'approved') {
+            return response()->json(['error' => 'Only approved leaves can be cancelled'], 422);
+        }
+
+        $dates = $leave->leaveDates()
+            ->whereIn('id', $request->input('leave_date_ids'))
+            ->where('cancellation_status', 'AO Endorsed')
+            ->get();
+
+        if ($dates->count() !== count($request->input('leave_date_ids'))) {
+            return response()->json(['error' => 'One or more selected dates must be endorsed by the Administrative Officer first'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $user = $leave->user;
+            $lb = $user->leaveBalance ?? null;
+            $aggregateService = app(LeaveDateAggregateService::class);
+
+            $restored = $aggregateService->refundDates($dates, $lb);
+            if ($lb) {
+                $lb->save();
+            }
+
+            foreach ($dates as $ld) {
+                $ld->is_cancelled = true;
+                $ld->cancel_reason = $ld->cancellation_reason ?? $request->input('remarks') ?? 'Cancelled by manager approval';
+                $ld->cancelled_by = Auth::id();
+                $ld->cancelled_at = now();
+                $ld->cancellation_status = 'Cancelled';
+                $ld->cancellation_reviewed_by = Auth::id();
+                $ld->cancellation_reviewed_at = now();
+                $ld->cancellation_remarks = $request->input('remarks');
+                $ld->save();
+            }
+
+            $aggregateService->recomputeParentAfterDateChange($leave, 'Cancelled');
+
+            HRAuditTrail::create([
+                'actor_user_id' => Auth::id(),
+                'module' => 'leave',
+                'action' => 'partial_cancel_restore_balances',
+                'target_type' => 'leave_request',
+                'target_id' => $leave->id,
+                'details' => [
+                    'leave_date_ids' => $dates->pluck('id')->all(),
+                    'restored' => $restored,
+                    'cancelled_by' => Auth::id(),
+                    'cancelled_at' => now()->toDateTimeString(),
+                    'remarks' => $request->input('remarks'),
+                ],
+            ]);
+
+            DB::commit();
+
+            try {
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $leave->user_id,
+                    'transaction_date' => now()->toDateString(),
+                    'transaction_type' => 'LEAVE_CANCELLED',
+                    'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
+                    'credit_vl' => floatval($restored['VL'] ?? 0),
+                    'credit_sl' => floatval($restored['SL'] ?? 0),
+                    'debit_vl' => 0,
+                    'debit_sl' => 0,
+                    'reference_id' => $leave->id,
+                    'reference_type' => 'leave_request',
+                    'created_by' => Auth::id(),
+                    'is_system' => false,
+                    'remarks' => 'Partial date cancellation',
+                ]);
+            } catch (\Throwable $ledgerEx) {
+                Log::error('LeaveLedger write failed on partial cancellation', ['leave_id' => $leave->id, 'error' => $ledgerEx->getMessage()]);
+            }
+
+            Log::info('Partial cancellation approved', [
+                'leave_id' => $leave->id,
+                'leave_date_ids' => $dates->pluck('id')->all(),
+                'employee_id' => $user->id,
+                'manager_id' => Auth::id(),
+            ]);
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json(['error' => 'Failed to approve cancellation: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Per-date variant of apiRejectCancellation(): rejects the pending cancellation for a
+     * subset of dates. No balance change — nothing has been cancelled yet at this stage.
+     */
+    public function apiRejectDateCancellation(Request $request, $leave): JsonResponse
+    {
+        $request->validate([
+            'leave_date_ids' => 'required|array|min:1',
+            'leave_date_ids.*' => 'integer',
+            'remarks' => 'required|string|max:2000',
+        ]);
+
+        $leave = LeaveRequest::with(['user', 'leaveDates'])->find($leave);
+        if (! $leave) {
+            return response()->json(['error' => 'Leave not found'], 404);
+        }
+
+        $dates = $leave->leaveDates()
+            ->whereIn('id', $request->input('leave_date_ids'))
+            ->where('cancellation_status', 'AO Endorsed')
+            ->get();
+
+        if ($dates->count() !== count($request->input('leave_date_ids'))) {
+            return response()->json(['error' => 'One or more selected dates must be endorsed by the Administrative Officer first'], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            foreach ($dates as $ld) {
+                $ld->cancellation_status = 'Rejected';
+                $ld->cancellation_reviewed_by = Auth::id();
+                $ld->cancellation_reviewed_at = now();
+                $ld->cancellation_remarks = $request->input('remarks');
+                $ld->save();
+            }
+            DB::commit();
+
+            Log::info('Partial cancellation rejected', [
+                'leave_id' => $leave->id,
+                'leave_date_ids' => $dates->pluck('id')->all(),
+                'manager_id' => Auth::id(),
+            ]);
+
+            try {
+                if ($leave->user) {
+                    $leave->user->notify(new HrisTransactionNotification(
+                        requestType: 'Leave Request',
+                        status: 'Partial Cancellation Rejected',
+                        details: [
+                            'Leave Type' => $leave->leave_type ?? 'N/A',
+                            'Dates' => $dates->pluck('leave_date')->map(fn ($d) => Carbon::parse($d)->format('M j, Y'))->implode(', '),
+                        ],
+                        actor: Auth::user()->name,
+                        notes: $request->input('remarks'),
                     ));
                 }
             } catch (\Exception $ex) {
@@ -1262,25 +1462,10 @@ class LeaveManagerController extends Controller
                 'streak_sort' => $streak['streak'],
                 'streak_started_on' => $streak['streak_started_on'],
                 'episodes_this_semester' => $lwopService->countAwolEpisodesThisSemester($employee),
-                'status' => $this->awolSeverityLabel($streak['streak']),
+                'status' => $lwopService->awolSeverityLabel($streak['streak']),
             ];
         })->filter()->sortByDesc('streak_sort')->values();
 
         return response()->json(['data' => $rows]);
-    }
-
-    /**
-     * Severity band for the AWOL Monitor. 30+ workdays is the CSC threshold for
-     * separation without prior notice; below that, a Return-to-Work Order is required
-     * first — these bands give HR lead time to act before it gets there.
-     */
-    private function awolSeverityLabel(int $streak): string
-    {
-        return match (true) {
-            $streak >= 30 => 'critical',
-            $streak >= 25 => 'urgent',
-            $streak >= 15 => 'warning',
-            default => 'watch',
-        };
     }
 }

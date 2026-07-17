@@ -14,6 +14,7 @@ use App\Notifications\HrisTransactionNotification;
 use App\Services\ApprovalNotificationService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
+use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use App\Services\PersonnelLogImportService;
 use App\Support\LeaveTypeResolver;
@@ -173,7 +174,7 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $records = $query->with(['lastPrintedBy', 'originalDatesReplaced'])->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(function ($r) {
             $leaveTypeLabel = $r->leave_type ?? '';
@@ -191,6 +192,7 @@ class DepartmentHeadController extends Controller
                 'status' => $r->status,
                 'printing_allowed' => (bool) $r->printing_allowed,
                 'rescheduled_from_id' => $r->rescheduled_from_id,
+                'original_dates_replaced' => $r->originalDatesReplaced->map(fn ($d) => Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', '),
                 'print_count' => (int) ($r->print_count ?? 0),
                 'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
                 'last_printed_by_name' => optional($r->lastPrintedBy)->name,
@@ -1611,8 +1613,8 @@ class DepartmentHeadController extends Controller
         // If this is a reschedule request, unfreeze the original leave
         $isReschedule = ! empty($leave->rescheduled_from_id);
         if ($isReschedule) {
-            LeaveRequest::where('id', $leave->rescheduled_from_id)
-                ->update(['reschedule_status' => null]);
+            app(LeaveDateAggregateService::class)
+                ->unfreezeOriginalReschedule($leave->id, $leave->rescheduled_from_id);
         }
 
         // notify employee about rejection

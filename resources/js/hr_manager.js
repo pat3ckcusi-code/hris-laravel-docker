@@ -758,6 +758,41 @@ const bindLeaveAnalytics = (root) => {
                     options: { responsive: true, maintainAspectRatio: false },
                 });
             }
+
+            // Department comparison table
+            const deptEl = document.getElementById('departmentComparisonTable');
+            if (deptEl && data.department_comparison) {
+                const rows = data.department_comparison.map((d) => `<tr>
+                    <td>${d.department}</td>
+                    <td>${d.employee_count}</td>
+                    <td>${d.days_used}</td>
+                    <td>${d.avg_vl}</td>
+                    <td>${d.avg_sl}</td>
+                </tr>`).join('');
+
+                deptEl.innerHTML = `<table class="hrm-table">
+                    <thead><tr><th>Department</th><th>Employees</th><th>Days Used</th><th>Avg VL</th><th>Avg SL</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">No data</td></tr>'}</tbody>
+                </table>`;
+            }
+
+            // AWOL / overuse risk table
+            const awolEl = document.getElementById('awolRiskTable');
+            if (awolEl && data.awol_risk) {
+                const rows = data.awol_risk.map((r) => `<tr>
+                    <td>${r.emp_no}</td>
+                    <td>${r.name}</td>
+                    <td>${r.department}</td>
+                    <td>${r.streak}</td>
+                    <td>${r.episodes_this_semester}</td>
+                    <td><span class="att-badge att-badge-${r.status}">${r.status}</span></td>
+                </tr>`).join('');
+
+                awolEl.innerHTML = `<table class="hrm-table">
+                    <thead><tr><th>EmpNo</th><th>Name</th><th>Department</th><th>Streak</th><th>Episodes (Semester)</th><th>Severity</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;">No employees currently accumulating unauthorized absence.</td></tr>'}</tbody>
+                </table>`;
+            }
         })
         .catch(() => { /* Silently ignore analytics load failure */ });
 };

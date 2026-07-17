@@ -126,6 +126,31 @@ class LeaveRequest extends Model
         return $this->hasMany(LeaveDate::class);
     }
 
+    /**
+     * Dates with an active per-date cancellation request (see requestPartialCancellation).
+     * Distinct from the whole-row cancellation_status column on this model, which stays
+     * null for a partial cancellation - the employee's leave list needs this relation to
+     * surface that state, since it isn't visible via cancellation_status alone.
+     */
+    public function pendingCancellationDates()
+    {
+        return $this->hasMany(LeaveDate::class)
+            ->whereIn('cancellation_status', ['Pending Cancellation', 'DH Recommended', 'AO Endorsed']);
+    }
+
+    /**
+     * The original leave_dates rows (belonging to a DIFFERENT LeaveRequest - the one
+     * this leave was rescheduled from) that were replaced by this leave specifically.
+     * More precise than reading rescheduledFrom's current start_date/end_date, which
+     * gets recomputed as other reschedules/cancellations touch the same original and
+     * so no longer reflects what THIS particular reschedule replaced once more than
+     * one reschedule has come off the same original.
+     */
+    public function originalDatesReplaced()
+    {
+        return $this->hasMany(LeaveDate::class, 'rescheduled_to_leave_request_id');
+    }
+
     public function lastPrintedBy()
     {
         return $this->belongsTo(User::class, 'last_printed_by');

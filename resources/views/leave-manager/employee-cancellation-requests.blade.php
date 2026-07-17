@@ -99,20 +99,36 @@
                         $requestedFull = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i') : '-';
                         $dhRemarks = $item->cancellation_dh_remarks ?? '-';
                         $aoRemarks = $item->cancellation_ao_remarks ?? '-';
+
+                        // Partial (per-date) cancellation: whole-row cancellation_status stays null
+                        // for these, so a row can only be here via the leaveDates match. When that's
+                        // the case, act on just those dates, not the whole leave.
+                        $stagePendingDates = $item->leaveDates->where('cancellation_status', 'AO Endorsed');
+                        $isPartial = $item->cancellation_status !== 'AO Endorsed' && $stagePendingDates->isNotEmpty();
+                        $partialDateIds = $isPartial ? $stagePendingDates->pluck('id')->values() : collect();
+                        $partialDatesLabel = $isPartial
+                            ? $stagePendingDates->map(fn ($d) => \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', ')
+                            : null;
                     @endphp
                     <tr class="cancellation-row" style="cursor:pointer;"
                         data-id="{{ $item->id }}"
                         data-employee="{{ $empName }}"
                         data-dept="{{ $dept }}"
                         data-leave-type="{{ $leaveType }}"
-                        data-period="{{ $period }}"
+                        data-period="{{ $isPartial ? $partialDatesLabel : $period }}"
                         data-reason="{{ e($item->cancellation_reason ?? '-') }}"
                         data-dh-remarks="{{ e($dhRemarks) }}"
                         data-ao-remarks="{{ e($aoRemarks) }}"
                         data-requested="{{ $requestedFull }}"
+                        data-partial="{{ $isPartial ? '1' : '0' }}"
+                        data-date-ids="{{ $partialDateIds->toJson() }}"
                     >
                         <td class="text-center" onclick="event.stopPropagation()">
-                            <input type="checkbox" class="row-select" value="{{ $item->id }}">
+                            @if($isPartial)
+                                <input type="checkbox" class="row-select" value="{{ $item->id }}" disabled title="Partial (per-date) requests aren't supported by bulk actions — use the row's Approve/Reject buttons.">
+                            @else
+                                <input type="checkbox" class="row-select" value="{{ $item->id }}">
+                            @endif
                         </td>
                         <td class="text-center" style="color:#94a3b8;font-size:0.8rem;">{{ $item->id }}</td>
                         <td>
@@ -126,7 +142,14 @@
                                 {{ $leaveType }}
                             </span>
                         </td>
-                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $period }}</td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">
+                            @if($isPartial)
+                                <span title="Full leave: {{ $period }}">{{ $partialDatesLabel }}</span>
+                                <span style="display:block;font-size:0.72rem;color:#f97316;font-weight:600;">Partial</span>
+                            @else
+                                {{ $period }}
+                            @endif
+                        </td>
                         <td style="max-width:180px;">
                             @if(($item->cancellation_reason ?? '') === 'Reported to work')
                                 <span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">
@@ -331,6 +354,8 @@
 <script>
 (function($){
     var pendingLeaveId = null;
+    var pendingPartial = false;
+    var pendingDateIds = [];
 
     // ── Helpers ────────────────────────────────────────────────────────
     function escapeHtml(str) {
@@ -434,6 +459,8 @@
         if ($(e.target).closest('.action-cell, td:first-child').length) return;
         var $r = $(this);
         pendingLeaveId = $r.data('id');
+        pendingPartial = !!$r.data('partial');
+        pendingDateIds = $r.data('date-ids') || [];
         var dhR = $r.data('dh-remarks'), aoR = $r.data('ao-remarks');
 
         $('#detail-body').html(
@@ -469,6 +496,8 @@
     // ── Inline action buttons ──────────────────────────────────────────
     $(document).on('click', '.approve-btn', function(){
         var $tr = $(this).closest('tr');
+        pendingPartial = !!$tr.data('partial');
+        pendingDateIds = $tr.data('date-ids') || [];
         openApproveModal($(this).data('id'), {
             employee: $tr.data('employee'), leaveType: $tr.data('leave-type'), period: $tr.data('period'),
         });
@@ -476,6 +505,8 @@
 
     $(document).on('click', '.reject-btn', function(){
         var $tr = $(this).closest('tr');
+        pendingPartial = !!$tr.data('partial');
+        pendingDateIds = $tr.data('date-ids') || [];
         openRejectModal($(this).data('id'), {
             employee: $tr.data('employee'), leaveType: $tr.data('leave-type'), period: $tr.data('period'),
         });
@@ -498,7 +529,12 @@
 
     function submitApprove(id, remarks) {
         var $btn = $('#approve-confirm-btn').prop('disabled', true);
-        $.post('{{ url('/api/leave') }}/' + id + '/approve-cancellation', { _token: '{{ csrf_token() }}', remarks: remarks })
+        var url = pendingPartial
+            ? '{{ url('/api/leave') }}/' + id + '/approve-date-cancellation'
+            : '{{ url('/api/leave') }}/' + id + '/approve-cancellation';
+        var data = { _token: '{{ csrf_token() }}', remarks: remarks };
+        if (pendingPartial) { data.leave_date_ids = pendingDateIds; }
+        $.post(url, data)
             .done(function(resp){
                 if (resp && resp.success) {
                     showToast('Leave cancelled and credits refunded.', 'success');
@@ -542,7 +578,12 @@
     });
 
     function submitReject(id, remarks) {
-        $.post('{{ url('/api/leave') }}/' + id + '/reject-cancellation', { _token: '{{ csrf_token() }}', remarks: remarks })
+        var url = pendingPartial
+            ? '{{ url('/api/leave') }}/' + id + '/reject-date-cancellation'
+            : '{{ url('/api/leave') }}/' + id + '/reject-cancellation';
+        var data = { _token: '{{ csrf_token() }}', remarks: remarks };
+        if (pendingPartial) { data.leave_date_ids = pendingDateIds; }
+        $.post(url, data)
             .done(function(resp){
                 if (resp && resp.success) {
                     showToast('Cancellation rejected. Employee notified.', 'success');

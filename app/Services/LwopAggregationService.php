@@ -281,4 +281,19 @@ class LwopAggregationService
 
         return $episodes;
     }
+
+    /**
+     * Severity band for AWOL monitoring. 30+ workdays is the CSC threshold for
+     * separation without prior notice; below that, a Return-to-Work Order is required
+     * first — these bands give HR lead time to act before it gets there.
+     */
+    public function awolSeverityLabel(int $streak): string
+    {
+        return match (true) {
+            $streak >= 30 => 'critical',
+            $streak >= 25 => 'urgent',
+            $streak >= 15 => 'warning',
+            default => 'watch',
+        };
+    }
 }

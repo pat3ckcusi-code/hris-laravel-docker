@@ -97,7 +97,12 @@ class DashboardController extends Controller
             $totalFiled = LeaveRequest::where('date_filed', '>=', $yearStart)->count();
             $approvedCount = LeaveRequest::where('date_filed', '>=', $yearStart)->where('status', 'approved')->count();
             $cancelledCount = LeaveRequest::where('date_filed', '>=', $yearStart)->where('status', 'cancelled')->count();
-            $pendingCancellationCount = LeaveRequest::where('cancellation_status', 'AO Endorsed')->count();
+            $pendingCancellationCount = LeaveRequest::where(function ($q) {
+                $q->where('cancellation_status', 'AO Endorsed')
+                    ->orWhereHas('leaveDates', function ($dq) {
+                        $dq->where('cancellation_status', 'AO Endorsed');
+                    });
+            })->count();
             $employeeBalanceCount = LeaveBalance::count();
             $lowBalanceCount = LeaveBalance::where(function ($q): void {
                 $q->where(function ($q2): void {

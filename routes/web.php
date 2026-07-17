@@ -90,6 +90,7 @@ Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::get('/employee/leave-management/{id}/edit', [LeaveRequestController::class, 'edit'])->name('employee.leave.edit');
     Route::patch('/employee/leave-management/{id}/cancel', [LeaveRequestController::class, 'cancel'])->name('employee.leave.cancel');
     Route::post('/employee/leave-management/{id}/request-cancellation', [LeaveRequestController::class, 'requestCancellation'])->name('employee.leave.request-cancellation');
+    Route::post('/employee/leave-management/{id}/request-partial-cancellation', [LeaveRequestController::class, 'requestPartialCancellation'])->name('employee.leave.request-partial-cancellation');
     Route::post('/employee/leave-management/{id}/reschedule', [LeaveRequestController::class, 'requestReschedule'])->name('employee.leave.reschedule');
 
 });
@@ -361,6 +362,10 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
         ->name('department-head.leave.recommend-cancellation');
     Route::post('/department-head/leave/{id}/reject-cancellation-dh', [DepartmentHeadCancellationController::class, 'reject'])
         ->name('department-head.leave.reject-cancellation');
+    Route::post('/department-head/leave/{id}/recommend-cancellation-dates', [DepartmentHeadCancellationController::class, 'recommendDates'])
+        ->name('department-head.leave.recommend-cancellation-dates');
+    Route::post('/department-head/leave/{id}/reject-cancellation-dh-dates', [DepartmentHeadCancellationController::class, 'rejectDates'])
+        ->name('department-head.leave.reject-cancellation-dates');
     Route::get('/api/department-head/pending-cancellation-count', [DepartmentHeadCancellationController::class, 'pendingCancellationCount'])
         ->name('api.department-head.pending-cancellation-count');
 });
@@ -373,6 +378,10 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
         ->name('admin-officer.leave.endorse-cancellation');
     Route::post('/admin-officer/leave/{id}/reject-cancellation', [AdministrativeOfficerCancellationController::class, 'reject'])
         ->name('admin-officer.leave.reject-cancellation');
+    Route::post('/admin-officer/leave/{id}/endorse-cancellation-dates', [AdministrativeOfficerCancellationController::class, 'endorseDates'])
+        ->name('admin-officer.leave.endorse-cancellation-dates');
+    Route::post('/admin-officer/leave/{id}/reject-cancellation-dates', [AdministrativeOfficerCancellationController::class, 'rejectDates'])
+        ->name('admin-officer.leave.reject-cancellation-dates');
     Route::get('/api/admin-officer/pending-cancellation-count', [AdministrativeOfficerCancellationController::class, 'pendingCancellationCount'])
         ->name('api.admin-officer.pending-cancellation-count');
 });
@@ -401,6 +410,8 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
 
     Route::post('/api/leave/{leave}/approve-cancellation', [LeaveManagerController::class, 'apiApproveCancellation'])->name('api.leave.approve-cancellation');
     Route::post('/api/leave/{leave}/reject-cancellation', [LeaveManagerController::class, 'apiRejectCancellation'])->name('api.leave.reject-cancellation');
+    Route::post('/api/leave/{leave}/approve-date-cancellation', [LeaveManagerController::class, 'apiApproveDateCancellation'])->name('api.leave.approve-date-cancellation');
+    Route::post('/api/leave/{leave}/reject-date-cancellation', [LeaveManagerController::class, 'apiRejectDateCancellation'])->name('api.leave.reject-date-cancellation');
     Route::post('/api/leave/bulk-approve-cancellations', [LeaveManagerController::class, 'apiBulkApproveCancellation'])->name('api.leave.bulk-approve-cancellations');
     Route::post('/api/leave/bulk-reject-cancellations', [LeaveManagerController::class, 'apiBulkRejectCancellation'])->name('api.leave.bulk-reject-cancellations');
     Route::get('/api/leave-manager/pending-cancellation-count', [LeaveManagerController::class, 'apiPendingCancellationCount'])

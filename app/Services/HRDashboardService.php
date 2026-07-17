@@ -26,7 +26,10 @@ use Illuminate\Support\Facades\Schema;
  */
 class HRDashboardService
 {
-    public function __construct(private LeaveRequestService $leaveRequestService) {}
+    public function __construct(
+        private LeaveRequestService $leaveRequestService,
+        private LwopAggregationService $lwopAggregationService,
+    ) {}
 
     // ── Summary cards ────────────────────────────────────────────────────────
 
@@ -614,10 +617,86 @@ class HRDashboardService
             $trendApproved[] = (int) ($approvedTrend->get($key)?->cnt ?? 0);
         }
 
+        $monthWindow = null;
+        if ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $monthWindow = [Carbon::parse($month)->startOfMonth()->toDateString(), Carbon::parse($month)->endOfMonth()->toDateString()];
+        }
+
+        $departmentComparison = Department::query()
+            ->orderBy('Dept_name')
+            ->get(['Dept_id', 'Dept_name'])
+            ->map(function ($department) use ($monthWindow) {
+                $employeeCount = User::active()
+                    ->whereIn('employee_type', User::LEAVE_ELIGIBLE_TYPES)
+                    ->where('Dept_id', $department->Dept_id)
+                    ->count();
+
+                $daysUsedQuery = LeaveRequest::query()
+                    ->join('users', 'users.id', '=', 'leave_requests.user_id')
+                    ->where('users.Dept_id', $department->Dept_id)
+                    ->where('leave_requests.status', 'approved');
+
+                if ($monthWindow !== null) {
+                    $daysUsedQuery->where(function ($q) use ($monthWindow): void {
+                        $q->whereBetween('leave_requests.start_date', $monthWindow)
+                            ->orWhereBetween('leave_requests.end_date', $monthWindow);
+                    });
+                }
+
+                $balances = DB::table('leave_balances')
+                    ->join('users', 'users.id', '=', 'leave_balances.user_id')
+                    ->where('users.Dept_id', $department->Dept_id)
+                    ->select('leave_balances.VL', 'leave_balances.SL')
+                    ->get();
+
+                return [
+                    'department' => $department->Dept_name,
+                    'employee_count' => $employeeCount,
+                    'days_used' => round((float) $daysUsedQuery->sum('leave_requests.total_days'), 1),
+                    'avg_vl' => $balances->count() > 0 ? round((float) $balances->avg('VL'), 1) : 0,
+                    'avg_sl' => $balances->count() > 0 ? round((float) $balances->avg('SL'), 1) : 0,
+                ];
+            })
+            ->sortByDesc('days_used')
+            ->values()
+            ->all();
+
+        $departmentNames = Department::pluck('Dept_name', 'Dept_id')->toArray();
+        $awolEmployees = User::active()
+            ->whereIn('employee_type', User::LEAVE_ELIGIBLE_TYPES)
+            ->whereHas('leaveBalance')
+            ->when($departmentId !== null, fn ($q) => $q->where('Dept_id', $departmentId))
+            ->get();
+
+        $awolRisk = $awolEmployees
+            ->map(function ($employee) use ($departmentNames) {
+                $streak = $this->lwopAggregationService->computeCurrentAwolStreak($employee);
+
+                if ($streak['streak'] < 5) {
+                    return null;
+                }
+
+                return [
+                    'emp_no' => $employee->EmpNo ?? '-',
+                    'name' => trim(($employee->last_name ?? '').', '.($employee->first_name ?? '')),
+                    'department' => $departmentNames[$employee->Dept_id] ?? '-',
+                    'streak' => $streak['capped'] ? '60+' : (string) $streak['streak'],
+                    'streak_sort' => $streak['streak'],
+                    'episodes_this_semester' => $this->lwopAggregationService->countAwolEpisodesThisSemester($employee),
+                    'status' => $this->lwopAggregationService->awolSeverityLabel($streak['streak']),
+                ];
+            })
+            ->filter()
+            ->sortByDesc('streak_sort')
+            ->values()
+            ->all();
+
         return [
             'balance_summary' => $balanceSummary,
             'critical_employees' => $criticalEmployees,
             'trend' => ['labels' => $trendLabels, 'submitted' => $trendSubmitted, 'approved' => $trendApproved],
+            'department_comparison' => $departmentComparison,
+            'awol_risk' => $awolRisk,
         ];
     }
 

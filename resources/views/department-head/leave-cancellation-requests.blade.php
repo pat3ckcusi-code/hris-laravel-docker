@@ -70,14 +70,26 @@
                         }
                         $requestedAt   = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->diffForHumans() : '-';
                         $requestedFull = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->format('M d, Y H:i') : '-';
+
+                        // Partial (per-date) cancellation: the whole-row cancellation_status column
+                        // stays null for these, so a row can only be here via the leaveDates match.
+                        // When that's the case, act on just those dates, not the whole leave.
+                        $stagePendingDates = $item->leaveDates->where('cancellation_status', 'Pending Cancellation');
+                        $isPartial = $item->cancellation_status !== 'Pending Cancellation' && $stagePendingDates->isNotEmpty();
+                        $partialDateIds = $isPartial ? $stagePendingDates->pluck('id')->values() : collect();
+                        $partialDatesLabel = $isPartial
+                            ? $stagePendingDates->map(fn ($d) => \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', ')
+                            : null;
                     @endphp
                     <tr style="cursor:pointer;" class="cancellation-row"
                         data-id="{{ $item->id }}"
                         data-employee="{{ $empName }}"
                         data-leave-type="{{ $leaveType }}"
-                        data-period="{{ $period }}"
+                        data-period="{{ $isPartial ? $partialDatesLabel : $period }}"
                         data-reason="{{ e($item->cancellation_reason ?? '-') }}"
                         data-requested="{{ $requestedFull }}"
+                        data-partial="{{ $isPartial ? '1' : '0' }}"
+                        data-date-ids="{{ $partialDateIds->toJson() }}"
                     >
                         <td class="text-center" style="color:#94a3b8;font-size:0.8rem;">{{ $item->id }}</td>
                         <td>
@@ -91,7 +103,14 @@
                                 {{ $leaveType }}
                             </span>
                         </td>
-                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $period }}</td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">
+                            @if($isPartial)
+                                <span title="Full leave: {{ $period }}">{{ $partialDatesLabel }}</span>
+                                <span style="display:block;font-size:0.72rem;color:#f97316;font-weight:600;">Partial</span>
+                            @else
+                                {{ $period }}
+                            @endif
+                        </td>
                         <td style="max-width:220px;">
                             @if(($item->cancellation_reason ?? '') === 'Reported to work')
                                 <span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">
@@ -238,6 +257,8 @@
 <script>
 (function($){
     var pendingLeaveId = null;
+    var pendingPartial = false;
+    var pendingDateIds = [];
 
     function escapeHtml(str) {
         if (!str && str !== 0) return '';
@@ -267,6 +288,8 @@
         if ($(e.target).closest('.action-cell').length) return;
         var $row = $(this);
         pendingLeaveId = $row.data('id');
+        pendingPartial = !!$row.data('partial');
+        pendingDateIds = $row.data('date-ids') || [];
 
         $('#detail-body').html(
             '<table style="width:100%;border-collapse:collapse;">' +
@@ -306,6 +329,8 @@
     // ── Inline buttons → open confirmation modals ──────────────────────
     $(document).on('click', '.recommend-btn', function(){
         var $tr = $(this).closest('tr');
+        pendingPartial = !!$tr.data('partial');
+        pendingDateIds = $tr.data('date-ids') || [];
         openRecommendModal($(this).data('id'), {
             employee:  $tr.data('employee'),
             leaveType: $tr.data('leave-type'),
@@ -315,6 +340,8 @@
 
     $(document).on('click', '.reject-btn', function(){
         var $tr = $(this).closest('tr');
+        pendingPartial = !!$tr.data('partial');
+        pendingDateIds = $tr.data('date-ids') || [];
         openRejectModal($(this).data('id'), {
             employee:  $tr.data('employee'),
             leaveType: $tr.data('leave-type'),
@@ -339,10 +366,15 @@
 
     function submitRecommend(id, remarks) {
         var $btn = $('#recommend-confirm-btn').prop('disabled', true);
+        var url = pendingPartial
+            ? '{{ url('/department-head/leave') }}/' + id + '/recommend-cancellation-dates'
+            : '{{ url('/department-head/leave') }}/' + id + '/recommend-cancellation';
+        var data = { remarks: remarks, _token: '{{ csrf_token() }}' };
+        if (pendingPartial) { data.leave_date_ids = pendingDateIds; }
         $.ajax({
-            url: '{{ url('/department-head/leave') }}/' + id + '/recommend-cancellation',
+            url: url,
             method: 'POST',
-            data: { remarks: remarks, _token: '{{ csrf_token() }}' },
+            data: data,
             dataType: 'json'
         }).done(function(resp) {
             if (resp && resp.success) {
@@ -389,10 +421,15 @@
     });
 
     function submitReject(id, remarks) {
+        var url = pendingPartial
+            ? '{{ url('/department-head/leave') }}/' + id + '/reject-cancellation-dh-dates'
+            : '{{ url('/department-head/leave') }}/' + id + '/reject-cancellation-dh';
+        var data = { remarks: remarks, _token: '{{ csrf_token() }}' };
+        if (pendingPartial) { data.leave_date_ids = pendingDateIds; }
         $.ajax({
-            url: '{{ url('/department-head/leave') }}/' + id + '/reject-cancellation-dh',
+            url: url,
             method: 'POST',
-            data: { remarks: remarks, _token: '{{ csrf_token() }}' },
+            data: data,
             dataType: 'json'
         }).done(function(resp) {
             if (resp && resp.success) {

@@ -996,6 +996,12 @@
                             @php
                                 $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
                                 $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
+                                $availableDates = $leave->leaveDates->map(fn ($ld) => [
+                                    'id' => $ld->id,
+                                    'date' => (string) $ld->leave_date,
+                                    'days' => (float) $ld->days,
+                                    'label' => \Carbon\Carbon::parse($ld->leave_date)->format('D, M j, Y'),
+                                ])->values();
                             @endphp
                             <tr id="leave-row-{{ $leave->id }}"
                                 data-employee="{{ $leave->user->name ?? '-' }}"
@@ -1006,9 +1012,17 @@
                                 data-reason="{{ $leave->reason ?? '' }}"
                                 data-status="{{ $leave->status }}"
                                 data-remarks="{{ $leave->remarks ?? '' }}"
+                                data-dates="{{ $availableDates->toJson() }}"
                                 @if($leave->status === 'cancelled') style="opacity:.7;text-decoration:line-through" @endif>
                                 <td>{{ $leave->leave_type }}</td>
-                                <td>{{ $s }}@if($e) to {{ $e }}@endif</td>
+                                <td>
+                                    {{ $s }}@if($e) to {{ $e }}@endif
+                                    @if($leave->rescheduled_from_id && $leave->originalDatesReplaced->isNotEmpty())
+                                        <span style="display:block;font-size:0.72rem;color:#64748b;">
+                                            &#8635; was {{ $leave->originalDatesReplaced->map(fn ($d) => \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', ') }}
+                                        </span>
+                                    @endif
+                                </td>
                                 <td>{{ $leave->total_days ?? (($leave->start_date && $leave->end_date) ? (\Carbon\Carbon::parse($leave->start_date)->diffInDays(\Carbon\Carbon::parse($leave->end_date)) + 1) : '-') }}</td>
                                 <td><x-hris.status-badge :status="$leave->status" /></td>
                                 <td>
@@ -1037,16 +1051,16 @@
                                             @if($leave->status === 'pending')
                                                 <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
                                             @endif
-                                            @if($leave->status === 'approved')
+                                            @if($leave->status === 'approved' && !$leave->rescheduled_from_id && $leave->reschedule_status !== 'Pending Reschedule')
+                                                @php
+                                                    $chipMap = [
+                                                        'Pending Cancellation' => ['text' => 'Awaiting DH Review',        'bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047'],
+                                                        'DH Recommended'       => ['text' => 'Awaiting AO Endorsement',   'bg' => '#dbeafe', 'color' => '#1e40af', 'border' => '#93c5fd'],
+                                                        'AO Endorsed'          => ['text' => 'Awaiting Leave Manager',    'bg' => '#ede9fe', 'color' => '#5b21b6', 'border' => '#c4b5fd'],
+                                                    ];
+                                                @endphp
                                                 @if(in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed']))
-                                                    @php
-                                                        $chipMap = [
-                                                            'Pending Cancellation' => ['text' => 'Awaiting DH Review',        'bg' => '#fef9c3', 'color' => '#854d0e', 'border' => '#fde047'],
-                                                            'DH Recommended'       => ['text' => 'Awaiting AO Endorsement',   'bg' => '#dbeafe', 'color' => '#1e40af', 'border' => '#93c5fd'],
-                                                            'AO Endorsed'          => ['text' => 'Awaiting Leave Manager',    'bg' => '#ede9fe', 'color' => '#5b21b6', 'border' => '#c4b5fd'],
-                                                        ];
-                                                        $chip = $chipMap[$leave->cancellation_status] ?? null;
-                                                    @endphp
+                                                    @php $chip = $chipMap[$leave->cancellation_status] ?? null; @endphp
                                                     @if($chip)
                                                         <span style="background:{{ $chip['bg'] }};color:{{ $chip['color'] }};border:1px solid {{ $chip['border'] }};padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;white-space:nowrap">{{ $chip['text'] }}</span>
                                                     @endif
@@ -1056,8 +1070,19 @@
                                                 @else
                                                     <button type="button" class="hris-btn hris-btn-warning" onclick="openCancellationRequestModal({{ $leave->id }})">Cancel</button>
                                                 @endif
+                                                {{-- Per-date (partial) cancellation requests: these never touch the whole-row
+                                                     cancellation_status above, so without this they're invisible here even
+                                                     though they're correctly progressing through DH/AO/LM review. --}}
+                                                @if($leave->pendingCancellationDates->isNotEmpty())
+                                                    @foreach($leave->pendingCancellationDates->groupBy('cancellation_status') as $status => $datesForStatus)
+                                                        @php $chip = $chipMap[$status] ?? null; @endphp
+                                                        @if($chip)
+                                                            <span style="background:{{ $chip['bg'] }};color:{{ $chip['color'] }};border:1px solid {{ $chip['border'] }};padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;white-space:nowrap">{{ $chip['text'] }} ({{ $datesForStatus->map(fn($d) => \Carbon\Carbon::parse($d->leave_date)->format('M j'))->implode(', ') }})</span>
+                                                        @endif
+                                                    @endforeach
+                                                @endif
                                             @endif
-                                            @if($leave->status === 'approved' && in_array($leave->leave_type, ['Vacation Leave', 'Sick Leave', 'Wellness Leave']) && !$leave->rescheduled_from_id)
+                                            @if($leave->status === 'approved' && in_array($leave->leave_type, ['Vacation Leave', 'Sick Leave', 'Wellness Leave']) && !$leave->rescheduled_from_id && !in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed']) && $leave->pendingCancellationDates->isEmpty())
                                                 @if($leave->reschedule_status === 'Pending Reschedule')
                                                     <span class="hris-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:4px 8px;border-radius:4px;font-size:0.75rem;white-space:nowrap">Reschedule Pending</span>
                                                 @else
@@ -1100,6 +1125,10 @@
         @csrf
         <h3 style="margin-top:0">Request Leave Cancellation</h3>
         <p class="muted">Provide a reason for cancelling your approved leave. Your request will be reviewed by the Department Head, then the Administrative Officer, then the Leave Manager.</p>
+        <div id="cancelDateChecklist" style="display:none;margin-top:8px">
+            <label style="font-weight:600; display:block; margin-bottom:8px">Which date(s) do you want to cancel?</label>
+            <div id="cancelDateChecklistBody" style="display:flex;flex-direction:column;gap:6px;border:1px solid #e2e8f0;border-radius:6px;padding:10px;max-height:200px;overflow-y:auto"></div>
+        </div>
         <div style="margin-top:8px">
             <label style="font-weight:600; display:block; margin-bottom:8px">Reason for Cancellation</label>
             <div id="cancelReasonChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -1134,6 +1163,7 @@
 
 {{-- Reschedule Request Modal --}}
 <dialog id="rescheduleModal" class="employee-modal" style="max-width:600px;width:95%">
+    <div id="rsToast" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:20;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;font-size:0.875rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);opacity:0;transition:opacity 0.25s ease;"></div>
     <form id="rescheduleForm" method="POST" class="modal-body">
         @csrf
         <input type="hidden" id="rsLeaveName" name="leave_types[]" value="">
@@ -1141,6 +1171,12 @@
 
         <h3 style="margin-top:0">Reschedule Leave</h3>
         <p class="muted">Select new dates for your <strong id="rsLeaveTypeLabel"></strong> leave. Your request will go through the approval process again.</p>
+
+        <div id="rsOriginalDateChecklist" style="display:none;margin-top:8px">
+            <label style="font-weight:600; display:block; margin-bottom:8px">Which original date(s) are you rescheduling?</label>
+            <div id="rsOriginalDateChecklistBody" style="display:flex;flex-direction:column;gap:6px;border:1px solid #e2e8f0;border-radius:6px;padding:10px;max-height:200px;overflow-y:auto"></div>
+            <p class="muted" style="margin-top:6px;font-size:0.8rem">The new date(s) below must add up to exactly the same number of days as your selection above.</p>
+        </div>
 
         <div style="margin-top:16px">
             <label style="font-weight:600;display:block;margin-bottom:6px">Select New Date(s)</label>
@@ -1300,12 +1336,16 @@ function closePendingCancelModal() {
     try { modal.close(); } catch (e) {}
 }
 function closeLeaveModal() { const dlg = document.getElementById('leaveModal'); if (dlg && typeof dlg.close === 'function') dlg.close(); }
+let _cancelBaseUrl = '';
+let _cancelAvailableDates = [];
+
 function openCancellationRequestModal(id) {
     const dlg = document.getElementById('cancellationRequestModal');
     const form = document.getElementById('cancellationRequestForm');
     const reason = document.getElementById('cancellationReasonInput');
     if (!dlg || !form) return alert('Cancellation dialog not available');
-    form.action = `/employee/leave-management/${id}/request-cancellation`;
+    _cancelBaseUrl = `/employee/leave-management/${id}`;
+    form.action = `${_cancelBaseUrl}/request-cancellation`;
     reason.value = '';
     document.querySelectorAll('#cancelReasonChips .cancel-reason-chip').forEach(function (chip) {
         chip.style.borderColor = '#cbd5e1';
@@ -1313,8 +1353,55 @@ function openCancellationRequestModal(id) {
         chip.style.color = '';
         chip.style.fontWeight = '';
     });
+
+    const row = document.getElementById(`leave-row-${id}`);
+    let dates = [];
+    try { dates = JSON.parse(row?.getAttribute('data-dates') || '[]'); } catch (e) { dates = []; }
+    _cancelAvailableDates = dates;
+
+    const checklistWrap = document.getElementById('cancelDateChecklist');
+    const checklistBody = document.getElementById('cancelDateChecklistBody');
+    checklistBody.innerHTML = '';
+    if (dates.length > 1) {
+        dates.forEach(function (d) {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer';
+            label.innerHTML = `<input type="checkbox" class="cancel-date-checkbox" value="${d.id}" checked> ${d.label} (${d.days} day${d.days == 1 ? '' : 's'})`;
+            checklistBody.appendChild(label);
+        });
+        checklistWrap.style.display = '';
+    } else {
+        checklistWrap.style.display = 'none';
+    }
+
     if (typeof dlg.showModal === 'function') dlg.showModal();
 }
+
+document.getElementById('cancellationRequestForm')?.addEventListener('submit', function (e) {
+    // Remove any leave_date_ids inputs from a previous submission attempt
+    this.querySelectorAll('input[name="leave_date_ids[]"]').forEach(function (el) { el.remove(); });
+
+    if (_cancelAvailableDates.length > 1) {
+        const checked = Array.from(document.querySelectorAll('#cancelDateChecklistBody .cancel-date-checkbox:checked')).map(cb => cb.value);
+        if (checked.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one date to cancel.');
+            return;
+        }
+        if (checked.length < _cancelAvailableDates.length) {
+            this.action = `${_cancelBaseUrl}/request-partial-cancellation`;
+            checked.forEach(function (id) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'leave_date_ids[]';
+                input.value = id;
+                e.target.appendChild(input);
+            });
+        } else {
+            this.action = `${_cancelBaseUrl}/request-cancellation`;
+        }
+    }
+});
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('#cancelReasonChips .cancel-reason-chip').forEach(function (chip) {
         chip.addEventListener('click', function () {
@@ -1340,36 +1427,158 @@ function closeCancellationModal() { const dlg = document.getElementById('cancell
 let _rsLeaveType = '';
 let _rsDates = [];
 let _rsMaxDays = 0;
+let _rsAvailableOriginalDates = [];
 
 function openRescheduleModal(id, leaveType, maxDays) {
     const dlg = document.getElementById('rescheduleModal');
     const form = document.getElementById('rescheduleForm');
     if (!dlg || !form) return alert('Reschedule dialog not available');
+    hideRsToast();
     form.action = `/employee/leave-management/${id}/reschedule`;
     _rsLeaveType = leaveType;
     _rsMaxDays = maxDays;
     _rsDates = [];
     document.getElementById('rsLeaveName').value = leaveType;
     document.getElementById('rsLeaveTypeLabel').textContent = leaveType;
-    const rsMinDate = new Date();
-    rsMinDate.setDate(rsMinDate.getDate() + 5);
-    document.getElementById('rsDatePicker').min = rsMinDate.toISOString().split('T')[0];
+    document.getElementById('rsDatePicker').removeAttribute('min');
     document.getElementById('rsDatePicker').value = '';
     document.getElementById('rsReason').value = '';
+
+    form.querySelectorAll('input[name="leave_date_ids[]"]').forEach(function (el) { el.remove(); });
+
+    const row = document.getElementById(`leave-row-${id}`);
+    let dates = [];
+    try { dates = JSON.parse(row?.getAttribute('data-dates') || '[]'); } catch (e) { dates = []; }
+    _rsAvailableOriginalDates = dates;
+
+    const checklistWrap = document.getElementById('rsOriginalDateChecklist');
+    const checklistBody = document.getElementById('rsOriginalDateChecklistBody');
+    checklistBody.innerHTML = '';
+    if (dates.length > 1) {
+        dates.forEach(function (d) {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer';
+            label.innerHTML = `<input type="checkbox" class="rs-original-date-checkbox" value="${d.id}" data-days="${d.days}"> ${d.label} (${d.days} day${d.days == 1 ? '' : 's'})`;
+            checklistBody.appendChild(label);
+        });
+        checklistWrap.style.display = '';
+        checklistBody.querySelectorAll('.rs-original-date-checkbox').forEach(function (cb) {
+            cb.addEventListener('change', rsUpdateOriginalSelection);
+        });
+        _rsMaxDays = 0; // nothing selected yet; employee must pick which date(s) to reschedule
+    } else {
+        checklistWrap.style.display = 'none';
+    }
+
     rsRenderDates();
     if (typeof dlg.showModal === 'function') dlg.showModal();
 }
+
+function rsUpdateOriginalSelection() {
+    const checked = document.querySelectorAll('#rsOriginalDateChecklistBody .rs-original-date-checkbox:checked');
+    _rsMaxDays = Array.from(checked).reduce((sum, cb) => sum + parseFloat(cb.dataset.days || 0), 0);
+    rsUpdateTotal();
+}
+
+document.getElementById('rescheduleForm')?.addEventListener('submit', function (e) {
+    const form = this;
+
+    if (form.dataset.confirmed === 'true') {
+        form.dataset.confirmed = '';
+        return; // user already confirmed; let this submission through
+    }
+
+    e.preventDefault();
+
+    if (_rsDates.length === 0) {
+        showRsToast('Please select at least one new date before submitting.');
+        return;
+    }
+
+    form.querySelectorAll('input[name="leave_date_ids[]"]').forEach(function (el) { el.remove(); });
+
+    if (_rsAvailableOriginalDates.length > 1) {
+        const checked = Array.from(document.querySelectorAll('#rsOriginalDateChecklistBody .rs-original-date-checkbox:checked')).map(cb => cb.value);
+        if (checked.length === 0) {
+            showRsToast('Please select which original date(s) you are rescheduling.');
+            return;
+        }
+        checked.forEach(function (id) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'leave_date_ids[]';
+            input.value = id;
+            form.appendChild(input);
+        });
+    }
+
+    const dateList = _rsDates.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })).join('<br>');
+    // target: the dialog itself, not document.body - a native <dialog> shown via
+    // showModal() renders in the browser's top layer, above Swal's normal stacking,
+    // so an ordinary Swal.fire() would appear visually behind this open modal.
+    const confirmDialog = window.Swal ? window.Swal.fire({
+        target: '#rescheduleModal',
+        title: 'Submit reschedule request?',
+        html: `Your <strong>${_rsLeaveType}</strong> leave will be rescheduled to:<br><br>${dateList}<br><br>This will go through the approval process again.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, submit',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#3b82f6',
+    }) : Promise.resolve({ isConfirmed: confirm('Submit this reschedule request?') });
+
+    confirmDialog.then(function (result) {
+        if (result.isConfirmed) {
+            form.dataset.confirmed = 'true';
+            form.requestSubmit ? form.requestSubmit() : form.submit();
+        }
+    });
+});
 
 function closeRescheduleModal() {
     const dlg = document.getElementById('rescheduleModal');
     if (dlg && typeof dlg.close === 'function') dlg.close();
 }
 
+let _rsToastTimer = null;
+function showRsToast(message) {
+    const toast = document.getElementById('rsToast');
+    if (!toast) { alert(message); return; }
+    toast.textContent = message;
+    toast.style.display = 'block';
+    requestAnimationFrame(() => { toast.style.opacity = '1'; });
+    clearTimeout(_rsToastTimer);
+    _rsToastTimer = setTimeout(hideRsToast, 2500);
+}
+function hideRsToast() {
+    const toast = document.getElementById('rsToast');
+    if (!toast) return;
+    toast.style.opacity = '0';
+    clearTimeout(_rsToastTimer);
+    _rsToastTimer = setTimeout(() => { toast.style.display = 'none'; }, 250);
+}
+
 function rsAddDate() {
     const picker = document.getElementById('rsDatePicker');
     const val = picker.value;
     if (!val) return;
-    if (_rsDates.includes(val)) { alert('Date already added.'); return; }
+    if (_rsAvailableOriginalDates.length > 1 && _rsMaxDays === 0) {
+        showRsToast('Select which original date(s) you are rescheduling first.');
+        return;
+    }
+    if (_rsDates.includes(val)) {
+        showRsToast('That date is already in your reschedule list.');
+        return;
+    }
+    if (_rsMaxDays > 0) {
+        const currentTotal = Array.from(document.querySelectorAll('#rsAllocBody select[name$="[days]"]'))
+            .reduce((sum, s) => sum + parseFloat(s.value || 1), 0);
+        if (currentTotal >= _rsMaxDays) {
+            const targetLabel = _rsMaxDays % 1 === 0 ? _rsMaxDays : _rsMaxDays.toFixed(1);
+            showRsToast(`You've already selected ${targetLabel} day(s), matching the original date(s) being rescheduled. Remove a date first if you want to change it.`);
+            return;
+        }
+    }
     _rsDates.push(val);
     _rsDates.sort();
     picker.value = '';
@@ -1392,7 +1601,9 @@ function rsRenderDates() {
         noMsg.style.display = '';
         allocSec.style.display = 'none';
         datesInput.value = '';
-        submitBtn.disabled = true;
+        // Stays clickable (not disabled) so clicking it while empty surfaces the
+        // "select at least one new date" toast instead of doing nothing silently.
+        submitBtn.disabled = false;
         return;
     }
 
@@ -1432,11 +1643,20 @@ function rsUpdateTotal() {
     selects.forEach(s => { t += parseFloat(s.value || 1); });
     document.getElementById('rsTotalDays').textContent = t % 1 === 0 ? t : t.toFixed(1);
 
-    const exceeded = _rsMaxDays > 0 && t > _rsMaxDays;
+    const checklistActive = _rsAvailableOriginalDates.length > 1;
+    const noOriginalSelected = checklistActive && _rsMaxDays === 0;
+    const mismatched = !noOriginalSelected && Math.abs(t - _rsMaxDays) > 0.001;
     const warnRow = document.getElementById('rsTotalDaysWarningRow');
+    const warnCell = warnRow.querySelector('td');
     document.getElementById('rsMaxDaysLabel').textContent = _rsMaxDays % 1 === 0 ? _rsMaxDays : _rsMaxDays.toFixed(1);
-    warnRow.style.display = exceeded ? '' : 'none';
-    document.getElementById('rsSubmitBtn').disabled = exceeded || _rsDates.length === 0;
+    if (warnCell) {
+        warnCell.innerHTML = `Total must exactly equal the original date(s) being rescheduled (<span id="rsMaxDaysLabel">${_rsMaxDays % 1 === 0 ? _rsMaxDays : _rsMaxDays.toFixed(1)}</span> day(s)).`;
+    }
+    warnRow.style.display = (mismatched || noOriginalSelected) ? '' : 'none';
+    // No new dates yet is intentionally NOT disabled here - stays clickable so the
+    // "select at least one new date" toast fires on submit instead of the button
+    // silently doing nothing.
+    document.getElementById('rsSubmitBtn').disabled = mismatched || noOriginalSelected;
 }
 </script>
 @endsection

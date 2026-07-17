@@ -15,6 +15,7 @@ use App\Services\DepartmentService;
 use App\Services\EmployeeAssignmentService;
 use App\Services\HRDashboardService;
 use App\Services\LeaveCardExportService;
+use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use App\Support\HrisConstants;
 use App\Support\RoleNormalizer;
@@ -402,6 +403,11 @@ class HRManagerController extends Controller
         }
 
         $leaveRequest->save();
+
+        if ($payload['action'] === 'reject' && ! empty($leaveRequest->rescheduled_from_id)) {
+            app(LeaveDateAggregateService::class)
+                ->unfreezeOriginalReschedule($leaveRequest->id, $leaveRequest->rescheduled_from_id);
+        }
 
         $this->storeAuditTrail(
             $request,

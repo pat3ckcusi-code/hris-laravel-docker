@@ -64,6 +64,21 @@
                 <h4>6-Month Leave Trend (Org-Wide)</h4>
                 <div class="hrm-chart-wrap hrm-chart-wrap-sm"><canvas id="leaveTrendChart"></canvas></div>
             </div>
+
+            <div class="hrm-chart-card" style="margin-top:1.5rem;">
+                <h4>Leave Usage by Department <span style="font-size:0.8rem;font-weight:400;color:#64748b;">(Selected Month)</span></h4>
+                <div id="departmentComparisonTable"></div>
+            </div>
+
+            <div class="hrm-chart-card" style="margin-top:1.5rem;">
+                <h4>AWOL / Overuse Risk</h4>
+                <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
+                    Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it).
+                    Live snapshot as of today — not affected by the month filter above. Only employees with a current streak
+                    of 5+ workdays are shown.
+                </p>
+                <div id="awolRiskTable"></div>
+            </div>
         </div>
     </section>
 @endsection

@@ -209,7 +209,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 return label;
             }},
             { data: 'reason',     title: 'Reason / Purpose', orderable: false },
-            { data: 'period',     title: 'Period', orderable: false },
+            { data: 'period',     title: 'Period', orderable: false, render: function(data, type, row) {
+                var label = data || '';
+                if (row.rescheduled_from_id && row.original_dates_replaced) {
+                    label += '<span style="display:block;font-size:0.72rem;color:#64748b;">&#8635; was ' + row.original_dates_replaced + '</span>';
+                }
+                return label;
+            }},
             { data: 'total_days', title: 'Total Days', orderable: false },
             { data: 'filed_at',   title: 'Filed At' },
             {

@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\Pds;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -239,6 +240,12 @@ class MayorController extends Controller
         $leave->status = 'declined';
         $leave->rejection_notes = $request->input('rejection_notes');
         $leave->save();
+
+        // If this is a reschedule request, unfreeze the original leave
+        if (! empty($leave->rescheduled_from_id)) {
+            app(LeaveDateAggregateService::class)
+                ->unfreezeOriginalReschedule($leave->id, $leave->rescheduled_from_id);
+        }
 
         // Send rejection notification email
         try {

@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\EmployeeAssignment;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
+use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\OicAssignment;
 use App\Models\Plantilla;
@@ -305,13 +306,20 @@ class LeaveRequestService
             $reason = 'Wellness';
         }
 
+        // Section 7.A ("Total Earned") reflects the balance AS OF WHEN THIS LEAVE WAS
+        // FILED, not whatever the employee's balance happens to be today - otherwise
+        // every approved leave printed after the fact would show today's live balance
+        // and look identical regardless of which specific request is being printed.
+        // leave_requests.balance_* is a snapshot taken at filing time (before this
+        // leave's own deduction); the live balance is only a fallback for older rows
+        // filed before that snapshot existed, or for CTO, which has no snapshot column.
         $empLB = $employee->leaveBalance ?? null;
-        $displayTotalEarnedVL = $empLB ? ($empLB->VL ?? ($leave->balance_vacation_leave ?? 0)) : ($leave->balance_vacation_leave ?? 0);
-        $displayTotalEarnedSL = $empLB ? ($empLB->SL ?? ($leave->balance_sick_leave ?? 0)) : ($leave->balance_sick_leave ?? 0);
-        $displayTotalEarnedWLNS = $empLB ? ($empLB->WLNS ?? ($leave->balance_wellness_leave ?? 0)) : ($leave->balance_wellness_leave ?? 0);
-        $displayTotalEarnedSPL = $empLB ? ($empLB->SPL ?? ($leave->balance_special_leave_privilege ?? 0)) : ($leave->balance_special_leave_privilege ?? 0);
-        $displayTotalEarnedCTO = $empLB ? ($empLB->CTO ?? ($leave->balance_cto ?? 0)) : ($leave->balance_cto ?? 0);
-        $displayTotalEarnedSP = $empLB ? ($empLB->SP ?? ($leave->balance_solo_parent_leave ?? 0)) : ($leave->balance_solo_parent_leave ?? 0);
+        $displayTotalEarnedVL = $leave->balance_vacation_leave ?? ($empLB->VL ?? 0);
+        $displayTotalEarnedSL = $leave->balance_sick_leave ?? ($empLB->SL ?? 0);
+        $displayTotalEarnedWLNS = $leave->balance_wellness_leave ?? ($empLB->WLNS ?? 0);
+        $displayTotalEarnedSPL = $leave->balance_special_leave_privilege ?? ($empLB->SPL ?? 0);
+        $displayTotalEarnedCTO = $empLB->CTO ?? 0;
+        $displayTotalEarnedSP = $leave->balance_solo_parent_leave ?? ($empLB->SP ?? 0);
 
         // Prefer per-type preview if available
         $preview = [];
@@ -331,15 +339,12 @@ class LeaveRequestService
         $displayRequestedCTO = isset($preview['CTO']) ? floatval($preview['CTO']) : 0;
         $displayRequestedSP = isset($preview['SP']) ? floatval($preview['SP']) : 0;
 
-        // When deduction is already applied to live balances (post-approval), restore
-        // the pre-deduction totals so Section 7.A shows the same values as at Allow Printing.
+        // VL/SL/WLNS/SPL/SP above already come from the filing-time snapshot (pre-deduction),
+        // so no adjustment is needed there. CTO has no snapshot column and still reads the
+        // live (post-deduction) balance, so once its deduction has actually been applied,
+        // add it back to show the same pre-deduction total Section 7.A showed at filing time.
         if (! empty($leave->printing_deduction_applied)) {
-            $displayTotalEarnedVL += $displayRequestedVL;
-            $displayTotalEarnedSL += $displayRequestedSL;
-            $displayTotalEarnedWLNS += $displayRequestedWLNS;
-            $displayTotalEarnedSPL += $displayRequestedSPL;
             $displayTotalEarnedCTO += $displayRequestedCTO;
-            $displayTotalEarnedSP += $displayRequestedSP;
         }
 
         $displayBalanceVL = $displayTotalEarnedVL - $displayRequestedVL;
@@ -631,15 +636,27 @@ class LeaveRequestService
             return redirect()->back()->with('success', 'Leave already approved.');
         }
 
-        // If this is a reschedule leave, atomically cancel the original approved leave and restore its balances.
+        // If this is a reschedule leave, atomically cancel the ORIGINAL DATES that were
+        // specifically linked to this reschedule (not necessarily the whole original
+        // request — a partial reschedule links only the dates being replaced) and
+        // restore balances for just those dates.
         if (! empty($leave->rescheduled_from_id)) {
             $original = LeaveRequest::with(['user', 'leaveDates'])->find($leave->rescheduled_from_id);
             if ($original && $original->status === 'approved') {
                 try {
-                    DB::transaction(function () use ($original) {
+                    DB::transaction(function () use ($original, $leave) {
                         $lb = $original->user->leaveBalance ?? null;
+                        $aggregateService = app(LeaveDateAggregateService::class);
+
+                        $linkedDates = LeaveDate::where('rescheduled_to_leave_request_id', $leave->id)->get();
+                        $activeDates = $original->leaveDates()->where('is_cancelled', false)->get();
+                        // Legacy safety net: a reschedule created before this link existed has no
+                        // linked dates — fall back to the old whole-request behavior.
+                        $datesToCancel = $linkedDates->isNotEmpty() ? $linkedDates : $activeDates;
+                        $isWholeRequest = $datesToCancel->count() === $activeDates->count();
+
                         $applied = [];
-                        if (! empty($original->printing_deduction_details)) {
+                        if ($isWholeRequest && ! empty($original->printing_deduction_details)) {
                             $applied = json_decode($original->printing_deduction_details, true) ?: [];
                         }
 
@@ -673,38 +690,56 @@ class LeaveRequestService
                             }
                             $lb->save();
                         } elseif ($lb) {
-                            // Fallback: restore from leave_dates allocation
-                            $leaveDates = $original->leaveDates()->where('is_cancelled', false)->get();
-                            foreach ($leaveDates as $ld) {
-                                $days = floatval($ld->days ?? 1.0);
-                                $t = strtolower((string) ($ld->leave_type ?? $original->leave_type ?? ''));
-                                if (str_contains($t, 'vacation')) {
-                                    $lb->VL = ($lb->VL ?? 0) + $days;
-                                } elseif (str_contains($t, 'sick')) {
-                                    $lb->SL = ($lb->SL ?? 0) + $days;
-                                } elseif (str_contains($t, 'wellness')) {
-                                    $lb->WLNS = ($lb->WLNS ?? 0) + $days;
-                                } elseif (str_contains($t, 'solo')) {
-                                    $lb->SP = ($lb->SP ?? 0) + $days;
-                                } elseif (str_contains($t, 'special') || str_contains($t, 'spl')) {
-                                    $lb->SPL = ($lb->SPL ?? 0) + $days;
-                                }
-                            }
+                            // Fallback: restore from the linked leave_dates only, gated by is_lwop
+                            // so an LWOP date (which never drew balance) isn't over-refunded.
+                            $restored = $aggregateService->refundDates($datesToCancel, $lb);
                             $lb->save();
                         }
 
-                        $original->leaveDates()->where('is_cancelled', false)->each(function ($ld) {
+                        // Transfer the "Total Earned" snapshot (read by the printed form) from
+                        // the original to this new leave, instead of reading the live balance.
+                        // Reading live balance made every reschedule off the same original
+                        // independently show "current + 1", so two unrelated reschedule targets
+                        // off the same original printed identical numbers. Instead, each
+                        // departing date's credit is handed off explicitly: the new leave
+                        // inherits whatever the original's snapshot was immediately before this
+                        // transfer, and the original's own snapshot shrinks by the same amount -
+                        // producing a proper decreasing chain across prints (55 -> 54 -> 53 -> 52)
+                        // instead of two prints landing on the same number. CTO has no snapshot
+                        // column on leave_requests, so it's left out and keeps reading live.
+                        $snapshotColumns = [
+                            'VL' => 'balance_vacation_leave',
+                            'SL' => 'balance_sick_leave',
+                            'WLNS' => 'balance_wellness_leave',
+                            'SPL' => 'balance_special_leave_privilege',
+                            'SP' => 'balance_solo_parent_leave',
+                        ];
+                        foreach ($restored as $key => $amt) {
+                            $column = $snapshotColumns[$key] ?? null;
+                            if (! $column || $amt <= 0) {
+                                continue;
+                            }
+                            $priorSnapshot = $original->{$column} ?? 0;
+                            $leave->{$column} = $priorSnapshot;
+                            $original->{$column} = $priorSnapshot - $amt;
+                        }
+                        $leave->save();
+
+                        foreach ($datesToCancel as $ld) {
                             $ld->is_cancelled = true;
                             $ld->cancel_reason = 'Rescheduled';
                             $ld->cancelled_by = auth()->id();
                             $ld->cancelled_at = now();
                             $ld->save();
-                        });
+                        }
 
-                        $original->status = 'cancelled';
-                        $original->detailed_status = 'Cancelled';
-                        $original->cancellation_status = 'Rescheduled';
-                        $original->reschedule_status = 'Rescheduled';
+                        $aggregateService->recomputeParentAfterDateChange($original, 'Rescheduled');
+                        // recomputeParentAfterDateChange already saved $original above; only the
+                        // reschedule single-flight gate is left to reconcile here. A whole-request
+                        // reschedule permanently marks it 'Rescheduled' (matches the old terminal
+                        // state); a partial reschedule clears the gate so the untouched remaining
+                        // dates can be cancelled/rescheduled again later.
+                        $original->reschedule_status = $original->status === 'cancelled' ? 'Rescheduled' : null;
                         $original->save();
 
                         try {
@@ -906,28 +941,30 @@ class LeaveRequestService
                 }
             }
 
-            if (! empty($preview)) {
-                // helper to resolve field name on leaveBalance
-                // tries preferred DB-style column names first (balance_*), then lowercase/uppercase short codes
-                $resolveField = function ($leaveBalance, $key) {
-                    $map = [
-                        'VL' => ['balance_vacation_leave', 'vl', 'VL'],
-                        'SL' => ['balance_sick_leave', 'sl', 'SL'],
-                        'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
-                        'SPL' => ['balance_special_leave_privilege', 'spl', 'SPL'],
-                        'CTO' => ['balance_cto', 'cto', 'CTO'],
-                        'SP' => ['balance_solo_parent_leave', 'sp', 'SP'],
-                    ];
-                    $candidates = $map[$key] ?? [strtolower($key), strtoupper($key)];
-                    foreach ($candidates as $cand) {
-                        if (array_key_exists($cand, $leaveBalance->getAttributes()) || isset($leaveBalance->{$cand})) {
-                            return $cand;
-                        }
+            // helper to resolve field name on leaveBalance
+            // tries preferred DB-style column names first (balance_*), then lowercase/uppercase short codes
+            // Defined here (not inside the branch below) so both the preview-based and
+            // fallback single-column deduction branches can use it.
+            $resolveField = function ($leaveBalance, $key) {
+                $map = [
+                    'VL' => ['balance_vacation_leave', 'vl', 'VL'],
+                    'SL' => ['balance_sick_leave', 'sl', 'SL'],
+                    'WLNS' => ['balance_wellness_leave', 'wlns', 'WLNS'],
+                    'SPL' => ['balance_special_leave_privilege', 'spl', 'SPL'],
+                    'CTO' => ['balance_cto', 'cto', 'CTO'],
+                    'SP' => ['balance_solo_parent_leave', 'sp', 'SP'],
+                ];
+                $candidates = $map[$key] ?? [strtolower($key), strtoupper($key)];
+                foreach ($candidates as $cand) {
+                    if (array_key_exists($cand, $leaveBalance->getAttributes()) || isset($leaveBalance->{$cand})) {
+                        return $cand;
                     }
+                }
 
-                    return null;
-                };
+                return null;
+            };
 
+            if (! empty($preview)) {
                 DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField) {
                     foreach ($preview as $col => $amt) {
                         if (! is_numeric($amt) || floatval($amt) <= 0) {
@@ -1038,7 +1075,7 @@ class LeaveRequestService
                 'details' => [
                     'original_balances' => $originalBalances,
                     'printing_preview' => (! empty($leave->printing_deduction_details) ? json_decode($leave->printing_deduction_details, true) : []),
-                    'leave_reason' => $reason,
+                    'leave_reason' => $leave->reason,
                     'deduction_details' => $deductionLog,
                     'leave_status' => $leave->status,
                     'approver_id' => auth()->id(),
@@ -1260,9 +1297,12 @@ class LeaveRequestService
 
         // --- 5. Leave Credit Certification (Section 7.A) ---
 
+        // Filing-time snapshot first (see the PDF export above for why: this must reflect
+        // the balance as of when THIS leave was filed, not today's live balance), falling
+        // back to the live balance only for older rows filed before the snapshot existed.
         $empLB = $employee ? ($employee->leaveBalance ?? null) : null;
-        $vlCurrent = floatval($empLB ? ($empLB->VL ?? $leave->balance_vacation_leave ?? 0) : ($leave->balance_vacation_leave ?? 0));
-        $slCurrent = floatval($empLB ? ($empLB->SL ?? $leave->balance_sick_leave ?? 0) : ($leave->balance_sick_leave ?? 0));
+        $vlCurrent = floatval($leave->balance_vacation_leave ?? ($empLB->VL ?? 0));
+        $slCurrent = floatval($leave->balance_sick_leave ?? ($empLB->SL ?? 0));
         // Prefer per-type deduction preview if available (from filing or allow-print preview)
         $preview = [];
         if (! empty($leave->printing_deduction_details)) {
@@ -1276,13 +1316,6 @@ class LeaveRequestService
         $lt = strtolower((string) ($leave->leave_type ?? ''));
         $vlRequested = isset($preview['VL']) ? floatval($preview['VL']) : ((stripos($lt, 'vacation') !== false || stripos($lt, 'vl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
         $slRequested = isset($preview['SL']) ? floatval($preview['SL']) : ((stripos($lt, 'sick') !== false || stripos($lt, 'sl') !== false) ? floatval($leave->paid_days ?? 0) : 0.0);
-
-        // When deduction is already applied to live balances (post-approval), restore
-        // the pre-deduction totals so Section 7.A shows the same values as at Allow Printing.
-        if (! empty($leave->printing_deduction_applied)) {
-            $vlCurrent += $vlRequested;
-            $slCurrent += $slRequested;
-        }
 
         $vlBalance = $vlCurrent - $vlRequested;
         $slBalance = $slCurrent - $slRequested;

@@ -62,7 +62,9 @@ class LeaveRequestController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        $leaveRequests = $query->with('lastPrintedBy')->paginate(10)->withQueryString();
+        $leaveRequests = $query->with(['lastPrintedBy', 'pendingCancellationDates', 'originalDatesReplaced', 'leaveDates' => function ($q) {
+            $q->where('is_cancelled', false)->whereNull('cancellation_status')->whereNull('rescheduled_to_leave_request_id')->orderBy('leave_date');
+        }])->paginate(10)->withQueryString();
 
         return view('employee.leave-management', compact('leaveRequests', 'user'));
     }
@@ -221,6 +223,8 @@ class LeaveRequestController extends Controller
             LeaveDate::insert(array_map(fn ($d) => [
                 'leave_request_id' => $leave->id,
                 'leave_date' => $d,
+                'leave_type' => $type,
+                'days' => 1.0,
                 'is_cancelled' => false,
                 'is_lwop' => false,
                 'created_at' => now(),
@@ -491,6 +495,7 @@ class LeaveRequestController extends Controller
             $dedWLNS = 0.0;
             $dedSP = 0.0;
             $dedSPL = 0.0;
+            $perDateMeta = [];
             foreach ($dates as $d) {
                 $totalDaysForDate = 0.0;
                 if (isset($allocations[$d]['days'])) {
@@ -502,9 +507,12 @@ class LeaveRequestController extends Controller
                 if (! $typeForDate) {
                     // treat as unpaid if no type indicated
                     $lwopDays += $totalDaysForDate;
+                    $perDateMeta[$d] = ['type' => null, 'days' => $totalDaysForDate, 'is_lwop' => true];
 
                     continue;
                 }
+
+                $paidDaysBeforeDate = $paidDays;
 
                 switch ($typeForDate) {
                     case 'Vacation Leave':
@@ -582,6 +590,13 @@ class LeaveRequestController extends Controller
                         $paidDays += $totalDaysForDate;
                         break;
                 }
+
+                $paidForDate = $paidDays - $paidDaysBeforeDate;
+                $perDateMeta[$d] = [
+                    'type' => $typeForDate,
+                    'days' => $totalDaysForDate,
+                    'is_lwop' => $paidForDate <= 0 && $totalDaysForDate > 0,
+                ];
             }
 
             // ensure no negatives
@@ -648,10 +663,13 @@ class LeaveRequestController extends Controller
             }
             // create per-day records in leave_dates
             foreach ($dates as $d) {
+                $meta = $perDateMeta[$d] ?? null;
                 LeaveDate::create([
                     'leave_request_id' => $leave->id,
                     'leave_date' => $d,
-                    'is_lwop' => false,
+                    'leave_type' => $meta['type'] ?? $leaveTypeValue,
+                    'days' => $meta['days'] ?? 1.0,
+                    'is_lwop' => $meta['is_lwop'] ?? false,
                 ]);
             }
 
@@ -833,6 +851,8 @@ class LeaveRequestController extends Controller
                 LeaveDate::create([
                     'leave_request_id' => $leave->id,
                     'leave_date' => $dt->format('Y-m-d'),
+                    'leave_type' => $request->leave_type,
+                    'days' => 1.0,
                     'is_lwop' => false,
                 ]);
             }
@@ -939,12 +959,20 @@ class LeaveRequestController extends Controller
             return redirect()->back()->with('error', 'Only approved leaves can request cancellation.');
         }
 
+        if ($leave->rescheduled_from_id !== null) {
+            return redirect()->back()->with('error', 'Reschedule requests cannot be cancelled by the employee.');
+        }
+
         if ($leave->reschedule_status === 'Pending Reschedule') {
             return redirect()->back()->with('error', 'A reschedule request is already pending for this leave. You cannot request cancellation while a reschedule is in progress.');
         }
 
         if (in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'], true)) {
             return redirect()->back()->with('error', 'A cancellation request is already in progress for this leave.');
+        }
+
+        if ($leave->leaveDates()->whereIn('cancellation_status', ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'])->exists()) {
+            return redirect()->back()->with('error', 'A cancellation request is already in progress for one or more dates on this leave.');
         }
 
         $request->validate(['reason' => 'required|string|max:2000']);
@@ -1002,6 +1030,116 @@ class LeaveRequestController extends Controller
         }
 
         return redirect()->back()->with('success', 'Cancellation request submitted and pending review.');
+    }
+
+    /**
+     * Employee: request cancellation of a SUBSET of dates within an approved multi-date
+     * leave, leaving the remaining dates approved. Goes through the same DH -> AO ->
+     * Leave Manager chain as requestCancellation, but the cancellation_* state lives on
+     * the selected leave_dates rows instead of the parent leave_requests row.
+     */
+    public function requestPartialCancellation(Request $request, $id)
+    {
+        $leave = LeaveRequest::findOrFail($id);
+        $user = Auth::user();
+        if ($leave->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if ($leave->status !== 'approved') {
+            return redirect()->back()->with('error', 'Only approved leaves can request cancellation.');
+        }
+
+        if ($leave->rescheduled_from_id !== null) {
+            return redirect()->back()->with('error', 'Reschedule requests cannot be cancelled by the employee.');
+        }
+
+        if ($leave->reschedule_status === 'Pending Reschedule') {
+            return redirect()->back()->with('error', 'A reschedule request is already pending for this leave. You cannot request cancellation while a reschedule is in progress.');
+        }
+
+        if (in_array($leave->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'], true)) {
+            return redirect()->back()->with('error', 'A whole-request cancellation is already in progress for this leave.');
+        }
+
+        $request->validate([
+            'leave_date_ids' => 'required|array|min:1',
+            'leave_date_ids.*' => 'integer',
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        $selectedDates = $leave->leaveDates()
+            ->whereIn('id', $request->input('leave_date_ids'))
+            ->where('is_cancelled', false)
+            ->whereNull('cancellation_status')
+            ->whereNull('rescheduled_to_leave_request_id')
+            ->get();
+
+        if ($selectedDates->count() !== count($request->input('leave_date_ids'))) {
+            return redirect()->back()->with('error', 'One or more selected dates are invalid, already being processed, or no longer available.');
+        }
+
+        // If every remaining active date was selected, this is equivalent to a whole-request
+        // cancellation — route it through the existing whole-row flow so behavior/state stays identical.
+        $remainingActiveCount = $leave->leaveDates()->where('is_cancelled', false)->count();
+        if ($selectedDates->count() === $remainingActiveCount) {
+            return $this->requestCancellation($request, $id);
+        }
+
+        if (trim($request->reason) === 'Reported to work') {
+            $selectedLeaveDates = $selectedDates->pluck('leave_date')->map(fn ($d) => (string) $d)->toArray();
+            $hasAttendance = AttendanceLog::where('user_id', $leave->user_id)
+                ->whereIn('logdate', $selectedLeaveDates)
+                ->exists();
+            if (! $hasAttendance) {
+                return redirect()->back()->with('error', 'No attendance records found for the selected leave dates. "Reported to work" requires verified biometric attendance.');
+            }
+        }
+
+        foreach ($selectedDates as $ld) {
+            $ld->cancellation_status = 'Pending Cancellation';
+            $ld->cancellation_reason = $request->input('reason');
+            $ld->cancellation_requested_at = now();
+            $ld->cancellation_requested_by = $user->id;
+            $ld->save();
+        }
+
+        Log::info('Partial leave cancellation requested', [
+            'leave_id' => $leave->id,
+            'leave_date_ids' => $selectedDates->pluck('id')->all(),
+            'employee_id' => $user->id,
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+        // Notify approver (best-effort)
+        try {
+            $employee = $user;
+            $approver = null;
+            if ($employee && ! empty($employee->Dept_id)) {
+                $department = Department::find($employee->Dept_id);
+                if ($department) {
+                    $approver = $this->departmentService->getDepartmentHeadUser($department);
+                }
+            }
+            if ($approver) {
+                $empName = trim(collect([$employee->first_name ?? null, $employee->middle_name ?? null, $employee->last_name ?? null])->filter()->implode(' ')) ?: ($employee->name ?? 'Employee');
+                $approver->notify(new HrisTransactionNotification(
+                    requestType: 'Leave Request',
+                    status: 'Partial Cancellation Requested',
+                    details: [
+                        'Employee' => $empName,
+                        'Leave Type' => $leave->leave_type ?? 'N/A',
+                        'Dates' => $selectedDates->pluck('leave_date')->map(fn ($d) => Carbon::parse($d)->format('M j, Y'))->implode(', '),
+                        'Reason' => $request->input('reason'),
+                    ],
+                    actor: $empName,
+                ));
+            }
+        } catch (\Exception $ex) {
+            // swallow
+        }
+
+        return redirect()->back()->with('success', 'Cancellation request submitted for the selected date(s) and is pending review.');
     }
 
     /**
@@ -1118,6 +1256,14 @@ class LeaveRequestController extends Controller
             return redirect()->back()->with('error', 'This leave was already rescheduled once and cannot be rescheduled again.');
         }
 
+        if (in_array($original->cancellation_status, ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'], true)) {
+            return redirect()->back()->with('error', 'A cancellation request is already in progress for this leave. You cannot request a reschedule while a cancellation is pending.');
+        }
+
+        if ($original->leaveDates()->whereIn('cancellation_status', ['Pending Cancellation', 'DH Recommended', 'AO Endorsed'])->exists()) {
+            return redirect()->back()->with('error', 'A cancellation request is already in progress for one or more dates on this leave. You cannot request a reschedule while a cancellation is pending.');
+        }
+
         $request->validate([
             'leave_types' => 'required|array|min:1|max:1',
             'leave_types.*' => 'string|max:100',
@@ -1130,6 +1276,10 @@ class LeaveRequestController extends Controller
             'details_location_specify' => 'nullable|string|max:255',
             'details_sick_illness' => 'nullable|string|max:255',
             'details_sick_treatment' => 'nullable|string|max:50',
+            // Which of the ORIGINAL leave's dates are being replaced. Omitted = every
+            // still-active original date (today's whole-request behavior, unchanged).
+            'leave_date_ids' => 'nullable|array',
+            'leave_date_ids.*' => 'integer',
         ]);
 
         $type = $request->input('leave_types')[0];
@@ -1143,13 +1293,6 @@ class LeaveRequestController extends Controller
         }
         if (count($dates) !== count(array_unique($dates))) {
             return redirect()->back()->withErrors(['leave_dates' => 'Duplicate dates detected. Please remove duplicates.'])->withInput();
-        }
-
-        // 5-day advance rule - applies to all reschedulable leave types
-        $firstDate = Carbon::parse($dates[0])->startOfDay();
-        $today = Carbon::today();
-        if ($firstDate->diffInDays($today, false) > -5) {
-            return redirect()->back()->withErrors(['leave_dates' => 'Reschedule dates must be filed at least 5 days in advance.'])->withInput();
         }
 
         // Conflict check (exclude the original leave's own dates from conflict detection)
@@ -1177,9 +1320,31 @@ class LeaveRequestController extends Controller
 
         $totalDays = array_sum(array_column($allocations, 'days'));
 
-        if ($totalDays > $original->total_days) {
+        // Resolve which original dates this reschedule is replacing. An explicit
+        // leave_date_ids selects a subset (partial reschedule); omitting it replaces
+        // every still-active, unlinked original date (today's whole-request behavior).
+        $originalActiveDatesQuery = $original->leaveDates()
+            ->where('is_cancelled', false)
+            ->whereNull('rescheduled_to_leave_request_id')
+            ->whereNull('cancellation_status');
+
+        $selectedOriginalDateIds = $request->input('leave_date_ids');
+        if (! empty($selectedOriginalDateIds)) {
+            $originalSelectedDates = (clone $originalActiveDatesQuery)->whereIn('id', $selectedOriginalDateIds)->get();
+            if ($originalSelectedDates->count() !== count($selectedOriginalDateIds)) {
+                return redirect()->back()
+                    ->withErrors(['leave_dates' => 'One or more selected original dates are invalid or no longer available for reschedule.'])
+                    ->withInput();
+            }
+        } else {
+            $originalSelectedDates = $originalActiveDatesQuery->get();
+        }
+
+        $originalSelectedTotal = (float) $originalSelectedDates->sum('days');
+
+        if (abs($totalDays - $originalSelectedTotal) > 0.001) {
             return redirect()->back()
-                ->withErrors(['leave_dates' => 'Total rescheduled days ('.$totalDays.') cannot exceed the original leave total ('.$original->total_days.' days).'])
+                ->withErrors(['leave_dates' => 'Total rescheduled days ('.$totalDays.') must exactly match the selected original date(s) total ('.$originalSelectedTotal.' days).'])
                 ->withInput();
         }
 
@@ -1188,8 +1353,9 @@ class LeaveRequestController extends Controller
 
         // Balance snapshot at time of reschedule filing
         $lb = $user->leaveBalance;
+        $originalSelectedDateIds = $originalSelectedDates->pluck('id')->all();
 
-        $newLeave = DB::transaction(function () use ($original, $user, $type, $dates, $allocations, $totalDays, $paidDays, $lwopDays, $lb, $request) {
+        $newLeave = DB::transaction(function () use ($original, $user, $type, $dates, $allocations, $totalDays, $paidDays, $lwopDays, $lb, $request, $originalSelectedDateIds) {
             $leave = LeaveRequest::create([
                 'user_id' => $user->id,
                 'leave_type' => $type,
@@ -1228,6 +1394,9 @@ class LeaveRequestController extends Controller
 
             $original->reschedule_status = 'Pending Reschedule';
             $original->save();
+
+            LeaveDate::whereIn('id', $originalSelectedDateIds)
+                ->update(['rescheduled_to_leave_request_id' => $leave->id]);
 
             return $leave;
         });

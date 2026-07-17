@@ -14,6 +14,7 @@ use App\Services\ApprovalNotificationService;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
+use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use App\Services\PersonnelLogImportService;
 use App\Support\LeaveTypeResolver;
@@ -1535,8 +1536,8 @@ class AdministrativeOfficerController extends Controller
         // If this is a reschedule request, unfreeze the original leave
         $isReschedule = ! empty($leave->rescheduled_from_id);
         if ($isReschedule) {
-            LeaveRequest::where('id', $leave->rescheduled_from_id)
-                ->update(['reschedule_status' => null]);
+            app(LeaveDateAggregateService::class)
+                ->unfreezeOriginalReschedule($leave->id, $leave->rescheduled_from_id);
         }
 
         try {

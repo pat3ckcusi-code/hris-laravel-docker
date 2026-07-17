@@ -187,21 +187,13 @@
             ['section' => 'Attendance'],
             ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'DTR Excuses',        'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',     'active' => ['attendance.dtr-excuse.*']],
-            ['label' => 'Shift Templates',    'icon' => 'work_schedule',     'route' => 'attendance.shifts',                   'active' => ['attendance.shifts*']],
-            ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',                'active' => ['attendance.schedules*']],
-            ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',     'active' => ['attendance.shift-schedule*']],
-            ['label' => 'Shift Access',       'icon' => 'access',            'route' => 'attendance.shift-access.index',       'active' => ['attendance.shift-access*']],
-            ['label' => 'Import Logs',        'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import',        'active' => ['hr-manager.attendance.import*']],
             ['label' => 'Shift Logs',         'icon' => 'audit',             'route' => 'attendance.shift-logs',               'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
-            ['label' => 'Adjustment Summary', 'icon' => 'adjustment_summary', 'route' => 'attendance.adjustment-summary.index', 'active' => ['attendance.adjustment-summary*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
 
             ['section' => 'Reports'],
             ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
-            ['label' => 'Leave Ledger',       'icon' => 'audit',     'route' => 'hr-manager.leave-ledger','active' => ['hr-manager.leave-ledger']],
             ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],
 
             ['section' => 'Administration'],
@@ -210,7 +202,7 @@
 
             ['section' => 'Self-Service'],
             ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',    'active' => ['dashboard.employee.pds']],
-            ['label' => 'Leave Management',  'icon' => 'leave',     'route' => 'employee.leave.management', 'active' => ['employee.leave.management']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management', 'active' => ['employee.leave.management']],
         ],
 
         // ─── Leave Manager ─────────────────────────────────
@@ -386,7 +378,12 @@
             return $leave + $eta + $locator;
         },
         'pending_employee_cancellation_requests' => fn () => \App\Models\LeaveRequest::where('status', 'approved')
-            ->where('cancellation_status', 'AO Endorsed')
+            ->where(function ($q) {
+                $q->where('cancellation_status', 'AO Endorsed')
+                    ->orWhereHas('leaveDates', function ($dq) {
+                        $dq->where('cancellation_status', 'AO Endorsed');
+                    });
+            })
             ->count(),
         'pending_attendance_deductions' => fn () => \App\Models\AttendanceAdjustmentSubmissionItem::where('processed_status', 'pending')
             ->whereHas('submission', fn ($q) => $q->where('status', 'submitted'))
@@ -399,7 +396,12 @@
             $ids = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
             return \App\Models\LeaveRequest::whereIn('user_id', $ids)
                 ->where('status', 'approved')
-                ->where('cancellation_status', 'Pending Cancellation')
+                ->where(function ($q) {
+                    $q->where('cancellation_status', 'Pending Cancellation')
+                        ->orWhereHas('leaveDates', function ($dq) {
+                            $dq->where('cancellation_status', 'Pending Cancellation');
+                        });
+                })
                 ->count();
         },
         'pending_cancellation_ao' => function () {
@@ -410,7 +412,12 @@
             $ids = app(\App\Services\DepartmentService::class)->getEmployeeIdsForDepartments($depts);
             return \App\Models\LeaveRequest::whereIn('user_id', $ids)
                 ->where('status', 'approved')
-                ->where('cancellation_status', 'DH Recommended')
+                ->where(function ($q) {
+                    $q->where('cancellation_status', 'DH Recommended')
+                        ->orWhereHas('leaveDates', function ($dq) {
+                            $dq->where('cancellation_status', 'DH Recommended');
+                        });
+                })
                 ->count();
         },
         'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),

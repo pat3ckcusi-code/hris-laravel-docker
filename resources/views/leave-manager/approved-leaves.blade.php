@@ -86,6 +86,10 @@
                             $period   = ($leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '-')
                                       . ' – '
                                       . ($leave->end_date   ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y')   : '-');
+                            // Whole-row status takes priority; a partial (per-date) cancellation
+                            // has no whole-row status of its own, so fall back to whichever
+                            // stage its pending dates are at.
+                            $cancellationDisplay = $leave->cancellation_status ?? $leave->pendingCancellationDates->first()?->cancellation_status;
                         @endphp
                         <tr
                             data-id="{{ $leave->id }}"
@@ -95,7 +99,7 @@
                             data-days="{{ $leave->total_days ?? '-' }}"
                             data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}"
                             data-reason="{{ e($leave->reason ?? '') }}"
-                            data-cancellation="{{ e($leave->cancellation_status ?? '') }}"
+                            data-cancellation="{{ e($cancellationDisplay ?? '') }}"
                         >
                             <td>{{ $empName }}</td>
                             <td>{{ $deptName }}</td>
@@ -110,8 +114,8 @@
                                     <span style="font-size:0.82rem;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 8px;border-radius:4px;font-weight:600">Rescheduled</span>
                                 @elseif($leave->reschedule_status === 'Pending Reschedule')
                                     <span style="font-size:0.82rem;color:#92400e;font-weight:600">Reschedule Pending</span>
-                                @elseif($leave->cancellation_status)
-                                    <span style="font-size:0.82rem;color:#b45309;font-weight:600">{{ $leave->cancellation_status }}</span>
+                                @elseif($cancellationDisplay)
+                                    <span style="font-size:0.82rem;color:#b45309;font-weight:600">{{ $cancellationDisplay }}</span>
                                 @else
                                     <span style="color:#94a3b8;font-size:0.82rem">-</span>
                                 @endif
