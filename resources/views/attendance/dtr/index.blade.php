@@ -108,10 +108,13 @@ table.hris-table.dataTable thead th  { box-sizing: border-box; }
 /* ── Late / undertime row visual cues ── */
 tr.dtr-row-late,
 tr.dtr-row-undertime              { background: #fff5f5 !important; }
-tr.dtr-row-late td:nth-child(6)       { color: #dc2626; font-weight: 600; }
-tr.dtr-row-undertime td:nth-child(7)  { color: #dc2626; font-weight: 600; }
+tr.dtr-row-late td:nth-child(8)       { color: #dc2626; font-weight: 600; }
+tr.dtr-row-undertime td:nth-child(9)  { color: #dc2626; font-weight: 600; }
 /* Per-cell classes set by createdRow - only the slot that caused the penalty turns red */
 td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
+/* ── Overtime row visual cue (positive signal, not a deficiency) ── */
+tr.dtr-row-overtime               { background: #f0fdf4 !important; }
+tr.dtr-row-overtime td:nth-child(11)  { color: #16a34a; font-weight: 600; }
 </style>
 @endsection
 
@@ -223,9 +226,12 @@ td.dtr-cell-late, td.dtr-cell-undertime { color: #dc2626; font-weight: 600; }
                             <th class="text-center">AM Out</th>
                             <th class="text-center">PM In</th>
                             <th class="text-center">PM Out</th>
+                            <th class="text-center">OT In</th>
+                            <th class="text-center">OT Out</th>
                             <th class="text-center">Late (min)</th>
                             <th class="text-center">Undertime (min)</th>
                             <th class="text-center">Hours</th>
+                            <th class="text-center">Overtime (min)</th>
                             <th class="text-center">Source</th>
                             <th class="text-center">Status</th>
                             <th class="text-center">Office Order</th>
@@ -608,9 +614,12 @@ if (typeof window.__dtrViewReady === 'undefined') {
                 { data: 'time_out_am',       orderable: false, className: 'text-center' },
                 { data: 'time_in_pm',        orderable: false, className: 'text-center' },
                 { data: 'time_out_pm',       orderable: false, className: 'text-center' },
+                { data: 'time_in_ot',        orderable: false, className: 'text-center' },
+                { data: 'time_out_ot',       orderable: false, className: 'text-center' },
                 { data: 'late_minutes',      orderable: false, className: 'text-center' },
                 { data: 'undertime_minutes', orderable: false, className: 'text-center' },
                 { data: 'hours_worked',      orderable: false, className: 'text-center' },
+                { data: 'overtime_minutes',  orderable: false, className: 'text-center' },
                 { data: 'source_badge',        orderable: false, className: 'text-center' },
                 { data: 'status_badge',        orderable: false, className: 'text-center' },
                 { data: 'office_order_badge',  orderable: false, className: 'text-center', title: 'Office Order' },
@@ -618,6 +627,7 @@ if (typeof window.__dtrViewReady === 'undefined') {
             createdRow: function (row, data) {
                 if (data.is_late)           $(row).addClass('dtr-row-late');
                 if (data.is_undertime)      $(row).addClass('dtr-row-undertime');
+                if (data.is_overtime)       $(row).addClass('dtr-row-overtime');
                 if (data.is_am_in_late)     $('td:eq(1)', row).addClass('dtr-cell-late');
                 if (data.is_pm_in_late)     $('td:eq(3)', row).addClass('dtr-cell-late');
                 if (data.is_pm_out_undertime) $('td:eq(4)', row).addClass('dtr-cell-undertime');

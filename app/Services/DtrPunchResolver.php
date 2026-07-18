@@ -6,6 +6,7 @@ use App\Services\Attendance\AttendanceMatcher;
 use App\Services\Attendance\AttendanceStatusResolver;
 use App\Services\Attendance\HoursWorkedCalculator;
 use App\Services\Attendance\LateCalculator;
+use App\Services\Attendance\OvertimeCalculator;
 use App\Services\Attendance\UndertimeCalculator;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -45,6 +46,7 @@ class DtrPunchResolver
         private readonly AttendanceMatcher $matcher = new AttendanceMatcher,
         private readonly LateCalculator $lateCalculator = new LateCalculator,
         private readonly UndertimeCalculator $undertimeCalculator = new UndertimeCalculator,
+        private readonly OvertimeCalculator $overtimeCalculator = new OvertimeCalculator,
         private readonly HoursWorkedCalculator $hoursWorkedCalculator = new HoursWorkedCalculator,
         private readonly AttendanceStatusResolver $statusResolver = new AttendanceStatusResolver,
     ) {}
@@ -59,7 +61,8 @@ class DtrPunchResolver
      *                                                                       [departure, arrival] span) - a punch outside it (before departure,
      *                                                                       or after arrival) is real and must land in its natural slot.
      * @return array{am_in:?string, am_out:?string, pm_in:?string, pm_out:?string,
-     *               late_minutes:int, undertime_minutes:int,
+     *               time_in_ot:?string, time_out_ot:?string,
+     *               late_minutes:int, undertime_minutes:int, overtime_minutes:int,
      *               worked_minutes:int, hours_worked:float, status:string, unmatched:list<string>}
      */
     public function resolve(iterable $punches, string $shiftDate, WorkSchedule $schedule, array $excludedSlots = []): array
@@ -68,6 +71,7 @@ class DtrPunchResolver
 
         $late = $this->lateCalculator->minutes($result, $shiftDate, $schedule);
         $undertime = $this->undertimeCalculator->minutes($result, $shiftDate, $schedule);
+        $overtime = $this->overtimeCalculator->minutes($result);
         $workedMinutes = $this->hoursWorkedCalculator->workedMinutes($result, $schedule->noBreak);
         $status = $this->statusResolver->resolve($result, $late, $undertime, $schedule->noBreak);
 
@@ -76,8 +80,11 @@ class DtrPunchResolver
             'am_out' => $this->fmt($result->slot('am_out')),
             'pm_in' => $this->fmt($result->slot('pm_in')),
             'pm_out' => $this->fmt($result->slot('pm_out')),
+            'time_in_ot' => $this->fmt($result->slot('ot_in')),
+            'time_out_ot' => $this->fmt($result->slot('ot_out')),
             'late_minutes' => $late,
             'undertime_minutes' => $undertime,
+            'overtime_minutes' => $overtime,
             'worked_minutes' => $workedMinutes,
             'hours_worked' => round($workedMinutes / 60, 2),
             'status' => $status->value,

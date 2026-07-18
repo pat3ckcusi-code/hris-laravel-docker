@@ -327,6 +327,9 @@ class PersonnelLogImportService
                     'late_minutes' => $resolved['late_minutes'],
                     'undertime_minutes' => $resolved['undertime_minutes'],
                     'hours_worked' => $resolved['hours_worked'],
+                    'overtime_minutes' => $resolved['overtime_minutes'],
+                    'time_in_ot' => $resolved['time_in_ot'],
+                    'time_out_ot' => $resolved['time_out_ot'],
                     'unmatched_logs' => $resolved['unmatched'] ?: null,
                     // Never true from an automatic import: absence stays a
                     // read-time classification (no dtrs row = absent), and the

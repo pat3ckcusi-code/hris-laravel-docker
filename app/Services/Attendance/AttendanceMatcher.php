@@ -40,7 +40,7 @@ use Carbon\Carbon;
  */
 class AttendanceMatcher
 {
-    private const SLOT_ORDER = ['am_in', 'am_out', 'pm_in', 'pm_out'];
+    private const SLOT_ORDER = ['am_in', 'am_out', 'pm_in', 'pm_out', 'ot_in', 'ot_out'];
 
     /**
      * @param  iterable<int, Carbon|string>  $punches  full punch datetimes for ONE shift
@@ -114,6 +114,20 @@ class AttendanceMatcher
      *   IN   [workStart - early_in_hours, workEnd)
      *   OUT  (workStart, workEnd + late_out_hours]
      *
+     * On a Standard Day schedule ($schedule->isStandardDay - the global
+     * default, never a per-employee Shift template) two more events are
+     * appended, OT In / OT Out, both open-ended through the end of the shift
+     * date. PM Out's own window is ALSO widened to the end of the day for a
+     * Standard Day (instead of the late_out_hours cap every other schedule
+     * keeps), so a single very-late punch with no dedicated OT pair is never
+     * excluded from matching PM Out. OT In and OT Out are deliberately BOTH
+     * built with isIn=false (out_late_bias, not in_late_bias) even though
+     * "In" is in the name - this makes their reward identical for the same
+     * distance from the anchor, which is what makes a single leftover late
+     * punch resolve to the earliest-in-sequence tied event: PM Out when no
+     * other late-side event has claimed it yet, OT In (never OT Out) when PM
+     * Out is already matched to a genuine on-time punch.
+     *
      * @param  array<string, array{0:string,1:string}|null>  $excludedSlots
      * @return list<ExpectedEvent>
      */
@@ -125,10 +139,19 @@ class AttendanceMatcher
         $start = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
         $end = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
 
+        // Standard Day schedules widen PM Out's own late-side window to the
+        // end of the shift date (instead of the late_out_hours cap) so a
+        // lone very-late punch always stays eligible for PM Out rather than
+        // being excluded and misread as an orphaned OT In. Every other
+        // schedule keeps today's exact late_out_hours-capped window.
+        $pmOutWindowEnd = $schedule->isStandardDay
+            ? $end->copy()->endOfDay()
+            : $end->copy()->addMinutes((int) round($lateOut * 60));
+
         if ($schedule->noBreak) {
             $candidates = [
                 new ExpectedEvent('am_in', true, $start, $start->copy()->subMinutes((int) round($earlyIn * 60)), $end->copy()->subSecond()),
-                new ExpectedEvent('pm_out', false, $end, $start->copy()->addSecond(), $end->copy()->addMinutes((int) round($lateOut * 60))),
+                new ExpectedEvent('pm_out', false, $end, $start->copy()->addSecond(), $pmOutWindowEnd),
             ];
         } else {
             $breakOut = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
@@ -138,8 +161,15 @@ class AttendanceMatcher
                 new ExpectedEvent('am_in', true, $start, $start->copy()->subMinutes((int) round($earlyIn * 60)), $breakOut->copy()->subSecond()),
                 new ExpectedEvent('am_out', false, $breakOut, $start->copy(), $lunchReturn->copy()->subSecond()),
                 new ExpectedEvent('pm_in', true, $lunchReturn, $breakOut->copy()->addSecond(), $end->copy()->subSecond()),
-                new ExpectedEvent('pm_out', false, $end, $lunchReturn->copy()->addSecond()->min($end), $end->copy()->addMinutes((int) round($lateOut * 60))),
+                new ExpectedEvent('pm_out', false, $end, $lunchReturn->copy()->addSecond()->min($end), $pmOutWindowEnd),
             ];
+        }
+
+        if ($schedule->isStandardDay) {
+            $dayEnd = $end->copy()->endOfDay(); // already rolls to shiftDate+1 if $end itself crossed midnight
+
+            $candidates[] = new ExpectedEvent('ot_in', false, $end, $end->copy(), $dayEnd->copy());
+            $candidates[] = new ExpectedEvent('ot_out', false, $end, $end->copy(), $dayEnd->copy());
         }
 
         $events = [];

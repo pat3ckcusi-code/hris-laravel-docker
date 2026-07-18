@@ -51,6 +51,7 @@ class WorkSchedule
         public readonly string $noonEnd,
         public readonly bool $crossesMidnight = false,
         public readonly bool $noBreak = false,
+        public readonly bool $isStandardDay = false,
     ) {}
 
     /** The system-wide standard-day shift from the settings table (memoized). */
@@ -69,6 +70,7 @@ class WorkSchedule
             morningEnd: self::hm($s?->morning_end) ?? '11:00',
             noonEnd: self::hm($s?->noon_end) ?? '14:00',
             crossesMidnight: false,
+            isStandardDay: true,
         );
     }
 

@@ -19,6 +19,9 @@ use Illuminate\Support\Carbon;
  * @property int $late_minutes
  * @property int $undertime_minutes
  * @property float|null $hours_worked decimal hours between matched in/out pairs; null until recomputed
+ * @property int $overtime_minutes minutes between the matched OT In / OT Out punch pair; 0 unless both are matched
+ * @property string|null $time_in_ot
+ * @property string|null $time_out_ot
  * @property array|null $unmatched_logs punches no expected event claimed, as H:i:s strings on the shift
  *                                      date (a cross-midnight shift's post-midnight punch belongs to the
  *                                      following calendar day)
@@ -45,6 +48,9 @@ class Dtr extends Model
         'late_minutes',
         'undertime_minutes',
         'hours_worked',
+        'overtime_minutes',
+        'time_in_ot',
+        'time_out_ot',
         'unmatched_logs',
         'is_absent',
     ];

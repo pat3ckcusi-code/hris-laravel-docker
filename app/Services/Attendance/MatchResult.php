@@ -13,7 +13,8 @@ use Carbon\Carbon;
 final class MatchResult
 {
     /**
-     * @param  array{am_in: ?Carbon, am_out: ?Carbon, pm_in: ?Carbon, pm_out: ?Carbon}  $matched
+     * @param  array{am_in: ?Carbon, am_out: ?Carbon, pm_in: ?Carbon, pm_out: ?Carbon, ot_in: ?Carbon, ot_out: ?Carbon}  $matched
+     *                                                                                                                  ot_in/ot_out are only ever populated on a Standard Day schedule
      * @param  list<Carbon>  $unmatched  punches no event could plausibly claim, ascending
      */
     public function __construct(

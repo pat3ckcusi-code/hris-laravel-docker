@@ -28,10 +28,10 @@ class AttendanceComputationTest extends TestCase
 
     private const DATE = '2026-06-11';
 
-    private function specDay(bool $noBreak = false): WorkSchedule
+    private function specDay(bool $noBreak = false, bool $isStandardDay = true): WorkSchedule
     {
         // workStart 08:00, lunchReturn 13:00, workEnd 17:00, morningEnd 12:00
-        return new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, $noBreak);
+        return new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, $noBreak, $isStandardDay);
     }
 
     /** @param  list<string>  $times  H:i on the shift date */
@@ -121,6 +121,63 @@ class AttendanceComputationTest extends TestCase
         $this->assertNull($r['pm_out']);
         $this->assertSame(0, $r['undertime_minutes']);
         $this->assertSame('missing_out', $r['status']);
+    }
+
+    // ── Overtime (a dedicated OT In / OT Out punch pair, Standard Day only) ───
+
+    public function test_overtime_is_charged_between_ot_in_and_ot_out_punches(): void
+    {
+        $r = $this->resolve(['08:00', '12:00', '13:00', '17:00', '18:00', '22:00']);
+
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertSame('18:00:00', $r['time_in_ot']);
+        $this->assertSame('22:00:00', $r['time_out_ot']);
+        $this->assertSame(240, $r['overtime_minutes']);
+    }
+
+    public function test_a_lone_late_punch_with_no_prior_pm_out_is_still_pm_out_not_overtime(): void
+    {
+        // Only 4 punches total - the last one simply late. It must resolve as
+        // PM Out, not as an orphaned OT In.
+        $r = $this->resolve(['08:00', '12:00', '13:00', '20:00']);
+
+        $this->assertSame('20:00:00', $r['pm_out']);
+        $this->assertNull($r['time_in_ot']);
+        $this->assertNull($r['time_out_ot']);
+        $this->assertSame(0, $r['overtime_minutes']);
+    }
+
+    public function test_a_lone_extra_punch_after_a_genuine_pm_out_is_an_open_ot_in(): void
+    {
+        $r = $this->resolve(['08:00', '12:00', '13:00', '17:00', '18:00']);
+
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertSame('18:00:00', $r['time_in_ot']);
+        $this->assertNull($r['time_out_ot']);
+        $this->assertSame(0, $r['overtime_minutes'], 'An incomplete OT pair is never counted.');
+    }
+
+    public function test_overtime_never_applies_to_a_non_standard_shift(): void
+    {
+        $r = $this->resolve(
+            ['08:00', '12:00', '13:00', '17:00', '18:00', '22:00'],
+            $this->specDay(isStandardDay: false)
+        );
+
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertNull($r['time_in_ot']);
+        $this->assertNull($r['time_out_ot']);
+        $this->assertSame(0, $r['overtime_minutes']);
+    }
+
+    public function test_no_break_shift_overtime_pair_still_matches(): void
+    {
+        $r = $this->resolve(['08:00', '17:00', '18:00', '22:00'], $this->specDay(noBreak: true));
+
+        $this->assertSame('17:00:00', $r['pm_out']);
+        $this->assertSame('18:00:00', $r['time_in_ot']);
+        $this->assertSame('22:00:00', $r['time_out_ot']);
+        $this->assertSame(240, $r['overtime_minutes']);
     }
 
     // ── Hours worked (complete in/out pairs only) ─────────────────────────────
@@ -244,7 +301,8 @@ class AttendanceComputationTest extends TestCase
         $r = $this->resolve(['08:00', '12:00', '13:00', '17:00']);
 
         $this->assertSame(
-            ['am_in', 'am_out', 'pm_in', 'pm_out', 'late_minutes', 'undertime_minutes',
+            ['am_in', 'am_out', 'pm_in', 'pm_out', 'time_in_ot', 'time_out_ot',
+                'late_minutes', 'undertime_minutes', 'overtime_minutes',
                 'worked_minutes', 'hours_worked', 'status', 'unmatched'],
             array_keys($r)
         );
@@ -280,6 +338,30 @@ class AttendanceComputationTest extends TestCase
         $this->assertSame(['09:30:00'], $dtr->unmatched_logs);
         $this->assertFalse($dtr->is_absent, 'Automatic imports never write is_absent=true.');
         $this->assertSame('biometric', $dtr->source);
+    }
+
+    public function test_import_persists_overtime_minutes(): void
+    {
+        $user = $this->createEmployee(); // standard day: 08:00 / 11:00 / 13:00 / 17:00
+
+        // A regular on-time PM Out plus a dedicated OT In / OT Out pair.
+        foreach (['08:00:00', '11:00:00', '13:00:00', '17:00:00', '18:00:00', '22:00:00'] as $time) {
+            AttendanceLog::create([
+                'user_id' => $user->id,
+                'emp_no' => $user->EmpNo,
+                'logdate' => self::DATE,
+                'logtime' => $time,
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, self::DATE, self::DATE);
+
+        $dtr = Dtr::where('employee_id', $user->id)->whereDate('date', self::DATE)->firstOrFail();
+
+        $this->assertSame('17:00:00', $dtr->time_out_pm);
+        $this->assertSame('18:00:00', $dtr->time_in_ot);
+        $this->assertSame('22:00:00', $dtr->time_out_ot);
+        $this->assertSame(240, $dtr->overtime_minutes);
     }
 
     public function test_import_never_persists_a_read_time_only_status(): void
