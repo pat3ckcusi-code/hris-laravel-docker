@@ -4,12 +4,12 @@
 ])
 
 @section('top_actions')
-    <a href="{{ route('payroll.plantilla.reports') }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-chart-bar"></i> Reports</a>
-    <a href="{{ route('payroll.plantilla.index') }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
+    <a href="{{ route("{$routePrefix}.plantilla.reports") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-chart-bar"></i> Reports</a>
+    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
 @endsection
 
 @section('content')
-    <form method="GET" action="{{ route('payroll.plantilla.service-trail') }}" class="plantilla-filter-form" style="margin-bottom:20px">
+    <form method="GET" action="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="plantilla-filter-form" style="margin-bottom:20px">
         <select name="employee_id" class="hris-filter-select" style="min-width:320px;max-width:100%">
             <option value="">Select employee...</option>
             @foreach($employees as $emp)
@@ -54,7 +54,9 @@
         <section class="payroll-section">
             <div class="section-header">
                 <h2><i class="fas fa-route"></i>Position History</h2>
-                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="document.getElementById('addPastPositionModal').showModal()"><i class="fas fa-clock-rotate-left"></i> Add Past Position</button>
+                @if($routePrefix === 'payroll')
+                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="document.getElementById('addPastPositionModal').showModal()"><i class="fas fa-clock-rotate-left"></i> Add Past Position</button>
+                @endif
             </div>
             @if($assignments->count())
                 <ul class="trail-timeline">
@@ -68,7 +70,7 @@
                             <div class="trail-card">
                                 <div class="trail-title">
                                     @if($a->plantilla)
-                                        <a href="{{ route('payroll.plantilla.show', $a->plantilla->id) }}">{{ $a->plantilla->title }}</a>
+                                        <a href="{{ route("{$routePrefix}.plantilla.show", $a->plantilla->id) }}">{{ $a->plantilla->title }}</a>
                                         <span class="sg-badge">SG {{ $a->plantilla->salary_grade }} · Step {{ $a->plantilla->step }}</span>
                                         @if($a->plantilla->item_number)<span class="item-badge">Item {{ $a->plantilla->item_number }}</span>@endif
                                     @else
@@ -86,9 +88,10 @@
                     @endforeach
                 </ul>
                 <p class="text-muted" style="margin-top:8px;font-size:0.85rem">
-                    History inside HRIS begins with the FY 2026 plantilla baseline. Use <strong>Add Past Position</strong>
-                    above to record earlier positions this employee held - they're saved as already-ended entries and
-                    won't affect their current position or pay.
+                    History inside HRIS begins with the FY 2026 plantilla baseline.
+                    @if($routePrefix === 'payroll')
+                        Use <strong>Add Past Position</strong> above to record earlier positions this employee held - they're saved as already-ended entries and won't affect their current position or pay.
+                    @endif
                 </p>
             @else
                 <p class="empty-state">No plantilla assignments recorded for this employee.</p>
@@ -142,7 +145,7 @@
 @endsection
 
 @section('modals')
-@if($employee)
+@if($employee && $routePrefix === 'payroll')
     {{-- Add Past Position modal --}}
     <dialog id="addPastPositionModal" class="employee-modal">
         <div class="modal-top-actions" style="justify-content:space-between;align-items:center">

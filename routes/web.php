@@ -490,8 +490,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     Route::redirect('/dashboard/hr-manager/reports', '/dashboard/hr-manager');
     Route::get('/dashboard/hr-manager/audit', [HRManagerController::class, 'audit'])
         ->name('hr-manager.audit');
-    Route::get('/dashboard/hr-manager/roles', [HRManagerController::class, 'roles'])
-        ->name('hr-manager.roles');
     Route::get('/dashboard/hr-manager/settings', [HRManagerController::class, 'settings'])
         ->name('hr-manager.settings');
     Route::post('/dashboard/hr-manager/settings', [HRManagerController::class, 'updateSettings'])
@@ -526,14 +524,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     // Enhancement 1: Alerts
     Route::get('/dashboard/hr-manager/alerts', [HRManagerController::class, 'getAlerts'])
         ->name('hr-manager.alerts');
-
-    // Enhancement 2: Attendance Overview
-    Route::get('/dashboard/hr-manager/attendance-overview', [HRManagerController::class, 'attendanceOverview'])
-        ->name('hr-manager.attendance.overview');
-    Route::get('/dashboard/hr-manager/attendance-overview/data', [HRManagerController::class, 'attendanceOverviewData'])
-        ->name('hr-manager.attendance.overview.data');
-    Route::post('/dashboard/hr-manager/attendance-overview/notify-dept-head', [HRManagerController::class, 'attendanceNotifyDeptHead'])
-        ->name('hr-manager.attendance.notify-dept-head');
 
     // Enhancement 3: Leave Analytics
     Route::get('/dashboard/hr-manager/leave/analytics', [HRManagerController::class, 'getLeaveAnalytics'])
@@ -634,7 +624,7 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.workforce-calendar.index');
 });
 
-// Shift Management access grants + company-wide Shift Logs (Time Keeper / HR Manager only)
+// Shift Management access grants (Time Keeper / HR Manager only)
 Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
     Route::get('/attendance/shift-access', [ShiftManagementAccessController::class, 'index'])
         ->name('attendance.shift-access.index');
@@ -642,9 +632,6 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
         ->name('attendance.shift-access.grant');
     Route::post('/attendance/shift-access/{department}/revoke', [ShiftManagementAccessController::class, 'revoke'])
         ->name('attendance.shift-access.revoke');
-
-    Route::get('/attendance/shift-logs', [ShiftLogController::class, 'index'])
-        ->name('attendance.shift-logs');
 
     Route::get('/attendance/time-logs-monitoring', [TimeLogsMonitoringController::class, 'index'])
         ->name('attendance.time-logs-monitoring');
@@ -668,11 +655,27 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
         ->name('attendance.adjustment-summary.submissions.items');
 });
 
+// Company-wide Shift Logs (Time Keeper only)
+Route::middleware(['auth', 'role:time-keeper'])->group(function () {
+    Route::get('/attendance/shift-logs', [ShiftLogController::class, 'index'])
+        ->name('attendance.shift-logs');
+});
+
 // Mayor's Office routes
 Route::middleware(['auth', 'role:mayor'])->group(function () {
     Route::prefix('mayor')->name('mayor.')->group(function () {
         Route::get('/dashboard', [MayorController::class, 'dashboard'])->name('dashboard');
         Route::get('/chart-data', [MayorController::class, 'getChartData'])->name('chart-data');
+        Route::get('/alerts', [MayorController::class, 'getAlerts'])->name('alerts');
+        Route::get('/workforce-planning', [MayorController::class, 'getWorkforcePlanning'])->name('workforce.planning');
+        Route::get('/workforce-insights', [MayorController::class, 'workforceInsights'])->name('workforce-insights');
+        Route::get('/service-milestones', [MayorController::class, 'serviceMilestones'])->name('service-milestones');
+
+        // Plantilla & Salary — view-only (GET only; no create/edit/delete/promote/assign routes exist for the Mayor)
+        Route::get('/plantilla', [PlantillaController::class, 'index'])->name('plantilla.index');
+        Route::get('/plantilla/{plantilla}', [PlantillaController::class, 'show'])->name('plantilla.show');
+        Route::get('/plantilla-reports', [PlantillaController::class, 'reports'])->name('plantilla.reports');
+        Route::get('/plantilla-service-trail', [PlantillaController::class, 'serviceTrail'])->name('plantilla.service-trail');
         Route::get('/employees/filter', [MayorController::class, 'getEmployeesByFilter'])->name('employees.filter');
         Route::get('/reports', [MayorController::class, 'reports'])->name('reports');
         Route::get('/approvals', [MayorController::class, 'approvals'])->name('approvals');

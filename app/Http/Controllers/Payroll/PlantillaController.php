@@ -64,8 +64,9 @@ class PlantillaController extends Controller
         $stats['vacant'] = $stats['total'] - $stats['filled'];
 
         $eligibilityOptions = Plantilla::ELIGIBILITY_OPTIONS;
+        $routePrefix = $this->routePrefix($request);
 
-        return view('payroll.plantilla', compact('plantillas', 'departments', 'vacantPlantillas', 'stats', 'eligibilityOptions'));
+        return view('payroll.plantilla', compact('plantillas', 'departments', 'vacantPlantillas', 'stats', 'eligibilityOptions', 'routePrefix'));
     }
 
     public function reports(Request $request): View
@@ -139,7 +140,9 @@ class PlantillaController extends Controller
             ->get(['id', 'name', 'last_name', 'first_name', 'designation', 'date_of_original_appointment', 'date_of_last_promotion'])
             ->keyBy('id');
 
-        return view('payroll.plantilla-reports', compact('stats', 'vacantPositions', 'promotions', 'activity', 'employees', 'departments'));
+        $routePrefix = $this->routePrefix($request);
+
+        return view('payroll.plantilla-reports', compact('stats', 'vacantPositions', 'promotions', 'activity', 'employees', 'departments', 'routePrefix'));
     }
 
     private function matchingEmployeeIds(string $search): Collection
@@ -178,8 +181,9 @@ class PlantillaController extends Controller
         }
 
         $orgDepartments = Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+        $routePrefix = $this->routePrefix($request);
 
-        return view('payroll.plantilla-service-trail', compact('employees', 'employee', 'assignments', 'activity', 'orgDepartments'));
+        return view('payroll.plantilla-service-trail', compact('employees', 'employee', 'assignments', 'activity', 'orgDepartments', 'routePrefix'));
     }
 
     public function create(): RedirectResponse
@@ -209,7 +213,7 @@ class PlantillaController extends Controller
             ->with('status', 'Plantilla position created.');
     }
 
-    public function show(int $id): View
+    public function show(Request $request, int $id): View
     {
         $plantilla = Plantilla::with('assignments.employee')->findOrFail($id);
         $employees = User::active()->orderBy('last_name')
@@ -219,8 +223,9 @@ class PlantillaController extends Controller
             ->get()
             ->keyBy('employee_id');
         $eligibilityOptions = Plantilla::ELIGIBILITY_OPTIONS;
+        $routePrefix = $this->routePrefix($request);
 
-        return view('payroll.plantilla-show', compact('plantilla', 'employees', 'currentAssignments', 'eligibilityOptions'));
+        return view('payroll.plantilla-show', compact('plantilla', 'employees', 'currentAssignments', 'eligibilityOptions', 'routePrefix'));
     }
 
     public function edit(int $id): RedirectResponse
@@ -256,5 +261,14 @@ class PlantillaController extends Controller
 
         return redirect()->route('payroll.plantilla.index')
             ->with('status', 'Plantilla position deleted.');
+    }
+
+    /**
+     * Whether this request came in through the Mayor's view-only routes or Payroll Manager's own routes,
+     * so the shared views know which route names to link to and whether to show mutating actions.
+     */
+    private function routePrefix(Request $request): string
+    {
+        return str_starts_with((string) $request->route()->getName(), 'mayor.') ? 'mayor' : 'payroll';
     }
 }

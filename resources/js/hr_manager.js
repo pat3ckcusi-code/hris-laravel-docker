@@ -24,6 +24,8 @@ const employeeTypeColors = {
     'Unspecified': colorSet.gray,
 };
 
+const pieColorsForLabels = (labels) => (labels || []).map((label) => employeeTypeColors[label] || colorSet.gray);
+
 const createBarChart = (canvasId, label, payload, color = colorSet.blue, optionsOverride = {}) => {
     const ctx = document.getElementById(canvasId)?.getContext('2d');
     if (!ctx) return null;
@@ -120,6 +122,14 @@ const updateChart = (chart, payload) => {
     chart.update();
 };
 
+const updateEmploymentStatusChart = (chart, payload) => {
+    if (!chart) return;
+    chart.data.labels = payload?.labels || [];
+    chart.data.datasets[0].data = payload?.values || [];
+    chart.data.datasets[0].backgroundColor = pieColorsForLabels(payload?.labels);
+    chart.update();
+};
+
 const moduleRoot = document.querySelector('.hrm-module');
 const dashboardRoot = document.querySelector('.hrm-dashboard');
 
@@ -153,7 +163,7 @@ const initializeWorkforceCharts = (root, initialData) => {
         employmentStatusChart: createPieChart(
             'employmentStatusChart',
             initialData.employment_status,
-            [colorSet.green, colorSet.orange, colorSet.red, colorSet.gray],
+            pieColorsForLabels(initialData.employment_status?.labels),
             {
                 plugins: {
                     title: { display: true, text: 'Employee Type' },
@@ -226,7 +236,7 @@ const initializeWorkforceCharts = (root, initialData) => {
     const refreshCharts = (payload) => {
         updateStackedBarChart(charts.totalWorkforceChart, payload.workforce_per_department);
         updateChart(charts.genderChart, payload.gender_distribution);
-        updateChart(charts.employmentStatusChart, payload.employment_status);
+        updateEmploymentStatusChart(charts.employmentStatusChart, payload.employment_status);
         updateChart(charts.ageGroupChart, payload.age_group_distribution);
         updateChart(charts.lengthOfServiceChart, payload.length_of_service);
 
@@ -362,6 +372,7 @@ const initializeWorkforceCharts = (root, initialData) => {
                     { key: 'emp_no', label: 'Employee No' },
                     { key: 'name', label: 'Name' },
                     { key: 'department', label: 'Department' },
+                    { key: 'employee_type', label: 'Employee Type' },
                     { key: 'age', label: 'Age' },
                     { key: 'date_hired', label: 'Date Hired' },
                 ]);
@@ -803,7 +814,7 @@ const bindWorkforcePlanning = (root) => {
     const toggleBtn = document.getElementById('togglePlanningBtn');
     const panel = document.getElementById('workforcePlanningPanel');
     const planningUrl = root?.dataset?.planningUrl;
-    if (!toggleBtn || !panel || !planningUrl) return;
+    if (!panel || !planningUrl) return;
 
     let loaded = false;
     let hiringChart = null;
@@ -845,7 +856,7 @@ const bindWorkforcePlanning = (root) => {
             .catch(() => { /* Silently ignore */ });
     };
 
-    toggleBtn.addEventListener('click', () => {
+    toggleBtn?.addEventListener('click', () => {
         const isHidden = panel.style.display === 'none';
         panel.style.display = isHidden ? 'block' : 'none';
         toggleBtn.innerHTML = isHidden
@@ -952,136 +963,6 @@ const bindServiceMilestonesModule = (root) => {
         .catch(() => {
             container.innerHTML = `<p style="color:#dc3545;padding:0.5rem 0;">Failed to load service milestones.</p>`;
         });
-};
-
-// ── Enhancement 2: Attendance Overview ───────────────────────────────────
-
-const bindAttendanceOverview = () => {
-    const root = document.querySelector('.hrm-module');
-    if (!root || !root.dataset.url?.includes('attendance-overview')) return;
-
-    const monthInput = document.getElementById('attendanceMonth');
-    const deptSelect = document.getElementById('attendanceDepartment');
-    const filterBtn = document.getElementById('attendanceFilterBtn');
-
-    let trendChart = null;
-    let deptChart = null;
-
-    const badge = (val, cls) =>
-        `<span class="att-badge att-badge-${cls}">${val}</span>`;
-
-    const render = (data) => {
-        // Summary cards
-        document.getElementById('attTotalEmployees').querySelector('h3').textContent = data.summary?.total_employees ?? '-';
-        document.getElementById('attAvgTardiness').querySelector('h3').textContent = data.summary?.avg_tardiness_minutes ?? '-';
-        document.getElementById('attAvgUndertime').querySelector('h3').textContent = data.summary?.avg_undertime_minutes ?? '-';
-        document.getElementById('attTotalAbsences').querySelector('h3').textContent = data.summary?.total_absences ?? '-';
-
-        // 3-month trend multi-line chart
-        const trend = data.trend || [];
-        const trendLabels = trend.map((t) => t.month);
-        const trendDatasets = [
-            { label: 'Tardiness Days', data: trend.map((t) => t.tardiness_days), borderColor: colorSet.red, backgroundColor: 'rgba(220,53,69,0.08)', tension: 0.3, fill: true },
-            { label: 'Undertime Days', data: trend.map((t) => t.undertime_days), borderColor: colorSet.orange, backgroundColor: 'rgba(255,165,0,0.08)', tension: 0.3, fill: true },
-            { label: 'Absent Days', data: trend.map((t) => t.absent_days), borderColor: colorSet.blue, backgroundColor: 'rgba(0,123,255,0.08)', tension: 0.3, fill: true },
-        ];
-        if (!trendChart) {
-            trendChart = new Chart(document.getElementById('monthlyTrendChart')?.getContext('2d'), {
-                type: 'line',
-                data: { labels: trendLabels, datasets: trendDatasets },
-                options: { responsive: true, maintainAspectRatio: false },
-            });
-        } else {
-            trendChart.data.labels = trendLabels;
-            trendChart.data.datasets.forEach((ds, i) => { ds.data = trendDatasets[i].data; });
-            trendChart.update();
-        }
-
-        // Dept late bar chart (horizontal)
-        const deptLate = data.dept_late || [];
-        const deptPayload = { labels: deptLate.map((d) => d.department), values: deptLate.map((d) => d.late_minutes) };
-        if (!deptChart) {
-            deptChart = new Chart(document.getElementById('deptLateChart')?.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: deptPayload.labels,
-                    datasets: [{ label: 'Late Minutes', data: deptPayload.values, backgroundColor: colorSet.orange, borderRadius: 4 }],
-                },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
-            });
-        } else {
-            deptChart.data.labels = deptPayload.labels;
-            deptChart.data.datasets[0].data = deptPayload.values;
-            deptChart.update();
-        }
-
-        // Drilldown table - employees with >10 tardiness or undertime days
-        const tbody = document.querySelector('#attDrillTable tbody');
-        if (tbody) {
-            const rows = data.drilldown || [];
-            if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#94a3b8;">No employees exceed the threshold this period.</td></tr>`;
-            } else {
-                tbody.innerHTML = rows.map((e) => {
-                    const tarBadge = e.tardiness_count > 10 ? badge(e.tardiness_count, 'danger') : e.tardiness_count;
-                    const utBadge = e.undertime_count > 10 ? badge(e.undertime_count, 'warning') : e.undertime_count;
-                    return `<tr>
-                        <td>${e.emp_no ?? '-'}</td>
-                        <td>${e.name ?? ''}</td>
-                        <td>${e.department ?? ''}</td>
-                        <td>${tarBadge}</td>
-                        <td>${utBadge}</td>
-                        <td><button class="hrm-btn att-notify-btn" style="font-size:0.8rem;padding:3px 10px;"
-                                data-uid="${e.user_id}"
-                                data-name="${e.name ?? ''}"
-                                data-tardiness="${e.tardiness_count}"
-                                data-undertime="${e.undertime_count}">Notify Dept Head</button></td>
-                    </tr>`;
-                }).join('');
-            }
-        }
-    };
-
-    const load = () => {
-        const month = monthInput?.value || '';
-        const dept = deptSelect?.value || '';
-        const params = new URLSearchParams({ month, department: dept });
-
-        fetch(`${root.dataset.url}?${params.toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then((r) => r.json())
-            .then(render)
-            .catch(() => Swal.fire('Error', 'Failed to load attendance data.', 'error'));
-    };
-
-    // Delegated click handler for Notify buttons
-    root.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.att-notify-btn');
-        if (!btn) return;
-        btn.disabled = true;
-        fetch(root.dataset.notifyUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': root.dataset.csrf,
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: JSON.stringify({
-                user_id: btn.dataset.uid,
-                tardiness_count: btn.dataset.tardiness,
-                undertime_count: btn.dataset.undertime,
-            }),
-        })
-            .then((r) => r.json())
-            .then((res) => {
-                if (res.success) Swal.fire('Sent', res.message, 'success');
-                else Swal.fire('Error', res.message, 'error');
-            })
-            .catch(() => Swal.fire('Error', 'Request failed.', 'error'))
-            .finally(() => { btn.disabled = false; });
-    });
-
-    filterBtn?.addEventListener('click', load);
-    load();
 };
 
 // ── Enhancement 4: Payroll Overview ──────────────────────────────────────
@@ -1196,12 +1077,11 @@ bindLeaveModule(moduleRoot);
 if (moduleRoot?.dataset?.module === 'leave') {
     bindLeaveAnalytics(moduleRoot);
 }
-if (moduleRoot?.dataset?.module === 'records') {
+if (moduleRoot?.dataset?.module === 'records' || moduleRoot?.dataset?.module === 'mayor-workforce-insights') {
     bindWorkforcePlanning(moduleRoot);
 }
 bindServiceMilestonesModule(moduleRoot);
 bindFrontdeskModule(moduleRoot);
 bindAuditModule(moduleRoot);
 bindSimpleSuccessButtons();
-bindAttendanceOverview();
 bindPayrollOverview();

@@ -31,7 +31,7 @@
 - Goals: Process document requests, track workflow, send notifications, generate reports
 
 ## HRManagerController
-- Routes: /hr-manager (dashboard, records, leave, frontdesk, reports, audit, roles, settings)
+- Routes: /hr-manager (dashboard, records, leave, frontdesk, reports, audit, settings)
 - Schema: users, pds, leave_requests, document_requests, hr_audit_trails, settings
 - Goals: Analytics dashboard, manage records, approve/reject leave, track documents, audit logs, configure system
 

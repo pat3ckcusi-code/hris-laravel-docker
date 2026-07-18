@@ -562,25 +562,6 @@ class HRManagerController extends Controller
         ]);
     }
 
-    public function roles(Request $request): View
-    {
-        $this->ensureHrManager($request);
-
-        $roles = ['records manager', 'leave manager', 'front desk', 'hr manager'];
-
-        $users = User::query()
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->select('users.id', 'users.name', 'users.email', 'users.access_level', 'departments.Dept_name')
-            ->whereIn(DB::raw("LOWER(REPLACE(REPLACE(users.access_level, '-', ' '), '_', ' '))"), $roles)
-            ->orderBy('users.name')
-            ->get();
-
-        return view('hr-manager.roles', [
-            'users' => $users,
-            'availableRoles' => ['Records Manager', 'Leave Manager', 'Front Desk', 'HR Manager'],
-        ]);
-    }
-
     // ── Enhancement 1: Alerts ──────────────────────────────────────────────
 
     public function getAlerts(Request $request): JsonResponse
@@ -626,13 +607,7 @@ class HRManagerController extends Controller
         $dept = $deptService->resolveDepartmentForUser($employee);
 
         // Find department head
-        $deptHead = null;
-        if ($dept) {
-            $deptHead = User::query()
-                ->where('Dept_id', $dept->Dept_id)
-                ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'department head'")
-                ->first();
-        }
+        $deptHead = $dept ? $deptService->getDepartmentHeadUser($dept) : null;
 
         if (! $deptHead || ! $deptHead->email) {
             return response()->json(['success' => false, 'message' => 'No department head email found.'], 422);
@@ -687,91 +662,6 @@ class HRManagerController extends Controller
         return view('hr-manager.service-milestones', [
             'planningDataUrl' => route('hr-manager.records.planning-data'),
         ]);
-    }
-
-    // ── Enhancement 2: Attendance Overview ────────────────────────────────
-
-    public function attendanceOverview(Request $request): View
-    {
-        $this->ensureHrManager($request);
-
-        return view('hr-manager.attendance-overview', [
-            'departments' => $this->departmentOptions(),
-            'attendanceDataUrl' => route('hr-manager.attendance.overview.data'),
-            'attendanceNotifyUrl' => route('hr-manager.attendance.notify-dept-head'),
-        ]);
-    }
-
-    public function attendanceOverviewData(Request $request): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $month = trim((string) $request->query('month', now()->format('Y-m')));
-        $departmentId = $request->integer('department');
-
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = now()->format('Y-m');
-        }
-
-        $deptKey = $departmentId > 0 ? $departmentId : 'all';
-        $data = Cache::remember("hr_attendance_overview_{$month}_{$deptKey}", now()->addMinutes(10),
-            fn () => $this->dashboardService->buildAttendanceOverview($month, $departmentId > 0 ? $departmentId : null)
-        );
-
-        return response()->json($data);
-    }
-
-    public function attendanceNotifyDeptHead(Request $request): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $payload = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
-            'tardiness_count' => ['nullable', 'integer', 'min:0'],
-            'undertime_count' => ['nullable', 'integer', 'min:0'],
-        ]);
-
-        $employee = User::findOrFail($payload['user_id']);
-        $deptService = app(DepartmentService::class);
-        $dept = $deptService->resolveDepartmentForUser($employee);
-
-        $deptHead = null;
-        if ($dept) {
-            $deptHead = User::query()
-                ->where('Dept_id', $dept->Dept_id)
-                ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'department head'")
-                ->first();
-        }
-
-        if (! $deptHead || ! $deptHead->email) {
-            return response()->json(['success' => false, 'message' => 'No department head email found.'], 422);
-        }
-
-        try {
-            $deptHead->notify(new HrisTransactionNotification(
-                'Attendance Alert',
-                'Action Required',
-                [
-                    'Employee' => $employee->name,
-                    'Department' => $dept?->Dept_name ?? 'N/A',
-                    'Tardiness Days' => ($payload['tardiness_count'] ?? '-').' day(s)',
-                    'Undertime Days' => ($payload['undertime_count'] ?? '-').' day(s)',
-                ],
-                $request->user()->name,
-                'This employee has exceeded the tardiness/undertime threshold this month. Please take appropriate action.'
-            ));
-        } catch (\Throwable) {
-            return response()->json(['success' => false, 'message' => 'Notification could not be sent.'], 500);
-        }
-
-        $this->storeAuditTrail($request, 'attendance', 'notify_dept_head', User::class, (int) $employee->id, [
-            'employee' => $employee->name,
-            'dept_head' => $deptHead->name,
-            'tardiness_count' => $payload['tardiness_count'] ?? null,
-            'undertime_count' => $payload['undertime_count'] ?? null,
-        ]);
-
-        return response()->json(['success' => true, 'message' => 'Department head notified successfully.']);
     }
 
     // ── Enhancement 4: Payroll Overview ───────────────────────────────────

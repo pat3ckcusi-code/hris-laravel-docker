@@ -15,7 +15,7 @@ use Tests\Traits\MeasuresPerformance;
  * HR Manager Role Tests
  *
  * Covers: Charts & Analytics, Records Management, Leave Operations,
- *         Audit Logs, User Roles, System Settings
+ *         Audit Logs, System Settings
  */
 class HRManagerTest extends TestCase
 {
@@ -436,19 +436,6 @@ class HRManagerTest extends TestCase
         $response->assertStatus(200);
         $this->assertLessThanOrEqual(15, $queryCount,
             "Audit data generated {$queryCount} queries (max 15)");
-    }
-
-    // ──────────────────────────────────────────────
-    // 5. User Roles & Access
-    // ──────────────────────────────────────────────
-
-    public function test_roles_page_loads(): void
-    {
-        $hr = $this->createHRManager();
-
-        $response = $this->actingAs($hr)->get(route('hr-manager.roles'));
-
-        $response->assertStatus(200);
     }
 
     public function test_role_escalation_prevention(): void

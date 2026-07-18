@@ -143,8 +143,9 @@ class HRDashboardService
         ]);
 
         $workforcePerDepartment = $this->workforcePerDepartment($departmentId, $employeeType);
-        $totalWorkforce = $this->countByKey($employees, 'employee_type', 'Unspecified');
-        $employmentStatus = $this->countByKey($employees, 'employee_type', 'Unknown');
+        $typedEmployees = $employees->filter(fn (User $e) => trim((string) ($e->employee_type ?? '')) !== '');
+        $totalWorkforce = $this->countByKey($typedEmployees, 'employee_type', 'Unspecified');
+        $employmentStatus = $this->countByKey($typedEmployees, 'employee_type', 'Unknown');
 
         $pdsByUser = $this->pdsByUserId($employees->pluck('id'));
 
@@ -273,18 +274,18 @@ class HRDashboardService
         $isKnownType = fn (string $type): bool => in_array($type, HrisConstants::EMPLOYEE_TYPES, true);
 
         // Canonical order first so colors/legend stay stable across "all departments" and
-        // single-department views, then bucket anything blank/unrecognized as 'Unspecified'.
+        // single-department views, then bucket any non-blank, non-canonical value as
+        // 'Unspecified' (a real data-quality signal). Blank employee_type — e.g. an
+        // account with no type set, such as an internal dev/test account — is excluded
+        // entirely rather than bucketed, so it's never counted here or in "Total Employees".
         $types = collect(HrisConstants::EMPLOYEE_TYPES)
             ->filter(fn ($t) => $rows->contains(fn ($r) => $r->employee_type === $t))
             ->values();
 
         $unspecifiedTotal = $rows
-            ->filter(fn ($r) => $r->employee_type === '' || ! $isKnownType($r->employee_type))
+            ->filter(fn ($r) => $r->employee_type !== '' && ! $isKnownType($r->employee_type))
             ->sum('total');
 
-        // A department with zero employees still produces one placeholder row (blank
-        // employee_type, total 0) via the LEFT JOIN — don't let that alone add a spurious
-        // 'Unspecified' legend entry.
         if ($unspecifiedTotal > 0) {
             $types->push('Unspecified');
         }
@@ -292,7 +293,7 @@ class HRDashboardService
         $datasets = $types->map(function (string $type) use ($rows, $deptNames, $isKnownType) {
             $byDept = $rows
                 ->filter(fn ($r) => $type === 'Unspecified'
-                    ? ($r->employee_type === '' || ! $isKnownType($r->employee_type))
+                    ? ($r->employee_type !== '' && ! $isKnownType($r->employee_type))
                     : $r->employee_type === $type)
                 ->groupBy('Dept_name')
                 ->map(fn ($g) => (int) $g->sum('total'));
@@ -508,27 +509,32 @@ class HRDashboardService
             ? (int) DB::table('payroll_exceptions')->where('resolved_flag', false)->count()
             : 0;
 
-        $upcomingHolidays = [];
-        if (Schema::hasTable('holidays')) {
-            $upcomingHolidays = DB::table('holidays')
-                ->whereBetween('holiday_date', [today(), today()->addDays(14)])
-                ->orderBy('holiday_date')
-                ->get(['title', 'holiday_date', 'type'])
-                ->map(fn ($h) => [
-                    'title' => $h->title,
-                    'date' => $h->holiday_date,
-                    'type' => $h->type,
-                    'days_away' => (int) today()->diffInDays($h->holiday_date),
-                ])
-                ->all();
-        }
-
         return [
             'open_payroll' => $openPayroll,
             'unresolved_exceptions' => $unresolvedExceptions,
-            'upcoming_holidays' => $upcomingHolidays,
+            'upcoming_holidays' => $this->upcomingHolidayAlerts(),
             'total_alerts' => $unresolvedExceptions + ($openPayroll ? 1 : 0),
         ];
+    }
+
+    /** @return array<int, array{title: string, date: string, type: string, days_away: int}> */
+    public function upcomingHolidayAlerts(int $days = 14): array
+    {
+        if (! Schema::hasTable('holidays')) {
+            return [];
+        }
+
+        return DB::table('holidays')
+            ->whereBetween('holiday_date', [today(), today()->addDays($days)])
+            ->orderBy('holiday_date')
+            ->get(['title', 'holiday_date', 'type'])
+            ->map(fn ($h) => [
+                'title' => $h->title,
+                'date' => $h->holiday_date,
+                'type' => $h->type,
+                'days_away' => (int) today()->diffInDays($h->holiday_date),
+            ])
+            ->all();
     }
 
     // ── Leave analytics ────────────────────────────────────────────────────
@@ -770,99 +776,6 @@ class HRDashboardService
             ],
             'trend' => ['labels' => $trendLabels, 'values' => $trendValues],
         ];
-    }
-
-    // ── Attendance overview ───────────────────────────────────────────────────
-
-    /** @return array<string, mixed> */
-    public function buildAttendanceOverview(string $month, ?int $departmentId): array
-    {
-        if (! Schema::hasTable('dtrs')) {
-            return ['summary' => [], 'trend' => [], 'dept_late' => [], 'drilldown' => []];
-        }
-
-        [$year, $mon] = explode('-', $month);
-        $year = (int) $year;
-        $mon = (int) $mon;
-
-        $baseQuery = fn () => DB::table('dtrs')
-            ->join('users', 'users.id', '=', 'dtrs.employee_id')
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->whereYear('dtrs.date', $year)
-            ->whereMonth('dtrs.date', $mon)
-            ->when($departmentId !== null, fn ($q) => $q->where('users.Dept_id', $departmentId));
-
-        $summary = $baseQuery()->selectRaw('
-            COUNT(DISTINCT dtrs.employee_id) as total_employees,
-            AVG(CASE WHEN dtrs.late_minutes > 0 THEN dtrs.late_minutes END) as avg_late,
-            AVG(CASE WHEN dtrs.undertime_minutes > 0 THEN dtrs.undertime_minutes END) as avg_undertime,
-            SUM(dtrs.is_absent) as total_absences
-        ')->first();
-
-        $summaryCards = [
-            'total_employees' => (int) ($summary->total_employees ?? 0),
-            'avg_tardiness_minutes' => (int) round((float) ($summary->avg_late ?? 0)),
-            'avg_undertime_minutes' => (int) round((float) ($summary->avg_undertime ?? 0)),
-            'total_absences' => (int) ($summary->total_absences ?? 0),
-        ];
-
-        $trendFrom = Carbon::createFromDate($year, $mon, 1)->subMonths(2)->startOfMonth();
-        $trendTo = Carbon::createFromDate($year, $mon, 1)->endOfMonth();
-
-        $trend = DB::table('dtrs')
-            ->join('users', 'users.id', '=', 'dtrs.employee_id')
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->whereBetween('dtrs.date', [$trendFrom->toDateString(), $trendTo->toDateString()])
-            ->when($departmentId !== null, fn ($q) => $q->where('users.Dept_id', $departmentId))
-            ->selectRaw("
-                DATE_FORMAT(dtrs.date, '%Y-%m') as month,
-                COUNT(CASE WHEN dtrs.late_minutes > 0 THEN 1 END) as tardiness_days,
-                COUNT(CASE WHEN dtrs.undertime_minutes > 0 THEN 1 END) as undertime_days,
-                SUM(dtrs.is_absent) as absent_days
-            ")
-            ->groupBy(DB::raw("DATE_FORMAT(dtrs.date, '%Y-%m')"))
-            ->orderBy('month')
-            ->get()
-            ->map(fn ($r) => [
-                'month' => $r->month,
-                'tardiness_days' => (int) $r->tardiness_days,
-                'undertime_days' => (int) $r->undertime_days,
-                'absent_days' => (int) $r->absent_days,
-            ])
-            ->all();
-
-        $deptLate = $baseQuery()
-            ->selectRaw('departments.Dept_name, SUM(dtrs.late_minutes) as total_late')
-            ->groupBy('departments.Dept_id', 'departments.Dept_name')
-            ->orderByDesc('total_late')
-            ->get()
-            ->map(fn ($r) => ['department' => $r->Dept_name ?? 'Unknown', 'late_minutes' => (int) $r->total_late])
-            ->all();
-
-        $drilldown = $baseQuery()
-            ->selectRaw('
-                users.id,
-                users.EmpNo,
-                users.name,
-                departments.Dept_name,
-                COUNT(CASE WHEN dtrs.late_minutes > 0 THEN 1 END) as tardiness_count,
-                COUNT(CASE WHEN dtrs.undertime_minutes > 0 THEN 1 END) as undertime_count
-            ')
-            ->groupBy('users.id', 'users.EmpNo', 'users.name', 'departments.Dept_name')
-            ->havingRaw('tardiness_count > 10 OR undertime_count > 10')
-            ->orderByDesc(DB::raw('tardiness_count + undertime_count'))
-            ->get()
-            ->map(fn ($r) => [
-                'user_id' => $r->id,
-                'emp_no' => $r->EmpNo ?? '-',
-                'name' => $r->name,
-                'department' => $r->Dept_name ?? 'Unknown',
-                'tardiness_count' => (int) $r->tardiness_count,
-                'undertime_count' => (int) $r->undertime_count,
-            ])
-            ->all();
-
-        return ['summary' => $summaryCards, 'trend' => $trend, 'dept_late' => $deptLate, 'drilldown' => $drilldown];
     }
 
     // ── Payroll overview ──────────────────────────────────────────────────────

@@ -4,8 +4,8 @@
 ])
 
 @section('top_actions')
-    <a href="{{ route('payroll.plantilla.service-trail') }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
-    <a href="{{ route('payroll.plantilla.index') }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
+    <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
+    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
 @endsection
 
 @section('content')
@@ -52,7 +52,7 @@
     {{-- Promotions --}}
     <section class="payroll-section">
         <h2><i class="fas fa-arrow-trend-up"></i>Promotion History</h2>
-        <form method="GET" action="{{ route('payroll.plantilla.reports') }}" class="plantilla-filter-form" style="margin-bottom:14px">
+        <form method="GET" action="{{ route("{$routePrefix}.plantilla.reports") }}" class="plantilla-filter-form" style="margin-bottom:14px">
             <input type="text" name="promotion_search" value="{{ request('promotion_search') }}" placeholder="Search employee name or EmpNo..." class="hris-search-input" style="min-width:260px">
             <input type="hidden" name="vacant_search" value="{{ request('vacant_search') }}">
             <input type="hidden" name="vacant_department" value="{{ request('vacant_department') }}">
@@ -60,7 +60,7 @@
             <input type="hidden" name="activity_action" value="{{ request('activity_action') }}">
             <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
             @if(request('promotion_search'))
-                <a href="{{ route('payroll.plantilla.reports', request()->except('promotion_search', 'promotions_page')) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                <a href="{{ route("{$routePrefix}.plantilla.reports", request()->except('promotion_search', 'promotions_page')) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
             @endif
         </form>
         @if($promotions->count())
@@ -86,7 +86,7 @@
                             @endphp
                             <tr>
                                 <td>{{ $log->created_at->format('M d, Y H:i') }}</td>
-                                <td><a href="{{ route('payroll.plantilla.service-trail', ['employee_id' => $log->target_id]) }}">{{ $employeeName($log->target_id) }}</a></td>
+                                <td><a href="{{ route("{$routePrefix}.plantilla.service-trail", ['employee_id' => $log->target_id]) }}">{{ $employeeName($log->target_id) }}</a></td>
                                 <td>
                                     @if(!empty($d['from']))
                                         {{ $d['from']['title'] ?? '-' }}<br>
@@ -117,7 +117,7 @@
     {{-- Vacant positions --}}
     <section class="payroll-section">
         <h2><i class="fas fa-chair"></i>Vacant Positions ({{ $vacantPositions->total() }})</h2>
-        <form method="GET" action="{{ route('payroll.plantilla.reports') }}" class="plantilla-filter-form" style="margin-bottom:14px">
+        <form method="GET" action="{{ route("{$routePrefix}.plantilla.reports") }}" class="plantilla-filter-form" style="margin-bottom:14px">
             <input type="text" name="vacant_search" value="{{ request('vacant_search') }}" placeholder="Search item no., title, or dept..." class="hris-search-input" style="min-width:260px">
             <select name="vacant_department" class="hris-filter-select">
                 <option value="">All Departments</option>
@@ -130,7 +130,7 @@
             <input type="hidden" name="activity_action" value="{{ request('activity_action') }}">
             <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
             @if(request()->hasAny(['vacant_search', 'vacant_department']))
-                <a href="{{ route('payroll.plantilla.reports', request()->except(['vacant_search', 'vacant_department', 'vacant_page'])) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                <a href="{{ route("{$routePrefix}.plantilla.reports", request()->except(['vacant_search', 'vacant_department', 'vacant_page'])) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
             @endif
         </form>
         @if($vacantPositions->count())
@@ -150,7 +150,7 @@
                         @foreach($vacantPositions as $vp)
                             <tr>
                                 <td>@if($vp->item_number)<span class="item-badge">{{ $vp->item_number }}</span>@else -@endif</td>
-                                <td><a href="{{ route('payroll.plantilla.show', $vp->id) }}">{{ $vp->title }}</a></td>
+                                <td><a href="{{ route("{$routePrefix}.plantilla.show", $vp->id) }}">{{ $vp->title }}</a></td>
                                 <td>{{ $vp->department ?: '-' }}</td>
                                 <td><span class="sg-badge">SG {{ $vp->salary_grade }}</span></td>
                                 <td>{{ $vp->step }}</td>
@@ -169,7 +169,7 @@
     {{-- Activity log --}}
     <section class="payroll-section">
         <h2><i class="fas fa-clock-rotate-left"></i>Recent Assignment Activity</h2>
-        <form method="GET" action="{{ route('payroll.plantilla.reports') }}" class="plantilla-filter-form" style="margin-bottom:14px">
+        <form method="GET" action="{{ route("{$routePrefix}.plantilla.reports") }}" class="plantilla-filter-form" style="margin-bottom:14px">
             <input type="text" name="activity_search" value="{{ request('activity_search') }}" placeholder="Search employee name or EmpNo..." class="hris-search-input" style="min-width:260px">
             <select name="activity_action" class="hris-filter-select">
                 <option value="">All Actions</option>
@@ -182,7 +182,7 @@
             <input type="hidden" name="vacant_department" value="{{ request('vacant_department') }}">
             <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
             @if(request()->hasAny(['activity_search', 'activity_action']))
-                <a href="{{ route('payroll.plantilla.reports', request()->except(['activity_search', 'activity_action', 'activity_page'])) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                <a href="{{ route("{$routePrefix}.plantilla.reports", request()->except(['activity_search', 'activity_action', 'activity_page'])) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
             @endif
         </form>
         @if($activity->count())

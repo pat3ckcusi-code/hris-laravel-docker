@@ -82,7 +82,6 @@
         'payslips'            => 'fas fa-file-invoice-dollar fa-fw',
 
         // Administration
-        'roles'               => 'fas fa-user-shield fa-fw',
         'settings'            => 'fas fa-cog fa-fw',
         'policies'            => 'fas fa-gavel fa-fw',
         'events'              => 'fas fa-calendar-days fa-fw',
@@ -185,9 +184,7 @@
             ['label' => 'Payroll Overview',   'icon' => 'payroll_runs', 'route' => 'hr-manager.payroll.overview',     'active' => ['hr-manager.payroll.overview*']],
 
             ['section' => 'Attendance'],
-            ['label' => 'Attendance Overview','icon' => 'statistics',        'route' => 'hr-manager.attendance.overview', 'active' => ['hr-manager.attendance.overview*']],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
-            ['label' => 'Shift Logs',         'icon' => 'audit',             'route' => 'attendance.shift-logs',               'active' => ['attendance.shift-logs*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
@@ -197,7 +194,6 @@
             ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],
 
             ['section' => 'Administration'],
-            ['label' => 'User Roles &amp; Access', 'icon' => 'roles',    'route' => 'hr-manager.roles',    'active' => ['hr-manager.roles']],
             ['label' => 'System Settings',    'icon' => 'settings',  'route' => 'hr-manager.settings',  'active' => ['hr-manager.settings']],
 
             ['section' => 'Self-Service'],
@@ -313,9 +309,12 @@
             ['section' => 'Management'],
             ['label' => 'Leave Approvals',         'icon' => 'leave_approvals',  'route' => 'mayor.approvals',              'active' => ['mayor.approvals'],              'badge' => 'pending_leaves_mayor'],
             ['label' => 'Travel Order Approval',   'icon' => 'travel_approval',  'route' => 'mayor.travel-order-approvals', 'active' => ['mayor.travel-order-approvals'], 'badge' => 'pending_travel_orders'],
+            ['label' => 'Workforce Insights',      'icon' => 'milestones',       'route' => 'mayor.workforce-insights',     'active' => ['mayor.workforce-insights']],
+            ['label' => 'Service Milestones',      'icon' => 'milestones',       'route' => 'mayor.service-milestones',     'active' => ['mayor.service-milestones']],
             ['label' => 'Reports',                 'icon' => 'reports',          'route' => 'mayor.reports',                'active' => ['mayor.reports']],
             ['label' => 'Policies',                'icon' => 'policies',         'route' => 'mayor.policies',               'active' => ['mayor.policies']],
             ['label' => 'Employees',               'icon' => 'employees',        'route' => 'mayor.employees',              'active' => ['mayor.employees']],
+            ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',        'route' => 'mayor.plantilla.index',        'active' => ['mayor.plantilla.*']],
             ['label' => 'Events',                  'icon' => 'events',           'route' => 'mayor.events',                 'active' => ['mayor.events']],
 
             ['section' => 'System'],
@@ -425,20 +424,50 @@
     ];
 
     // ── OIC: merge Self-Service (employee) + Department Management (OIC role) ──
+    // An HR Manager is unconditionally also a department head for their own department.
     $oicRole = null;
+    $isHrManagerAsDeptHead = false;
     if (!in_array($activeRole, ['department head', 'administrative officer'])) {
-        $today = now()->toDateString();
         $oicAssignment = \App\Models\OicAssignment::where('user_id', auth()->id())
-            ->whereDate('start_date', '<=', $today)
-            ->whereDate('end_date', '>=', $today)
+            ->active()
             ->first();
         if ($oicAssignment) {
             $oicRole = $oicAssignment->role; // 'department head' | 'administrative officer'
+        } elseif ($activeRole === 'hr manager') {
+            $oicRole = 'department head';
+            $isHrManagerAsDeptHead = true;
         }
     }
 
     // ── Resolve items for current role ──
-    if ($oicRole) {
+    if ($isHrManagerAsDeptHead) {
+        // HR Manager already has its own real dashboard (Charts & Analytics) - keep the
+        // full HR Manager menu as-is and just merge in the Department Management section,
+        // slotted in before Attendance (after Operations).
+        $oicRoleMenu = $menus[$oicRole] ?? [];
+
+        $deptMgmtItems = [];
+        $_inDeptMgmt = false;
+        foreach ($oicRoleMenu as $_item) {
+            if (isset($_item['section'])) {
+                if ($_item['section'] === 'Department Management') { $_inDeptMgmt = true; }
+                elseif ($_inDeptMgmt) { break; }
+            }
+            if ($_inDeptMgmt) { $deptMgmtItems[] = $_item; }
+        }
+
+        $items = [];
+        foreach ($menus[$activeRole] ?? [] as $_item) {
+            if ($deptMgmtItems && isset($_item['section']) && $_item['section'] === 'Attendance') {
+                array_push($items, ...$deptMgmtItems);
+                $deptMgmtItems = [];
+            }
+            $items[] = $_item;
+        }
+        if ($deptMgmtItems) {
+            array_push($items, ...$deptMgmtItems);
+        }
+    } elseif ($oicRole) {
         $oicRoleMenu  = $menus[$oicRole] ?? [];
         $employeeMenu = $menus[$activeRole] ?? [];
 
@@ -448,11 +477,16 @@
             if (!isset($_item['section'])) { $oicDashboard[] = $_item; break; }
         }
 
-        // All employee menu items except the first link (their own employee dashboard)
+        // All employee menu items except the first link (their own employee dashboard),
+        // dropping any leading section header that precedes it (if the menu opens with a
+        // bare section header rather than a link).
         $employeeBody = [];
-        $_skipped = false;
+        $_seenFirstLink = false;
         foreach ($employeeMenu as $_item) {
-            if (!$_skipped && !isset($_item['section'])) { $_skipped = true; continue; }
+            if (!$_seenFirstLink) {
+                if (!isset($_item['section'])) { $_seenFirstLink = true; }
+                continue;
+            }
             $employeeBody[] = $_item;
         }
 

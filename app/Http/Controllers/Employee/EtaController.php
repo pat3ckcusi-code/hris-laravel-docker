@@ -260,10 +260,8 @@ class EtaController extends Controller
 
             // Also allow OIC users acting as administrative officer or hr manager
             if (! $allowed) {
-                $today = now()->toDateString();
                 $allowed = OicAssignment::where('user_id', $user->id)
-                    ->whereDate('start_date', '<=', $today)
-                    ->whereDate('end_date', '>=', $today)
+                    ->active()
                     ->whereIn('role', ['administrative officer', 'hr manager'])
                     ->exists();
             }

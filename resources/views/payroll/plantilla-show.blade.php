@@ -4,8 +4,10 @@
 ])
 
 @section('top_actions')
-    <button type="button" class="btn btn-sm" onclick="document.getElementById('assignModal').showModal()"><i class="fas fa-user-plus"></i> Assign Employee</button>
-    <a href="{{ route('payroll.plantilla.index') }}" class="btn btn-sm btn-outline">Back</a>
+    @if($routePrefix === 'payroll')
+        <button type="button" class="btn btn-sm" onclick="document.getElementById('assignModal').showModal()"><i class="fas fa-user-plus"></i> Assign Employee</button>
+    @endif
+    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back</a>
 @endsection
 
 @section('content')
@@ -47,7 +49,9 @@
                         <th>Start Date</th>
                         <th>End Date</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        @if($routePrefix === 'payroll')
+                            <th>Actions</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
@@ -66,26 +70,29 @@
                                     <span class="status-chip status-rejected">Ended</span>
                                 @endif
                             </td>
-                            <td>
-                                <div class="action-btns">
-                                    <button type="button" class="btn btn-sm btn-outline" onclick="openEditAssignment({{ $a->id }})">Edit</button>
-                                    <form method="POST" action="{{ route('payroll.plantilla.assignments.destroy', [$plantilla->id, $a->id]) }}" style="display:inline" id="delete-assign-{{ $a->id }}">
-                                        @csrf @method('DELETE')
-                                        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteAssignment({{ $a->id }})">Remove</button>
-                                    </form>
-                                </div>
-                            </td>
+                            @if($routePrefix === 'payroll')
+                                <td>
+                                    <div class="action-btns">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="openEditAssignment({{ $a->id }})">Edit</button>
+                                        <form method="POST" action="{{ route('payroll.plantilla.assignments.destroy', [$plantilla->id, $a->id]) }}" style="display:inline" id="delete-assign-{{ $a->id }}">
+                                            @csrf @method('DELETE')
+                                            <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteAssignment({{ $a->id }})">Remove</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            @endif
                         </tr>
                     @endforeach
                 </tbody>
             </table>
         @else
-            <p class="empty-state">No employees assigned to this position. Click <strong>Assign Employee</strong> to add one.</p>
+            <p class="empty-state">No employees assigned to this position.@if($routePrefix === 'payroll') Click <strong>Assign Employee</strong> to add one.@endif</p>
         @endif
     </section>
 @endsection
 
 @section('modals')
+@if($routePrefix === 'payroll')
 {{-- Assign Employee Modal --}}
 <dialog id="assignModal" class="employee-modal">
     <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
@@ -154,6 +161,7 @@
         </div>
     </form>
 </dialog>
+@endif
 @endsection
 
 @section('page_scripts_after')

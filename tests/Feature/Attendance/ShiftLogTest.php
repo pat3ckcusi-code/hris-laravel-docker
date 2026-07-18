@@ -12,11 +12,11 @@ use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
 /**
- * Time Keeper / HR Manager company-wide Shift Logs page: a full chronological
- * log of every shift-related change. Tardiness/undertime attendance
- * monitoring is also available to Time Keeper/HR Manager via their own
- * cross-department Monitoring Matrix, separate from the Administrative
- * Officer's dept-scoped one.
+ * Time Keeper company-wide Shift Logs page: a full chronological log of
+ * every shift-related change. Tardiness/undertime attendance monitoring is
+ * also available to Time Keeper/HR Manager via their own cross-department
+ * Monitoring Matrix, separate from the Administrative Officer's dept-scoped
+ * one.
  */
 class ShiftLogTest extends TestCase
 {
@@ -85,6 +85,13 @@ class ShiftLogTest extends TestCase
             ->assertStatus(403);
 
         $this->actingAs($this->createAdminOfficer(['Dept_id' => $deptA->Dept_id]))
+            ->get(route('attendance.shift-logs'))
+            ->assertStatus(403);
+    }
+
+    public function test_hr_manager_cannot_access_shift_logs(): void
+    {
+        $this->actingAs($this->createHRManager())
             ->get(route('attendance.shift-logs'))
             ->assertStatus(403);
     }

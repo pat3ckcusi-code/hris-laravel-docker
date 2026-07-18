@@ -33,7 +33,6 @@ class RoleBasedAccessTest extends TestCase
             ['route' => 'hr-manager.records',        'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.leave',          'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.audit',          'allowed' => ['HR Manager'],                  'method' => 'GET'],
-            ['route' => 'hr-manager.roles',          'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.settings',       'allowed' => ['HR Manager'],                  'method' => 'GET'],
             // Leave Manager only
             ['route' => 'leave-manager.manage-balance', 'allowed' => ['Leave Manager'],            'method' => 'GET'],

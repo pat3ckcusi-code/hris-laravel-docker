@@ -94,10 +94,8 @@ class LeaveRequestService
         // Determine if the user is effectively an AO or HR Manager (via actual role or OIC assignment).
         $isAoOrHrm = str_contains($role, 'administrative officer') || str_contains($role, 'hr manager');
         if (! $isAoOrHrm && $leave->status === 'approved') {
-            $today = now()->toDateString();
             $isAoOrHrm = OicAssignment::where('user_id', $user->id)
-                ->whereDate('start_date', '<=', $today)
-                ->whereDate('end_date', '>=', $today)
+                ->active()
                 ->whereIn('role', ['administrative officer', 'hr manager'])
                 ->exists();
         }
@@ -111,10 +109,8 @@ class LeaveRequestService
         if ($leave->status === 'approved') {
             $isDh = str_contains($role, 'department head');
             if (! $isDh) {
-                $today = now()->toDateString();
                 $isDh = OicAssignment::where('user_id', $user->id)
-                    ->whereDate('start_date', '<=', $today)
-                    ->whereDate('end_date', '>=', $today)
+                    ->active()
                     ->where('role', 'department head')
                     ->exists();
             }

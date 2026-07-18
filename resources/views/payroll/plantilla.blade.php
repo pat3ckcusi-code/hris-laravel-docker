@@ -4,9 +4,11 @@
 ])
 
 @section('top_actions')
-    <a href="{{ route('payroll.plantilla.service-trail') }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
-    <a href="{{ route('payroll.plantilla.reports') }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-chart-bar"></i> Reports</a>
-    <button type="button" class="btn btn-sm btn-add-position" onclick="openCreatePlantilla()"><i class="fas fa-plus"></i> Add Position</button>
+    <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
+    <a href="{{ route("{$routePrefix}.plantilla.reports") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-chart-bar"></i> Reports</a>
+    @if($routePrefix === 'payroll')
+        <button type="button" class="btn btn-sm btn-add-position" onclick="openCreatePlantilla()"><i class="fas fa-plus"></i> Add Position</button>
+    @endif
 @endsection
 
 @section('content')
@@ -43,7 +45,7 @@
 
     <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$plantillas">
         <x-slot:filters>
-            <form method="GET" action="{{ route('payroll.plantilla.index') }}" class="plantilla-filter-form">
+            <form method="GET" action="{{ route("{$routePrefix}.plantilla.index") }}" class="plantilla-filter-form">
                 <input type="text" name="search" value="{{ request('search') }}" placeholder="Search item no., title, dept, incumbent..." class="hris-search-input" style="min-width:260px">
                 <select name="department" class="hris-filter-select">
                     <option value="">All Departments</option>
@@ -64,7 +66,7 @@
                 </select>
                 <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
                 @if(request()->hasAny(['search', 'department', 'status', 'eligibility']))
-                    <a href="{{ route('payroll.plantilla.index') }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
                 @endif
             </form>
         </x-slot:filters>
@@ -140,7 +142,7 @@
                             @if($incumbent)
                                 <div class="incumbent-cell">
                                     <span class="avatar-sm">{{ $incumbentInitials ?: '?' }}</span>
-                                    <a href="{{ route('payroll.plantilla.service-trail', ['employee_id' => $incumbent->id]) }}" title="View service trail">{{ $incumbentLabel }}</a>
+                                    <a href="{{ route("{$routePrefix}.plantilla.service-trail", ['employee_id' => $incumbent->id]) }}" title="View service trail">{{ $incumbentLabel }}</a>
                                 </div>
                             @else
                                 <span class="status-chip status-vacant">Vacant</span>
@@ -148,15 +150,17 @@
                         </td>
                         <td>
                             <div class="action-btns">
-                                <a href="{{ route('payroll.plantilla.show', $p->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm" title="View details"><i class="fas fa-eye"></i></a>
-                                @if($incumbent)
-                                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPromote({{ $p->id }})" title="Promote employee"><i class="fas fa-arrow-trend-up"></i></button>
+                                <a href="{{ route("{$routePrefix}.plantilla.show", $p->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm" title="View details"><i class="fas fa-eye"></i></a>
+                                @if($routePrefix === 'payroll')
+                                    @if($incumbent)
+                                        <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPromote({{ $p->id }})" title="Promote employee"><i class="fas fa-arrow-trend-up"></i></button>
+                                    @endif
+                                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditPlantilla({{ $p->id }})" title="Edit position"><i class="fas fa-pen"></i></button>
+                                    <form method="POST" action="{{ route('payroll.plantilla.destroy', $p->id) }}" style="display:inline" id="delete-plantilla-{{ $p->id }}">
+                                        @csrf @method('DELETE')
+                                        <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeletePlantilla({{ $p->id }})" title="Delete position"><i class="fas fa-trash"></i></button>
+                                    </form>
                                 @endif
-                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditPlantilla({{ $p->id }})" title="Edit position"><i class="fas fa-pen"></i></button>
-                                <form method="POST" action="{{ route('payroll.plantilla.destroy', $p->id) }}" style="display:inline" id="delete-plantilla-{{ $p->id }}">
-                                    @csrf @method('DELETE')
-                                    <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeletePlantilla({{ $p->id }})" title="Delete position"><i class="fas fa-trash"></i></button>
-                                </form>
                             </div>
                         </td>
                     </tr>
@@ -169,6 +173,7 @@
 @endsection
 
 @section('modals')
+@if($routePrefix === 'payroll')
 {{-- Promote Employee Modal --}}
 <dialog id="promoteModal" class="employee-modal">
     <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
@@ -376,6 +381,7 @@
         </div>
     </form>
 </dialog>
+@endif
 @endsection
 
 @section('page_scripts_after')

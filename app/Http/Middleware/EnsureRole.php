@@ -30,14 +30,16 @@ class EnsureRole
         $normalizedRoles = array_map(fn (string $role): string => $this->normalizeRole($role), $flattenedRoles);
 
         if (! in_array($normalizedUserRole, $normalizedRoles, true)) {
-            $today = now()->toDateString();
             $hasOic = OicAssignment::where('user_id', $request->user()->id)
-                ->whereDate('start_date', '<=', $today)
-                ->whereDate('end_date', '>=', $today)
+                ->active()
                 ->whereIn('role', $normalizedRoles)
                 ->exists();
 
-            if (! $hasOic) {
+            // An HR Manager is unconditionally also a department head for their own department.
+            $hrManagerActingAsDeptHead = $normalizedUserRole === 'hr manager'
+                && in_array('department head', $normalizedRoles, true);
+
+            if (! $hasOic && ! $hrManagerActingAsDeptHead) {
                 abort(403, 'Unauthorized role access.');
             }
         }

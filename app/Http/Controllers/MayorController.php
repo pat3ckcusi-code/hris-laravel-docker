@@ -4,25 +4,27 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\LeaveRequest;
-use App\Models\Pds;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\HRDashboardService;
 use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
+use App\Support\HrisConstants;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 class MayorController extends Controller
 {
     private LeaveRequestService $leaveRequestService;
 
-    public function __construct(LeaveRequestService $leaveRequestService)
-    {
+    public function __construct(
+        LeaveRequestService $leaveRequestService,
+        private HRDashboardService $dashboardService,
+    ) {
         $this->leaveRequestService = $leaveRequestService;
     }
 
@@ -30,15 +32,11 @@ class MayorController extends Controller
     {
         $departments = Department::orderBy('Dept_name')->get();
 
-        // Pending leave requests from Department Heads and HR Managers for the Mayor
-        $pendingLeaveCount = $this->getPendingMayorLeaveQuery()->count();
-
         return view('mayor.dashboard', [
             'departments' => $departments,
-            'summary' => $this->buildSummaryCards(),
+            'summary' => $this->dashboardService->buildWorkforceCards(),
             'chartDataUrl' => route('mayor.chart-data'),
-            'initialChartData' => $this->buildChartData(null),
-            'pendingLeaveCount' => $pendingLeaveCount,
+            'initialChartData' => $this->dashboardService->buildChartData(null),
         ]);
     }
 
@@ -46,7 +44,38 @@ class MayorController extends Controller
     {
         $departmentId = $request->integer('department');
 
-        return response()->json($this->buildChartData($departmentId > 0 ? $departmentId : null));
+        return response()->json($this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null));
+    }
+
+    public function getAlerts(Request $request)
+    {
+        $upcomingHolidays = $this->dashboardService->upcomingHolidayAlerts();
+
+        return response()->json([
+            'open_payroll' => null,
+            'unresolved_exceptions' => 0,
+            'upcoming_holidays' => $upcomingHolidays,
+            'total_alerts' => count($upcomingHolidays),
+        ]);
+    }
+
+    public function getWorkforcePlanning(Request $request)
+    {
+        return response()->json($this->dashboardService->buildWorkforcePlanning());
+    }
+
+    public function workforceInsights(Request $request)
+    {
+        return view('mayor.workforce-insights', [
+            'planningDataUrl' => route('mayor.workforce.planning'),
+        ]);
+    }
+
+    public function serviceMilestones(Request $request)
+    {
+        return view('mayor.service-milestones', [
+            'planningDataUrl' => route('mayor.workforce.planning'),
+        ]);
     }
 
     public function getEmployeesByFilter(Request $request)
@@ -56,6 +85,7 @@ class MayorController extends Controller
         $status = trim((string) $request->query('status', ''));
         $ageGroup = trim((string) $request->query('age_group', ''));
         $lengthOfService = trim((string) $request->query('length_of_service', ''));
+        $sixtyPlus = trim((string) $request->query('sixty_plus', ''));
 
         $query = User::query()
             ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
@@ -70,7 +100,8 @@ class MayorController extends Controller
                 'users.created_at',
                 'departments.Dept_name'
             )
-            ->whereRaw("LOWER(REPLACE(REPLACE(users.access_level, '-', ' '), '_', ' ')) = 'employee'");
+            ->whereRaw("LOWER(REPLACE(REPLACE(users.access_level, '-', ' '), '_', ' ')) = 'employee'")
+            ->active();
 
         if ($department !== '') {
             if (ctype_digit($department)) {
@@ -87,13 +118,13 @@ class MayorController extends Controller
         $rows = $query->orderBy('users.name')->get();
 
         $userIds = $rows->pluck('id');
-        $pdsMap = $this->pdsByUserId($userIds);
+        $pdsMap = $this->dashboardService->pdsByUserId($userIds);
 
         $employees = [];
 
         foreach ($rows as $row) {
             $pds = $pdsMap->get($row->id, []);
-            $genderVal = $this->extractGender($pds);
+            $genderVal = $this->dashboardService->extractGender($pds);
 
             $personal = (array) ($pds['pds-personal-info'] ?? []);
             $birthDate = trim((string) ($personal['personal[birth_date]'] ?? ''));
@@ -115,9 +146,9 @@ class MayorController extends Controller
             } else {
                 $yearsOfService = 0;
             }
-            $serviceBucket = $this->serviceBucket($yearsOfService);
+            $serviceBucket = $this->dashboardService->serviceBucket($yearsOfService);
 
-            $ageBucket = $this->extractAgeBucket($pds);
+            $ageBucket = $this->dashboardService->extractAgeBucket($pds);
 
             $employees[] = [
                 'emp_no' => $row->EmpNo,
@@ -134,7 +165,7 @@ class MayorController extends Controller
             ];
         }
 
-        $filtered = collect($employees)->filter(function ($emp) use ($gender, $ageGroup, $lengthOfService) {
+        $filtered = collect($employees)->filter(function ($emp) use ($gender, $ageGroup, $lengthOfService, $sixtyPlus) {
             if ($gender !== '' && strcasecmp($emp['gender'], $gender) !== 0) {
                 return false;
             }
@@ -144,6 +175,10 @@ class MayorController extends Controller
             }
 
             if ($lengthOfService !== '' && $emp['length_of_service'] !== $lengthOfService) {
+                return false;
+            }
+
+            if ($sixtyPlus !== '' && ($emp['age'] === null || $emp['age'] < 60)) {
                 return false;
             }
 
@@ -485,14 +520,6 @@ class MayorController extends Controller
             ->whereIn('user_id', $dhHrUserIds);
     }
 
-    /**
-     * Build a query for pending leave requests from Department Heads and HR Managers.
-     */
-    private function getPendingMayorLeaveQuery()
-    {
-        return $this->getMayorLeaveQuery()->where('status', 'pending');
-    }
-
     private function respondError(Request $request, string $message, int $code = 422)
     {
         if ($request->ajax() || $request->wantsJson()) {
@@ -510,10 +537,10 @@ class MayorController extends Controller
     public function employees(Request $request)
     {
         $search = trim((string) $request->query('search', ''));
-        $statusFilter = trim((string) $request->query('status', ''));
+        $employeeTypeFilter = trim((string) $request->query('employee_type', ''));
         $departmentFilter = trim((string) $request->query('department', ''));
 
-        $employeesQuery = User::query()
+        $employeesQuery = $this->realEmployeeQuery()
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->orderBy('middle_name');
@@ -530,8 +557,8 @@ class MayorController extends Controller
             });
         }
 
-        if (in_array($statusFilter, ['Active', 'Inactive', 'Separated'], true)) {
-            $employeesQuery->where('Status', $statusFilter);
+        if (in_array($employeeTypeFilter, HrisConstants::EMPLOYEE_TYPES, true)) {
+            $employeesQuery->where('employee_type', $employeeTypeFilter);
         }
 
         if ($departmentFilter !== '') {
@@ -542,13 +569,23 @@ class MayorController extends Controller
 
         $departments = Department::query()->orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
 
+        $stats = [
+            'total' => $this->realEmployeeQuery()->count(),
+            'permanent' => $this->realEmployeeQuery()->where('employee_type', 'Permanent')->count(),
+            'co_terminus' => $this->realEmployeeQuery()->where('employee_type', 'Co-Terminus')->count(),
+            'job_orders' => $this->realEmployeeQuery()->where('employee_type', 'Job Orders')->count(),
+            'contractual' => $this->realEmployeeQuery()->where('employee_type', 'Contractual')->count(),
+        ];
+
         return view('mayor.employees', [
             'user' => $request->user(),
             'employees' => $employees,
             'departments' => $departments,
             'search' => $search,
-            'statusFilter' => $statusFilter,
+            'employeeTypeFilter' => $employeeTypeFilter,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
             'departmentFilter' => $departmentFilter,
+            'stats' => $stats,
         ]);
     }
 
@@ -563,228 +600,12 @@ class MayorController extends Controller
     }
 
     /**
-     * @return array<string, int>
+     * Seeded demo/role accounts (UsersTableSeeder) use an @example.com email and aren't real
+     * employees — exclude them from employee counts and listings. Also exclude
+     * Inactive/Separated employees, per User::scopeActive()'s null-Status-is-active convention.
      */
-    private function buildSummaryCards(): array
+    private function realEmployeeQuery(): Builder
     {
-        $totalEmployees = (int) User::query()
-            ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'employee'")
-            ->count();
-
-        $totalDepartments = Schema::hasTable('departments') ? (int) Department::count() : 0;
-
-        $activeRequests = 0;
-        if (Schema::hasTable('leave_requests')) {
-            $activeRequests += (int) DB::table('leave_requests')->count();
-        }
-        if (Schema::hasTable('travel_orders')) {
-            $activeRequests += (int) DB::table('travel_orders')->count();
-        }
-
-        // System notifications approximate: pending leaves + pending document requests
-        $pending = 0;
-        $pendingStatuses = ['pending', 'requested', 'for recommendation', 'pending recommendation', 'pending approval'];
-        if (Schema::hasTable('leave_requests')) {
-            $pending += (int) DB::table('leave_requests')->whereIn(DB::raw('LOWER(status)'), $pendingStatuses)->count();
-        }
-        if (Schema::hasTable('document_requests')) {
-            $pending += (int) DB::table('document_requests')->whereIn(DB::raw('LOWER(status)'), $pendingStatuses)->count();
-        }
-
-        return [
-            'total_employees' => $totalEmployees,
-            'total_departments' => $totalDepartments,
-            'active_requests' => $activeRequests,
-            'system_notifications' => $pending,
-        ];
-    }
-
-    /**
-     * @return array<string, array<int, mixed>>
-     */
-    private function buildChartData(?int $departmentId): array
-    {
-        $query = User::query()
-            ->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) = 'employee'");
-
-        if ($departmentId !== null) {
-            $query->where('Dept_id', $departmentId);
-        }
-
-        $employees = $query->get(['id', 'Dept_id', 'Status', 'employee_type', 'created_at', 'date_hired']);
-
-        // workforce per department
-        $deptQuery = Department::query()
-            ->select('departments.Dept_name')
-            ->selectRaw('COUNT(users.id) as total')
-            ->leftJoin('users', function ($join) {
-                $join->on('users.Dept_id', '=', 'departments.Dept_id')
-                    ->whereRaw("LOWER(REPLACE(REPLACE(users.access_level, '-', ' '), '_', ' ')) = 'employee'");
-            })
-            ->groupBy('departments.Dept_id', 'departments.Dept_name')
-            ->orderBy('departments.Dept_name');
-
-        if ($departmentId !== null) {
-            $deptQuery->where('departments.Dept_id', $departmentId);
-        }
-
-        $rows = $deptQuery->get();
-
-        $workforcePerDepartment = [
-            'labels' => $rows->pluck('Dept_name')->all(),
-            'values' => $rows->pluck('total')->map(fn ($v) => (int) $v)->all(),
-        ];
-
-        // employment status counts
-        $employmentStatus = [];
-        foreach ($employees as $e) {
-            $key = trim((string) ($e->employee_type ?? 'Unknown')) ?: 'Unknown';
-            $employmentStatus[$key] = ($employmentStatus[$key] ?? 0) + 1;
-        }
-
-        // gender and age buckets via PDS
-        $pdsByUser = $this->pdsByUserId($employees->pluck('id'));
-
-        $genderCounts = ['Male' => 0, 'Female' => 0, 'Not Specified' => 0];
-        $ageGroupCounts = ['18-25' => 0, '26-35' => 0, '36-45' => 0, '46-55' => 0, '56+' => 0, 'Unknown' => 0];
-        $serviceCounts = ['< 1 year' => 0, '1-3 years' => 0, '4-7 years' => 0, '8-12 years' => 0, '13+ years' => 0];
-
-        foreach ($employees as $employee) {
-            $pds = $pdsByUser->get($employee->id, []);
-            $gender = $this->extractGender($pds);
-            $genderCounts[$gender] = ($genderCounts[$gender] ?? 0) + 1;
-
-            $ageBucket = $this->extractAgeBucket($pds);
-            $ageGroupCounts[$ageBucket] = ($ageGroupCounts[$ageBucket] ?? 0) + 1;
-
-            if (! empty($employee->date_hired)) {
-                try {
-                    $years = Carbon::parse($employee->date_hired)->diffInYears(now());
-                } catch (\Throwable $e) {
-                    $years = 0;
-                }
-            } else {
-                $years = 0;
-            }
-
-            $serviceBucket = $this->serviceBucket($years);
-            $serviceCounts[$serviceBucket] = ($serviceCounts[$serviceBucket] ?? 0) + 1;
-        }
-
-        return [
-            'workforce_per_department' => $workforcePerDepartment,
-            'total_workforce' => $this->barChartFromAssoc($this->countByKey($employees, 'employee_type', 'Unspecified')),
-            'gender_distribution' => $this->pieChartFromAssoc($genderCounts),
-            'employment_status' => $this->pieChartFromAssoc($employmentStatus),
-            'age_group_distribution' => $this->barChartFromAssoc($ageGroupCounts),
-            'length_of_service' => $this->barChartFromAssoc($serviceCounts),
-        ];
-    }
-
-    /**
-     * @param  Collection<int, int>  $userIds
-     * @return Collection<int, array<string, mixed>>
-     */
-    private function pdsByUserId($userIds)
-    {
-        if ($userIds->isEmpty()) {
-            return collect();
-        }
-
-        return Pds::query()
-            ->whereIn('user_id', $userIds)
-            ->get()
-            ->mapWithKeys(function (Pds $pds) {
-                return [$pds->user_id => $pds->getAllSectionData()];
-            });
-    }
-
-    /** @param array<string, mixed> $pds */
-    private function extractGender(array $pds): string
-    {
-        $personal = (array) ($pds['pds-personal-info'] ?? []);
-        $sex = strtolower(trim((string) ($personal['personal[sex]'] ?? '')));
-
-        if ($sex === 'male') {
-            return 'Male';
-        }
-        if ($sex === 'female') {
-            return 'Female';
-        }
-
-        return 'Not Specified';
-    }
-
-    /** @param array<string, mixed> $pds */
-    private function extractAgeBucket(array $pds): string
-    {
-        $personal = (array) ($pds['pds-personal-info'] ?? []);
-        $birthDate = trim((string) ($personal['personal[birth_date]'] ?? ''));
-        if ($birthDate === '') {
-            return 'Unknown';
-        }
-
-        try {
-            $age = Carbon::parse($birthDate)->age;
-        } catch (\Throwable $e) {
-            return 'Unknown';
-        }
-
-        if ($age <= 25) {
-            return '18-25';
-        }
-        if ($age <= 35) {
-            return '26-35';
-        }
-        if ($age <= 45) {
-            return '36-45';
-        }
-        if ($age <= 55) {
-            return '46-55';
-        }
-
-        return '56+';
-    }
-
-    private function serviceBucket(int $yearsOfService): string
-    {
-        if ($yearsOfService < 1) {
-            return '< 1 year';
-        }
-        if ($yearsOfService <= 3) {
-            return '1-3 years';
-        }
-        if ($yearsOfService <= 7) {
-            return '4-7 years';
-        }
-        if ($yearsOfService <= 12) {
-            return '8-12 years';
-        }
-
-        return '13+ years';
-    }
-
-    /** @param Collection<int, \stdClass> $employees */
-    private function countByKey($employees, string $key, string $fallback): array
-    {
-        return $employees
-            ->map(function ($employee) use ($key, $fallback) {
-                $value = trim((string) ($employee->{$key} ?? ''));
-
-                return $value !== '' ? $value : $fallback;
-            })
-            ->countBy()
-            ->sortKeys()
-            ->all();
-    }
-
-    private function barChartFromAssoc(array $assoc): array
-    {
-        return ['labels' => array_keys($assoc), 'values' => array_values($assoc)];
-    }
-
-    private function pieChartFromAssoc(array $assoc): array
-    {
-        return ['labels' => array_keys($assoc), 'values' => array_values($assoc)];
+        return User::query()->active()->where('email', 'not like', '%@example.com');
     }
 }

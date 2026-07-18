@@ -426,6 +426,7 @@ textarea.form-input {
 .stat-tile.stat-filled .stat-icon { background: #dcfce7; color: #166534; }
 .stat-tile.stat-vacant .stat-icon { background: #fef3c7; color: #92400e; }
 .stat-tile.stat-promo .stat-icon  { background: #fff7ed; color: var(--accent); }
+.stat-tile.stat-info .stat-icon   { background: #dbeafe; color: #1e40af; }
 
 .stat-tile .stat-value {
     font-size: 1.65rem;

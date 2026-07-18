@@ -13,16 +13,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 /**
- * Time Keeper / HR Manager company-wide shift oversight screen: a full
- * chronological log of every shift-related change - template edits,
- * assignments, exemption toggles, schedule/rotation changes, and access
- * grants/revokes. Not extended to Department Head/Administrative Officer -
- * they already have their own dept-scoped Monitoring Matrix for
- * tardiness/undertime.
+ * Time Keeper company-wide shift oversight screen: a full chronological
+ * log of every shift-related change - template edits, assignments,
+ * exemption toggles, schedule/rotation changes, and access grants/revokes.
+ * Not extended to Department Head/Administrative Officer - they already
+ * have their own dept-scoped Monitoring Matrix for tardiness/undertime.
  */
 class ShiftLogController extends Controller
 {
-    private const MANAGER_ROLES = ['time keeper', 'hr manager'];
+    private const MANAGER_ROLES = ['time keeper'];
 
     private const ACTION_LABELS = [
         'access_granted' => 'Access Granted',
