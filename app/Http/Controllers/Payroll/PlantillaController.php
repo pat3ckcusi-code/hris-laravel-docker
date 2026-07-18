@@ -51,14 +51,15 @@ class PlantillaController extends Controller
             ->orderBy('department')
             ->pluck('department');
 
-        $vacantPlantillas = Plantilla::whereDoesntHave('activeAssignments')
+        $vacantPlantillas = Plantilla::where('is_historical', false)
+            ->whereDoesntHave('activeAssignments')
             ->orderBy('salary_grade')
             ->orderBy('title')
             ->get(['id', 'item_number', 'title', 'department', 'salary_grade', 'step']);
 
         $stats = [
-            'total' => Plantilla::count(),
-            'filled' => Plantilla::whereHas('activeAssignments')->count(),
+            'total' => Plantilla::where('is_historical', false)->count(),
+            'filled' => Plantilla::where('is_historical', false)->whereHas('activeAssignments')->count(),
         ];
         $stats['vacant'] = $stats['total'] - $stats['filled'];
 
@@ -70,8 +71,8 @@ class PlantillaController extends Controller
     public function reports(Request $request): View
     {
         $stats = [
-            'total' => Plantilla::count(),
-            'filled' => Plantilla::whereHas('activeAssignments')->count(),
+            'total' => Plantilla::where('is_historical', false)->count(),
+            'filled' => Plantilla::where('is_historical', false)->whereHas('activeAssignments')->count(),
             'promotions_this_year' => HRAuditTrail::where('module', 'payroll')
                 ->where('action', 'promotion')
                 ->whereYear('created_at', now()->year)
@@ -82,7 +83,8 @@ class PlantillaController extends Controller
         $vacantSearch = trim((string) $request->query('vacant_search'));
         $vacantDepartment = $request->query('vacant_department');
 
-        $vacantPositions = Plantilla::whereDoesntHave('activeAssignments')
+        $vacantPositions = Plantilla::where('is_historical', false)
+            ->whereDoesntHave('activeAssignments')
             ->when($vacantSearch !== '', function ($query) use ($vacantSearch) {
                 $query->where(function ($q) use ($vacantSearch) {
                     $q->where('title', 'like', "%{$vacantSearch}%")

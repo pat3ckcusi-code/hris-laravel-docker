@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $training
  * @property string|null $experience
  * @property string|null $competency
+ * @property bool $is_historical
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, EmployeeAssignment> $assignments
@@ -50,6 +51,11 @@ class Plantilla extends Model
         'training',
         'experience',
         'competency',
+        'is_historical',
+    ];
+
+    protected $casts = [
+        'is_historical' => 'boolean',
     ];
 
     public function assignments()

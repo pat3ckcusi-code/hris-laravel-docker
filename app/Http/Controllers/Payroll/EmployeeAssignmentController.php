@@ -170,7 +170,9 @@ class EmployeeAssignmentController extends Controller
         ]);
 
         DB::transaction(function () use ($request) {
-            $plantilla = Plantilla::create($request->only('title', 'department', 'salary_grade', 'step', 'employment_type'));
+            $plantilla = Plantilla::create($request->only('title', 'department', 'salary_grade', 'step', 'employment_type') + [
+                'is_historical' => true,
+            ]);
 
             EmployeeAssignment::create([
                 'employee_id' => $request->employee_id,

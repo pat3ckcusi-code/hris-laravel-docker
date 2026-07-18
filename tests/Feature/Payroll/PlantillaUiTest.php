@@ -443,6 +443,44 @@ class PlantillaUiTest extends TestCase
             ->assertSee('Old Records Section');
     }
 
+    public function test_add_past_position_does_not_inflate_total_or_vacant_stats(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $filled = $this->makePlantilla();
+        $vacant = $this->makePlantilla(['title' => 'Nurse I', 'item_number' => '902', 'salary_grade' => 15]);
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $filled->id, 'start_date' => '2026-01-01']);
+
+        $before = $this->actingAs($manager)->get(route('payroll.plantilla.index'));
+        $before->assertSee('Total Positions');
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.history.store'), [
+            'employee_id' => $employee->id,
+            'title' => 'Administrative Aide IV',
+            'salary_grade' => 4,
+            'step' => 2,
+            'employment_type' => 'permanent',
+            'start_date' => '2015-06-01',
+            'end_date' => '2019-12-31',
+        ])->assertSessionHas('status');
+
+        // The historical entry is a real plantillas row, but must not be
+        // counted as an additional live position or an assignable vacancy.
+        $this->assertSame(2, Plantilla::where('is_historical', false)->count());
+        $this->assertSame(1, Plantilla::where('is_historical', true)->count());
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.index'))
+            ->assertViewHas('stats', function ($stats) {
+                return $stats['total'] === 2 && $stats['vacant'] === 1 && $stats['filled'] === 1;
+            });
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.reports'))
+            ->assertViewHas('stats', function ($stats) {
+                return $stats['total'] === 2 && $stats['vacant'] === 1 && $stats['filled'] === 1;
+            })
+            ->assertDontSee('Administrative Aide IV');
+    }
+
     public function test_add_past_position_requires_an_end_date(): void
     {
         $manager = $this->createPayrollManager();
