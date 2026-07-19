@@ -74,7 +74,7 @@
                 <h4>AWOL / Overuse Risk</h4>
                 <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
                     Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it).
-                    Live snapshot as of today — not affected by the month filter above. Only employees with a current streak
+                    Live snapshot as of today - not affected by the month filter above. Only employees with a current streak
                     of 5+ workdays are shown.
                 </p>
                 <div id="awolRiskTable"></div>

@@ -8,6 +8,7 @@ use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Locator;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -299,6 +300,12 @@ class PersonnelLogImportService
         // exclusion window per slot.
         $locatorSlotMap = $this->buildLocatorSlotMap($user, $fetchFrom, $fetchTo, $assignments);
 
+        // Declared work suspensions (typhoon/urgent-event dismissal) also have
+        // no real punch expected past their cutoff - see WorkSchedule::applySuspension().
+        $suspensionMap = WorkSuspension::whereBetween('suspension_date', [$fetchFrom, $fetchTo])
+            ->get()
+            ->keyBy(fn (WorkSuspension $s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
+
         foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
             if ($date < $from || $date > $to) {
@@ -310,9 +317,14 @@ class PersonnelLogImportService
             // rest day (voluntary OT), still record the DTR using their assigned
             // rest-day shift (which falls back to the default if shift_id is null).
             $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date), $assignments);
+            $suspensionSlots = [];
+            if (($suspension = $suspensionMap->get($date)) !== null && ! $user->isFrontlineExempt()) {
+                [$schedule, $suspensionSlots] = $schedule->applySuspension($suspension->suspension_time);
+            }
             $excludedSlots = array_merge(
                 array_fill_keys($excuseMap->get($date)?->excludedSlotKeys() ?? [], null),
-                $locatorSlotMap[$date] ?? []
+                $locatorSlotMap[$date] ?? [],
+                $suspensionSlots
             );
 
             $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);

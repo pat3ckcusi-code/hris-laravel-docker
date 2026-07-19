@@ -1236,7 +1236,7 @@ class LeaveManagerController extends Controller
 
         if (! $attendance || $attendance->processed_at === null) {
             return response()->json([
-                'message' => 'This month has not been processed yet — use Run Monthly Credits instead.',
+                'message' => 'This month has not been processed yet - use Run Monthly Credits instead.',
             ], 422);
         }
 

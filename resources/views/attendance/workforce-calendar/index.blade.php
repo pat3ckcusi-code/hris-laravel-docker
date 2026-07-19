@@ -1,6 +1,6 @@
 @extends('dashboards.layout', [
     'title' => 'Workforce Calendar',
-    'subtitle' => 'Who\'s away each day — Leave, ETA, Locator, Travel Order, and Office Order at a glance.',
+    'subtitle' => 'Who\'s away each day - Leave, ETA, Locator, Travel Order, and Office Order at a glance.',
 ])
 
 @section('page_head')

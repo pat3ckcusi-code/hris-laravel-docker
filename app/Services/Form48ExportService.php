@@ -11,6 +11,7 @@ use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -112,6 +113,7 @@ class Form48ExportService
         // fallback in agreement with PersonnelLogImportService's resolution.
         $excuseMap = $this->buildExcuseMap($userId, $from, $to);
         $locatorSlotMap = $this->buildLocatorSlotWindowMap($userId, $from, $to);
+        $suspensionMap = $this->buildSuspensionMap($from, $to);
 
         foreach ($this->punchGrouper->group($user, $logs) as $date => $punches) {
             if ($date < $from || $date > $to) {
@@ -122,11 +124,18 @@ class Form48ExportService
                 continue;   // DTR entry already covers this shift
             }
 
+            $daySchedule = $schedule;
+            $suspensionSlots = [];
+            if (($suspension = $suspensionMap[$day] ?? null) !== null && ! $user->isFrontlineExempt()) {
+                [$daySchedule, $suspensionSlots] = $schedule->applySuspension($suspension->suspension_time);
+            }
+
             $excludedSlots = array_merge(
                 array_fill_keys($excuseMap[$day]?->excludedSlotKeys() ?? [], null),
-                $locatorSlotMap[$date] ?? []
+                $locatorSlotMap[$date] ?? [],
+                $suspensionSlots
             );
-            $resolved = $this->punchResolver->resolve($punches, $date, $schedule, $excludedSlots);
+            $resolved = $this->punchResolver->resolve($punches, $date, $daySchedule, $excludedSlots);
 
             $records[$day] = [
                 'date' => $date,
@@ -235,6 +244,25 @@ class Form48ExportService
             ->get()
             ->each(function ($excuse) use (&$map): void {
                 $map[(int) Carbon::parse($excuse->date)->day] = $excuse;
+            });
+
+        return $map;
+    }
+
+    /**
+     * Build a day-of-month → WorkSuspension map for the period (company-wide,
+     * no user scoping needed). Used the same way as buildExcuseMap() to keep
+     * the attendance_logs fallback path in agreement with
+     * PersonnelLogImportService's resolution - see WorkSchedule::applySuspension().
+     */
+    public function buildSuspensionMap(string $from, string $to): array
+    {
+        $map = [];
+
+        WorkSuspension::whereBetween('suspension_date', [$from, $to])
+            ->get()
+            ->each(function (WorkSuspension $suspension) use (&$map): void {
+                $map[(int) Carbon::parse($suspension->suspension_date)->day] = $suspension;
             });
 
         return $map;

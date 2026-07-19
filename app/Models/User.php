@@ -73,6 +73,18 @@ class User extends Authenticatable
         return $this->belongsTo(Department::class, 'Dept_id', 'Dept_id');
     }
 
+    /**
+     * True when this employee must keep reporting normally during a declared
+     * work suspension - either flagged individually, or a member of a
+     * frontline/essential department (health, disaster response, security,
+     * etc.). Consulted everywhere WorkSchedule::applySuspension() would
+     * otherwise apply.
+     */
+    public function isFrontlineExempt(): bool
+    {
+        return (bool) $this->is_frontline || (bool) $this->department?->is_frontline;
+    }
+
     public function oicAssignments()
     {
         return $this->hasMany(OicAssignment::class, 'user_id', 'id');
@@ -101,6 +113,7 @@ class User extends Authenticatable
         'salary_step',
         'shift_id',
         'dtr_exempt',
+        'is_frontline',
     ];
 
     /**
@@ -210,6 +223,7 @@ class User extends Authenticatable
             'on_extended_service' => 'boolean',
             'hours_per_day' => 'float',
             'dtr_exempt' => 'boolean',
+            'is_frontline' => 'boolean',
         ];
     }
 

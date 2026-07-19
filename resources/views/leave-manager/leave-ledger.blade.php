@@ -169,7 +169,7 @@
         {{-- ── Tab 3: AWOL Monitor ── --}}
         <div id="tab-awol" class="ledger-tab-panel" style="display:none;">
             <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
-                Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it — no leave,
+                Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it - no leave,
                 excuse, locator, or ETA). Per CSC rules, 30 continuous working days of AWOL is grounds for separation without
                 prior notice; under 30 days, a Return-to-Work Order should be served first. Only employees with a current streak
                 of 5+ workdays are shown.

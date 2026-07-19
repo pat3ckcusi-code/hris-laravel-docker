@@ -125,7 +125,7 @@
                     >
                         <td class="text-center" onclick="event.stopPropagation()">
                             @if($isPartial)
-                                <input type="checkbox" class="row-select" value="{{ $item->id }}" disabled title="Partial (per-date) requests aren't supported by bulk actions — use the row's Approve/Reject buttons.">
+                                <input type="checkbox" class="row-select" value="{{ $item->id }}" disabled title="Partial (per-date) requests aren't supported by bulk actions - use the row's Approve/Reject buttons.">
                             @else
                                 <input type="checkbox" class="row-select" value="{{ $item->id }}">
                             @endif

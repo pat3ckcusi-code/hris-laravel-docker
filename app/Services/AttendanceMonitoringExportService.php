@@ -13,6 +13,7 @@ use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\UniformInspectionDetail;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Support\WorkSchedule;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -145,7 +146,17 @@ class AttendanceMonitoringExportService
             ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->flip();
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $periodStart, $periodEnd) {
+        // Declared work suspensions in the period - a full-day suspension is never
+        // counted as an absence day, same as a holiday; a partial-day suspension
+        // instead excludes just the slots it covers (per employee schedule, resolved
+        // below) via WorkSchedule::applySuspension().
+        $suspensions = WorkSuspension::whereBetween('suspension_date', [$periodStart, $periodEnd])->get();
+        $fullDaySuspensionDates = $suspensions->filter(fn (WorkSuspension $s) => $s->suspension_time === null)
+            ->pluck('suspension_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->flip();
+
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $suspensions, $fullDaySuspensionDates, $periodStart, $periodEnd) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
@@ -255,11 +266,30 @@ class AttendanceMonitoringExportService
                 }
             }
 
+            // Per-date suspension-driven excluded slots for this employee (depends on
+            // their own schedule per date, so it's resolved here rather than at the
+            // top-level query like $holidays/$fullDaySuspensionDates). Only the
+            // slot-excluding tiers of applySuspension() contribute here - the
+            // capped-workEnd-only tier returns no slots and is instead handled where
+            // the phantom-undertime loop resolves its own per-date schedule below.
+            $suspensionsByDate = $suspensions->keyBy(fn (WorkSuspension $s) => Carbon::parse($s->suspension_date)->toDateString());
+            $empIsFrontlineExempt = $emp->isFrontlineExempt();
+            $empSuspensionSlotMap = [];
+            if (! $empIsFrontlineExempt) {
+                foreach ($suspensionsByDate as $dateStr => $suspension) {
+                    $sSchedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($suspension->suspension_date), $empAssignments);
+                    [, $slots] = $sSchedule->applySuspension($suspension->suspension_time);
+                    if (! empty($slots)) {
+                        $empSuspensionSlotMap[$dateStr] = array_keys($slots);
+                    }
+                }
+            }
+
             // Single source of truth for "is this slot explained by an approved Leave/ETA/
-            // Office Order/Travel Order (whole-day) or a Locator/DtrExcuse (per-slot)",
-            // shared by unofficialExitCount and the phantom-undertime computation below so
-            // the rules never disagree on what counts as covered.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate): bool {
+            // Office Order/Travel Order (whole-day) or a Locator/DtrExcuse/WorkSuspension
+            // (per-slot)", shared by unofficialExitCount and the phantom-undertime
+            // computation below so the rules never disagree on what counts as covered.
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap): bool {
                 if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
                     || isset($travelOrderCoveredDates[$dateStr]) || $approvedLeaveDateStrings->has($dateStr)) {
                     return true;
@@ -267,7 +297,8 @@ class AttendanceMonitoringExportService
                 $excuse = $empExcusesByDate[$dateStr] ?? null;
                 $coveredSlots = array_unique(array_merge(
                     $locatorSlotMap[$dateStr] ?? [],
-                    $excuse ? $excuse->excludedSlotKeys() : []
+                    $excuse ? $excuse->excludedSlotKeys() : [],
+                    $empSuspensionSlotMap[$dateStr] ?? []
                 ));
 
                 return in_array($slot, $coveredSlots, true);
@@ -303,7 +334,8 @@ class AttendanceMonitoringExportService
                         continue;
                     }
 
-                    if (! WorkSchedule::isWorkday($emp, $date, $empAssignments) || isset($holidays[$dateStr])) {
+                    if (! WorkSchedule::isWorkday($emp, $date, $empAssignments) || isset($holidays[$dateStr])
+                        || (isset($fullDaySuspensionDates[$dateStr]) && ! $empIsFrontlineExempt)) {
                         continue;
                     }
 
@@ -393,6 +425,9 @@ class AttendanceMonitoringExportService
                 }
 
                 $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
+                if (($suspension = $suspensionsByDate->get($dateStr)) !== null && ! $empIsFrontlineExempt) {
+                    [$schedule] = $schedule->applySuspension($suspension->suspension_time);
+                }
                 $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_pm, $d->time_out_pm, $dateStr, $schedule);
 
                 if ($mins > 0) {

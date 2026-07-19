@@ -48,7 +48,7 @@
                     <td>{{ $empName }}</td>
                     <td>{{ $emp->access_level ?? 'N/A' }}</td>
                     <td>{{ $lr->leave_type }}</td>
-                    <td>{{ \Carbon\Carbon::parse($lr->start_date)->format('M d, Y') }} &mdash; {{ \Carbon\Carbon::parse($lr->end_date)->format('M d, Y') }}</td>
+                    <td>{{ \Carbon\Carbon::parse($lr->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($lr->end_date)->format('M d, Y') }}</td>
                     <td>{{ $lr->total_days ?? '-' }}</td>
                     <td><x-hris.status-badge :status="$lr->status" /></td>
                     <td>

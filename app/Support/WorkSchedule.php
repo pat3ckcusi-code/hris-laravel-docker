@@ -236,6 +236,48 @@ class WorkSchedule
     }
 
     /**
+     * Adjust this schedule for a work-suspension cutoff time (e.g. a typhoon
+     * dismissal at 3:00 PM). A cutoff at/before morningEnd suspends the whole
+     * day (all four Form 48 slots excluded, same as a full-day DtrExcuse); at/
+     * before lunchReturn suspends only the afternoon (pm_in/pm_out excluded,
+     * AM slots unaffected); after lunchReturn it only caps workEnd, so a PM
+     * Out at/after the cutoff resolves as on-time while an actual early
+     * departure before it is still undertime - excludedSlots alone can't
+     * express that since it only means "no punch expected here at all," not
+     * "the expected time moved earlier." $suspensionTime null means a
+     * full-day suspension (equivalent to a '00:00' cutoff).
+     *
+     * @return array{0: self, 1: array<string, array{0:string,1:string}|null>}
+     */
+    public function applySuspension(?string $suspensionTime): array
+    {
+        $cutoff = self::hm($suspensionTime) ?? '00:00';
+
+        if (self::toMinutes($cutoff) <= self::toMinutes($this->morningEnd)) {
+            return [$this, array_fill_keys(['am_in', 'am_out', 'pm_in', 'pm_out'], null)];
+        }
+
+        if (self::toMinutes($cutoff) <= self::toMinutes($this->lunchReturn)) {
+            return [$this, array_fill_keys(['pm_in', 'pm_out'], null)];
+        }
+
+        if (self::toMinutes($cutoff) >= self::toMinutes($this->workEnd)) {
+            return [$this, []]; // cutoff at/after the normal end - no effect
+        }
+
+        return [new self(
+            workStart: $this->workStart,
+            lunchReturn: $this->lunchReturn,
+            workEnd: $cutoff,
+            morningEnd: $this->morningEnd,
+            noonEnd: $this->noonEnd,
+            crossesMidnight: $this->crossesMidnight,
+            noBreak: $this->noBreak,
+            isStandardDay: $this->isStandardDay,
+        ), []];
+    }
+
+    /**
      * True when the employee is scheduled off on $date (assignment row with shift_id
      * = null and type 'rest' - excludes 'field_work' and 'standard', which are also
      * shift_id = null but represent working days, not a day off).

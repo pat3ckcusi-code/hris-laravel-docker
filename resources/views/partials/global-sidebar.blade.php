@@ -187,6 +187,8 @@
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
+            ['label' => 'Work Suspensions',   'icon' => 'attendance_import', 'route' => 'attendance.work-suspensions.index',  'active' => ['attendance.work-suspensions*']],
+            ['label' => 'Frontline Personnel', 'icon' => 'access', 'route' => 'attendance.frontline-personnel.index', 'active' => ['attendance.frontline-personnel*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
 
             ['section' => 'Reports'],
@@ -290,6 +292,8 @@
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix', 'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',      'active' => ['attendance.monitoring-matrix*']],
             ['label' => 'Adjustment Summary', 'icon' => 'adjustment_summary', 'route' => 'attendance.adjustment-summary.index', 'active' => ['attendance.adjustment-summary*']],
+            ['label' => 'Work Suspensions', 'icon' => 'attendance_import', 'route' => 'attendance.work-suspensions.index', 'active' => ['attendance.work-suspensions*']],
+            ['label' => 'Frontline Personnel', 'icon' => 'access', 'route' => 'attendance.frontline-personnel.index', 'active' => ['attendance.frontline-personnel*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
         ],
 
@@ -305,6 +309,9 @@
         'mayor' => [
             ['section' => 'Dashboard'],
             ['label' => 'Executive Snapshot',      'icon' => 'snapshot',         'route' => 'mayor.dashboard',              'active' => ['mayor.dashboard']],
+
+            ['section' => 'Self-Service'],
+            ['label' => 'PDS',                     'icon' => 'pds',              'route' => 'dashboard.employee.pds',       'active' => ['dashboard.employee.pds']],
 
             ['section' => 'Management'],
             ['label' => 'Leave Approvals',         'icon' => 'leave_approvals',  'route' => 'mayor.approvals',              'active' => ['mayor.approvals'],              'badge' => 'pending_leaves_mayor'],

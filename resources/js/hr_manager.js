@@ -146,7 +146,7 @@ const initializeWorkforceCharts = (root, initialData) => {
                         const { index, datasetIndex } = elements[0];
                         const department = charts.totalWorkforceChart.data.labels[index];
                         const type = charts.totalWorkforceChart.data.datasets[datasetIndex].label;
-                        fetchEmployees({ department, employee_type: type }, `${type} — ${department}`);
+                        fetchEmployees({ department, employee_type: type }, `${type} - ${department}`);
                     }
                 },
                 scales: {

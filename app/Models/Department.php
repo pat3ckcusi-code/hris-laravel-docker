@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $admin_officer_id
  * @property string|null $Designation
  * @property int|null $parent_dept_id
+ * @property bool $is_frontline
  * @property-read Department|null $parent
  * @property-read Collection<int, Department> $children
  * @property-read User|null $departmentHead
@@ -49,6 +50,11 @@ class Department extends Model
         'admin_officer_id',
         'Designation',
         'parent_dept_id',
+        'is_frontline',
+    ];
+
+    protected $casts = [
+        'is_frontline' => 'boolean',
     ];
 
     public function parent(): BelongsTo

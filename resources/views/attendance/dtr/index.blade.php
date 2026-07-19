@@ -230,7 +230,6 @@ tr.dtr-row-overtime td:nth-child(11)  { color: #16a34a; font-weight: 600; }
                             <th class="text-center">OT Out</th>
                             <th class="text-center">Late (min)</th>
                             <th class="text-center">Undertime (min)</th>
-                            <th class="text-center">Hours</th>
                             <th class="text-center">Overtime (min)</th>
                             <th class="text-center">Source</th>
                             <th class="text-center">Status</th>
@@ -618,7 +617,6 @@ if (typeof window.__dtrViewReady === 'undefined') {
                 { data: 'time_out_ot',       orderable: false, className: 'text-center' },
                 { data: 'late_minutes',      orderable: false, className: 'text-center' },
                 { data: 'undertime_minutes', orderable: false, className: 'text-center' },
-                { data: 'hours_worked',      orderable: false, className: 'text-center' },
                 { data: 'overtime_minutes',  orderable: false, className: 'text-center' },
                 { data: 'source_badge',        orderable: false, className: 'text-center' },
                 { data: 'status_badge',        orderable: false, className: 'text-center' },

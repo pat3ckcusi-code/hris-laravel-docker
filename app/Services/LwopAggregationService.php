@@ -11,6 +11,7 @@ use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Support\LeaveTypeResolver;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -138,6 +139,16 @@ class LwopAggregationService
             ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->flip();
 
+        // A full-day work suspension is a non-workday exactly like a holiday - never
+        // AWOL by definition. A partial-day suspension needs no special handling here:
+        // an employee who actually showed up for part of the day already has a dtrs
+        // row and is caught by $wasPresent below.
+        $fullDaySuspensions = WorkSuspension::whereBetween('suspension_date', [$rangeStartStr, $rangeEndStr])
+            ->whereNull('suspension_time')
+            ->pluck('suspension_date')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->flip();
+
         $leaveCoveredDates = LeaveDate::whereHas('leaveRequest', function ($q) use ($user) {
             $q->where('user_id', $user->id)->whereIn('status', ['approved', 'Approved']);
         })
@@ -168,12 +179,14 @@ class LwopAggregationService
 
         $result = collect();
         $cursor = $rangeStart->copy();
+        $isFrontlineExempt = $user->isFrontlineExempt();
 
         while ($cursor->lessThanOrEqualTo($rangeEnd)) {
             $dateStr = $cursor->toDateString();
 
             $isWorkday = WorkSchedule::isWorkday($user, $cursor, $shiftSchedules)
-                && ! isset($holidays[$dateStr]);
+                && ! isset($holidays[$dateStr])
+                && (! isset($fullDaySuspensions[$dateStr]) || $isFrontlineExempt);
 
             if (! $isWorkday) {
                 $cursor->addDay();

@@ -52,7 +52,7 @@
                     <tr>
                         <td>{{ $travelOrders->firstItem() + $idx }}</td>
                         <td>{{ $to->travel_order_num }}</td>
-                        <td>{{ \Carbon\Carbon::parse($to->start_date)->format('M d, Y') }} &mdash; {{ \Carbon\Carbon::parse($to->end_date)->format('M d, Y') }}</td>
+                        <td>{{ \Carbon\Carbon::parse($to->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($to->end_date)->format('M d, Y') }}</td>
                         <td>{{ $to->employee_count }}</td>
                         <td><span class="badge {{ $statusClass }}">{{ $to->status }}</span></td>
                         <td>

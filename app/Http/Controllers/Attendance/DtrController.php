@@ -11,6 +11,7 @@ use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Services\DepartmentService;
 use App\Services\DtrPunchResolver;
 use App\Services\Form48ExportService;
@@ -296,6 +297,12 @@ class DtrController extends Controller
             ->get()
             ->keyBy(fn ($e) => Carbon::parse($e->date)->format('Y-m-d'));
 
+        // Build work-suspension map: 'Y-m-d' → WorkSuspension for the period,
+        // same shape as excuseMap - see WorkSchedule::applySuspension().
+        $suspensionMap = WorkSuspension::whereBetween('suspension_date', [$from, $to])
+            ->get()
+            ->keyBy(fn ($s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
+
         // Build office-order date map: 'Y-m-d' → office_order_num, expanding each
         // order to every day from issued_date through effective_date (or just
         // issued_date if effective_date isn't set), clamped to the period.
@@ -339,6 +346,17 @@ class DtrController extends Controller
         foreach ($dtrRows as $dtr) {
             $dateStr = Carbon::parse($dtr->date)->format('Y-m-d');
             $rowSchedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dtr->date), $shiftAssignments);
+
+            // A declared work suspension caps the effective schedule the same
+            // way it did when this row was originally resolved/stored (see
+            // PersonnelLogImportService), so imputed late/undertime and the
+            // "shift ended" gate below stay consistent with the stored values.
+            $suspensionRow = $suspensionMap[$dateStr] ?? null;
+            $suspensionSlots = [];
+            if ($suspensionRow !== null && ! $employee->isFrontlineExempt()) {
+                [$rowSchedule, $suspensionSlots] = $rowSchedule->applySuspension($suspensionRow->suspension_time);
+            }
+
             $leaveCode = $leaveMap[$dateStr] ?? null;
             $isEtaDay = ! $leaveCode && isset($etaDateSet[$dateStr]);
 
@@ -358,9 +376,14 @@ class DtrController extends Controller
             ], fn ($v) => $v !== null && $v !== '')) : 4;
             $showOo = $isOoDay && $ooPunchCount < 4;
 
-            // Excuse and locator apply only when leave, ETA, and OO do not take priority.
+            // Excuse, suspension, and locator apply only when leave, ETA, and OO do
+            // not take priority. A suspension with no excluded slots (the
+            // capped-workEnd-only tier) has nothing to badge/decorate here - it
+            // falls through to the plain branch below, which already uses the
+            // capped $rowSchedule.
             $excuse = (! $leaveCode && ! $isEtaDay && ! $isOoDay) ? ($excuseMap[$dateStr] ?? null) : null;
-            $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse) ? ($locatorDateMap[$dateStr] ?? null) : null;
+            $suspension = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse && ! empty($suspensionSlots)) ? $suspensionRow : null;
+            $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse && ! $suspension) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
             // Missing AM In / PM Out with nothing else explaining the gap - impute the
             // full half-day block from the shift template, mirroring the Monitoring
@@ -406,6 +429,19 @@ class DtrController extends Controller
                 $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
                 $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
                 $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
+                $storedLate = $dtr->late_minutes ?? 0;
+                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
+                $storedUt = $dtr->undertime_minutes ?? 0;
+                $utMin = $coversPmOut ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
+            } elseif ($suspension) {
+                $coversAmIn = isset($suspensionSlots['am_in']);
+                $coversAmOut = isset($suspensionSlots['am_out']);
+                $coversPmIn = isset($suspensionSlots['pm_in']);
+                $coversPmOut = isset($suspensionSlots['pm_out']);
+                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'SUSPENDED') : ($dtr->time_in_am ?? '-');
+                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'SUSPENDED') : ($dtr->time_out_am ?? '-');
+                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'SUSPENDED') : ($dtr->time_in_pm ?? '-');
+                $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'SUSPENDED') : ($dtr->time_out_pm ?? '-');
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
                 $storedUt = $dtr->undertime_minutes ?? 0;
@@ -461,7 +497,7 @@ class DtrController extends Controller
 
             // Per-cell late/undertime flags: only highlight the slot that actually caused the penalty.
             // Using the row-level is_late class to color AM In was wrong when lateness came from PM In.
-            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'Missing', 'LOCATOR', 'ETA', 'EXCUSED'], true) && strlen($v) >= 5
+            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'Missing', 'LOCATOR', 'ETA', 'EXCUSED', 'SUSPENDED'], true) && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $slotHm($tAmIn);
@@ -472,17 +508,19 @@ class DtrController extends Controller
             $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
             $isPmOutUndertime = $pmOutImputed || ($utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd);
 
-            // Decorate excused slots with the excuse type/reason so the cause is visible
-            // without leaving this page; only applies to slots an excuse actually covers.
-            $decorateSlot = function (string $raw, bool $covered) use ($excuse): string {
-                if (! $excuse || ! $covered) {
+            // Decorate excused/suspended slots with the reason so the cause is visible
+            // without leaving this page; only applies to slots that are actually covered.
+            $decorateSlot = function (string $raw, bool $covered) use ($excuse, $suspension): string {
+                if ((! $excuse && ! $suspension) || ! $covered) {
                     return $raw;
                 }
-                $cfg = DtrExcuse::typeConfig($excuse->excuse_type);
-                $tooltip = e($excuse->reason ?: $cfg['label']);
+                $cfg = $excuse
+                    ? DtrExcuse::typeConfig($excuse->excuse_type)
+                    : WorkSuspension::typeConfig($suspension->type);
+                $tooltip = e(($excuse ? $excuse->reason : $suspension->reason) ?: $cfg['label']);
                 $badge = '<span class="hris-badge" style="background:'.$cfg['bg'].';color:'.$cfg['color'].';font-size:.65rem;padding:.15rem .5rem;" title="'.$tooltip.'"><i class="fas '.$cfg['icon'].'" style="font-size:.6rem;"></i> '.$cfg['label'].'</span>';
 
-                if ($raw === 'EXCUSED') {
+                if ($raw === 'EXCUSED' || $raw === 'SUSPENDED') {
                     return $badge;
                 }
 
@@ -500,11 +538,13 @@ class DtrController extends Controller
                         ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">Office Order</span>'
                         : ($excuse
                             ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
-                            : ($loc
-                                ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
-                                : ($dtr->is_absent
-                                    ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                    : $this->punchStatusBadge($dtr->status))))));
+                            : ($suspension
+                                ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>'
+                                : ($loc
+                                    ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
+                                    : ($dtr->is_absent
+                                        ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                        : $this->punchStatusBadge($dtr->status)))))));
 
             if (! empty($dtr->unmatched_logs)) {
                 $unmatchedTitle = e(implode(', ', array_map(fn ($t) => substr((string) $t, 0, 5), $dtr->unmatched_logs)));

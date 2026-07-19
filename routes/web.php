@@ -8,12 +8,14 @@ use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Attendance\DtrController;
 use App\Http\Controllers\Attendance\DtrExcuseController;
 use App\Http\Controllers\Attendance\EmployeeScheduleController;
+use App\Http\Controllers\Attendance\FrontlinePersonnelController;
 use App\Http\Controllers\Attendance\ShiftController;
 use App\Http\Controllers\Attendance\ShiftLogController;
 use App\Http\Controllers\Attendance\ShiftManagementAccessController;
 use App\Http\Controllers\Attendance\ShiftScheduleController;
 use App\Http\Controllers\Attendance\TimeLogsMonitoringController;
 use App\Http\Controllers\Attendance\WorkforceCalendarController;
+use App\Http\Controllers\Attendance\WorkSuspensionController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
@@ -653,6 +655,22 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
         ->name('attendance.adjustment-summary.submissions');
     Route::get('/attendance/adjustment-summary/submissions/{submission}/items', [AttendanceAdjustmentSummaryController::class, 'submissionItems'])
         ->name('attendance.adjustment-summary.submissions.items');
+
+    Route::get('/attendance/work-suspensions', [WorkSuspensionController::class, 'index'])
+        ->name('attendance.work-suspensions.index');
+    Route::post('/attendance/work-suspensions', [WorkSuspensionController::class, 'store'])
+        ->name('attendance.work-suspensions.store');
+    Route::put('/attendance/work-suspensions/{workSuspension}', [WorkSuspensionController::class, 'update'])
+        ->name('attendance.work-suspensions.update');
+    Route::delete('/attendance/work-suspensions/{workSuspension}', [WorkSuspensionController::class, 'destroy'])
+        ->name('attendance.work-suspensions.destroy');
+
+    Route::get('/attendance/frontline-personnel', [FrontlinePersonnelController::class, 'index'])
+        ->name('attendance.frontline-personnel.index');
+    Route::put('/attendance/frontline-personnel/departments/{department}', [FrontlinePersonnelController::class, 'toggleDepartment'])
+        ->name('attendance.frontline-personnel.departments.toggle');
+    Route::put('/attendance/frontline-personnel/employees/{user}', [FrontlinePersonnelController::class, 'toggleEmployee'])
+        ->name('attendance.frontline-personnel.employees.toggle');
 });
 
 // Company-wide Shift Logs (Time Keeper only)

@@ -741,8 +741,8 @@ class DashboardController extends Controller
     private function ensureEmployee(Request $request): void
     {
         $role = $this->normalizeRole((string) $request->user()->access_level);
-        $allowed = ['employee', 'department head', 'hr manager', 'administrative officer', 'leave manager', 'time keeper'];
-        abort_unless(in_array($role, $allowed, true), 403, 'Only Employee, Department Head, HR Manager, Administrative Officer, Leave Manager, or Time Keeper users can access this section.');
+        $allowed = ['employee', 'department head', 'hr manager', 'administrative officer', 'leave manager', 'time keeper', 'mayor'];
+        abort_unless(in_array($role, $allowed, true), 403, 'Only Employee, Department Head, HR Manager, Administrative Officer, Leave Manager, Time Keeper, or Mayor users can access this section.');
     }
 
     /**
