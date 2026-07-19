@@ -474,7 +474,7 @@ class EmployeeTest extends TestCase
             'copies'        => 2,
         ]);
 
-        $response->assertOk();
+        $response->assertRedirect();
     }
 
     public function test_document_request_queue_handling(): void

@@ -6,6 +6,8 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use NotificationChannels\WebPush\WebPushChannel;
+use NotificationChannels\WebPush\WebPushMessage;
 
 class HrisTransactionNotification extends Notification implements ShouldQueue
 {
@@ -21,7 +23,13 @@ class HrisTransactionNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        $channels = ['mail'];
+
+        if (method_exists($notifiable, 'pushSubscriptions') && $notifiable->pushSubscriptions()->exists()) {
+            $channels[] = WebPushChannel::class;
+        }
+
+        return $channels;
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -37,5 +45,18 @@ class HrisTransactionNotification extends Notification implements ShouldQueue
                 'notes' => $this->notes,
                 'sentAt' => now()->format('l, F j, Y g:i A'),
             ]);
+    }
+
+    public function toWebPush(object $notifiable): WebPushMessage
+    {
+        $body = $this->notes ?: collect($this->details)
+            ->map(fn ($value, $key) => "{$key}: {$value}")
+            ->implode(', ');
+
+        return (new WebPushMessage)
+            ->title("[HRIS] {$this->requestType} – {$this->status}")
+            ->body($body !== '' ? $body : 'Tap to view details in HRIS.')
+            ->icon('/icons/icon-192.png')
+            ->data(['url' => '/dashboard']);
     }
 }

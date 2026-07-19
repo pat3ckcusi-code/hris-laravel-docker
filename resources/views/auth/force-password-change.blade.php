@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Change Password</title>
-    <link rel="icon" type="image/jpeg" href="{{ asset('assets/login/mbs.jpg') }}">
+    @include('partials.pwa-head')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="auth-page auth-page-plain">

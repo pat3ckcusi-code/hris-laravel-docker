@@ -52,6 +52,7 @@ use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RecordsManagerController;
 use App\Http\Controllers\TravelOrderController;
 use App\Http\Controllers\UniformInspectionController;
@@ -66,21 +67,17 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
-// Serve a favicon at /favicon.ico to avoid opaque/no-payload requests
-Route::get('/favicon.ico', function () {
-    $path = public_path('assets/login/mbs.jpg');
-    if (file_exists($path)) {
-        return response()->file($path, ['Content-Type' => 'image/jpeg']);
-    }
-
-    abort(404);
-});
-
 // Background export jobs
 Route::middleware('auth')->group(function () {
     Route::post('/export-jobs', [ExportJobController::class, 'create'])->name('export-jobs.create');
     Route::get('/export-jobs/{id}/status', [ExportJobController::class, 'status'])->name('export-jobs.status');
     Route::get('/export-jobs/{id}/download', [ExportJobController::class, 'download'])->name('export-jobs.download');
+});
+
+// PWA push notification subscriptions
+Route::middleware('auth')->group(function () {
+    Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store'])->name('push-subscriptions.store');
+    Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('push-subscriptions.destroy');
 });
 
 // Employee Leave Management

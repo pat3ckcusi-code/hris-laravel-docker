@@ -7,3 +7,4 @@ import "flatpickr/dist/flatpickr.min.css";
 window.flatpickr = flatpickr;
 
 import './layout';
+import './push-notifications';

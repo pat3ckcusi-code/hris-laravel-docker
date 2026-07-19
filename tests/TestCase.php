@@ -13,7 +13,17 @@ abstract class TestCase extends BaseTestCase
         // The dotenv ServerConstAdapter reads $_SERVER first, which still has the Docker
         // env value ("hris"). We must sync $_SERVER here before the Application bootstraps
         // so that Env::get("DB_DATABASE") returns "HRIS_test" as phpunit.xml intends.
-        foreach (['APP_ENV', 'DB_HOST', 'DB_PORT', 'DB_DATABASE'] as $key) {
+        // This must list every <env> declared in phpunit.xml, not just the DB-safety ones:
+        // the same $_SERVER-wins-first behavior silently defeated MAIL_MAILER, CACHE_STORE,
+        // BCRYPT_ROUNDS, etc. too, making test runs use the container's real "smtp" mailer
+        // and real bcrypt cost (12) instead of the "array"/cost-4 test values phpunit.xml
+        // declares.
+        foreach ([
+            'APP_ENV', 'APP_MAINTENANCE_DRIVER', 'BCRYPT_ROUNDS', 'BROADCAST_CONNECTION',
+            'CACHE_STORE', 'DB_CONNECTION', 'DB_HOST', 'DB_PORT', 'DB_DATABASE',
+            'MAIL_MAILER', 'QUEUE_CONNECTION', 'SESSION_DRIVER',
+            'PULSE_ENABLED', 'TELESCOPE_ENABLED', 'NIGHTWATCH_ENABLED',
+        ] as $key) {
             $val = getenv($key);
             if ($val !== false) {
                 $_SERVER[$key] = $val;

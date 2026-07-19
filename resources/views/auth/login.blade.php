@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>HRIS Login</title>
-    <link rel="icon" type="image/jpeg" href="{{ asset('assets/login/mbs.jpg') }}">
+    @include('partials.pwa-head')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="auth-page auth-page-login" style="background-image: url('{{ asset('assets/login/bg.jpg') }}');">
@@ -67,6 +67,10 @@
                 <img src="{{ asset('assets/login/chrmd1.png') }}" alt="CHRMD Logo">
                 <img src="{{ asset('assets/login/mbs.jpg') }}" alt="MBS Logo">
             </div>
+
+            <div class="link install-app-link">
+                <a href="#" id="pwa-install-link">Click here to download the app</a>
+            </div>
         </section>
     </main>
 
@@ -100,5 +104,83 @@
             });
         </script>
     @endif
+
+    <script>
+        (function () {
+            var installLink = document.getElementById('pwa-install-link');
+            if (!installLink) return;
+
+            var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+
+            if (isStandalone) {
+                installLink.closest('.install-app-link').hidden = true;
+                return;
+            }
+
+            var isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
+            var deferredPrompt = null;
+            var installRequested = false;
+
+            function beginInstall() {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.finally(function () {
+                    deferredPrompt = null;
+                    installRequested = false;
+                });
+            }
+
+            window.addEventListener('beforeinstallprompt', function (event) {
+                event.preventDefault();
+                deferredPrompt = event;
+
+                if (installRequested) {
+                    beginInstall();
+                }
+            });
+
+            installLink.addEventListener('click', function (event) {
+                event.preventDefault();
+
+                Swal.fire({
+                    icon: 'question',
+                    title: 'Install HRIS?',
+                    text: 'This installs HRIS as an app on your device so you can launch it directly, without opening a browser.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Install',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#ea580c',
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    if (deferredPrompt) {
+                        beginInstall();
+                        return;
+                    }
+
+                    if (isIOS) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Install HRIS',
+                            html: 'On iPhone/iPad: tap the <strong>Share</strong> icon, then <strong>Add to Home Screen</strong>.',
+                            confirmButtonColor: '#ea580c',
+                        });
+                        return;
+                    }
+
+                    installRequested = true;
+                    Swal.fire({
+                        toast: true,
+                        position: 'top',
+                        icon: 'info',
+                        title: 'Getting things ready — the install will start automatically.',
+                        showConfirmButton: false,
+                        timer: 3000,
+                        timerProgressBar: true,
+                    });
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

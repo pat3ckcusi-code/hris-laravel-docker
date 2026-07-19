@@ -573,6 +573,9 @@
     </nav>
 
     @auth
+        <button type="button" id="push-notification-toggle" class="sidebar-link" style="margin-bottom: 4px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; font: inherit;" aria-pressed="false" title="Enable notifications">
+            <i class="fas fa-bell fa-fw"></i> Notifications
+        </button>
         <a href="{{ route('user.change-password.form') }}" class="sidebar-link @if(request()->routeIs('user.change-password.form')) active @endif" style="margin-bottom: 4px;">
             <i class="fas fa-lock fa-fw"></i> Change Password
         </a>

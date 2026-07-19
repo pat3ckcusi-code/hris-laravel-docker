@@ -124,6 +124,15 @@ body {
     font-weight: 600;
 }
 
+#push-notification-toggle.is-enabled {
+    color: #ea580c;
+    border-color: rgba(234, 88, 12, 0.4);
+}
+
+#push-notification-toggle.is-enabled i {
+    color: #ea580c;
+}
+
 .global-sidebar .disabled-link {
     cursor: not-allowed;
     opacity: 0.6;

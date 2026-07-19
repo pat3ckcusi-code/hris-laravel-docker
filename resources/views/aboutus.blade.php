@@ -1,7 +1,7 @@
 <html>
 <head>
     <title>About Us</title>
-    <link rel="icon" type="image/jpeg" href="{{ asset('assets/login/mbs.jpg') }}">
+    @include('partials.pwa-head')
     @vite('resources/css/aboutus.css')
 </head>
 <body>

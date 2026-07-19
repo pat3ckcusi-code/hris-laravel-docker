@@ -13,7 +13,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/css/app-BgzBQGUu.css",
+    "file": "assets/css/app-B4RpS-0h.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -31,7 +31,7 @@
     ]
   },
   "resources/css/hr_manager.css": {
-    "file": "assets/css/hr_manager-fFXqJTij.css",
+    "file": "assets/css/hr_manager-QKZbfaqu.css",
     "src": "resources/css/hr_manager.css",
     "isEntry": true,
     "name": "hr_manager",
@@ -76,7 +76,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/js/app-C2Pxw07v.js",
+    "file": "assets/js/app-CWFgk4oF.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -103,7 +103,7 @@
     "isEntry": true
   },
   "resources/js/hr_manager.js": {
-    "file": "assets/js/hr_manager-BbL1xfbM.js",
+    "file": "assets/js/hr_manager-CxMn_2Q-.js",
     "name": "hr_manager",
     "src": "resources/js/hr_manager.js",
     "isEntry": true,
@@ -118,7 +118,7 @@
     "isEntry": true
   },
   "resources/js/records_manager.js": {
-    "file": "assets/js/records_manager-Bw5suHz_.js",
+    "file": "assets/js/records_manager-BbrupD7y.js",
     "name": "records_manager",
     "src": "resources/js/records_manager.js",
     "isEntry": true
@@ -136,7 +136,7 @@
     "isEntry": true
   },
   "resources/js/uniform_inspection.js": {
-    "file": "assets/js/uniform_inspection-B_rzgQlS.js",
+    "file": "assets/js/uniform_inspection-umteTW9Y.js",
     "name": "uniform_inspection",
     "src": "resources/js/uniform_inspection.js",
     "isEntry": true

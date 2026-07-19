@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Contact Us</title>
-    <link rel="icon" type="image/jpeg" href="{{ asset('assets/login/mbs.jpg') }}">
+    @include('partials.pwa-head')
 </head>
 <body>
     <div>

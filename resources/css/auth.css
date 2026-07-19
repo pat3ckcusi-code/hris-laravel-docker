@@ -264,6 +264,14 @@ body.auth-page .logos img {
     object-fit: contain;
 }
 
+/* ── Install App link ────────────────────────────── */
+
+body.auth-page-login .install-app-link {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+}
+
 /* ── Link row (back to login) ───────────────────── */
 
 body.auth-page .link {

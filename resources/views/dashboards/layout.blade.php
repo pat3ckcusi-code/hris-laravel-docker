@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? 'Dashboard' }}</title>
-    <link rel="icon" type="image/jpeg" href="{{ asset('assets/login/mbs.jpg') }}">
+    @include('partials.pwa-head')
         <!-- Font Awesome for dashboard icons: prefer local copy, fall back to CDN if missing -->
         @if (file_exists(public_path('assets/fontawesome/css/all.min.css')))
             <link rel="stylesheet" href="{{ asset('assets/fontawesome/css/all.min.css') }}">
