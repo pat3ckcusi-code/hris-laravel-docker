@@ -162,7 +162,7 @@
                         Swal.fire({
                             icon: 'info',
                             title: 'Install HRIS',
-                            html: 'On iPhone/iPad: tap the <strong>Share</strong> icon, then <strong>Add to Home Screen</strong>.',
+                            html: 'Automatic app install is available for <strong>Android</strong> devices only at this time.',
                             confirmButtonColor: '#ea580c',
                         });
                         return;
