@@ -3,7 +3,7 @@
 // One-off generator for PWA icon assets. Re-run any time the source logo changes:
 //   docker exec hris-dev-app php /var/www/html/scripts/generate-pwa-icons.php
 
-const SRC = __DIR__ . '/../public/assets/login/Calapan_City_Logo.png'; // swap to chrmd1.png for a sharper source
+const SRC = __DIR__ . '/../public/assets/login/chrmd1.png';
 const OUT_DIR = __DIR__ . '/../public/icons';
 const THEME_BG = [0x0f, 0x17, 0x2a]; // #0f172a — maskable background
 const LIGHT_BG = [0xf8, 0xfa, 0xfc]; // #f8fafc — apple-touch-icon background
