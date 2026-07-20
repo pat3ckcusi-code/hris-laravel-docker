@@ -8,6 +8,7 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
@@ -261,6 +262,37 @@ class ShiftLogTest extends TestCase
             ->get(route('attendance.shift-logs'))
             ->assertSee('Mon-Sat')
             ->assertSee('no break');
+    }
+
+    public function test_bulk_shift_removal_is_logged_and_shown(): void
+    {
+        Queue::fake();
+
+        $deptA = $this->makeDepartment('Dept A');
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'Day Shift',
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+        ]);
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'Reverted', 'shift_id' => $shift->id]);
+
+        $this->actingAs($tk)
+            ->put(route('attendance.schedules.bulk-remove'), ['user_ids' => [$employee->id]])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'shift_management',
+            'action' => 'shift_removed',
+            'target_id' => $employee->id,
+        ]);
+
+        $this->actingAs($tk)
+            ->get(route('attendance.shift-logs'))
+            ->assertSee('Reverted')
+            ->assertSee('Shift Removed');
     }
 
     public function test_department_filter_scopes_the_change_log(): void

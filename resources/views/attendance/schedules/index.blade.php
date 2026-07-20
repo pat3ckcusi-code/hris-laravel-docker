@@ -203,6 +203,10 @@
         <button type="submit" class="hris-btn hris-btn-primary" id="bulk-assign-submit" disabled>
             Assign to selected (<span id="bulk-assign-count">0</span>)
         </button>
+        <button type="submit" form="bulk-remove-form" class="hris-btn hris-btn-danger" id="bulk-remove-submit" disabled
+                title="Remove any assigned shift from the selected employees, reverting them to Standard Day">
+            Remove shift from selected (<span id="bulk-remove-count">0</span>)
+        </button>
     </div>
     <p class="sched-days-hint">
         <b>Work Days</b> sets which days of the week this assignment is scheduled to work (defaults to Mon-Fri).
@@ -222,6 +226,21 @@
             above follows this selection, since a day this covers can never be worked under a different pattern.
         </p>
     </details>
+</form>
+
+{{-- Row checkboxes are bound to #bulk-assign-form via the HTML form= attribute
+     (a form-associated element can only target one form), so this second form
+     has no direct link to the selection - JS repopulates user_ids[]/
+     select_all_matching from the same checkboxes right before it submits. --}}
+<form id="bulk-remove-form" method="POST" action="{{ route('attendance.schedules.bulk-remove') }}" style="display:none;">
+    @csrf
+    @method('PUT')
+    <input type="hidden" name="search" value="{{ $search }}">
+    <input type="hidden" name="dept_id" value="{{ $deptId }}">
+    <input type="hidden" name="shift_id" value="{{ $shiftId }}">
+    <input type="hidden" name="employee_type" value="{{ $employeeType }}">
+    <input type="hidden" name="select_all_matching" id="bulk_remove_select_all_matching" value="0">
+    <div id="bulk-remove-user-ids"></div>
 </form>
 @endunless
 
@@ -633,6 +652,12 @@ var selectAllMatching = false;
 var selectAllMatchingInput = document.getElementById('select_all_matching');
 var selectAllMatchingToggle = document.getElementById('select-all-matching-toggle');
 
+var bulkRemoveForm = document.getElementById('bulk-remove-form');
+var bulkRemoveSubmitBtn = document.getElementById('bulk-remove-submit');
+var bulkRemoveCountEl = document.getElementById('bulk-remove-count');
+var bulkRemoveSelectAllInput = document.getElementById('bulk_remove_select_all_matching');
+var bulkRemoveIdsContainer = document.getElementById('bulk-remove-user-ids');
+
 function stopSelectAllMatching() {
     if (!selectAllMatching) return;
     selectAllMatching = false;
@@ -647,12 +672,26 @@ function updateBulkAssignState() {
         if (countEl) countEl.textContent = total;
         if (submitBtn) submitBtn.disabled = total === 0;
         if (selectAllCb) selectAllCb.checked = true;
+        updateBulkRemoveState();
         return;
     }
     var checked = document.querySelectorAll('.sched-row-select:checked').length;
     if (countEl) countEl.textContent = checked;
     if (submitBtn) submitBtn.disabled = checked === 0;
     if (selectAllCb) selectAllCb.checked = checked > 0 && checked === rowCheckboxes.length;
+    updateBulkRemoveState();
+}
+
+function updateBulkRemoveState() {
+    if (selectAllMatching) {
+        var totalRemove = selectAllMatchingToggle ? parseInt(selectAllMatchingToggle.dataset.total, 10) : 0;
+        if (bulkRemoveCountEl) bulkRemoveCountEl.textContent = totalRemove;
+        if (bulkRemoveSubmitBtn) bulkRemoveSubmitBtn.disabled = totalRemove === 0;
+        return;
+    }
+    var checkedRemove = document.querySelectorAll('.sched-row-select:checked').length;
+    if (bulkRemoveCountEl) bulkRemoveCountEl.textContent = checkedRemove;
+    if (bulkRemoveSubmitBtn) bulkRemoveSubmitBtn.disabled = checkedRemove === 0;
 }
 
 rowCheckboxes.forEach(function (cb) {
@@ -713,6 +752,46 @@ if (bulkForm) {
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#6b7280',
         }).then(function (res) { if (res.isConfirmed) bulkForm.submit(); });
+    });
+}
+
+if (bulkRemoveForm) {
+    bulkRemoveForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var count = selectAllMatching
+            ? (selectAllMatchingToggle ? parseInt(selectAllMatchingToggle.dataset.total, 10) : 0)
+            : document.querySelectorAll('.sched-row-select:checked').length;
+        if (count === 0) return;
+
+        // Rebuild hidden user_ids[]/select_all_matching right before submitting -
+        // this form has no DOM/`form=` link to the row checkboxes themselves.
+        bulkRemoveIdsContainer.innerHTML = '';
+        if (selectAllMatching) {
+            bulkRemoveSelectAllInput.value = '1';
+        } else {
+            bulkRemoveSelectAllInput.value = '0';
+            document.querySelectorAll('.sched-row-select:checked').forEach(function (cb) {
+                var hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'user_ids[]';
+                hidden.value = cb.value;
+                bulkRemoveIdsContainer.appendChild(hidden);
+            });
+        }
+
+        var targetText = selectAllMatching
+            ? ('all <b>' + count + '</b> employees matching your current filters (across all pages)')
+            : ('the <b>' + count + '</b> selected employee(s) (this page)');
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Remove shift from selected employees?',
+            html: 'This will remove any assigned shift from ' + targetText + ' and revert them to <b>Standard Day</b>, effective today.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, remove',
+            confirmButtonColor: '#b91c1c',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) { if (res.isConfirmed) bulkRemoveForm.submit(); });
     });
 }
 

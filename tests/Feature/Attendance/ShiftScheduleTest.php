@@ -3178,4 +3178,86 @@ class ShiftScheduleTest extends TestCase
         $this->assertNull($emp->refresh()->shift_id);
         Queue::assertNothingPushed();
     }
+
+    public function test_time_keeper_bulk_removes_shift_from_checked_employees_only(): void
+    {
+        Queue::fake();
+
+        $deptA = $this->makeDepartment('Dept A');
+        $tk = $this->createTimeKeeper();
+        $shift = $this->nightShiftModel();
+
+        $checked1 = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'shift_id' => $shift->id]);
+        $checked2 = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'shift_id' => $shift->id]);
+        $unchecked = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'shift_id' => $shift->id]);
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-remove'), [
+            'user_ids' => [$checked1->id, $checked2->id],
+        ])->assertRedirect();
+
+        $this->assertNull($checked1->refresh()->shift_id);
+        $this->assertNull($checked2->refresh()->shift_id);
+        $this->assertSame($shift->id, $unchecked->refresh()->shift_id, 'An unchecked employee must be untouched.');
+
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked1->id, 'shift_id' => null, 'effective_from' => Carbon::today()->toDateString(), 'effective_until' => null]);
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $checked2->id, 'shift_id' => null, 'effective_from' => Carbon::today()->toDateString(), 'effective_until' => null]);
+
+        Queue::assertPushed(BulkShiftRecomputeJob::class, function ($job) use ($checked1, $checked2, $unchecked) {
+            return in_array($checked1->id, $job->userIds, true)
+                && in_array($checked2->id, $job->userIds, true)
+                && ! in_array($unchecked->id, $job->userIds, true);
+        });
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'shift_management',
+            'action' => 'shift_removed',
+            'target_id' => $checked1->id,
+        ]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'shift_management',
+            'action' => 'shift_removed',
+            'target_id' => $checked2->id,
+        ]);
+    }
+
+    public function test_bulk_remove_with_no_employees_checked_fails_validation(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-remove'), [
+            'user_ids' => [],
+        ])->assertSessionHasErrors('user_ids');
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('hr_audit_trails', ['action' => 'shift_removed']);
+    }
+
+    public function test_granted_department_head_bulk_remove_is_scoped_to_own_department(): void
+    {
+        Queue::fake();
+
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+        $dh = $this->createDepartmentHead(['Dept_id' => $deptA->Dept_id]);
+        ShiftManagementGrant::create(['dept_id' => $deptA->Dept_id, 'granted_by' => $this->createTimeKeeper()->id]);
+
+        $shift = $this->nightShiftModel();
+        $inDept = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'shift_id' => $shift->id]);
+        $outsider = $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'shift_id' => $shift->id]);
+
+        $this->actingAs($dh)->put(route('attendance.schedules.bulk-remove'), [
+            'user_ids' => [$inDept->id],
+        ])->assertRedirect();
+
+        $this->assertNull($inDept->refresh()->shift_id);
+
+        // Attempting to check an employee outside the granted department is rejected outright.
+        $this->actingAs($dh)->put(route('attendance.schedules.bulk-remove'), [
+            'user_ids' => [$outsider->id],
+        ])->assertStatus(403);
+
+        $this->assertSame($shift->id, $outsider->refresh()->shift_id);
+    }
 }

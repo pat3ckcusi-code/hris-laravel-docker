@@ -28,6 +28,7 @@ class ShiftLogController extends Controller
         'access_revoked' => 'Access Revoked',
         'shift_assigned' => 'Shift Assigned',
         'shift_assignment_corrected' => 'Shift Corrected',
+        'shift_removed' => 'Shift Removed',
         'dtr_exemption_toggled' => 'DTR Exemption',
         'shift_schedule_updated' => 'Schedule Updated',
         'rotation_generated' => 'Rotation Generated',
@@ -131,6 +132,7 @@ class ShiftLogController extends Controller
                 ? "Corrected to {$d['shift_name']} - ".ShiftAssignment::daysOfWeekLabel($d['work_days'] ?? ShiftAssignment::DEFAULT_WORK_DAYS)
                     .(($d['no_break'] ?? false) ? ', no break' : '')
                 : 'Corrected to Standard Day',
+            'shift_removed' => 'Reverted to Standard Day (bulk)',
             'dtr_exemption_toggled' => ! empty($d['exempt']) ? 'Marked exempt from DTR' : 'Restored to DTR tracking',
             // Two distinct write paths log the same action: store()/storeBulk()
             // (week grid) stamp 'week_start'; applyWeeklyPattern() (date-range

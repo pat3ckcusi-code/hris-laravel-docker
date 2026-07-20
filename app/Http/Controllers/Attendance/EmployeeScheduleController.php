@@ -474,6 +474,68 @@ class EmployeeScheduleController extends Controller
     }
 
     /**
+     * Revert a hand-picked set of employees (checked on the current page, or
+     * every employee matching the current filters via select_all_matching)
+     * to open-ended Standard Day starting today - the bulk equivalent of the
+     * per-row "Remove" action in update(). Always fully reverts (no attempt
+     * to replicate update()'s rare $keepDayScope preservation for a
+     * concurrent day-split combo); an employee needing that gets excluded
+     * from the bulk selection and handled via the per-row remove instead.
+     */
+    public function bulkRemove(Request $request): RedirectResponse
+    {
+        set_time_limit(120);
+
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
+
+        $validated = $request->validate([
+            'select_all_matching' => ['nullable', 'boolean'],
+            'user_ids' => [Rule::requiredIf(fn () => ! $request->boolean('select_all_matching')), 'array'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        if ($request->boolean('select_all_matching')) {
+            $deptId = $request->integer('dept_id') ?: null;
+            $shiftId = $request->integer('shift_id') ?: null;
+            $employeeType = $request->input('employee_type') ?: null;
+            $search = trim((string) $request->input('search', ''));
+
+            $userIds = $this->buildEmployeeQuery($accessibleIds, $deptId, $shiftId, $employeeType, $search, false)
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        } else {
+            $userIds = array_map('intval', $validated['user_ids']);
+
+            if ($accessibleIds !== null) {
+                $unauthorized = array_diff($userIds, $accessibleIds);
+                if (! empty($unauthorized)) {
+                    abort(403, 'You may only manage employees in your own department.');
+                }
+            }
+        }
+
+        if (empty($userIds)) {
+            return back()->with('schedule_error', 'No employees matched the current filters.');
+        }
+
+        $employees = User::whereIn('id', $userIds)->get(['id', 'Dept_id', 'dtr_exempt']);
+        $employeeIds = $employees->pluck('id')->all();
+        $today = Carbon::today();
+
+        foreach ($employees as $employee) {
+            $this->shiftAssignmentService->assign($employee, null, $today, null, $actor->id, null, null, false);
+        }
+
+        $this->logBulkShiftRemoved($actor, $employeeIds, $today);
+
+        BulkShiftRecomputeJob::dispatch($employeeIds);
+
+        $count = count($employeeIds);
+
+        return back()->with('schedule_status', "Removed any assigned shift from {$count} selected employee(s), reverting them to Standard Day starting {$today->toFormattedDateString()}. Time records are being recomputed in the background.");
+    }
+
+    /**
      * Toggle an employee's biometric/DTR exemption. Exempt employees are skipped
      * by the import pipeline, excluded from Form 48/DTR exports, and hidden from
      * the shift-assignment list. Turning exemption on clears any assigned shift.
@@ -599,6 +661,34 @@ class EmployeeScheduleController extends Controller
             }
         } catch (\Exception) {
             // audit failure must not block the assignment
+        }
+    }
+
+    private function logBulkShiftRemoved(User $actor, array $employeeIds, Carbon $from): void
+    {
+        $now = now();
+
+        $rows = array_map(fn (int $employeeId) => [
+            'actor_user_id' => $actor->id,
+            'module' => 'shift_management',
+            'action' => 'shift_removed',
+            'target_type' => 'user',
+            'target_id' => $employeeId,
+            'details' => json_encode([
+                'actor_role' => $actor->access_level,
+                'bulk' => true,
+                'effective_from' => $from->toDateString(),
+            ]),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $employeeIds);
+
+        try {
+            foreach (array_chunk($rows, 500) as $chunk) {
+                HRAuditTrail::insert($chunk);
+            }
+        } catch (\Exception) {
+            // audit failure must not block the removal
         }
     }
 
