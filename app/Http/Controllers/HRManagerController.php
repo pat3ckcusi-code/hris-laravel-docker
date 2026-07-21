@@ -865,14 +865,14 @@ class HRManagerController extends Controller
         $this->ensureHrManager($request);
 
         $request->validate([
-            'backup_file' => 'required|file|max:102400|mimes:sql,txt',
+            'backup_file' => 'required|file|max:524288|mimes:sql,txt', // 524288 KB = 512 MB
             'restore_confirm' => 'required|accepted',
         ], [
             'restore_confirm.accepted' => 'You must tick the confirmation checkbox before restoring.',
         ]);
 
-        set_time_limit(300);
-        ini_set('memory_limit', '1024M');
+        set_time_limit(900);
+        ini_set('memory_limit', '2048M');
 
         $file = $request->file('backup_file');
         $sql = file_get_contents($file->getRealPath());

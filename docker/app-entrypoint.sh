@@ -62,4 +62,10 @@ else
   php artisan optimize      >/dev/null 2>&1 || true
 fi
 
+# Signal any running queue workers to finish their current job and exit;
+# `restart: unless-stopped` then brings the worker back up running
+# whatever code is current, instead of it silently continuing on
+# whatever was loaded in memory since it last started.
+php artisan queue:restart >/dev/null 2>&1 || true
+
 exec "$@"
