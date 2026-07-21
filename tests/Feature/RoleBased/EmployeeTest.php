@@ -2,17 +2,15 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\Dtr;
+use App\Models\Eta;
+use App\Models\LeaveRequest;
+use App\Models\Locator;
+use App\Models\Pds;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
-use App\Models\LeaveRequest;
-use App\Models\LeaveDate;
-use App\Models\Eta;
-use App\Models\Locator;
-use App\Models\DocumentRequest;
-use App\Models\Dtr;
-use App\Models\Pds;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * Employee Role Tests
@@ -22,7 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class EmployeeTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Dashboard
@@ -80,15 +78,15 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         $response = $this->actingAs($user)->post(route('dashboard.employee.pds.save-draft'), [
-            'section_key'  => 'pds-personal-info',
+            'section_key' => 'pds-personal-info',
             'section_data' => json_encode([
-                'surname'    => 'Doe',
+                'surname' => 'Doe',
                 'first_name' => 'John',
-                'middle_name'=> 'M',
+                'middle_name' => 'M',
                 'birth_date' => '1990-01-15',
-                'birth_place'=> 'Manila',
-                'sex'        => 'Male',
-                'civil_status'=> 'Single',
+                'birth_place' => 'Manila',
+                'sex' => 'Male',
+                'civil_status' => 'Single',
             ]),
         ]);
 
@@ -102,13 +100,13 @@ class EmployeeTest extends TestCase
 
         // Create initial draft
         $this->actingAs($user)->post(route('dashboard.employee.pds.save-draft'), [
-            'section_key'  => 'pds-personal-info',
+            'section_key' => 'pds-personal-info',
             'section_data' => json_encode(['surname' => 'Doe']),
         ]);
 
         // Update draft
         $response = $this->actingAs($user)->post(route('dashboard.employee.pds.save-draft'), [
-            'section_key'  => 'pds-personal-info',
+            'section_key' => 'pds-personal-info',
             'section_data' => json_encode(['surname' => 'Smith']),
         ]);
 
@@ -122,7 +120,7 @@ class EmployeeTest extends TestCase
 
         // Save some PDS data first
         $this->actingAs($user)->post(route('dashboard.employee.pds.save-draft'), [
-            'section_key'  => 'pds-personal-info',
+            'section_key' => 'pds-personal-info',
             'section_data' => json_encode(['surname' => 'Doe', 'first_name' => 'John']),
         ]);
 
@@ -149,9 +147,9 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         $response = $this->actingAs($user)->post(route('employee.eta.store'), [
-            'date'   => now()->addDay()->toDateString(),
-            'type'   => 'late_arrival',
-            'time'   => '09:30',
+            'date' => now()->addDay()->toDateString(),
+            'type' => 'late_arrival',
+            'time' => '09:30',
             'reason' => 'Traffic congestion due to road work',
         ]);
 
@@ -167,9 +165,9 @@ class EmployeeTest extends TestCase
 
         for ($i = 0; $i < 20; $i++) {
             $response = $this->actingAs($user)->post(route('employee.eta.store'), [
-                'date'   => now()->addDays($i + 1)->toDateString(),
-                'type'   => 'late_arrival',
-                'time'   => '09:' . str_pad($i + 10, 2, '0', STR_PAD_LEFT),
+                'date' => now()->addDays($i + 1)->toDateString(),
+                'type' => 'late_arrival',
+                'time' => '09:'.str_pad($i + 10, 2, '0', STR_PAD_LEFT),
                 'reason' => "Concurrent ETA test #{$i}",
             ]);
 
@@ -181,7 +179,7 @@ class EmployeeTest extends TestCase
         }
 
         $this->assertGreaterThanOrEqual(15, $submitted,
-            "Only {$submitted}/20 ETAs submitted. Errors: " . implode('; ', $errors));
+            "Only {$submitted}/20 ETAs submitted. Errors: ".implode('; ', $errors));
     }
 
     public function test_employee_can_fetch_eta_data(): void
@@ -190,11 +188,11 @@ class EmployeeTest extends TestCase
 
         // Create some ETAs
         Eta::create([
-            'user_id'        => $user->id,
+            'user_id' => $user->id,
             'departure_date' => now()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'Test',
-            'status'         => 'pending',
+            'destination' => 'City Hall',
+            'purpose' => 'Test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($user)->get(route('employee.eta.data'));
@@ -207,11 +205,11 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         Eta::create([
-            'user_id'        => $user->id,
+            'user_id' => $user->id,
             'departure_date' => now()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'Test',
-            'status'         => 'pending',
+            'destination' => 'City Hall',
+            'purpose' => 'Test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($user)->get(route('employee.eta.data'));
@@ -224,17 +222,17 @@ class EmployeeTest extends TestCase
     {
         $user = $this->createEmployee();
         $deptHead = $this->createDepartmentHead([
-            'first_name'  => 'Angel',
+            'first_name' => 'Angel',
             'middle_name' => 'Miranda',
-            'last_name'   => 'Navarro',
+            'last_name' => 'Navarro',
         ]);
 
         $eta = Eta::create([
-            'user_id'        => $user->id,
+            'user_id' => $user->id,
             'departure_date' => now()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'Test',
-            'status'         => 'approved',
+            'destination' => 'City Hall',
+            'purpose' => 'Test',
+            'status' => 'approved',
         ]);
         $eta->forceFill(['approved_by' => $deptHead->id])->save();
 
@@ -249,16 +247,147 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         $eta = Eta::create([
-            'user_id'        => $user->id,
+            'user_id' => $user->id,
             'departure_date' => now()->addDay()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'Test',
-            'status'         => 'pending',
+            'destination' => 'City Hall',
+            'purpose' => 'Test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($user)->post(route('employee.eta.cancel', $eta));
 
         $response->assertRedirect();
+    }
+
+    public function test_employee_can_request_cancellation_of_approved_eta(): void
+    {
+        $user = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'arrival_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.eta.request-cancellation', $eta), [
+            'reason' => 'Trip no longer necessary',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $eta->refresh();
+        $this->assertEquals('approved', $eta->status);
+        $this->assertEquals('Pending Cancellation', $eta->cancellation_status);
+        $this->assertEquals('Trip no longer necessary', $eta->cancellation_reason);
+        $this->assertEquals($user->id, $eta->cancellation_requested_by);
+        $this->assertNotNull($eta->cancellation_requested_at);
+    }
+
+    public function test_eta_cancellation_request_requires_reason(): void
+    {
+        $user = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.eta.request-cancellation', $eta), []);
+
+        $response->assertStatus(422);
+        $eta->refresh();
+        $this->assertNull($eta->cancellation_status);
+    }
+
+    public function test_employee_cannot_request_cancellation_of_pending_eta(): void
+    {
+        $user = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.eta.request-cancellation', $eta), [
+            'reason' => 'Changed my mind',
+        ]);
+
+        $response->assertStatus(400);
+        $eta->refresh();
+        $this->assertNull($eta->cancellation_status);
+    }
+
+    public function test_employee_cannot_request_cancellation_of_another_employees_eta(): void
+    {
+        $owner = $this->createEmployee();
+        $other = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $owner->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($other)->postJson(route('employee.eta.request-cancellation', $eta), [
+            'reason' => 'Not mine',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_employee_cannot_submit_duplicate_cancellation_request(): void
+    {
+        $user = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.eta.request-cancellation', $eta), [
+            'reason' => 'Second attempt',
+        ]);
+
+        $response->assertStatus(400);
+    }
+
+    public function test_employee_can_request_cancellation_again_after_prior_rejection(): void
+    {
+        $user = $this->createEmployee();
+
+        $eta = Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Rejected',
+            'cancellation_remarks' => 'Not approved previously',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.eta.request-cancellation', $eta), [
+            'reason' => 'Trying again',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+        $eta->refresh();
+        $this->assertEquals('Pending Cancellation', $eta->cancellation_status);
+        $this->assertEquals('Trying again', $eta->cancellation_reason);
     }
 
     // ──────────────────────────────────────────────
@@ -279,12 +408,12 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         $response = $this->actingAs($user)->post(route('employee.locator.store'), [
-            'date'        => now()->addDay()->toDateString(),
-            'type'        => 'Official',
+            'date' => now()->addDay()->toDateString(),
+            'type' => 'Official',
             'destination' => 'City Hall Annex',
-            'purpose'     => 'Document pickup',
-            'time_out'    => '10:00',
-            'time_in'     => '12:00',
+            'purpose' => 'Document pickup',
+            'time_out' => '10:00',
+            'time_in' => '12:00',
         ]);
 
         $response->assertRedirect();
@@ -295,14 +424,14 @@ class EmployeeTest extends TestCase
         $user = $this->createEmployee();
 
         Locator::create([
-            'user_id'                  => $user->id,
-            'application_type'         => 'Official',
-            'location'                 => 'City Hall',
-            'travel_date'              => now()->toDateString(),
-            'intended_departure_time'  => '10:00',
-            'intended_arrival_time'    => '12:00',
-            'detail'                   => 'Meeting',
-            'status'                   => 'pending',
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($user)->get(route('employee.locator.data'));
@@ -320,12 +449,12 @@ class EmployeeTest extends TestCase
         $successes = 0;
         foreach ($users as $idx => $user) {
             $response = $this->actingAs($user)->post(route('employee.locator.store'), [
-                'date'        => now()->addDay()->toDateString(),
-                'type'        => $idx % 2 === 0 ? 'Official' : 'Personal',
+                'date' => now()->addDay()->toDateString(),
+                'type' => $idx % 2 === 0 ? 'Official' : 'Personal',
                 'destination' => "Destination #{$idx}",
-                'purpose'     => "Purpose #{$idx}",
-                'time_out'    => '10:00',
-                'time_in'     => '12:00',
+                'purpose' => "Purpose #{$idx}",
+                'time_out' => '10:00',
+                'time_in' => '12:00',
             ]);
 
             if ($response->isSuccessful() || $response->isRedirection()) {
@@ -356,11 +485,11 @@ class EmployeeTest extends TestCase
         $this->createLeaveBalance($user, ['VL' => 15.000]);
 
         $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
-            'leave_type'  => 'VL',
-            'start_date'  => now()->addWeek()->startOfWeek()->toDateString(),
-            'end_date'    => now()->addWeek()->startOfWeek()->toDateString(),
-            'reason'      => 'Personal matters',
-            'dates'       => [now()->addWeek()->startOfWeek()->toDateString()],
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->startOfWeek()->toDateString(),
+            'end_date' => now()->addWeek()->startOfWeek()->toDateString(),
+            'reason' => 'Personal matters',
+            'dates' => [now()->addWeek()->startOfWeek()->toDateString()],
         ]);
 
         $response->assertRedirect();
@@ -386,12 +515,12 @@ class EmployeeTest extends TestCase
 
         // Create leave for other employee
         LeaveRequest::create([
-            'user_id'    => $otherEmployee->id,
+            'user_id' => $otherEmployee->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'Other employee leave',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Other employee leave',
+            'status' => 'pending',
         ]);
 
         // Employee should only see their own leave
@@ -420,9 +549,9 @@ class EmployeeTest extends TestCase
                     $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
                         'leave_type' => $i % 2 === 0 ? 'VL' : 'SL',
                         'start_date' => $date,
-                        'end_date'   => $date,
-                        'reason'     => "Bulk leave test #{$batch}-{$i}",
-                        'dates'      => [$date],
+                        'end_date' => $date,
+                        'reason' => "Bulk leave test #{$batch}-{$i}",
+                        'dates' => [$date],
                     ]);
 
                     if ($response->isSuccessful() || $response->isRedirection()) {
@@ -447,8 +576,8 @@ class EmployeeTest extends TestCase
         $rate = $total > 0 ? ($successes / $total) * 100 : 0;
 
         $this->assertGreaterThanOrEqual(80, $rate,
-            "Leave filing success rate {$rate}% (successes: {$successes}, failures: {$failures}). " .
-            "Time: {$totalTime}ms. Errors: " . implode('; ', $errors));
+            "Leave filing success rate {$rate}% (successes: {$successes}, failures: {$failures}). ".
+            "Time: {$totalTime}ms. Errors: ".implode('; ', $errors));
     }
 
     // ──────────────────────────────────────────────
@@ -470,8 +599,8 @@ class EmployeeTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('document-requests.store'), [
             'document_type' => 'Certificate of Employment',
-            'purpose'       => 'Bank loan application',
-            'copies'        => 2,
+            'purpose' => 'Bank loan application',
+            'copies' => 2,
         ]);
 
         $response->assertRedirect();
@@ -485,8 +614,8 @@ class EmployeeTest extends TestCase
 
             $response = $this->actingAs($user)->post(route('document-requests.store'), [
                 'document_type' => 'Certificate of Employment',
-                'purpose'       => "Queue test #{$i}",
-                'copies'        => 1,
+                'purpose' => "Queue test #{$i}",
+                'copies' => 1,
             ]);
 
             if ($response->isSuccessful() || $response->isRedirection()) {
@@ -563,15 +692,15 @@ class EmployeeTest extends TestCase
         // Seed DTR records
         for ($i = 0; $i < 90; $i++) {
             Dtr::create([
-                'employee_id'      => $user->id,
-                'date'             => now()->subDays($i)->toDateString(),
-                'time_in_am'       => '08:00',
-                'time_out_am'      => '12:00',
-                'time_in_pm'       => '13:00',
-                'time_out_pm'      => '17:00',
-                'late_minutes'     => 0,
-                'undertime_minutes'=> 0,
-                'is_absent'        => false,
+                'employee_id' => $user->id,
+                'date' => now()->subDays($i)->toDateString(),
+                'time_in_am' => '08:00',
+                'time_out_am' => '12:00',
+                'time_in_pm' => '13:00',
+                'time_out_pm' => '17:00',
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'is_absent' => false,
             ]);
         }
 

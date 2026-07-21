@@ -11,6 +11,26 @@
 
 @section('page_head')
     @include('partials.table-styles')
+    <style>
+        /* Filed ETAs table: force fixed layout so long content wraps instead of
+           widening the table past its wrapper and triggering horizontal scroll. */
+        #filed-etas-table {
+            table-layout: fixed;
+        }
+        #filed-etas-table td,
+        #filed-etas-table th {
+            overflow-wrap: break-word;
+            word-break: break-word;
+            white-space: normal;
+        }
+        /* .hris-btn sets white-space: nowrap directly on the button, which wins
+           over the td-level override above since it targets the element itself. */
+        #filed-etas-table .hris-btn-wrap {
+            white-space: normal;
+            text-align: center;
+            line-height: 1.2;
+        }
+    </style>
 @endsection
 
 @section('content')
@@ -104,23 +124,23 @@
                         };
                     @endphp
 
-                    <table class="hris-table">
+                    <table class="hris-table" id="filed-etas-table">
                         <thead>
                             <tr>
-                                <th><a href="{{ $sortUrl('departure_date') }}" class="{{ $activeClass('departure_date') }}">Departure Date</a></th>
-                                <th><a href="{{ $sortUrl('arrival_date') }}" class="{{ $activeClass('arrival_date') }}">Date of Arrival</a></th>
-                                <th><a href="{{ $sortUrl('destination') }}" class="{{ $activeClass('destination') }}">Destination</a></th>
-                                <th><a href="{{ $sortUrl('purpose') }}" class="{{ $activeClass('purpose') }}">Purpose</a></th>
-                                <th>Approved By</th>
-                                <th><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
-                                <th>Action</th>
+                                <th style="width:12%"><a href="{{ $sortUrl('departure_date') }}" class="{{ $activeClass('departure_date') }}">Departure Date</a></th>
+                                <th style="width:12%"><a href="{{ $sortUrl('arrival_date') }}" class="{{ $activeClass('arrival_date') }}">Date of Arrival</a></th>
+                                <th style="width:15%"><a href="{{ $sortUrl('destination') }}" class="{{ $activeClass('destination') }}">Destination</a></th>
+                                <th style="width:20%"><a href="{{ $sortUrl('purpose') }}" class="{{ $activeClass('purpose') }}">Purpose</a></th>
+                                <th style="width:13%">Approved By</th>
+                                <th style="width:10%"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th style="width:18%">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($etas as $eta)
                                 <tr>
-                                    <td>{{ $eta->departure_date }}</td>
-                                    <td>{{ $eta->arrival_date ?? '-' }}</td>
+                                    <td>{{ $eta->departure_date?->format('M d, Y') }}</td>
+                                    <td>{{ $eta->arrival_date?->format('M d, Y') ?? '-' }}</td>
                                     <td>{{ $eta->destination }}</td>
                                     <td>
                                         <div>{{ $eta->purpose }}</div>
@@ -144,7 +164,20 @@
                                     </td>
                                     <td>
                                         @if($eta->status === 'approved')
-                                            <a class="hris-btn hris-btn-secondary" href="{{ route('employee.eta.print.single', ['eta' => $eta->id]) }}" target="_blank">Print</a>
+                                            <div class="flex flex-col items-start gap-1 max-w-[200px]">
+                                                <a class="hris-btn hris-btn-secondary" href="{{ route('employee.eta.print.single', ['eta' => $eta->id]) }}" target="_blank">Print</a>
+                                                @if($eta->cancellation_status === 'Pending Cancellation')
+                                                    <span class="text-xs font-medium text-amber-600 break-words">Approved &mdash; Cancellation Requested</span>
+                                                @else
+                                                    <form method="POST" action="{{ route('employee.eta.request-cancellation', ['eta' => $eta->id]) }}" id="request-cancellation-eta-form-{{ $eta->id }}" class="inline-block">
+                                                        @csrf
+                                                        <button type="button" class="hris-btn hris-btn-danger hris-btn-wrap" onclick="promptCancelApprovedEta({{ $eta->id }})">Request Cancellation</button>
+                                                    </form>
+                                                    @if($eta->cancellation_status === 'Rejected')
+                                                        <span class="text-xs text-red-500 break-words">Cancellation request rejected{{ $eta->cancellation_remarks ? ': '.$eta->cancellation_remarks : '' }}</span>
+                                                    @endif
+                                                @endif
+                                            </div>
                                         @elseif($eta->status === 'pending')
                                             <form method="POST" action="{{ route('employee.eta.cancel', ['eta' => $eta->id]) }}" id="cancel-eta-form-{{ $eta->id }}" class="inline-block">
                                                 @csrf
@@ -251,6 +284,41 @@
                 });
             } else {
                 if (confirm('Cancel this ETA?')) form.submit();
+            }
+        }
+
+        async function promptCancelApprovedEta(id) {
+            const form = document.getElementById('request-cancellation-eta-form-' + id);
+            if (!form) return;
+            const token = form.querySelector('input[name="_token"]').value;
+            const SwalLib = await ensureSwal();
+            if (SwalLib) {
+                SwalLib.fire({
+                    icon: 'warning', title: 'Request ETA Cancellation', input: 'textarea',
+                    inputLabel: 'Reason for cancelling this approved ETA',
+                    text: 'This will be sent to your Department Head / Administrative Officer for review.',
+                    showCancelButton: true, confirmButtonText: 'Submit Request',
+                    preConfirm: (v) => { if (!v) SwalLib.showValidationMessage('A reason is required'); return v; },
+                }).then((r) => {
+                    if (r.isConfirmed) {
+                        fetch(form.action, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: new URLSearchParams({ reason: r.value, _token: token }),
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            SwalLib.fire({ icon: data.success ? 'success' : 'error', text: data.message || (data.success ? 'Request submitted' : 'Failed to submit request') }).then(() => location.reload());
+                        })
+                        .catch(() => SwalLib.fire({ icon: 'error', text: 'Failed to submit cancellation request' }));
+                    }
+                });
+            } else {
+                const reason = prompt('Reason for cancelling this approved ETA:');
+                if (reason) {
+                    fetch(form.action, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' }, body: new URLSearchParams({ reason: reason, _token: token }) })
+                        .then(() => location.reload());
+                }
             }
         }
     </script>

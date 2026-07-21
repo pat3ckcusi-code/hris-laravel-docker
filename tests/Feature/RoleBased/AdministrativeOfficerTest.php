@@ -2,13 +2,14 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\Eta;
+use App\Models\LeaveDate;
+use App\Models\LeaveRequest;
+use App\Models\Locator;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
-use App\Models\LeaveRequest;
-use App\Models\Eta;
-use App\Models\Locator;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * Administrative Officer Role Tests
@@ -17,7 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class AdministrativeOfficerTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers, MeasuresPerformance;
+    use CreatesTestUsers, MeasuresPerformance, RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // 1. Dashboard & Navigation
@@ -52,12 +53,12 @@ class AdministrativeOfficerTest extends TestCase
         $this->createLeaveBalance($emp, ['VL' => 15]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $emp->id,
+            'user_id' => $emp->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'AO approval test',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'AO approval test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($ao)->post(
@@ -76,12 +77,12 @@ class AdministrativeOfficerTest extends TestCase
         $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
 
         $leave = LeaveRequest::create([
-            'user_id'    => $emp->id,
+            'user_id' => $emp->id,
             'leave_type' => 'VL',
             'start_date' => now()->addWeek()->toDateString(),
-            'end_date'   => now()->addWeek()->toDateString(),
-            'reason'     => 'AO rejection test',
-            'status'     => 'pending',
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'AO rejection test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($ao)->post(
@@ -101,11 +102,11 @@ class AdministrativeOfficerTest extends TestCase
         $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
 
         $eta = Eta::create([
-            'user_id'        => $emp->id,
+            'user_id' => $emp->id,
             'departure_date' => now()->addDay()->toDateString(),
-            'destination'    => 'City Hall',
-            'purpose'        => 'AO test',
-            'status'         => 'pending',
+            'destination' => 'City Hall',
+            'purpose' => 'AO test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($ao)->post(
@@ -118,20 +119,71 @@ class AdministrativeOfficerTest extends TestCase
         );
     }
 
+    public function test_admin_officer_can_approve_eta_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $emp->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'AO cancellation test',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.eta.approve-cancellation', $eta->id));
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $eta->refresh();
+        $this->assertEquals('cancelled', $eta->status);
+        $this->assertEquals('Cancelled', $eta->cancellation_status);
+        $this->assertEquals($ao->id, $eta->cancellation_reviewed_by);
+    }
+
+    public function test_admin_officer_can_reject_eta_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $emp->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'AO cancellation test',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.eta.reject-cancellation', $eta->id), [
+            'remarks' => 'Still required.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $eta->refresh();
+        $this->assertEquals('approved', $eta->status);
+        $this->assertEquals('Rejected', $eta->cancellation_status);
+        $this->assertEquals('Still required.', $eta->cancellation_remarks);
+    }
+
     public function test_approve_locator_request(): void
     {
         $ao = $this->createAdminOfficer();
         $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
 
         $locator = Locator::create([
-            'user_id'                  => $emp->id,
-            'application_type'         => 'Official',
-            'location'                 => 'City Hall',
-            'travel_date'              => now()->addDay()->toDateString(),
-            'intended_departure_time'  => '10:00',
-            'intended_arrival_time'    => '12:00',
-            'detail'                   => 'AO test',
-            'status'                   => 'pending',
+            'user_id' => $emp->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'AO test',
+            'status' => 'pending',
         ]);
 
         $response = $this->actingAs($ao)->post(
@@ -155,12 +207,12 @@ class AdministrativeOfficerTest extends TestCase
             $this->createLeaveBalance($emp, ['VL' => 15]);
 
             $leave = LeaveRequest::create([
-                'user_id'    => $emp->id,
+                'user_id' => $emp->id,
                 'leave_type' => 'VL',
                 'start_date' => now()->addDays($i + 7)->toDateString(),
-                'end_date'   => now()->addDays($i + 7)->toDateString(),
-                'reason'     => "AO concurrency test #{$i}",
-                'status'     => 'pending',
+                'end_date' => now()->addDays($i + 7)->toDateString(),
+                'reason' => "AO concurrency test #{$i}",
+                'status' => 'pending',
             ]);
 
             try {
@@ -294,18 +346,18 @@ class AdministrativeOfficerTest extends TestCase
         $ao = $this->createAdminOfficer();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'DH Recommended',
             'cancellation_dh_action' => 'recommended',
             'cancellation_dh_at' => now(),
         ]);
-        \App\Models\LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => now()->addWeek()->toDateString(), 'is_cancelled' => false]);
 
         $response = $this->actingAs($ao)->postJson(route('admin-officer.leave.endorse-cancellation', $leave->id), [
             'remarks' => 'Endorsed by AO.',
@@ -324,13 +376,13 @@ class AdministrativeOfficerTest extends TestCase
         $ao = $this->createAdminOfficer();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'Pending Cancellation',
         ]);
 
@@ -346,13 +398,13 @@ class AdministrativeOfficerTest extends TestCase
         $ao = $this->createAdminOfficer();
         $emp = $this->createEmployee();
 
-        $leave = \App\Models\LeaveRequest::create([
-            'user_id'             => $emp->id,
-            'leave_type'          => 'VL',
-            'start_date'          => now()->addWeek()->toDateString(),
-            'end_date'            => now()->addWeek()->toDateString(),
-            'reason'              => 'Test',
-            'status'              => 'approved',
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
             'cancellation_status' => 'DH Recommended',
         ]);
 

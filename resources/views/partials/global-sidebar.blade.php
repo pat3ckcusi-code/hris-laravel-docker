@@ -361,7 +361,12 @@
                 ->where('status', 'pending')
                 ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
                 ->count();
-            $eta = \App\Models\Eta::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+            $eta = \App\Models\Eta::whereIn('user_id', $employeeIds)
+                ->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere('cancellation_status', 'Pending Cancellation');
+                })
+                ->count();
             $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
 
             return $leave + $eta + $locator;
@@ -378,7 +383,12 @@
                 ->where('status', 'pending')
                 ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
                 ->count();
-            $eta = \App\Models\Eta::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+            $eta = \App\Models\Eta::whereIn('user_id', $employeeIds)
+                ->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere('cancellation_status', 'Pending Cancellation');
+                })
+                ->count();
             $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
 
             return $leave + $eta + $locator;

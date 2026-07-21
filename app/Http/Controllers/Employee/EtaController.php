@@ -10,6 +10,7 @@ use App\Models\OicAssignment;
 use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\ApprovalNotificationService;
 use App\Services\DepartmentService;
 use App\Support\RoleNormalizer;
 use Illuminate\Http\Request;
@@ -22,6 +23,10 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 class EtaController extends Controller
 {
+    public function __construct(
+        private readonly ApprovalNotificationService $approvalNotificationService,
+    ) {}
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -494,6 +499,8 @@ class EtaController extends Controller
                 'created_at' => $eta->created_at->toDateTimeString(),
                 'can_print' => $eta->status === 'approved',
                 'print_url' => route('employee.eta.print.single', ['eta' => $eta->id]),
+                'cancellation_status' => $eta->cancellation_status,
+                'can_request_cancellation' => $eta->status === 'approved' && $eta->cancellation_status !== 'Pending Cancellation',
             ];
         });
 
@@ -524,6 +531,106 @@ class EtaController extends Controller
         }
 
         return redirect()->route('dashboard.employee.eta')->with('success', 'ETA cancelled.');
+    }
+
+    /**
+     * Employee requests cancellation of an already-approved ETA. Does not cancel
+     * outright — the same DH/AO who approves ETAs for the department must review it.
+     */
+    public function requestCancellation(Request $request, Eta $eta)
+    {
+        $user = Auth::user();
+        if ($eta->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if ($eta->status !== 'approved') {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'Only approved ETAs can request cancellation.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'Only approved ETAs can request cancellation.');
+        }
+
+        if ($eta->cancellation_status === 'Pending Cancellation') {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'A cancellation request is already pending for this ETA.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'A cancellation request is already pending for this ETA.');
+        }
+
+        $data = $request->validate([
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        $eta->cancellation_status = 'Pending Cancellation';
+        $eta->cancellation_reason = $data['reason'];
+        $eta->cancellation_remarks = null;
+        $eta->cancellation_requested_at = now();
+        $eta->cancellation_requested_by = $user->id;
+        $eta->cancellation_reviewed_at = null;
+        $eta->cancellation_reviewed_by = null;
+        $eta->save();
+
+        // Determine department head and administrative officer to notify
+        $departmentHead = null;
+        $adminOfficer = null;
+        if (! empty($user->Dept_id)) {
+            $department = Department::find($user->Dept_id);
+            if ($department) {
+                if (! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+                    $departmentHead = User::where('EmpNo', $department->EmpNo)->first();
+                }
+                if (! empty($department->ao_emp_no) && $department->ao_emp_no !== 'UNASSIGNED') {
+                    $adminOfficer = User::where('EmpNo', $department->ao_emp_no)->first();
+                }
+            }
+        }
+
+        $empName = trim(collect([$user->first_name ?? null, $user->middle_name ?? null, $user->last_name ?? null])->filter()->implode(' ')) ?: ($user->name ?? 'Employee');
+
+        $details = [
+            'Employee' => $empName,
+            'Destination' => $eta->destination ?? 'N/A',
+            'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
+            'Arrival Date' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+            'Purpose' => $eta->purpose ?? 'N/A',
+            'Originally Approved By' => optional($eta->approver)->name ?? 'N/A',
+            'Originally Approved At' => $eta->approved_at ? $eta->approved_at->format('l, F j, Y g:ia') : 'N/A',
+            'Cancellation Reason' => $data['reason'],
+        ];
+
+        foreach (array_filter([$departmentHead, $adminOfficer]) as $reviewer) {
+            $this->approvalNotificationService->notifyEmployee(
+                employee: $reviewer,
+                requestType: 'ETA Cancellation',
+                status: 'Requested',
+                details: $details,
+                actor: $empName,
+            );
+        }
+
+        $this->approvalNotificationService->writeAuditTrail([
+            'actor_user_id' => $user->id,
+            'module' => 'eta',
+            'action' => 'request_cancellation',
+            'target_type' => 'eta',
+            'target_id' => $eta->id,
+            'details' => [
+                'cancellation_reason' => $data['reason'],
+                'originally_approved_by' => $eta->approved_by,
+                'originally_approved_role' => $eta->approved_role,
+                'originally_approved_at' => $eta->approved_at?->toDateTimeString(),
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true, 'message' => 'Cancellation request submitted and pending review.']);
+        }
+
+        return redirect()->route('dashboard.employee.eta')->with('success', 'Cancellation request submitted and pending review.');
     }
 
     /**

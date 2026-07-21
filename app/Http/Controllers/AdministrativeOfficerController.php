@@ -223,11 +223,19 @@ class AdministrativeOfficerController extends Controller
             $year = (int) date('Y');
         }
 
-        $query = Eta::with('user')
+        $query = Eta::with(['user', 'approver'])
             ->whereIn('user_id', $employeeIds)
-            ->where('status', 'pending')
-            ->whereMonth('created_at', $month)
-            ->whereYear('created_at', $year);
+            ->where(function ($q) use ($month, $year) {
+                $q->where(function ($q2) use ($month, $year) {
+                    $q2->where('status', 'pending')
+                        ->whereMonth('created_at', $month)
+                        ->whereYear('created_at', $year);
+                })->orWhere(function ($q2) use ($month, $year) {
+                    $q2->where('cancellation_status', 'Pending Cancellation')
+                        ->whereMonth('cancellation_requested_at', $month)
+                        ->whereYear('cancellation_requested_at', $year);
+                });
+            });
 
         $recordsTotal = $query->count();
 
@@ -247,15 +255,23 @@ class AdministrativeOfficerController extends Controller
 
         $records = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
-        $data = $records->map(fn ($e) => [
-            'id' => $e->id,
-            'employee' => optional($e->user)->name ?? '-',
-            'departure' => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '-',
-            'arrival' => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '-',
-            'destination' => $e->destination,
-            'purpose' => $e->purpose ?? '-',
-            'filed_at' => $e->created_at ? $e->created_at->format('M d, Y') : '-',
-        ]);
+        $data = $records->map(function ($e) {
+            $isCancellationRequest = $e->cancellation_status === 'Pending Cancellation';
+
+            return [
+                'id' => $e->id,
+                'employee' => optional($e->user)->name ?? '-',
+                'departure' => $e->departure_date ? Carbon::parse($e->departure_date)->format('M d, Y') : '-',
+                'arrival' => $e->arrival_date ? Carbon::parse($e->arrival_date)->format('M d, Y') : '-',
+                'destination' => $e->destination,
+                'purpose' => $e->purpose ?? '-',
+                'filed_at' => $e->created_at ? $e->created_at->format('M d, Y') : '-',
+                'is_cancellation_request' => $isCancellationRequest,
+                'cancellation_reason' => $isCancellationRequest ? $e->cancellation_reason : null,
+                'approved_by_name' => $isCancellationRequest ? (optional($e->approver)->name ?? '-') : null,
+                'approved_at' => $isCancellationRequest && $e->approved_at ? Carbon::parse($e->approved_at)->format('M d, Y g:ia') : null,
+            ];
+        });
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
     }
@@ -1233,6 +1249,145 @@ class AdministrativeOfficerController extends Controller
         }
 
         return redirect()->back()->with('success', 'ETA request rejected.');
+    }
+
+    public function approveEtaCancellation(Request $request, $id)
+    {
+        $user = Auth::user();
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $eta = Eta::findOrFail($id);
+
+        if ($depts->isEmpty()) {
+            return redirect()->back()->with('error', 'Department not found for your account.');
+        }
+
+        $employee = $eta->user;
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+            return redirect()->back()->with('error', 'You are not authorized to act on this request.');
+        }
+
+        if ($eta->cancellation_status !== 'Pending Cancellation') {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'No pending cancellation request for this ETA.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'No pending cancellation request for this ETA.');
+        }
+
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
+
+        $eta->status = 'cancelled';
+        $eta->cancellation_status = 'Cancelled';
+        $eta->cancellation_reviewed_by = $user->id;
+        $eta->cancellation_reviewed_at = now();
+        $eta->save();
+
+        foreach ($depts as $d) {
+            Cache::forget("dept_stats_{$d->Dept_id}_{$eta->created_at->month}_{$eta->created_at->year}");
+            Cache::forget("dh_metrics_{$d->Dept_id}");
+        }
+
+        $this->approvalNotificationService->writeAuditTrail([
+            'actor_user_id' => $user->id,
+            'module' => 'eta',
+            'action' => 'approve_cancellation',
+            'target_type' => 'eta',
+            'target_id' => $eta->id,
+            'details' => [
+                'cancellation_reason' => $eta->cancellation_reason ?? '',
+                'approver_normalized_role' => $normalizedRole,
+                'approver_id' => $user->id,
+                'employee_id' => $employee->id ?? null,
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        $this->approvalNotificationService->notifyEmployee(
+            employee: $employee,
+            requestType: 'ETA Cancellation',
+            status: 'Cancellation Approved',
+            details: [
+                'Destination' => $eta->destination ?? 'N/A',
+                'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
+                'Arrival Date' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+            ],
+            actor: $user->name,
+        );
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'ETA cancellation approved.']);
+        }
+
+        return redirect()->back()->with('success', 'ETA cancellation approved.');
+    }
+
+    public function rejectEtaCancellation(Request $request, $id)
+    {
+        $user = Auth::user();
+        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
+        $eta = Eta::findOrFail($id);
+
+        if ($depts->isEmpty()) {
+            return redirect()->back()->with('error', 'Department not found for your account.');
+        }
+
+        $employee = $eta->user;
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+            return redirect()->back()->with('error', 'You are not authorized to act on this request.');
+        }
+
+        if ($eta->cancellation_status !== 'Pending Cancellation') {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'No pending cancellation request for this ETA.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'No pending cancellation request for this ETA.');
+        }
+
+        $request->validate(['remarks' => 'required|string|max:2000']);
+
+        $normalizedRole = $this->departmentService->getEffectiveRole($user);
+
+        $eta->cancellation_status = 'Rejected';
+        $eta->cancellation_remarks = $request->input('remarks');
+        $eta->cancellation_reviewed_by = $user->id;
+        $eta->cancellation_reviewed_at = now();
+        $eta->save();
+
+        $this->approvalNotificationService->writeAuditTrail([
+            'actor_user_id' => $user->id,
+            'module' => 'eta',
+            'action' => 'reject_cancellation',
+            'target_type' => 'eta',
+            'target_id' => $eta->id,
+            'details' => [
+                'cancellation_reason' => $eta->cancellation_reason ?? '',
+                'cancellation_remarks' => $eta->cancellation_remarks ?? '',
+                'approver_normalized_role' => $normalizedRole,
+                'approver_id' => $user->id,
+                'employee_id' => $employee->id ?? null,
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
+
+        $this->approvalNotificationService->notifyEmployee(
+            employee: $employee,
+            requestType: 'ETA Cancellation',
+            status: 'Cancellation Rejected',
+            details: [
+                'Destination' => $eta->destination ?? 'N/A',
+                'Departure Date' => Carbon::parse($eta->departure_date)->format('l, F j, Y'),
+                'Arrival Date' => Carbon::parse($eta->arrival_date)->format('l, F j, Y'),
+                'Remarks' => $eta->cancellation_remarks ?? 'N/A',
+            ],
+            actor: $user->name,
+        );
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'ETA cancellation request rejected.']);
+        }
+
+        return redirect()->back()->with('success', 'ETA cancellation request rejected.');
     }
 
     public function approveLocator(Request $request, $id)

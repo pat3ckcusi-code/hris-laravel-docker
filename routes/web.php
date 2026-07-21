@@ -130,6 +130,8 @@ Route::middleware('auth')->group(function () {
         ->name('employee.eta.print.single');
     Route::post('/dashboard/employee/eta-locator/{eta}/cancel', [EtaController::class, 'cancel'])
         ->name('employee.eta.cancel');
+    Route::post('/dashboard/employee/eta-locator/{eta}/request-cancellation', [EtaController::class, 'requestCancellation'])
+        ->name('employee.eta.request-cancellation');
     Route::get('/dashboard/employee/leave/{leave}/print', [LeaveRequestController::class, 'printSingle'])
         ->name('employee.leave.print.single');
     // API: check leave status (printing_allowed, status)
@@ -307,6 +309,8 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::post('/admin-officer/leave/{id}/allow-printing', [AdministrativeOfficerController::class, 'allowPrinting'])->name('admin-officer.leave.allow-printing');
     Route::post('/admin-officer/eta/{id}/approve', [AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
     Route::post('/admin-officer/eta/{id}/reject', [AdministrativeOfficerController::class, 'rejectEta'])->name('admin-officer.eta.reject');
+    Route::post('/admin-officer/eta/{id}/approve-cancellation', [AdministrativeOfficerController::class, 'approveEtaCancellation'])->name('admin-officer.eta.approve-cancellation');
+    Route::post('/admin-officer/eta/{id}/reject-cancellation', [AdministrativeOfficerController::class, 'rejectEtaCancellation'])->name('admin-officer.eta.reject-cancellation');
     Route::post('/admin-officer/locator/{id}/approve', [AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
     Route::post('/admin-officer/locator/{id}/reject', [AdministrativeOfficerController::class, 'rejectLocator'])->name('admin-officer.locator.reject');
     Route::post('/admin-officer/locator/{id}/record-arrival', [AdministrativeOfficerController::class, 'recordLocatorArrival'])->name('admin-officer.locator.record-arrival');
@@ -347,6 +351,8 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     // ETA and Locator actions
     Route::post('/department-head/eta/{id}/approve', [DepartmentHeadController::class, 'approveEta'])->name('department-head.eta.approve');
     Route::post('/department-head/eta/{id}/reject', [DepartmentHeadController::class, 'rejectEta'])->name('department-head.eta.reject');
+    Route::post('/department-head/eta/{id}/approve-cancellation', [DepartmentHeadController::class, 'approveEtaCancellation'])->name('department-head.eta.approve-cancellation');
+    Route::post('/department-head/eta/{id}/reject-cancellation', [DepartmentHeadController::class, 'rejectEtaCancellation'])->name('department-head.eta.reject-cancellation');
 
     Route::post('/department-head/locator/{id}/approve', [DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
     Route::post('/department-head/locator/{id}/reject', [DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');

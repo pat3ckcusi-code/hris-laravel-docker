@@ -267,7 +267,13 @@ document.addEventListener('DOMContentLoaded', function () {
             data: function (d) { d.month = CURRENT_MONTH; d.year = CURRENT_YEAR; },
         },
         columns: [
-            { data: 'employee',    title: 'Employee' },
+            { data: 'employee',    title: 'Employee', render: function(data, type, row) {
+                var label = data || '';
+                if (row.is_cancellation_request) {
+                    label += ' <span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;white-space:nowrap;margin-left:4px;">Approved &mdash; Cancellation Requested</span>';
+                }
+                return label;
+            }},
             { data: 'departure',   title: 'Departure' },
             { data: 'arrival',     title: 'Arrival' },
             { data: 'destination', title: 'Destination', orderable: false },
@@ -276,11 +282,17 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
-                    return '<div class="action-btns">'
-                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingEtaModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
-                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEta(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
-                        + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEta(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>'
-                        + '</div>';
+                    var btns = '<div class="action-btns">'
+                        + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPendingEtaModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>';
+                    if (row.is_cancellation_request) {
+                        btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEtaCancellation(' + row.id + ')"><i class="fa fa-check"></i> Approve Cancellation</button>'
+                              + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEtaCancellation(' + row.id + ')"><i class="fa fa-times"></i> Reject Cancellation</button>';
+                    } else {
+                        btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApproveEta(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
+                              + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptRejectEta(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>';
+                    }
+                    btns += '</div>';
+                    return btns;
                 },
             },
         ],
@@ -355,16 +367,20 @@ function openPendingLeaveModal(id) {
 function openPendingEtaModal(id) {
     var r = etaRows[id];
     if (!r) return;
-    document.getElementById('pending-modal-title').textContent = 'Pending ETA Details';
-    document.getElementById('pending-modal-body').innerHTML =
-        '<table style="width:100%;border-collapse:collapse"><tbody>'
+    document.getElementById('pending-modal-title').textContent = r.is_cancellation_request ? 'ETA Cancellation Request' : 'Pending ETA Details';
+    var html = '<table style="width:100%;border-collapse:collapse"><tbody>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.employee + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Departure</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.departure + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Arrival</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.arrival + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Destination</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.destination + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Purpose</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.purpose + '</td></tr>'
-        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.filed_at + '</td></tr>'
-        + '</tbody></table>';
+        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.filed_at + '</td></tr>';
+    if (r.is_cancellation_request) {
+        html += '<tr><td style="padding:8px;border:1px solid #f1f5f9;background:#fffbeb"><strong>This ETA was already approved</strong></td><td style="padding:8px;border:1px solid #f1f5f9;background:#fffbeb">by ' + (r.approved_by_name || '-') + ' on ' + (r.approved_at || '-') + '</td></tr>'
+              + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Cancellation Reason</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + (r.cancellation_reason || '-') + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('pending-modal-body').innerHTML = html;
     document.getElementById('pendingModal').showModal();
 }
 
@@ -575,6 +591,65 @@ function promptRejectEta(id) {
         var reason = prompt('Rejection reason:');
         if (reason) {
             fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' }, body: new URLSearchParams({ rejection_notes: reason, _token: token }) })
+                .then(function () { etaTable.ajax.reload(null, false); });
+        }
+    }
+}
+
+function confirmApproveEtaCancellation(id) {
+    var token = csrfToken();
+    var url   = '/' + APPROVER_PREFIX + '/eta/' + id + '/approve-cancellation';
+    if (window.Swal) {
+        Swal.fire({ title: 'Approve ETA Cancellation?', text: 'This will cancel the employee\'s already-approved ETA.', icon: 'question', showCancelButton: true, confirmButtonText: 'Approve Cancellation' })
+            .then(function (r) {
+                if (!r.isConfirmed) return;
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    body: new URLSearchParams({ _token: token }),
+                }).then(function (res) {
+                    if (!res.ok) return res.json().then(function (d) { throw new Error(d.message || 'HTTP ' + res.status); });
+                    return res.json();
+                }).then(function (data) {
+                    Swal.fire({ icon: 'success', text: data.message || 'Cancellation approved.' })
+                        .then(function () { etaTable.ajax.reload(null, false); });
+                }).catch(function (err) {
+                    Swal.fire({ icon: 'error', title: 'Failed', text: err.message || 'Failed to approve cancellation.' });
+                });
+            });
+    } else {
+        if (confirm('Approve this ETA cancellation?')) {
+            fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' }, body: new URLSearchParams({ _token: token }) })
+                .then(function () { etaTable.ajax.reload(null, false); });
+        }
+    }
+}
+
+function promptRejectEtaCancellation(id) {
+    var token = csrfToken();
+    var url   = '/' + APPROVER_PREFIX + '/eta/' + id + '/reject-cancellation';
+    if (window.Swal) {
+        Swal.fire({
+            icon: 'warning', title: 'Reject Cancellation Request', input: 'textarea', inputLabel: 'Remarks (why the ETA should remain approved)',
+            showCancelButton: true, confirmButtonText: 'Reject Cancellation',
+            preConfirm: function (v) { if (!v) Swal.showValidationMessage('Remarks are required'); return v; },
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: new URLSearchParams({ remarks: result.value, _token: token }),
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                Swal.fire({ icon: 'success', text: data.message || 'Cancellation request rejected.' })
+                    .then(function () { etaTable.ajax.reload(null, false); });
+            }).catch(function () {
+                Swal.fire({ icon: 'error', text: 'Failed to reject cancellation request.' });
+            });
+        });
+    } else {
+        var remarks = prompt('Remarks:');
+        if (remarks) {
+            fetch(url, { method: 'POST', headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' }, body: new URLSearchParams({ remarks: remarks, _token: token }) })
                 .then(function () { etaTable.ajax.reload(null, false); });
         }
     }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\RoleBased;
 
+use App\Models\Department;
 use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
@@ -192,6 +193,114 @@ class DepartmentHeadTest extends TestCase
             $response->isSuccessful() || $response->isRedirection(),
             "ETA approval failed: HTTP {$response->getStatusCode()}"
         );
+    }
+
+    public function test_department_head_can_approve_eta_cancellation(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $employee->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Traffic',
+            'status' => 'approved',
+            'approved_by' => $dh->id,
+            'approved_at' => now(),
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+            'cancellation_requested_at' => now(),
+            'cancellation_requested_by' => $employee->id,
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.eta.approve-cancellation', $eta->id));
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $eta->refresh();
+        $this->assertEquals('cancelled', $eta->status);
+        $this->assertEquals('Cancelled', $eta->cancellation_status);
+        $this->assertEquals($dh->id, $eta->cancellation_reviewed_by);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'eta',
+            'action' => 'approve_cancellation',
+            'target_id' => $eta->id,
+        ]);
+    }
+
+    public function test_department_head_can_reject_eta_cancellation(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $employee->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Traffic',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.eta.reject-cancellation', $eta->id), [
+            'remarks' => 'Trip is still required.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $eta->refresh();
+        $this->assertEquals('approved', $eta->status);
+        $this->assertEquals('Rejected', $eta->cancellation_status);
+        $this->assertEquals('Trip is still required.', $eta->cancellation_remarks);
+    }
+
+    public function test_department_head_reject_eta_cancellation_requires_remarks(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $employee->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Traffic',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.eta.reject-cancellation', $eta->id), []);
+
+        $response->assertStatus(422);
+        $eta->refresh();
+        $this->assertEquals('Pending Cancellation', $eta->cancellation_status);
+    }
+
+    public function test_department_head_cannot_act_on_cancellation_outside_department(): void
+    {
+        $dh = $this->createDepartmentHead();
+
+        $otherDept = Department::forceCreate([
+            'DeptCode' => 'OTHER', 'Dept_name' => 'Other Department', 'EmpNo' => 'OTHER-EMPNO', 'Designation' => 'Test',
+        ]);
+        $employee = $this->createEmployee(['Dept_id' => $otherDept->Dept_id]);
+
+        $eta = Eta::create([
+            'user_id' => $employee->id,
+            'departure_date' => now()->addDay()->toDateString(),
+            'destination' => 'City Hall',
+            'purpose' => 'Traffic',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.eta.approve-cancellation', $eta->id));
+
+        $response->assertStatus(302);
+        $eta->refresh();
+        $this->assertEquals('Pending Cancellation', $eta->cancellation_status);
     }
 
     public function test_approve_locator_request(): void
