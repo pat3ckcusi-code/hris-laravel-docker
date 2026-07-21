@@ -24,3 +24,7 @@ Schedule::command('attendance:auto-import')->everyMinute();
 
 // Clean up export jobs stuck in processing/pending beyond the 6-minute window.
 Schedule::command('export:prune')->everyFiveMinutes();
+
+// Delete already-expired database cache rows, which otherwise accumulate
+// indefinitely (the database cache driver never garbage-collects them itself).
+Schedule::command('cache:prune-expired')->daily();

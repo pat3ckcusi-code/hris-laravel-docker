@@ -45,26 +45,33 @@ class ImportAttendanceLogsJob implements ShouldQueue
 
         $deptLabel = $deptName ?? 'ALL';
 
-        HRAuditTrail::create([
-            'actor_user_id' => $this->actorUserId,
-            'module' => 'attendance',
-            'action' => 'attendance_import',
-            'target_type' => 'attendance_logs',
-            'target_id' => $this->deptId,
-            'details' => [
-                'description' => "Imported {$result['imported']} punches for date range [{$this->from} to {$this->to}] department=[{$deptLabel}]",
-                'from' => $this->from,
-                'to' => $this->to,
-                'dept_id' => $this->deptId,
-                'dept_name' => $deptLabel,
-                'imported' => $result['imported'],
-                'skipped' => $result['skipped'],
-                'status' => $failed ? 'failed' : 'success',
-                'error' => $result['error'],
-                // Cap stored messages to avoid bloating the audit row.
-                'messages' => array_slice($result['messages'], 0, 100),
-            ],
-        ]);
+        // Auto-import runs every minute; a routine no-op (nothing imported, no
+        // error) would otherwise re-log the same unmatched-EmpNo warnings to
+        // hr_audit_trails on every tick forever. That diagnostic is still
+        // available via the Log::info call in PersonnelLogImportService, so
+        // only persist an audit row when something actually happened.
+        if ($failed || $result['imported'] > 0) {
+            HRAuditTrail::create([
+                'actor_user_id' => $this->actorUserId,
+                'module' => 'attendance',
+                'action' => 'attendance_import',
+                'target_type' => 'attendance_logs',
+                'target_id' => $this->deptId,
+                'details' => [
+                    'description' => "Imported {$result['imported']} punches for date range [{$this->from} to {$this->to}] department=[{$deptLabel}]",
+                    'from' => $this->from,
+                    'to' => $this->to,
+                    'dept_id' => $this->deptId,
+                    'dept_name' => $deptLabel,
+                    'imported' => $result['imported'],
+                    'skipped' => $result['skipped'],
+                    'status' => $failed ? 'failed' : 'success',
+                    'error' => $result['error'],
+                    // Cap stored messages to avoid bloating the audit row.
+                    'messages' => array_slice($result['messages'], 0, 100),
+                ],
+            ]);
+        }
 
         if ($failed) {
             Log::error('Attendance import failed', [
