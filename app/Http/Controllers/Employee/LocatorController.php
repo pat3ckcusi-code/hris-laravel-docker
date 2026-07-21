@@ -251,6 +251,8 @@ class LocatorController extends Controller
                 'cancelled_by' => $l->cancelled_by ?? null,
                 'cancelled_at' => $l->cancelled_at ? $l->cancelled_at->toDateTimeString() : null,
                 'cancellation_remarks' => $l->cancellation_remarks ?? null,
+                'cancellation_status' => $l->cancellation_status,
+                'can_request_cancellation' => $l->status === 'approved' && $l->cancellation_status !== 'Pending Cancellation',
             ];
         });
 
@@ -379,6 +381,117 @@ class LocatorController extends Controller
         }
 
         return redirect()->route('dashboard.employee.locator')->with('success', 'Locator cancelled.');
+    }
+
+    /**
+     * Employee requests cancellation of an already-approved Locator. Does not cancel
+     * outright - the same DH/AO who approves Locators for the department must review it.
+     */
+    public function requestCancellation(Request $request, Locator $locator)
+    {
+        $user = Auth::user();
+        if ($locator->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if ($locator->status !== 'approved') {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'Only approved locators can request cancellation.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'Only approved locators can request cancellation.');
+        }
+
+        if ($locator->cancellation_status === 'Pending Cancellation') {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'A cancellation request is already pending for this locator.'], 400);
+            }
+
+            return redirect()->back()->with('error', 'A cancellation request is already pending for this locator.');
+        }
+
+        $data = $request->validate([
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        $locator->cancellation_status = 'Pending Cancellation';
+        $locator->cancellation_reason = $data['reason'];
+        $locator->cancellation_review_remarks = null;
+        $locator->cancellation_requested_at = now();
+        $locator->cancellation_requested_by = $user->id;
+        $locator->cancellation_reviewed_at = null;
+        $locator->cancellation_reviewed_by = null;
+        $locator->save();
+
+        // Determine department head and administrative officer to notify
+        $departmentHead = null;
+        $adminOfficer = null;
+        if (! empty($user->Dept_id)) {
+            $department = Department::find($user->Dept_id);
+            if ($department) {
+                if (! empty($department->EmpNo) && $department->EmpNo !== 'UNASSIGNED') {
+                    $departmentHead = User::where('EmpNo', $department->EmpNo)->first();
+                }
+                if (! empty($department->ao_emp_no) && $department->ao_emp_no !== 'UNASSIGNED') {
+                    $adminOfficer = User::where('EmpNo', $department->ao_emp_no)->first();
+                }
+            }
+        }
+
+        $empName = trim(collect([$user->first_name ?? null, $user->middle_name ?? null, $user->last_name ?? null])->filter()->implode(' ')) ?: ($user->name ?? 'Employee');
+        $appType = 'Locator - '.ucfirst(strtolower($locator->application_type ?? 'Official'));
+
+        $details = [
+            'Employee' => $empName,
+            'Location' => $locator->location ?? 'N/A',
+            'Travel Date' => Carbon::parse($locator->travel_date)->format('l, F j, Y'),
+            'Detail' => $locator->detail ?? 'N/A',
+            'Originally Approved By' => optional($locator->approver)->name ?? 'N/A',
+            'Originally Approved At' => $locator->approved_at ? $locator->approved_at->format('l, F j, Y g:ia') : 'N/A',
+            'Cancellation Reason' => $data['reason'],
+        ];
+
+        foreach (array_filter([$departmentHead, $adminOfficer]) as $reviewer) {
+            $email = $reviewer->email ?? null;
+            if (empty($email)) {
+                continue;
+            }
+            try {
+                $reviewer->notify(new HrisTransactionNotification(
+                    requestType: $appType.' Cancellation',
+                    status: 'Requested',
+                    details: $details,
+                    actor: $empName,
+                ));
+            } catch (\Exception $ex) {
+                // do not block on mail failure
+            }
+        }
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'locator',
+                'action' => 'request_cancellation',
+                'target_type' => 'locator',
+                'target_id' => $locator->id,
+                'details' => [
+                    'cancellation_reason' => $data['reason'],
+                    'originally_approved_by' => $locator->approved_by,
+                    'originally_approved_role' => $locator->approved_role,
+                    'originally_approved_at' => $locator->approved_at?->toDateTimeString(),
+                    'timestamp' => now()->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Exception $ex) {
+            \Log::error('Failed to write HRAuditTrail for Locator cancellation request', ['locator_id' => $locator->id, 'error' => $ex->getMessage()]);
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true, 'message' => 'Cancellation request submitted and pending review.']);
+        }
+
+        return redirect()->route('dashboard.employee.locator')->with('success', 'Cancellation request submitted and pending review.');
     }
 
     private function normalizeTime($time)

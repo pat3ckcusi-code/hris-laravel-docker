@@ -196,6 +196,63 @@ class AdministrativeOfficerTest extends TestCase
         );
     }
 
+    public function test_admin_officer_can_approve_locator_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $emp->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'AO cancellation test',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.locator.approve-cancellation', $locator->id));
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $locator->refresh();
+        $this->assertEquals('cancelled', $locator->status);
+        $this->assertEquals('Cancelled', $locator->cancellation_status);
+        $this->assertEquals($ao->id, $locator->cancellation_reviewed_by);
+    }
+
+    public function test_admin_officer_can_reject_locator_cancellation(): void
+    {
+        $ao = $this->createAdminOfficer();
+        $emp = $this->createEmployee(['Dept_id' => $ao->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $emp->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'AO cancellation test',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($ao)->postJson(route('admin-officer.locator.reject-cancellation', $locator->id), [
+            'remarks' => 'Still required.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $locator->refresh();
+        $this->assertEquals('approved', $locator->status);
+        $this->assertEquals('Rejected', $locator->cancellation_status);
+        $this->assertEquals('Still required.', $locator->cancellation_review_remarks);
+    }
+
     public function test_approval_concurrency_100_requests(): void
     {
         $ao = $this->createAdminOfficer();

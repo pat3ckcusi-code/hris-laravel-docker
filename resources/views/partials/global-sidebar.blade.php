@@ -367,7 +367,12 @@
                         ->orWhere('cancellation_status', 'Pending Cancellation');
                 })
                 ->count();
-            $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+            $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)
+                ->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere('cancellation_status', 'Pending Cancellation');
+                })
+                ->count();
 
             return $leave + $eta + $locator;
         },
@@ -389,7 +394,12 @@
                         ->orWhere('cancellation_status', 'Pending Cancellation');
                 })
                 ->count();
-            $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)->where('status', 'pending')->count();
+            $locator = \App\Models\Locator::whereIn('user_id', $employeeIds)
+                ->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere('cancellation_status', 'Pending Cancellation');
+                })
+                ->count();
 
             return $leave + $eta + $locator;
         },

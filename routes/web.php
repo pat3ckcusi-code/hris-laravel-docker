@@ -144,6 +144,8 @@ Route::middleware('auth')->group(function () {
         ->name('employee.locator.store');
     Route::post('/dashboard/employee/locator/{locator}/cancel', [LocatorController::class, 'cancel'])
         ->name('employee.locator.cancel');
+    Route::post('/dashboard/employee/locator/{locator}/request-cancellation', [LocatorController::class, 'requestCancellation'])
+        ->name('employee.locator.request-cancellation');
     Route::get('/dashboard/employee/locator/{locator}/edit', [LocatorController::class, 'edit'])
         ->name('employee.locator.edit');
     Route::put('/dashboard/employee/locator/{locator}', [LocatorController::class, 'update'])
@@ -313,6 +315,8 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
     Route::post('/admin-officer/eta/{id}/reject-cancellation', [AdministrativeOfficerController::class, 'rejectEtaCancellation'])->name('admin-officer.eta.reject-cancellation');
     Route::post('/admin-officer/locator/{id}/approve', [AdministrativeOfficerController::class, 'approveLocator'])->name('admin-officer.locator.approve');
     Route::post('/admin-officer/locator/{id}/reject', [AdministrativeOfficerController::class, 'rejectLocator'])->name('admin-officer.locator.reject');
+    Route::post('/admin-officer/locator/{id}/approve-cancellation', [AdministrativeOfficerController::class, 'approveLocatorCancellation'])->name('admin-officer.locator.approve-cancellation');
+    Route::post('/admin-officer/locator/{id}/reject-cancellation', [AdministrativeOfficerController::class, 'rejectLocatorCancellation'])->name('admin-officer.locator.reject-cancellation');
     Route::post('/admin-officer/locator/{id}/record-arrival', [AdministrativeOfficerController::class, 'recordLocatorArrival'])->name('admin-officer.locator.record-arrival');
 });
 
@@ -356,6 +360,8 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
 
     Route::post('/department-head/locator/{id}/approve', [DepartmentHeadController::class, 'approveLocator'])->name('department-head.locator.approve');
     Route::post('/department-head/locator/{id}/reject', [DepartmentHeadController::class, 'rejectLocator'])->name('department-head.locator.reject');
+    Route::post('/department-head/locator/{id}/approve-cancellation', [DepartmentHeadController::class, 'approveLocatorCancellation'])->name('department-head.locator.approve-cancellation');
+    Route::post('/department-head/locator/{id}/reject-cancellation', [DepartmentHeadController::class, 'rejectLocatorCancellation'])->name('department-head.locator.reject-cancellation');
     Route::post('/department-head/locator/{id}/record-arrival', [DepartmentHeadController::class, 'recordLocatorArrival'])->name('department-head.locator.record-arrival');
 });
 

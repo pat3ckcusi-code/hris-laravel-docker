@@ -329,6 +329,126 @@ class DepartmentHeadTest extends TestCase
         );
     }
 
+    public function test_department_head_can_approve_locator_cancellation(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $employee->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'approved_by' => $dh->id,
+            'approved_at' => now(),
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+            'cancellation_requested_at' => now(),
+            'cancellation_requested_by' => $employee->id,
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.locator.approve-cancellation', $locator->id));
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $locator->refresh();
+        $this->assertEquals('cancelled', $locator->status);
+        $this->assertEquals('Cancelled', $locator->cancellation_status);
+        $this->assertEquals($dh->id, $locator->cancellation_reviewed_by);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'locator',
+            'action' => 'approve_cancellation',
+            'target_id' => $locator->id,
+        ]);
+    }
+
+    public function test_department_head_can_reject_locator_cancellation(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $employee->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+            'cancellation_reason' => 'No longer needed',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.locator.reject-cancellation', $locator->id), [
+            'remarks' => 'Trip is still required.',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $locator->refresh();
+        $this->assertEquals('approved', $locator->status);
+        $this->assertEquals('Rejected', $locator->cancellation_status);
+        $this->assertEquals('Trip is still required.', $locator->cancellation_review_remarks);
+    }
+
+    public function test_department_head_reject_locator_cancellation_requires_remarks(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $employee->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.locator.reject-cancellation', $locator->id), []);
+
+        $response->assertStatus(422);
+        $locator->refresh();
+        $this->assertEquals('Pending Cancellation', $locator->cancellation_status);
+    }
+
+    public function test_department_head_cannot_act_on_locator_cancellation_outside_department(): void
+    {
+        $dh = $this->createDepartmentHead();
+
+        $otherDept = Department::forceCreate([
+            'DeptCode' => 'OTHERLOC', 'Dept_name' => 'Other Locator Department', 'EmpNo' => 'OTHERLOC-EMPNO', 'Designation' => 'Test',
+        ]);
+        $employee = $this->createEmployee(['Dept_id' => $otherDept->Dept_id]);
+
+        $locator = Locator::create([
+            'user_id' => $employee->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($dh)->postJson(route('department-head.locator.approve-cancellation', $locator->id));
+
+        $response->assertStatus(302);
+        $locator->refresh();
+        $this->assertEquals('Pending Cancellation', $locator->cancellation_status);
+    }
+
     public function test_simulate_200_simultaneous_approvals(): void
     {
         $dh = $this->createDepartmentHead();

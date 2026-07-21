@@ -17,18 +17,34 @@
         #filed-etas-table {
             table-layout: fixed;
         }
-        #filed-etas-table td,
+        /* Only body values wrap - headers are short static labels and should
+           stay on one line (forcing them to wrap mid-word looked broken). */
+        #filed-etas-table td {
+            overflow-wrap: break-word !important;
+            word-break: break-word !important;
+            white-space: normal !important;
+        }
         #filed-etas-table th {
-            overflow-wrap: break-word;
-            word-break: break-word;
-            white-space: normal;
+            white-space: nowrap;
         }
         /* .hris-btn sets white-space: nowrap directly on the button, which wins
            over the td-level override above since it targets the element itself. */
         #filed-etas-table .hris-btn-wrap {
-            white-space: normal;
+            white-space: normal !important;
             text-align: center;
             line-height: 1.2;
+        }
+        /* .hris-badge is nowrap by design (status words are always short) but has
+           no max-width, so in a narrow fixed column it visually overflows into the
+           next cell instead of wrapping - shrink it so it reliably fits its column. */
+        #filed-etas-table .hris-badge {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.7rem;
+            letter-spacing: 0.2px;
+        }
+        #filed-etas-table td,
+        #filed-etas-table th {
+            padding: 0.75rem 0.5rem;
         }
     </style>
 @endsection
@@ -129,11 +145,11 @@
                             <tr>
                                 <th style="width:12%"><a href="{{ $sortUrl('departure_date') }}" class="{{ $activeClass('departure_date') }}">Departure Date</a></th>
                                 <th style="width:12%"><a href="{{ $sortUrl('arrival_date') }}" class="{{ $activeClass('arrival_date') }}">Date of Arrival</a></th>
-                                <th style="width:15%"><a href="{{ $sortUrl('destination') }}" class="{{ $activeClass('destination') }}">Destination</a></th>
-                                <th style="width:20%"><a href="{{ $sortUrl('purpose') }}" class="{{ $activeClass('purpose') }}">Purpose</a></th>
-                                <th style="width:13%">Approved By</th>
-                                <th style="width:10%"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
-                                <th style="width:18%">Action</th>
+                                <th style="width:14%"><a href="{{ $sortUrl('destination') }}" class="{{ $activeClass('destination') }}">Destination</a></th>
+                                <th style="width:18%"><a href="{{ $sortUrl('purpose') }}" class="{{ $activeClass('purpose') }}">Purpose</a></th>
+                                <th style="width:12%">Approved By</th>
+                                <th style="width:12%"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th style="width:20%">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -164,7 +180,7 @@
                                     </td>
                                     <td>
                                         @if($eta->status === 'approved')
-                                            <div class="flex flex-col items-start gap-1 max-w-[200px]">
+                                            <div class="flex flex-col items-start gap-1 w-full">
                                                 <a class="hris-btn hris-btn-secondary" href="{{ route('employee.eta.print.single', ['eta' => $eta->id]) }}" target="_blank">Print</a>
                                                 @if($eta->cancellation_status === 'Pending Cancellation')
                                                     <span class="text-xs font-medium text-amber-600 break-words">Approved &mdash; Cancellation Requested</span>

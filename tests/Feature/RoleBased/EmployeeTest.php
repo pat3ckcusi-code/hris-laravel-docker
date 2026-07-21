@@ -466,6 +466,154 @@ class EmployeeTest extends TestCase
             "Only {$successes}/10 concurrent locator submissions succeeded");
     }
 
+    public function test_employee_can_request_cancellation_of_approved_locator(): void
+    {
+        $user = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.locator.request-cancellation', $locator), [
+            'reason' => 'Trip no longer necessary',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $locator->refresh();
+        $this->assertEquals('approved', $locator->status);
+        $this->assertEquals('Pending Cancellation', $locator->cancellation_status);
+        $this->assertEquals('Trip no longer necessary', $locator->cancellation_reason);
+        $this->assertEquals($user->id, $locator->cancellation_requested_by);
+        $this->assertNotNull($locator->cancellation_requested_at);
+    }
+
+    public function test_locator_cancellation_request_requires_reason(): void
+    {
+        $user = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.locator.request-cancellation', $locator), []);
+
+        $response->assertStatus(422);
+        $locator->refresh();
+        $this->assertNull($locator->cancellation_status);
+    }
+
+    public function test_employee_cannot_request_cancellation_of_pending_locator(): void
+    {
+        $user = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.locator.request-cancellation', $locator), [
+            'reason' => 'Changed my mind',
+        ]);
+
+        $response->assertStatus(400);
+        $locator->refresh();
+        $this->assertNull($locator->cancellation_status);
+    }
+
+    public function test_employee_cannot_request_cancellation_of_another_employees_locator(): void
+    {
+        $owner = $this->createEmployee();
+        $other = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $owner->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($other)->postJson(route('employee.locator.request-cancellation', $locator), [
+            'reason' => 'Not mine',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_employee_cannot_submit_duplicate_locator_cancellation_request(): void
+    {
+        $user = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Pending Cancellation',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.locator.request-cancellation', $locator), [
+            'reason' => 'Second attempt',
+        ]);
+
+        $response->assertStatus(400);
+    }
+
+    public function test_employee_can_request_locator_cancellation_again_after_prior_rejection(): void
+    {
+        $user = $this->createEmployee();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => now()->addDay()->toDateString(),
+            'intended_departure_time' => '10:00',
+            'intended_arrival_time' => '12:00',
+            'detail' => 'Meeting',
+            'status' => 'approved',
+            'cancellation_status' => 'Rejected',
+            'cancellation_review_remarks' => 'Not approved previously',
+        ]);
+
+        $response = $this->actingAs($user)->postJson(route('employee.locator.request-cancellation', $locator), [
+            'reason' => 'Trying again',
+        ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+        $locator->refresh();
+        $this->assertEquals('Pending Cancellation', $locator->cancellation_status);
+        $this->assertEquals('Trying again', $locator->cancellation_reason);
+    }
+
     // ──────────────────────────────────────────────
     // 5. Leave Requests
     // ──────────────────────────────────────────────

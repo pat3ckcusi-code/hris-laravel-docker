@@ -28,6 +28,42 @@
 
 @section('page_head')
     @include('partials.table-styles')
+    <style>
+        /* Filed Locators table: force fixed layout so long content wraps instead of
+           widening the table past its wrapper and triggering horizontal scroll. */
+        #filed-locators-table {
+            table-layout: fixed;
+        }
+        /* Only body values wrap - headers are short static labels and should
+           stay on one line (forcing them to wrap mid-word looked broken). */
+        #filed-locators-table td {
+            overflow-wrap: break-word !important;
+            word-break: break-word !important;
+            white-space: normal !important;
+        }
+        #filed-locators-table th {
+            white-space: nowrap;
+        }
+        /* .hris-btn sets white-space: nowrap directly on the button, which wins
+           over the td-level override above since it targets the element itself. */
+        #filed-locators-table .hris-btn-wrap {
+            white-space: normal !important;
+            text-align: center;
+            line-height: 1.2;
+        }
+        /* .hris-badge is nowrap by design (status words are always short) but has
+           no max-width, so in a narrow fixed column it visually overflows into the
+           next cell instead of wrapping - shrink it so it reliably fits its column. */
+        #filed-locators-table .hris-badge {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.7rem;
+            letter-spacing: 0.2px;
+        }
+        #filed-locators-table td,
+        #filed-locators-table th {
+            padding: 0.75rem 0.5rem;
+        }
+    </style>
 @endsection
 
 @section('content')
@@ -122,18 +158,16 @@
                 @endphp
 
                 <div class="hris-table-wrapper">
-                    <table class="hris-table">
+                    <table class="hris-table" id="filed-locators-table">
                         <thead>
                             <tr>
-                                <th><a href="{{ $sortUrl('application_type') }}" class="{{ $activeClass('application_type') }}">Type</a></th>
-                                <th><a href="{{ $sortUrl('location') }}" class="{{ $activeClass('location') }}">Location</a></th>
-                                <th><a href="{{ $sortUrl('travel_date') }}" class="{{ $activeClass('travel_date') }}">Travel Date</a></th>
-                                <th>Departure</th>
-                                <th>Arrival</th>
-                                <th>Detail</th>
-                                <th>Actual Arrival</th>
-                                <th><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
-                                <th>Action</th>
+                                <th style="width:7%"><a href="{{ $sortUrl('application_type') }}" class="{{ $activeClass('application_type') }}">Type</a></th>
+                                <th style="width:13%"><a href="{{ $sortUrl('location') }}" class="{{ $activeClass('location') }}">Location</a></th>
+                                <th style="width:11%"><a href="{{ $sortUrl('travel_date') }}" class="{{ $activeClass('travel_date') }}">Travel Date</a></th>
+                                <th style="width:15%">Time</th>
+                                <th style="width:21%">Detail</th>
+                                <th style="width:12%"><a href="{{ $sortUrl('status') }}" class="{{ $activeClass('status') }}">Status</a></th>
+                                <th style="width:21%">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -141,11 +175,14 @@
                                 <tr data-employee="{{ $locator->user->name ?? auth()->user()->name }}" data-filed="{{ $locator->created_at ? $locator->created_at->format('M d, Y g:i A') : '' }}" data-status="{{ $locator->status ?? '' }}" data-detail="{{ e($locator->detail ?? '') }}" data-purpose="{{ e($locator->detail ?? '') }}" data-eta="{{ $locator->travel_date ?? '' }} {{ $locator->intended_arrival_time ?? '' }}" data-remarks="{{ e($locator->cancellation_remarks ?? '') }}">
                                     <td>{{ $locator->application_type ?? '-' }}</td>
                                     <td>{{ $locator->location ?? '-' }}</td>
-                                    <td>{{ $locator->travel_date ?? '-' }}</td>
-                                    <td>{{ $locator->intended_departure_time ? \Carbon\Carbon::createFromFormat('H:i:s', $locator->intended_departure_time)->format('g:i A') : '-' }}</td>
-                                    <td>{{ $locator->intended_arrival_time ? \Carbon\Carbon::createFromFormat('H:i:s', $locator->intended_arrival_time)->format('g:i A') : '-' }}</td>
-                                    <td class="max-w-xs truncate">{{ \Illuminate\Support\Str::limit($locator->detail ?? '-', 60) }}</td>
-                                    <td>{{ $locator->actual_arrival_time ? \Carbon\Carbon::createFromFormat('H:i:s', $locator->actual_arrival_time)->format('g:i A') : '-' }}</td>
+                                    <td>{{ $locator->travel_date?->format('M d, Y') ?? '-' }}</td>
+                                    <td>
+                                        <div>{{ $locator->intended_departure_time ? \Carbon\Carbon::createFromFormat('H:i:s', $locator->intended_departure_time)->format('g:i A') : '-' }} &ndash; {{ $locator->intended_arrival_time ? \Carbon\Carbon::createFromFormat('H:i:s', $locator->intended_arrival_time)->format('g:i A') : '-' }}</div>
+                                        @if($locator->actual_arrival_time)
+                                            <div class="text-sm text-slate-500">Actual: {{ \Carbon\Carbon::createFromFormat('H:i:s', $locator->actual_arrival_time)->format('g:i A') }}</div>
+                                        @endif
+                                    </td>
+                                    <td>{{ \Illuminate\Support\Str::limit($locator->detail ?? '-', 60) }}</td>
                                     <td>
                                         <x-hris.status-badge :status="$locator->status" />
                                     </td>
@@ -154,8 +191,23 @@
                                             @if(strtolower((string)$locator->status) === 'pending')
                                                 <button type="button" class="hris-btn hris-btn-danger" data-id="{{ $locator->id }}" onclick="cancelLocatorRequest({{ $locator->id }})">Cancel</button>
                                                 <a class="hris-btn hris-btn-secondary" href="{{ route('employee.locator.edit', ['locator' => $locator->id]) }}">Edit</a>
-                                            @elseif(strtolower((string)$locator->status) === 'approved' && \Illuminate\Support\Facades\Route::has('employee.locator.print.single'))
-                                                <a class="hris-btn hris-btn-primary" href="{{ route('employee.locator.print.single', ['locator' => $locator->id]) }}" target="_blank">Print</a>
+                                            @elseif(strtolower((string)$locator->status) === 'approved')
+                                                <div class="flex flex-col items-start gap-1 w-full">
+                                                    @if(\Illuminate\Support\Facades\Route::has('employee.locator.print.single'))
+                                                        <a class="hris-btn hris-btn-primary" href="{{ route('employee.locator.print.single', ['locator' => $locator->id]) }}" target="_blank">Print</a>
+                                                    @endif
+                                                    @if($locator->cancellation_status === 'Pending Cancellation')
+                                                        <span class="text-xs font-medium text-amber-600 break-words">Approved &mdash; Cancellation Requested</span>
+                                                    @else
+                                                        <form method="POST" action="{{ route('employee.locator.request-cancellation', ['locator' => $locator->id]) }}" id="request-cancellation-locator-form-{{ $locator->id }}" class="inline-block">
+                                                            @csrf
+                                                            <button type="button" class="hris-btn hris-btn-danger hris-btn-wrap" onclick="promptCancelApprovedLocator({{ $locator->id }})">Request Cancellation</button>
+                                                        </form>
+                                                        @if($locator->cancellation_status === 'Rejected')
+                                                            <span class="text-xs text-red-500 break-words">Cancellation request rejected{{ $locator->cancellation_review_remarks ? ': '.$locator->cancellation_review_remarks : '' }}</span>
+                                                        @endif
+                                                    @endif
+                                                </div>
                                             @else
                                                 <button type="button" class="hris-btn hris-btn-secondary" onclick="openLocatorModal({{ $locator->id }})">View</button>
                                             @endif
@@ -164,7 +216,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="px-4 py-4 text-center text-sm text-slate-500">No locator requests found for the selected filters.</td>
+                                    <td colspan="7" class="px-4 py-4 text-center text-sm text-slate-500">No locator requests found for the selected filters.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -236,6 +288,55 @@
                 const csrf = document.createElement('input'); csrf.type = 'hidden'; csrf.name = '_token'; csrf.value = token; form.appendChild(csrf);
                 document.body.appendChild(form);
                 form.submit();
+            }
+        }
+
+        function promptCancelApprovedLocator(locatorId) {
+            const form = document.getElementById('request-cancellation-locator-form-' + locatorId);
+            if (!form) return;
+            const token = form.querySelector('input[name="_token"]').value;
+
+            function doSubmit(reason) {
+                fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-TOKEN': token,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new URLSearchParams({ reason: reason, _token: token })
+                }).then(async response => {
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || 'Failed to submit cancellation request.');
+                    }
+                    if (window.Swal) {
+                        Swal.fire('Submitted', data.message || 'Cancellation request submitted.', 'success').then(() => location.reload());
+                    } else {
+                        location.reload();
+                    }
+                }).catch((error) => {
+                    if (window.Swal) Swal.fire('Error', error.message || 'Failed to submit cancellation request.', 'error');
+                    else alert(error.message || 'Failed to submit cancellation request.');
+                });
+            }
+
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Request Locator Cancellation',
+                    input: 'textarea',
+                    inputLabel: 'Reason for cancelling this approved locator',
+                    text: 'This will be sent to your Department Head / Administrative Officer for review.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Submit Request',
+                    preConfirm: (v) => { if (!v) Swal.showValidationMessage('A reason is required'); return v; }
+                }).then((result) => {
+                    if (result.isConfirmed) doSubmit(result.value);
+                });
+            } else {
+                const reason = prompt('Reason for cancelling this approved locator:');
+                if (reason) doSubmit(reason);
             }
         }
     </script>
