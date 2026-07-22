@@ -176,6 +176,11 @@ class LeaveRequest extends Model
         return $this->belongsTo(User::class, 'cancellation_ao_by');
     }
 
+    public function cancellationReviewedBy()
+    {
+        return $this->belongsTo(User::class, 'cancellation_reviewed_by');
+    }
+
     public function approver()
     {
         return null;

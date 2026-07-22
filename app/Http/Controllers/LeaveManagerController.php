@@ -208,8 +208,35 @@ class LeaveManagerController extends Controller
 
         $requests = $query->orderBy('cancellation_requested_at', 'desc')->paginate(25);
 
+        // History: cancellations the Leave Manager approved (status flips to 'Cancelled').
+        // cancellation_reviewed_by is written exclusively by this controller's approve/reject
+        // methods (whole-row or per-date) - DH/AO rejections only ever touch their own
+        // cancellation_dh_*/cancellation_ao_* columns - so this filter can't accidentally
+        // surface a DH-level or AO-level rejection here. Rejected requests are excluded too,
+        // since this list is Cancelled-decisions only.
+        $historyQuery = LeaveRequest::with(['user', 'leaveDates.cancellationReviewedBy', 'cancellationReviewedBy'])
+            ->where(function ($q) {
+                $q->where(function ($whole) {
+                    $whole->whereNotNull('cancellation_reviewed_by')
+                        ->where('cancellation_status', 'Cancelled');
+                })->orWhereHas('leaveDates', function ($dq) {
+                    $dq->whereNotNull('cancellation_reviewed_by')
+                        ->where('cancellation_status', 'Cancelled');
+                });
+            });
+
+        if ($emp) {
+            $historyQuery->whereHas('user', function ($q) use ($emp) {
+                $q->where('EmpNo', $emp);
+            });
+        }
+
+        $history = $historyQuery->orderByDesc('cancellation_reviewed_at')
+            ->paginate(15, ['*'], 'history_page');
+
         return view('leave-manager.employee-cancellation-requests', [
             'requests' => $requests,
+            'history' => $history,
             'departments' => $departments,
         ]);
     }

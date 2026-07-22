@@ -9,6 +9,18 @@
 
 @section('content')
 
+@php
+    // Shared by both the Pending and History tables below.
+    $typeColors = [
+        'VL'   => ['bg'=>'#dbeafe','color'=>'#1e40af','border'=>'#93c5fd'],
+        'SL'   => ['bg'=>'#fee2e2','color'=>'#991b1b','border'=>'#fca5a5'],
+        'WLNS' => ['bg'=>'#dcfce7','color'=>'#166534','border'=>'#86efac'],
+        'SPL'  => ['bg'=>'#ede9fe','color'=>'#5b21b6','border'=>'#c4b5fd'],
+        'CTO'  => ['bg'=>'#fff7ed','color'=>'#9a3412','border'=>'#fdba74'],
+        'SP'   => ['bg'=>'#ccfbf1','color'=>'#134e4a','border'=>'#5eead4'],
+    ];
+@endphp
+
 {{-- Workflow banner --}}
 <div style="display:flex;align-items:flex-start;gap:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
     <i class="fa-solid fa-circle-info" style="color:#16a34a;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
@@ -25,8 +37,20 @@
     </div>
 </div>
 
+{{-- Tab bar --}}
+<div style="display:flex;gap:8px;margin-bottom:14px;">
+    <button type="button" class="cla-tab-btn cla-tab-active" data-tab="pending"
+        style="padding:8px 16px;border-radius:8px 8px 0 0;border:1px solid #bbf7d0;border-bottom:none;background:#f0fdf4;color:#15803d;font-weight:600;font-size:0.875rem;cursor:pointer;">
+        <i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>Pending Final Approval
+    </button>
+    <button type="button" class="cla-tab-btn" data-tab="history"
+        style="padding:8px 16px;border-radius:8px 8px 0 0;border:1px solid #e2e8f0;border-bottom:none;background:#f8fafc;color:#64748b;font-weight:600;font-size:0.875rem;cursor:pointer;">
+        <i class="fa-solid fa-clock-rotate-left" style="margin-right:6px;"></i>History
+    </button>
+</div>
+
 {{-- Table card --}}
-<div class="hris-table-card">
+<div id="tab-panel-pending" class="hris-table-card">
     <div class="hris-table-header" style="background:linear-gradient(90deg,#f0fdf4,#fff);">
         <div class="hris-table-header-title">
             <h2 class="hris-table-title" style="font-size:1.05rem;">
@@ -81,14 +105,6 @@
                 @forelse($requests as $item)
                     @php
                         $leaveType = strtoupper($item->leave_type ?? '');
-                        $typeColors = [
-                            'VL'   => ['bg'=>'#dbeafe','color'=>'#1e40af','border'=>'#93c5fd'],
-                            'SL'   => ['bg'=>'#fee2e2','color'=>'#991b1b','border'=>'#fca5a5'],
-                            'WLNS' => ['bg'=>'#dcfce7','color'=>'#166534','border'=>'#86efac'],
-                            'SPL'  => ['bg'=>'#ede9fe','color'=>'#5b21b6','border'=>'#c4b5fd'],
-                            'CTO'  => ['bg'=>'#fff7ed','color'=>'#9a3412','border'=>'#fdba74'],
-                            'SP'   => ['bg'=>'#ccfbf1','color'=>'#134e4a','border'=>'#5eead4'],
-                        ];
                         $tc = $typeColors[$leaveType] ?? ['bg'=>'#f1f5f9','color'=>'#475569','border'=>'#cbd5e1'];
                         $empName = $item->user ? trim(($item->user->last_name ?? '').', '.($item->user->first_name ?? '')) : '-';
                         $dept = !empty($departments[$item->user?->Dept_id] ?? '') ? $departments[$item->user->Dept_id] : '';
@@ -197,7 +213,108 @@
     @if($requests->total() > 0)
     <div class="paginate-bar paginate-bar--bottom" style="padding:10px 16px;">
         <span class="paginate-summary">Showing {{ $requests->firstItem() }}–{{ $requests->lastItem() }} of {{ $requests->total() }}</span>
-        {{ $requests->appends(request()->query())->links() }}
+        {{ $requests->appends(request()->except('history_page'))->links() }}
+    </div>
+    @endif
+</div>
+
+{{-- History panel --}}
+<div id="tab-panel-history" class="hris-table-card" style="display:none;">
+    <div class="hris-table-header" style="background:linear-gradient(90deg,#f8fafc,#fff);">
+        <div class="hris-table-header-title">
+            <h2 class="hris-table-title" style="font-size:1.05rem;">
+                <i class="fa-solid fa-clock-rotate-left" style="color:#64748b;margin-right:8px;"></i>
+                History
+            </h2>
+            <p class="hris-table-subtitle">Cancellation requests you have already approved or rejected</p>
+        </div>
+    </div>
+
+    <div class="hris-table-wrapper">
+        <table id="cancellation-history-table" class="hris-table" style="width:100%">
+            <thead>
+                <tr>
+                    <th style="width:44px">#</th>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Leave Type</th>
+                    <th>Period</th>
+                    <th>Days</th>
+                    <th>Filed On</th>
+                    <th>Decision</th>
+                    <th>Decided By</th>
+                    <th>Decided At</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($history as $item)
+                    @php
+                        $leaveType = strtoupper($item->leave_type ?? '');
+                        $tc = $typeColors[$leaveType] ?? ['bg'=>'#f1f5f9','color'=>'#475569','border'=>'#cbd5e1'];
+                        $empName = $item->user ? trim(($item->user->last_name ?? '').', '.($item->user->first_name ?? '')) : '-';
+                        $dept = !empty($departments[$item->user?->Dept_id] ?? '') ? $departments[$item->user->Dept_id] : '-';
+
+                        // A per-date-only decision leaves the parent row's own cancellation_reviewed_by
+                        // null (see LeaveDateAggregateService::recomputeParentAfterDateChange) - fall
+                        // back to whichever leaveDates rows the Leave Manager actually cancelled. Scoped
+                        // to Cancelled dates only, matching the controller query - a date rejected in a
+                        // separate action on this same leave is not part of this history's "Cancelled" list.
+                        $decidedDates = $item->leaveDates->whereNotNull('cancellation_reviewed_by')->where('cancellation_status', 'Cancelled');
+                        $isPartialHistory = is_null($item->cancellation_reviewed_by) && $decidedDates->isNotEmpty();
+                        $source = $isPartialHistory ? $decidedDates->sortByDesc('cancellation_reviewed_at')->first() : $item;
+
+                        $sameDay = $item->end_date && $item->end_date === $item->start_date;
+                        $period = $item->start_date ? \Carbon\Carbon::parse($item->start_date)->format('M d, Y') : '-';
+                        if (!$sameDay && $item->end_date) $period .= ' – '.\Carbon\Carbon::parse($item->end_date)->format('M d, Y');
+                        if ($isPartialHistory) {
+                            $period = $decidedDates->map(fn ($d) => \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', ');
+                        }
+
+                        $days = $isPartialHistory ? $decidedDates->sum('days') : $item->total_days;
+                        $filedOn = $item->cancellation_requested_at ? \Carbon\Carbon::parse($item->cancellation_requested_at)->format('M d, Y') : '-';
+                        $decidedBy = $source?->cancellationReviewedBy;
+                        $decidedByName = $decidedBy ? ($decidedBy->full_name ?: $decidedBy->name) : '-';
+                        $decidedAt = $source?->cancellation_reviewed_at ? \Carbon\Carbon::parse($source->cancellation_reviewed_at)->format('M d, Y H:i') : '-';
+                    @endphp
+                    <tr>
+                        <td class="text-center" style="color:#94a3b8;font-size:0.8rem;">{{ $item->id }}</td>
+                        <td>
+                            <div style="font-weight:600;font-size:0.9rem;">{{ $empName }}</div>
+                        </td>
+                        <td style="font-size:0.85rem;">{{ $dept }}</td>
+                        <td class="text-center">
+                            <span style="background:{{ $tc['bg'] }};color:{{ $tc['color'] }};border:1px solid {{ $tc['border'] }};padding:2px 10px;border-radius:12px;font-size:0.78rem;font-weight:700;white-space:nowrap;">
+                                {{ $leaveType }}
+                            </span>
+                        </td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $period }}</td>
+                        <td class="text-center" style="font-size:0.85rem;">{{ $days ?? '-' }}</td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $filedOn }}</td>
+                        <td class="text-center">
+                            <span style="background:#f0fdf4;color:#166534;border:1px solid #86efac;padding:2px 10px;border-radius:12px;font-size:0.78rem;font-weight:700;">Cancelled</span>
+                        </td>
+                        <td style="font-size:0.85rem;white-space:nowrap;">{{ $decidedByName }}</td>
+                        <td style="font-size:0.8rem;color:#64748b;white-space:nowrap;">{{ $decidedAt }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="10">
+                            <div style="text-align:center;padding:48px 24px;color:#94a3b8;">
+                                <i class="fa-regular fa-clock" style="font-size:2.5rem;color:#d1d5db;margin-bottom:12px;display:block;"></i>
+                                <div style="font-size:1rem;font-weight:600;color:#6b7280;margin-bottom:4px;">No history yet</div>
+                                <div style="font-size:0.85rem;">Cancellation requests you approve or reject will appear here.</div>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    @if($history->total() > 0)
+    <div class="paginate-bar paginate-bar--bottom" style="padding:10px 16px;">
+        <span class="paginate-summary">Showing {{ $history->firstItem() }}–{{ $history->lastItem() }} of {{ $history->total() }}</span>
+        {{ $history->appends(request()->except('page'))->links() }}
     </div>
     @endif
 </div>
@@ -356,6 +473,15 @@
     var pendingLeaveId = null;
     var pendingPartial = false;
     var pendingDateIds = [];
+
+    // ── Tab switching ────────────────────────────────────────────────────
+    $(document).on('click', '.cla-tab-btn', function(){
+        var tab = $(this).data('tab');
+        $('.cla-tab-btn').removeClass('cla-tab-active').css({background:'#f8fafc', color:'#64748b', borderColor:'#e2e8f0'});
+        $(this).addClass('cla-tab-active').css({background:'#f0fdf4', color:'#15803d', borderColor:'#bbf7d0'});
+        $('#tab-panel-pending').toggle(tab === 'pending');
+        $('#tab-panel-history').toggle(tab === 'history');
+    });
 
     // ── Helpers ────────────────────────────────────────────────────────
     function escapeHtml(str) {
@@ -727,7 +853,16 @@
         window.location.href = '{{ route('leave-manager.employee-cancellation-requests') }}' + (emp ? '?emp=' + encodeURIComponent(emp) : '');
     }
 
+    // Pagination links are plain full-page navigations, so on reload restore whichever
+    // tab the query string indicates (history_page => History) instead of always
+    // defaulting back to Pending.
+    function restoreTabFromUrl() {
+        var onHistoryPage = /[?&]history_page=/.test(window.location.search);
+        $('.cla-tab-btn[data-tab="' + (onHistoryPage ? 'history' : 'pending') + '"]').trigger('click');
+    }
+
     $(function(){
+        restoreTabFromUrl();
         pollBadge();
         setInterval(pollBadge, 20000);
     });
