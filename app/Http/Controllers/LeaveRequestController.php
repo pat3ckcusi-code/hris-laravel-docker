@@ -231,6 +231,8 @@ class LeaveRequestController extends Controller
                 'updated_at' => now(),
             ], $dates));
 
+            $this->autoAllowPrintingForSelfFiledLeave($leave, $employee);
+
             // Notify approver
             try {
                 $department = $employee->Dept_id ? Department::find($employee->Dept_id) : null;
@@ -661,6 +663,9 @@ class LeaveRequestController extends Controller
                     Log::error('Failed to save printing_deduction_details at filing', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
                 }
             }
+
+            $this->autoAllowPrintingForSelfFiledLeave($leave, Auth::user());
+
             // create per-day records in leave_dates
             foreach ($dates as $d) {
                 $meta = $perDateMeta[$d] ?? null;
@@ -842,6 +847,8 @@ class LeaveRequestController extends Controller
                 'status' => 'pending',
             ]);
 
+            $this->autoAllowPrintingForSelfFiledLeave($leave, Auth::user());
+
             // create per-day records in leave_dates for the legacy single-range form
             $periodStart = new \DateTime($request->start_date);
             $periodEnd = new \DateTime($request->end_date);
@@ -926,6 +933,38 @@ class LeaveRequestController extends Controller
         }
 
         return redirect()->back()->with('success', 'Leave request submitted.');
+    }
+
+    /**
+     * A Department Head/HR Manager's own leave is routed to the Mayor for approval,
+     * bypassing the DH/AO "Allow Printing" queues entirely — so nobody would otherwise
+     * ever flip printing_allowed on for it.
+     */
+    private function autoAllowPrintingForSelfFiledLeave(LeaveRequest $leave, User $filer): void
+    {
+        $filerRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($filer->access_level ?? ''))));
+        if (! in_array($filerRole, ['department head', 'hr manager'], true)) {
+            return;
+        }
+
+        $leave->printing_allowed = true;
+        $leave->printing_allowed_by = $filer->id;
+        $leave->printing_allowed_at = now();
+        $leave->save();
+
+        HRAuditTrail::create([
+            'actor_user_id' => $filer->id,
+            'module' => 'leave',
+            'action' => 'allow_printing',
+            'target_type' => 'leave_request',
+            'target_id' => $leave->id,
+            'details' => [
+                'leave_id' => $leave->id,
+                'auto_allowed' => true,
+                'reason' => 'Self-filed by department head/HR manager; routed to Mayor for approval, no DH/AO in the chain to allow printing manually.',
+                'timestamp' => now()->toDateTimeString(),
+            ],
+        ]);
     }
 
     public function approve(Request $request, $id)

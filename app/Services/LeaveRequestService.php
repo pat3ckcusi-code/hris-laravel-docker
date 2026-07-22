@@ -1375,8 +1375,11 @@ class LeaveRequestService
         // --- 8. Signatories ---
         $officialLabel = '';
         if (isset($dept)) {
-            // Department head name for recommendation
-            if (! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
+            // Department head name for recommendation — skipped entirely when the applicant
+            // is themselves a department head/HR manager, since that leave is routed straight
+            // to the Mayor and never goes through a department-head recommendation step.
+            $applicantRole = strtolower(str_replace(['-', '_'], ' ', trim((string) ($employee->access_level ?? ''))));
+            if (! in_array($applicantRole, ['department head', 'hr manager'], true) && ! empty($dept->EmpNo) && $dept->EmpNo !== 'UNASSIGNED') {
                 $headUser = User::where('EmpNo', $dept->EmpNo)->first();
                 if ($headUser && $headUser->access_level === 'department head') {
                     $headParts = array_filter([

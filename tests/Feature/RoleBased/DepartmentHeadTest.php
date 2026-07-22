@@ -172,6 +172,204 @@ class DepartmentHeadTest extends TestCase
         );
     }
 
+    public function test_department_head_self_filed_leave_gets_printing_auto_allowed(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $this->createLeaveBalance($dh);
+        $this->createMayor();
+
+        $response = $this->actingAs($dh)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Leave filing failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $leave = LeaveRequest::where('user_id', $dh->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+        $this->assertEquals('pending', $leave->status);
+        $this->assertTrue((bool) $leave->printing_allowed, 'A department head\'s own leave should be printable immediately upon filing, since it is routed to the Mayor with no DH/AO step to allow printing manually.');
+        $this->assertEquals($dh->id, $leave->printing_allowed_by);
+        $this->assertNotNull($leave->printing_allowed_at);
+    }
+
+    public function test_employee_self_filed_leave_does_not_get_printing_auto_allowed(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($employee);
+
+        $response = $this->actingAs($employee)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Leave filing failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $leave = LeaveRequest::where('user_id', $employee->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+        $this->assertFalse((bool) $leave->printing_allowed, 'A regular employee\'s leave still needs their Department Head/Administrative Officer to manually allow printing.');
+    }
+
+    public function test_department_head_own_leave_print_blanks_self_signatory(): void
+    {
+        // UsersTableSeeder seeds access_level in lowercase ('department head'); the
+        // export's signatory check does a raw literal match against that exact casing.
+        $dh = $this->createDepartmentHead(['access_level' => 'department head']);
+        $this->createLeaveBalance($dh);
+        $this->createMayor();
+
+        $dept = Department::find($dh->Dept_id);
+        $dept->EmpNo = $dh->EmpNo;
+        $dept->save();
+
+        $this->actingAs($dh)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $dh->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+
+        $response = $this->actingAs($dh)->get(route('employee.leave.print.single', $leave->id));
+        $response->assertOk();
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
+        file_put_contents($tmpPath, $response->streamedContent());
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        unlink($tmpPath);
+
+        $dhName = trim(collect([$dh->first_name, $dh->middle_name, $dh->last_name])->filter()->implode(' '));
+        $this->assertNotSame($dhName, (string) $sheet->getCell('I59')->getValue(), 'A department head printing their own leave should not see their own name as the recommending signatory.');
+        $this->assertNotSame($dh->designation, (string) $sheet->getCell('H60')->getValue());
+    }
+
+    public function test_subordinate_leave_print_still_shows_department_head_signatory(): void
+    {
+        $dh = $this->createDepartmentHead(['access_level' => 'department head']);
+        $dept = Department::find($dh->Dept_id);
+        $dept->EmpNo = $dh->EmpNo;
+        $dept->save();
+
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($employee);
+
+        $this->actingAs($employee)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $employee->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+
+        $this->actingAs($dh)->post(route('department-head.leave.allow-printing', $leave->id));
+
+        $response = $this->actingAs($employee)->get(route('employee.leave.print.single', $leave->id));
+        $response->assertOk();
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
+        file_put_contents($tmpPath, $response->streamedContent());
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        unlink($tmpPath);
+
+        $expectedName = trim(collect([$dh->first_name, $dh->middle_name, $dh->last_name])->filter()->implode(' '));
+        $this->assertSame($expectedName, (string) $sheet->getCell('I59')->getValue(), 'A subordinate\'s leave slip should still show their department head as the recommending signatory.');
+    }
+
+    public function test_department_head_own_leave_print_blanks_signatory_even_when_dept_emp_no_points_elsewhere(): void
+    {
+        // Regression case: the department's designated signatory EmpNo can be
+        // misconfigured to point at a completely different department head (seen with
+        // the real "department_head@example.com" dev account). The applicant being a
+        // department head themselves should blank the signatory regardless of whose
+        // EmpNo the department has on file — there's no DH recommendation step for
+        // their own leave either way.
+        $dh = $this->createDepartmentHead(['access_level' => 'department head']);
+        $this->createLeaveBalance($dh);
+        $this->createMayor();
+
+        $otherDh = $this->createDepartmentHead(['access_level' => 'department head']);
+
+        $dept = Department::find($dh->Dept_id);
+        $dept->EmpNo = $otherDh->EmpNo;
+        $dept->save();
+
+        $this->actingAs($dh)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $dh->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+
+        $response = $this->actingAs($dh)->get(route('employee.leave.print.single', $leave->id));
+        $response->assertOk();
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
+        file_put_contents($tmpPath, $response->streamedContent());
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        unlink($tmpPath);
+
+        $otherDhName = trim(collect([$otherDh->first_name, $otherDh->middle_name, $otherDh->last_name])->filter()->implode(' '));
+        $this->assertNotSame($otherDhName, (string) $sheet->getCell('I59')->getValue(), 'No department-head recommendation signatory should print for a DH-filed leave, even if the department\'s EmpNo resolves to an unrelated department head.');
+    }
+
+    public function test_hr_manager_own_leave_print_blanks_department_head_signatory(): void
+    {
+        $hrManager = $this->createHRManager(['access_level' => 'hr manager']);
+        $this->createLeaveBalance($hrManager);
+        $this->createMayor();
+
+        $otherDh = $this->createDepartmentHead(['access_level' => 'department head']);
+
+        $dept = Department::find($hrManager->Dept_id);
+        $dept->EmpNo = $otherDh->EmpNo;
+        $dept->save();
+
+        $this->actingAs($hrManager)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeek()->toDateString(),
+            'range_end' => now()->addWeek()->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $hrManager->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+
+        $response = $this->actingAs($hrManager)->get(route('employee.leave.print.single', $leave->id));
+        $response->assertOk();
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
+        file_put_contents($tmpPath, $response->streamedContent());
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        unlink($tmpPath);
+
+        $otherDhName = trim(collect([$otherDh->first_name, $otherDh->middle_name, $otherDh->last_name])->filter()->implode(' '));
+        $this->assertNotSame($otherDhName, (string) $sheet->getCell('I59')->getValue(), 'An HR Manager\'s own leave should also skip the department-head recommendation signatory.');
+    }
+
     public function test_approve_eta_request(): void
     {
         $dh = $this->createDepartmentHead();
