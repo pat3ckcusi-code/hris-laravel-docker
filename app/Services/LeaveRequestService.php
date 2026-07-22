@@ -1363,10 +1363,12 @@ class LeaveRequestService
 
         if ($status === 'approved') {
             if ($paidDays > 0) {
-                $sheet->setCellValue('B62', $this->formatBalance($paidDays));
+                $label = (string) $sheet->getCell('C62')->getValue();
+                $sheet->setCellValue('C62', preg_replace('/_+/', $this->formatBalance($paidDays), $label, 1));
             }
             if ($lwopDays > 0) {
-                $sheet->setCellValue('B63', $this->formatBalance($lwopDays));
+                $label = (string) $sheet->getCell('C63')->getValue();
+                $sheet->setCellValue('C63', preg_replace('/_+/', $this->formatBalance($lwopDays), $label, 1));
             }
         } elseif ($status === 'rejected') {
             $sheet->setCellValue('I62', $leave->rejection_notes ?? '');
