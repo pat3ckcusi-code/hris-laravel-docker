@@ -109,10 +109,12 @@ class ExportJobController extends Controller
         }
 
         if (in_array($role, ['administrative officer', 'department head'], true)) {
-            $deptIds = $this->departmentService->resolveAllDepartmentsForUser($user)
+            $deptIds = ($role === 'administrative officer'
+                ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+                : $this->departmentService->resolveAllDepartmentsForUser($user))
                 ->pluck('Dept_id')->map(fn ($id) => (int) $id)->all();
             $target = User::find((int) ($params['target_user_id'] ?? 0));
-            abort_unless($target && in_array((int) $target->Dept_id, $deptIds, true), 403);
+            abort_unless($target && in_array((int) $target->Dept_id, $deptIds, true), 403, 'You may only export DTR records for employees in your own department.');
 
             return;
         }
@@ -132,9 +134,11 @@ class ExportJobController extends Controller
 
         abort_unless(in_array($role, ['administrative officer', 'department head'], true), 403);
 
-        $deptIds = $this->departmentService->resolveAllDepartmentsForUser($user)
+        $deptIds = ($role === 'administrative officer'
+            ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+            : $this->departmentService->resolveAllDepartmentsForUser($user))
             ->pluck('Dept_id')->map(fn ($id) => (int) $id)->all();
-        abort_unless(in_array((int) ($params['dept_id'] ?? 0), $deptIds, true), 403);
+        abort_unless(in_array((int) ($params['dept_id'] ?? 0), $deptIds, true), 403, 'You may only export DTR records for your own department.');
     }
 
     private function authLeaveCard(User $user, array $params): void
