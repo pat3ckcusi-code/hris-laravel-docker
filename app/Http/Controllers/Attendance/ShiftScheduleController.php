@@ -209,6 +209,7 @@ class ShiftScheduleController extends Controller
             'week_start' => ['required', 'date'],
             'assignments' => ['required', 'array'],
             'assignments.*' => ['nullable', 'string'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
@@ -219,8 +220,9 @@ class ShiftScheduleController extends Controller
         $weekStart = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::MONDAY);
         $weekEnd = $weekStart->copy()->endOfWeek(Carbon::SUNDAY);
         $validDates = collect(range(0, 6))->map(fn ($i) => $weekStart->copy()->addDays($i)->toDateString());
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
-        $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor);
+        $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor, $noBreak);
 
         // Recompute DTRs for the affected week so stored late/undertime update immediately.
         if ($recomputeNeeded) {
@@ -233,6 +235,7 @@ class ShiftScheduleController extends Controller
             $this->logScheduleAction($actor, $employee, 'shift_schedule_updated', [
                 'week_start' => $weekStart->toDateString(),
                 'days_changed' => count($validated['assignments']),
+                'no_break' => $noBreak,
             ]);
         }
 
@@ -265,6 +268,7 @@ class ShiftScheduleController extends Controller
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'pattern' => ['required', 'array', 'size:7'],
             'pattern.*' => ['nullable', 'string'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
@@ -275,6 +279,7 @@ class ShiftScheduleController extends Controller
         $start = Carbon::parse($validated['start_date'])->startOfDay();
         $end = Carbon::parse($validated['end_date'])->startOfDay();
         $pattern = $validated['pattern'];
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
         $validDates = collect();
         $assignments = [];
@@ -284,7 +289,7 @@ class ShiftScheduleController extends Controller
             $assignments[$dateStr] = $pattern[(string) $date->isoWeekday()] ?? 'default';
         }
 
-        $recomputeNeeded = $this->applyWeekAssignments($employee, $assignments, $validDates, $actor);
+        $recomputeNeeded = $this->applyWeekAssignments($employee, $assignments, $validDates, $actor, $noBreak);
 
         if ($recomputeNeeded) {
             $this->importService->recomputeDtr($employee, $start->toDateString(), $end->toDateString());
@@ -294,6 +299,7 @@ class ShiftScheduleController extends Controller
                 'end_date' => $end->toDateString(),
                 'pattern' => $pattern,
                 'days_changed' => $validDates->count(),
+                'no_break' => $noBreak,
             ]);
         }
 
@@ -306,12 +312,16 @@ class ShiftScheduleController extends Controller
     }
 
     /**
-     * Shared by store()/storeBulk(): writes/deletes the EmployeeShiftSchedule
-     * rows for one employee's week per the day-by-day $assignments values (see
-     * store()'s docblock for the value vocabulary). Returns whether anything
-     * changed, so the caller knows whether a DTR recompute is needed.
+     * Shared by store()/storeBulk()/applyWeeklyPattern(): writes/deletes the
+     * EmployeeShiftSchedule rows for one employee's week per the day-by-day
+     * $assignments values (see store()'s docblock for the value vocabulary).
+     * $noBreak is only ever written on the shift-id branch below - it's
+     * meaningless for a rest/field_work/standard/default row, since none of
+     * those carry a shift_id for WorkSchedule::forUserOnDate() to apply it to.
+     * Returns whether anything changed, so the caller knows whether a DTR
+     * recompute is needed.
      */
-    private function applyWeekAssignments(User $employee, array $assignments, Collection $validDates, User $actor): bool
+    private function applyWeekAssignments(User $employee, array $assignments, Collection $validDates, User $actor, bool $noBreak = false): bool
     {
         $recomputeNeeded = false;
 
@@ -351,7 +361,7 @@ class ShiftScheduleController extends Controller
                 $this->assertShiftAssignable($shiftId, $employee->Dept_id, $actor);
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
-                    ['shift_id' => $shiftId, 'created_by' => $actor->id, 'is_rotation_generated' => false]
+                    ['shift_id' => $shiftId, 'created_by' => $actor->id, 'is_rotation_generated' => false, 'no_break' => $noBreak]
                 );
                 $recomputeNeeded = true;
             }
@@ -379,9 +389,11 @@ class ShiftScheduleController extends Controller
             'week_start' => ['required', 'date'],
             'assignments' => ['required', 'array'],
             'assignments.*' => ['nullable', 'string'],
+            'no_break' => ['nullable', 'boolean'],
         ]);
 
         $userIds = array_map('intval', $validated['user_ids']);
+        $noBreak = (bool) ($validated['no_break'] ?? false);
 
         if ($accessibleIds !== null) {
             $unauthorized = array_diff($userIds, $accessibleIds);
@@ -413,7 +425,7 @@ class ShiftScheduleController extends Controller
         $changedEmployeeIds = [];
 
         foreach ($employees as $employee) {
-            $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor);
+            $recomputeNeeded = $this->applyWeekAssignments($employee, $validated['assignments'], $validDates, $actor, $noBreak);
 
             if ($recomputeNeeded) {
                 $this->importService->recomputeDtr($employee, $weekStart->toDateString(), $weekEnd->toDateString());
@@ -425,6 +437,7 @@ class ShiftScheduleController extends Controller
             $this->logBulkScheduleAction($actor, $changedEmployeeIds, 'shift_schedule_updated', [
                 'week_start' => $weekStart->toDateString(),
                 'days_changed' => count($validated['assignments']),
+                'no_break' => $noBreak,
             ]);
         }
 

@@ -691,6 +691,9 @@
                         </label>
                     @endforeach
 
+                    <label class="ss-rotation-field ss-rotation-checkbox">
+                        <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
+                    </label>
                     <label class="ss-rotation-field">
                         From
                         <input type="date" name="start_date" id="wp_start_date" required>
@@ -778,6 +781,9 @@
 
                 {{-- Actions ─────────────────────────────────── --}}
                 <div class="ss-form-actions">
+                    <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;color:#475569;cursor:pointer;font-weight:600;">
+                        <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
+                    </label>
                     <button type="submit" class="hris-btn hris-btn-primary">Save Week Schedule</button>
                     <span style="font-size:.78rem;color:#6b7280;">DTRs for this week will be recomputed on save.</span>
                     <span id="week-save-bulk-hint" style="font-size:.78rem;color:#1d4ed8;font-weight:600;display:none;"></span>

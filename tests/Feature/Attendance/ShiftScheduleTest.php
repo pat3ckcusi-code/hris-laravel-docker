@@ -1996,12 +1996,12 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
-     * Known, documented limitation (see EmployeeShiftSchedule's docblock): a
-     * one-off day override has no shift_assignments row of its own, so
-     * no_break always resolves false there regardless of how the same shift
-     * is scheduled elsewhere. This test pins that as intentional.
+     * A per-date EmployeeShiftSchedule override has its own no_break column,
+     * independent of whatever the same shift's ongoing shift_assignments row
+     * carries - it defaults to false when not explicitly set, same as any
+     * other boolean column, rather than inheriting the assignment's value.
      */
-    public function test_employee_shift_schedule_override_always_resolves_full_break(): void
+    public function test_employee_shift_schedule_override_defaults_to_full_break_when_not_set(): void
     {
         $shift = Shift::create([
             'name' => 'Guard Duty', 'time_in' => '08:00', 'break_out' => '12:00',
@@ -2013,7 +2013,104 @@ class ShiftScheduleTest extends TestCase
         EmployeeShiftSchedule::create(['user_id' => $emp->id, 'date' => '2026-04-08', 'shift_id' => $shift->id]);
 
         $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-07'))->noBreak, 'Normal assignment resolution keeps no_break = true.');
-        $this->assertFalse(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-08'))->noBreak, 'A one-off EmployeeShiftSchedule override has no row to read no_break from.');
+        $this->assertFalse(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-08'))->noBreak, 'The override row never set no_break, so it defaults to false.');
+    }
+
+    public function test_employee_shift_schedule_override_no_break_flows_into_work_schedule(): void
+    {
+        $shift = Shift::create([
+            'name' => 'Guard Duty', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00',
+        ]);
+        $emp = $this->createEmployee();
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $emp->id, 'date' => '2026-04-08', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
+
+        $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-04-08'))->noBreak);
+    }
+
+    // ── No Break checkbox on the week-grid and weekly-pattern forms ─────────
+
+    public function test_store_week_schedule_with_no_break_writes_it_on_the_assigned_shift_day(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.store'), [
+            'user_id' => $emp->id,
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => (string) $shift->id, '2026-08-04' => 'rest'],
+            'no_break' => '1',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-04', 'shift_id' => null, 'type' => 'rest', 'no_break' => false,
+        ]);
+
+        $emp->refresh();
+        $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'))->noBreak);
+    }
+
+    public function test_bulk_save_week_schedule_with_no_break_writes_it_for_every_checked_employee(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp1 = $this->createEmployee();
+        $emp2 = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.store-bulk'), [
+            'user_ids' => [$emp1->id, $emp2->id],
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => (string) $shift->id],
+            'no_break' => '1',
+        ])->assertRedirect();
+
+        foreach ([$emp1, $emp2] as $emp) {
+            $this->assertDatabaseHas('employee_shift_schedules', [
+                'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => $shift->id, 'no_break' => true,
+            ]);
+        }
+    }
+
+    public function test_apply_weekly_pattern_with_no_break_writes_it_on_days_assigned_a_shift(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        // Monday (iso 1) gets the shift; the rest of the pattern is left blank/default.
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.apply-weekly-pattern'), [
+            'user_id' => $emp->id,
+            'start_date' => '2026-08-03',
+            'end_date' => '2026-08-09',
+            'pattern' => [1 => (string) $shift->id, 2 => '', 3 => '', 4 => '', 5 => '', 6 => 'rest', 7 => 'rest'],
+            'no_break' => '1',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-08', 'shift_id' => null, 'type' => 'rest', 'no_break' => false,
+        ]);
+
+        $emp->refresh();
+        $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'))->noBreak);
     }
 
     // ── Bulk shift assignment (checkbox-selected employees) ─────────────────
@@ -2688,6 +2785,42 @@ class ShiftScheduleTest extends TestCase
         $response->assertSee('07:00-16:00', false);
         $response->assertSee('Assignment');
         $response->assertDontSee('Assignment says', false);
+    }
+
+    public function test_resolved_schedule_shows_no_break_tag_when_assignment_is_no_break(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'TMO Team 1 - 1', 'time_in' => '05:00', 'break_out' => '09:00',
+            'break_in' => '10:00', 'time_out' => '14:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'NoBreak']);
+
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-07-01'), null, $tk->id, null, null, true);
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules.resolved', ['user' => $emp, 'month' => 7, 'year' => 2026]));
+
+        $response->assertOk();
+        $response->assertSee('TMO Team 1 - 1');
+        $response->assertSee('05:00-14:00', false);
+        $response->assertSee('No Break (2-punch)');
+    }
+
+    public function test_resolved_schedule_hides_no_break_tag_when_assignment_has_a_break(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee(['last_name' => 'FullBreak']);
+
+        app(ShiftAssignmentService::class)->assign($emp, $shift->id, Carbon::parse('2026-07-01'), null, $tk->id, null, null, false);
+
+        $response = $this->actingAs($tk)->get(route('attendance.schedules.resolved', ['user' => $emp, 'month' => 7, 'year' => 2026]));
+
+        $response->assertOk();
+        $response->assertDontSee('No Break (2-punch)');
     }
 
     /**

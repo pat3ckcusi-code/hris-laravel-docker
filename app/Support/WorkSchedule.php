@@ -103,10 +103,11 @@ class WorkSchedule
             $shift = $assignment->relationLoaded('shift') ? $assignment->shift : $assignment->shift()->first();
 
             if ($shift !== null) {
-                // A per-date EmployeeShiftSchedule override has no
-                // shift_assignments row of its own, so there's no per-row
-                // no_break to read here - it always resolves full-break.
-                return self::fromShift($shift);
+                // Unlike a resolved ShiftAssignment row, a per-date override
+                // has its own no_break column (added directly to
+                // employee_shift_schedules, not shift_assignments) since it
+                // has no shift_assignments row of its own to read from.
+                return self::fromShift($shift, (bool) $assignment->no_break);
             }
         }
 

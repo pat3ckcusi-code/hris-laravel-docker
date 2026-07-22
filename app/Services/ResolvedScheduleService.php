@@ -19,7 +19,7 @@ use Illuminate\Support\Collection;
 class ResolvedScheduleService
 {
     /**
-     * @return Collection<string, array{date: Carbon, label: string, source: string, shiftName: ?string, hours: ?string, isWorkday: bool, isRestDay: bool, isFieldWork: bool, shadowedAssignmentShiftName: ?string}>
+     * @return Collection<string, array{date: Carbon, label: string, source: string, shiftName: ?string, hours: ?string, noBreak: bool, isWorkday: bool, isRestDay: bool, isFieldWork: bool, shadowedAssignmentShiftName: ?string}>
      */
     public function buildMonth(User $user, Carbon $monthStart): Collection
     {
@@ -51,9 +51,11 @@ class ResolvedScheduleService
             $isEffectiveRestDay = $isRestDay || (! $isWorkday && ! $isFieldWork);
 
             $hours = null;
+            $noBreak = false;
             if ($isWorkday && ! $isRestDay) {
                 $ws = WorkSchedule::forUserOnDate($user, $date, $overrides);
                 $hours = $ws->workStart.'-'.$ws->workEnd;
+                $noBreak = $ws->noBreak;
             }
 
             $label = match (true) {
@@ -69,6 +71,7 @@ class ResolvedScheduleService
                 'source' => $resolution['source'],
                 'shiftName' => $resolution['shiftName'],
                 'hours' => $hours,
+                'noBreak' => $noBreak,
                 'isWorkday' => $isWorkday,
                 'isRestDay' => $isEffectiveRestDay,
                 'isFieldWork' => $isFieldWork,

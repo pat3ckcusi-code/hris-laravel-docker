@@ -59,6 +59,10 @@
     font-size: .66rem; color: #b45309; font-weight: 600; text-decoration: none; display: block;
 }
 .rsc-shadow-warning:hover { text-decoration: underline; }
+.rsc-nobreak-tag {
+    align-self: flex-start; font-size: .62rem; font-weight: 700;
+    padding: .1rem .4rem; border-radius: 9999px; background: #ede9fe; color: #6d28d9;
+}
 </style>
 @endsection
 
@@ -124,6 +128,9 @@
                 <div class="rsc-day-label">{{ $day['label'] }}</div>
                 @if ($day['hours'])
                     <div class="rsc-day-hours">{{ $day['hours'] }}</div>
+                @endif
+                @if ($day['noBreak'])
+                    <span class="rsc-nobreak-tag">No Break (2-punch)</span>
                 @endif
                 @if ($isConflict)
                     <a class="rsc-shadow-warning"

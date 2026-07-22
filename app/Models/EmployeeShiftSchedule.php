@@ -10,11 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * different shift for one specific date), layered on top of ShiftAssignment
  * history - see WorkSchedule for the full precedence chain.
  *
- * Known limitation: a one-off shift override here has no shift_assignments
- * row of its own, so it always resolves no_break = false for DTR purposes
- * (see WorkSchedule::forUserOnDate()) regardless of how that shift is
- * normally scheduled elsewhere. Deliberately out of scope - assigning a
- * no-break shift for one specific date is a narrow, rare case.
+ * no_break mirrors the same flag on shift_assignments, but only has any
+ * effect on a row that also carries a shift_id - WorkSchedule::forUserOnDate()
+ * only reads it in that branch, so a rest/field_work/standard row's no_break
+ * value (always false, since nothing ever sets it) is simply never consulted.
  *
  * is_rotation_generated marks a row written by
  * ShiftScheduleController::writeRotationForEmployee() as part of the same
@@ -30,11 +29,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class EmployeeShiftSchedule extends Model
 {
-    protected $fillable = ['user_id', 'date', 'shift_id', 'type', 'created_by', 'is_rotation_generated'];
+    protected $fillable = ['user_id', 'date', 'shift_id', 'type', 'created_by', 'is_rotation_generated', 'no_break'];
 
     protected $casts = [
         'date' => 'date',
         'is_rotation_generated' => 'boolean',
+        'no_break' => 'boolean',
     ];
 
     public function employee(): BelongsTo
