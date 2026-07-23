@@ -53,6 +53,7 @@ use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
 use App\Http\Controllers\PushSubscriptionController;
+use App\Http\Controllers\Records\JobOrderAppointmentController;
 use App\Http\Controllers\RecordsManagerController;
 use App\Http\Controllers\TravelOrderController;
 use App\Http\Controllers\UniformInspectionController;
@@ -243,6 +244,20 @@ Route::middleware('auth')->group(function () {
         ->name('dashboard.records-manager.employees.import-template');
     Route::post('/dashboard/records-manager/employees/import', [RecordsManagerController::class, 'import'])
         ->name('dashboard.records-manager.employees.import');
+
+    // Job Order appointment history + roster export
+    Route::get('/dashboard/records-manager/employees/{user}/job-order-appointments', [JobOrderAppointmentController::class, 'index'])
+        ->name('dashboard.records-manager.job-order-appointments.index');
+    Route::post('/dashboard/records-manager/employees/{user}/job-order-appointments', [JobOrderAppointmentController::class, 'store'])
+        ->name('dashboard.records-manager.job-order-appointments.store');
+    Route::put('/dashboard/records-manager/employees/{user}/job-order-appointments/{appointment}', [JobOrderAppointmentController::class, 'update'])
+        ->name('dashboard.records-manager.job-order-appointments.update');
+    Route::delete('/dashboard/records-manager/employees/{user}/job-order-appointments/{appointment}', [JobOrderAppointmentController::class, 'destroy'])
+        ->name('dashboard.records-manager.job-order-appointments.destroy');
+    Route::get('/dashboard/records-manager/job-order-roster', [JobOrderAppointmentController::class, 'rosterForm'])
+        ->name('dashboard.records-manager.job-order-roster');
+    Route::get('/dashboard/records-manager/job-order-roster/export', [JobOrderAppointmentController::class, 'exportRoster'])
+        ->name('dashboard.records-manager.job-order-roster.export');
 
     // Self-Service: Change Password (all authenticated users)
     Route::get('/user/change-password', [UserController::class, 'showChangePassword'])

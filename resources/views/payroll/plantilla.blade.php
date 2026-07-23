@@ -192,20 +192,30 @@
             <input type="text" id="promote-employee-name" class="form-input" readonly>
         </div>
         <div class="form-group">
-            <label for="promote-target"><i class="fas fa-chair"></i> New Position <small>(vacant items only)</small></label>
-            <select name="plantilla_id" id="promote-target" class="form-input" style="width:100%;max-width:100%" required onchange="showPromoteTargetInfo(this)">
-                <option value="">Select vacant position</option>
-                @foreach($vacantPlantillas as $vp)
-                    <option value="{{ $vp->id }}"
-                        data-item="{{ $vp->item_number }}"
-                        data-title="{{ $vp->title }}"
-                        data-sg="{{ $vp->salary_grade }}"
-                        data-step="{{ $vp->step }}"
-                        data-dept="{{ $vp->department }}">
-                        {{ $vp->item_number ? "[{$vp->item_number}] " : '' }}{{ \Illuminate\Support\Str::limit($vp->title, 45) }} -SG {{ $vp->salary_grade }}
-                    </option>
-                @endforeach
-            </select>
+            <label for="promote-target-search"><i class="fas fa-chair"></i> New Position <small>(vacant items only)</small></label>
+            <div class="combobox-wrap" id="promote-target-combobox">
+                <input type="text" id="promote-target-search" class="form-input" style="width:100%;max-width:100%"
+                       placeholder="Type item #, title, or department to search&hellip;" autocomplete="off" required
+                       oninput="onPromoteSearchInput(this.value)" onfocus="filterPromoteTargets(this.value)">
+                <input type="hidden" name="plantilla_id" id="promote-target">
+                <div id="promote-target-list" class="combobox-list" style="display:none">
+                    @foreach($vacantPlantillas as $vp)
+                        <div class="combobox-option"
+                             data-id="{{ $vp->id }}"
+                             data-item="{{ $vp->item_number }}"
+                             data-title="{{ $vp->title }}"
+                             data-sg="{{ $vp->salary_grade }}"
+                             data-step="{{ $vp->step }}"
+                             data-dept="{{ $vp->department }}"
+                             data-search="{{ strtolower($vp->item_number.' '.$vp->title.' '.$vp->department) }}"
+                             onclick="selectPromoteTarget(this)">
+                            <div class="co-title">{{ $vp->item_number ? "[{$vp->item_number}] " : '' }}{{ $vp->title }}</div>
+                            <div class="co-meta">{{ $vp->department ?: 'No department' }} &middot; SG {{ $vp->salary_grade }} Step {{ $vp->step }}</div>
+                        </div>
+                    @endforeach
+                    <div class="combobox-empty" style="display:none">No matching vacant positions.</div>
+                </div>
+            </div>
             <div id="promote-target-info" class="target-info-card">
                 <div class="pti-title" id="pti-title"></div>
                 <div>Item No. <span id="pti-item"></span> &middot; SG <span id="pti-sg"></span> &middot; Step <span id="pti-step"></span></div>
@@ -394,23 +404,62 @@ function openPromote(id) {
     document.getElementById('promote-employee-id').value = row.dataset.empId;
     document.getElementById('promote-employee-name').value = row.dataset.empName;
     document.getElementById('promote-subtitle').textContent = 'Currently: ' + row.dataset.title + ' (SG ' + row.dataset.sg + ' Step ' + row.dataset.step + ')';
-    var target = document.getElementById('promote-target');
-    target.value = '';
-    showPromoteTargetInfo(target);
+    var search = document.getElementById('promote-target-search');
+    search.value = '';
+    search.setCustomValidity('Select a position from the list below.');
+    document.getElementById('promote-target').value = '';
+    document.getElementById('promote-target-list').style.display = 'none';
+    showPromoteTargetInfo(null);
     document.getElementById('promoteModal').showModal();
 }
 
-function showPromoteTargetInfo(select) {
+function showPromoteTargetInfo(data) {
     var info = document.getElementById('promote-target-info');
-    var opt = select.options[select.selectedIndex];
-    if (!opt || !opt.value) { info.style.display = 'none'; return; }
-    document.getElementById('pti-title').textContent = opt.dataset.title;
-    document.getElementById('pti-item').textContent = opt.dataset.item || '-';
-    document.getElementById('pti-sg').textContent = opt.dataset.sg;
-    document.getElementById('pti-step').textContent = opt.dataset.step;
-    document.getElementById('pti-dept').textContent = opt.dataset.dept || '';
+    if (!data) { info.style.display = 'none'; return; }
+    document.getElementById('pti-title').textContent = data.title;
+    document.getElementById('pti-item').textContent = data.item || '-';
+    document.getElementById('pti-sg').textContent = data.sg;
+    document.getElementById('pti-step').textContent = data.step;
+    document.getElementById('pti-dept').textContent = data.dept || '';
     info.style.display = 'block';
 }
+
+function onPromoteSearchInput(value) {
+    document.getElementById('promote-target').value = '';
+    document.getElementById('promote-target-search').setCustomValidity('Select a position from the list below.');
+    showPromoteTargetInfo(null);
+    filterPromoteTargets(value);
+}
+
+function filterPromoteTargets(query) {
+    var list = document.getElementById('promote-target-list');
+    var options = list.querySelectorAll('.combobox-option');
+    var q = query.trim().toLowerCase();
+    var anyVisible = false;
+    options.forEach(function(opt) {
+        var match = opt.dataset.search.indexOf(q) !== -1;
+        opt.style.display = match ? '' : 'none';
+        if (match) anyVisible = true;
+    });
+    list.querySelector('.combobox-empty').style.display = anyVisible ? 'none' : 'block';
+    list.style.display = 'block';
+}
+
+function selectPromoteTarget(el) {
+    document.getElementById('promote-target').value = el.dataset.id;
+    var search = document.getElementById('promote-target-search');
+    search.value = (el.dataset.item ? '[' + el.dataset.item + '] ' : '') + el.dataset.title;
+    search.setCustomValidity('');
+    document.getElementById('promote-target-list').style.display = 'none';
+    showPromoteTargetInfo(el.dataset);
+}
+
+document.addEventListener('click', function(e) {
+    var combobox = document.getElementById('promote-target-combobox');
+    if (combobox && !combobox.contains(e.target)) {
+        document.getElementById('promote-target-list').style.display = 'none';
+    }
+});
 
 function openEditPlantilla(id) {
     var row = document.getElementById('plantilla-row-' + id);

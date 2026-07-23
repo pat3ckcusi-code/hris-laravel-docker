@@ -225,6 +225,7 @@ class User extends Authenticatable
             'hours_per_day' => 'float',
             'dtr_exempt' => 'boolean',
             'is_frontline' => 'boolean',
+            'job_order_auto_deactivated_at' => 'datetime',
         ];
     }
 
@@ -246,6 +247,12 @@ class User extends Authenticatable
     public function shiftAssignments(): HasMany
     {
         return $this->hasMany(ShiftAssignment::class);
+    }
+
+    /** Full Job Order appointment history (past, current, and future-dated). */
+    public function jobOrderAppointments(): HasMany
+    {
+        return $this->hasMany(JobOrderAppointment::class, 'user_id');
     }
 
     /**

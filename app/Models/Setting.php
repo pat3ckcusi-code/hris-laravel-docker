@@ -35,6 +35,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $vice_mayor_designation
  * @property string|null $hr_manager_name
  * @property string|null $hr_manager_designation
+ * @property string|null $budget_officer_name
+ * @property string|null $budget_officer_designation
  * @property string|null $mail_from_address
  * @property string|null $mail_from_name
  * @property string|null $excel_sheet_password
@@ -83,6 +85,8 @@ class Setting extends Model
         'vice_mayor_designation',
         'hr_manager_name',
         'hr_manager_designation',
+        'budget_officer_name',
+        'budget_officer_designation',
         'mail_from_address',
         'mail_from_name',
         'excel_sheet_password',

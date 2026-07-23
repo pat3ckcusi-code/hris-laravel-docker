@@ -248,6 +248,10 @@ class RecordsManagerController extends Controller
         }
 
         if ($newStatus !== $previousStatus) {
+            // A manual status change always supersedes job-order:deactivate-expired's
+            // own bookkeeping, whichever direction it goes.
+            $user->forceFill(['job_order_auto_deactivated_at' => null])->save();
+
             HRAuditTrail::create([
                 'actor_user_id' => $request->user()?->id,
                 'module' => 'records',

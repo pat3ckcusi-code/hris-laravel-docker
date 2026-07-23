@@ -21,6 +21,7 @@
 @section('top_actions')
     <button type="button" class="btn" id="openAddEmployeeModal">Add New Employee</button>
     <button type="button" class="btn" id="openImportEmployeeModal">Import Employees</button>
+    <a href="{{ route('dashboard.records-manager.job-order-roster') }}" class="btn">Job Order Roster</a>
 @endsection
 
 @section('page_head')
@@ -276,6 +277,19 @@
                                 </button>
                                 <button type="button" class="btn-sm btn-reject" onclick="confirmDelete({{ $employee->id }}, '{{ route('dashboard.records-manager.users.destroy', $employee) }}')" style="margin-left:8px">Delete</button>
                                 <button type="button" class="btn-sm" style="margin-left:8px; background:#6366f1; color:#fff;" onclick="confirmResetPassword({{ $employee->id }}, '{{ route('records-manager.employees.reset-password', $employee->id) }}', '{{ e($employee->email) }}')">Reset Password</button>
+                                @if ($employee->employee_type === 'Job Orders')
+                                    <button
+                                        type="button"
+                                        class="btn-sm"
+                                        style="margin-left:8px; background:#0ea5e9; color:#fff;"
+                                        data-employee-name="{{ e(trim($employee->first_name.' '.$employee->last_name)) }}"
+                                        data-index-url="{{ route('dashboard.records-manager.job-order-appointments.index', $employee) }}"
+                                        data-store-url="{{ route('dashboard.records-manager.job-order-appointments.store', $employee) }}"
+                                        onclick="openJobOrderAppointmentsModal(this)"
+                                    >
+                                        Appointments
+                                    </button>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
@@ -393,6 +407,92 @@
 
             <button type="submit" class="record-btn">Update</button>
         </form>
+    </dialog>
+
+    <dialog id="jobOrderAppointmentsModal" class="employee-modal modal-lg">
+        <form method="dialog" class="modal-top-actions">
+            <button type="submit" class="modal-close" aria-label="Close">x</button>
+        </form>
+
+        <header>
+            <h3>Job Order Appointments</h3>
+            <span class="record-email" id="jobOrderAppointmentsEmployeeName"></span>
+        </header>
+
+        <form
+            id="jobOrderAppointmentForm"
+            method="POST"
+            action=""
+            class="record-form"
+            data-custom-submit="true"
+        >
+            @csrf
+            <input type="hidden" name="_method" id="joaMethod" value="POST">
+
+            <label>
+                Designation
+                <input type="text" name="designation" id="joaDesignation" data-uppercase-input>
+            </label>
+
+            <label>
+                Office
+                <input type="text" name="office" id="joaOffice" data-uppercase-input placeholder="e.g. BAC">
+            </label>
+
+            <label>
+                Funding Charging
+                <input type="text" name="funding_source" id="joaFundingSource" placeholder="e.g. CMO - Other General Services">
+            </label>
+
+            <label>
+                Rate Per Day
+                <input type="number" name="rate_per_day" id="joaRatePerDay" step="0.01" min="0" required>
+            </label>
+
+            <label>
+                Rate Note (optional)
+                <input type="text" name="rate_note" id="joaRateNote" maxlength="50" placeholder="e.g. w/SH">
+            </label>
+
+            <label>
+                Period From
+                <input type="date" name="period_from" id="joaPeriodFrom" required>
+            </label>
+
+            <label>
+                Period Until
+                <input type="date" name="period_until" id="joaPeriodUntil" required>
+            </label>
+
+            <label>
+                Remarks
+                <input type="text" name="remarks" id="joaRemarks" placeholder="e.g. RENEWAL, NEW">
+            </label>
+
+            <div style="display:flex; gap:0.5rem;">
+                <button type="submit" class="record-btn" id="joaSubmitBtn">Add Appointment</button>
+                <button type="button" class="btn-sm" id="joaCancelEditBtn" style="display:none;">Cancel Edit</button>
+            </div>
+        </form>
+
+        <div class="table-wrap" style="margin-top:1rem;">
+            <table class="employee-table hris-table job-order-appointments-table" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th>Rate/Day</th>
+                        <th>Office</th>
+                        <th>Funding Charging</th>
+                        <th>Remarks</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="jobOrderAppointmentsTableBody">
+                    <tr><td colspan="7">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </dialog>
 @endsection
 
@@ -759,6 +859,212 @@
                 }
             });
         };
+    </script>
+
+    <script>
+        // Job Order Appointments modal: history list + add/renew/edit/delete
+        (function () {
+            var modal = document.getElementById('jobOrderAppointmentsModal');
+            var nameLabel = document.getElementById('jobOrderAppointmentsEmployeeName');
+            var tableBody = document.getElementById('jobOrderAppointmentsTableBody');
+            var form = document.getElementById('jobOrderAppointmentForm');
+            var methodField = document.getElementById('joaMethod');
+            var submitBtn = document.getElementById('joaSubmitBtn');
+            var cancelEditBtn = document.getElementById('joaCancelEditBtn');
+            var storeUrl = '';
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+
+            if (!modal || !form) return;
+
+            function resetForm() {
+                form.reset();
+                form.action = storeUrl;
+                methodField.value = 'POST';
+                submitBtn.textContent = 'Add Appointment';
+                cancelEditBtn.style.display = 'none';
+            }
+
+            function formatDate(value) {
+                if (!value) return '-';
+                var parts = value.split('-');
+                return parts.length === 3 ? (parts[1] + '/' + parts[2] + '/' + parts[0]) : value;
+            }
+
+            function renderRows(appointments) {
+                if (!appointments.length) {
+                    tableBody.innerHTML = '<tr><td colspan="7">No appointments recorded yet.</td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = appointments.map(function (a) {
+                    var statusBadge = a.is_current
+                        ? '<span class="badge badge-active">Current</span>'
+                        : '<span class="badge badge-default">Past</span>';
+
+                    return '<tr>'
+                        + '<td>' + formatDate(a.period_from) + ' - ' + formatDate(a.period_until) + '</td>'
+                        + '<td>' + (a.rate_label || '-') + '</td>'
+                        + '<td>' + (a.office || '-') + '</td>'
+                        + '<td>' + (a.funding_source || '-') + '</td>'
+                        + '<td>' + (a.remarks || '-') + '</td>'
+                        + '<td>' + statusBadge + '</td>'
+                        + '<td>'
+                        + '<button type="button" class="btn-sm" onclick=\'startEditJobOrderAppointment(' + JSON.stringify(a).replace(/'/g, '&#39;') + ')\'>Edit</button> '
+                        + '<button type="button" class="btn-sm btn-reject" onclick="confirmDeleteJobOrderAppointment(' + "'" + a.delete_url + "'" + ')">Delete</button>'
+                        + '</td>'
+                        + '</tr>';
+                }).join('');
+            }
+
+            function loadHistory(indexUrl) {
+                tableBody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
+
+                fetch(indexUrl, { headers: { 'Accept': 'application/json' } })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        var appointments = data.appointments || [];
+                        renderRows(appointments);
+
+                        // Prefill designation/office/funding/rate from the most
+                        // recent appointment so a renewal only needs new dates.
+                        if (appointments.length) {
+                            var latest = appointments[0];
+                            document.getElementById('joaDesignation').value = latest.designation || '';
+                            document.getElementById('joaOffice').value = latest.office || '';
+                            document.getElementById('joaFundingSource').value = latest.funding_source || '';
+                            document.getElementById('joaRatePerDay').value = latest.rate_per_day || '';
+                            document.getElementById('joaRateNote').value = latest.rate_note || '';
+                        }
+                    })
+                    .catch(function () {
+                        tableBody.innerHTML = '<tr><td colspan="7">Failed to load appointment history.</td></tr>';
+                    });
+            }
+
+            window.openJobOrderAppointmentsModal = function (button) {
+                storeUrl = button.dataset.storeUrl;
+                nameLabel.textContent = button.dataset.employeeName || '';
+                resetForm();
+                loadHistory(button.dataset.indexUrl);
+
+                if (typeof modal.showModal === 'function' && !modal.open) {
+                    modal.showModal();
+                }
+            };
+
+            window.startEditJobOrderAppointment = function (appointment) {
+                form.action = appointment.update_url;
+                methodField.value = 'PUT';
+                submitBtn.textContent = 'Save Changes';
+                cancelEditBtn.style.display = '';
+
+                document.getElementById('joaDesignation').value = appointment.designation || '';
+                document.getElementById('joaOffice').value = appointment.office || '';
+                document.getElementById('joaFundingSource').value = appointment.funding_source || '';
+                document.getElementById('joaRatePerDay').value = appointment.rate_per_day || '';
+                document.getElementById('joaRateNote').value = appointment.rate_note || '';
+                document.getElementById('joaPeriodFrom').value = appointment.period_from || '';
+                document.getElementById('joaPeriodUntil').value = appointment.period_until || '';
+                document.getElementById('joaRemarks').value = appointment.remarks || '';
+            };
+
+            cancelEditBtn.addEventListener('click', function () {
+                resetForm();
+            });
+
+            window.confirmDeleteJobOrderAppointment = function (deleteUrl) {
+                // Close the dialog before opening SweetAlert - a native <dialog>
+                // renders in the browser's top layer, so a regular SweetAlert2
+                // popup would otherwise render behind it, invisible.
+                if (modal && modal.open) modal.close();
+
+                Swal.fire({
+                    title: 'Delete this appointment?',
+                    text: 'This removes it from the employee\'s Job Order history.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc2626',
+                    confirmButtonText: 'Yes, delete',
+                    cancelButtonText: 'Cancel',
+                }).then(function (result) {
+                    if (!result.isConfirmed) {
+                        if (modal && typeof modal.showModal === 'function') modal.showModal();
+                        return;
+                    }
+
+                    fetch(deleteUrl, {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                    })
+                        .then(function (res) { return res.json(); })
+                        .then(function () {
+                            resetForm();
+                            loadHistory(storeUrl);
+                            if (modal && typeof modal.showModal === 'function') modal.showModal();
+                        })
+                        .catch(function () {
+                            Swal.fire('Error', 'An unexpected error occurred while deleting.', 'error')
+                                .then(function () {
+                                    if (modal && typeof modal.showModal === 'function') modal.showModal();
+                                });
+                        });
+                });
+            };
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                // Always send a real POST; Laravel's _method field (already in
+                // the form) spoofs PUT for routing. A genuine PUT verb with a
+                // multipart body is not reliably parsed by PHP - same reason
+                // the Update Employee form above uses method="POST" + @method('PUT').
+                var fd = new FormData(form);
+
+                fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: fd,
+                })
+                    .then(function (res) {
+                        return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                    })
+                    .then(function (result) {
+                        if (!result.ok) {
+                            var msg = 'An unexpected error occurred.';
+                            if (result.data.errors) {
+                                msg = Object.values(result.data.errors).flat().join('\n');
+                            } else if (result.data.message) {
+                                msg = result.data.message;
+                            }
+                            // Close the dialog first - see confirmDeleteJobOrderAppointment
+                            // above for why a plain SweetAlert2 popup needs this.
+                            if (modal && modal.open) modal.close();
+                            Swal.fire('Error', msg, 'error')
+                                .then(function () {
+                                    if (modal && typeof modal.showModal === 'function') modal.showModal();
+                                });
+                            return;
+                        }
+
+                        resetForm();
+                        // index (GET) and store (POST) share the same URL.
+                        loadHistory(storeUrl);
+                    })
+                    .catch(function () {
+                        if (modal && modal.open) modal.close();
+                        Swal.fire('Error', 'An unexpected error occurred.', 'error')
+                            .then(function () {
+                                if (modal && typeof modal.showModal === 'function') modal.showModal();
+                            });
+                    });
+            });
+        })();
     </script>
     @if (session('status') && session('message'))
     <script>

@@ -100,3 +100,61 @@ table.employee-table td:nth-child(10) .btn-sm {
 .table-pagination, .pagination-controls {
     display: none; /* hidden when using DataTables */
 }
+
+/*
+ * Job Order Appointments history table (7 columns: Period, Rate/Day, Office,
+ * Funding Charging, Remarks, Status, Action) - it shares the .employee-table
+ * class with the main 10-column employee list above for base styling
+ * (fixed layout, wrapping, fonts), but that table's nth-child(1..10) widths
+ * are tuned for its own column count and don't line up with this one's.
+ * The extra .job-order-appointments-table class raises specificity so these
+ * rules win without touching the main list's widths.
+ */
+table.employee-table.job-order-appointments-table th:nth-child(1),
+table.employee-table.job-order-appointments-table td:nth-child(1) { width: 20%; } /* Period */
+
+table.employee-table.job-order-appointments-table th:nth-child(2),
+table.employee-table.job-order-appointments-table td:nth-child(2) { width: 11%; } /* Rate/Day */
+
+table.employee-table.job-order-appointments-table th:nth-child(3),
+table.employee-table.job-order-appointments-table td:nth-child(3) { width: 10%; } /* Office */
+
+table.employee-table.job-order-appointments-table th:nth-child(4),
+table.employee-table.job-order-appointments-table td:nth-child(4) { width: 20%; } /* Funding Charging */
+
+table.employee-table.job-order-appointments-table th:nth-child(5),
+table.employee-table.job-order-appointments-table td:nth-child(5) { width: 13%; } /* Remarks */
+
+table.employee-table.job-order-appointments-table th:nth-child(6),
+table.employee-table.job-order-appointments-table td:nth-child(6) { width: 9%; } /* Status */
+
+table.employee-table.job-order-appointments-table th:nth-child(7),
+table.employee-table.job-order-appointments-table td:nth-child(7) { width: 17%; } /* Action */
+
+/* Edit/Delete side by side, not the main table's stacked full-width buttons. */
+table.employee-table.job-order-appointments-table td:nth-child(7) .btn-sm {
+    display: inline-block;
+    width: auto;
+    margin: 2px 4px 2px 0 !important;
+}
+
+/*
+ * Headers here are short (OFFICE, STATUS, REMARKS...) and should sit on one
+ * line. The generic "overflow-wrap: anywhere; word-break: break-word" rule
+ * above (needed on the main list for long emails/department names) instead
+ * breaks these mid-word the moment a column gets narrow (e.g. "OFFICE" ->
+ * "OFFIC"/"E") because it wins on specificity over .hris-table th's own
+ * white-space: nowrap. Tighter padding/font-size buys back the room these
+ * extra columns need so nowrap headers actually fit.
+ */
+table.employee-table.job-order-appointments-table th {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    padding: 0.6rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+table.employee-table.job-order-appointments-table td {
+    padding: 0.6rem 0.5rem;
+}

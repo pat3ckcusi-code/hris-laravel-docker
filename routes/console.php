@@ -28,3 +28,9 @@ Schedule::command('export:prune')->everyFiveMinutes();
 // Delete already-expired database cache rows, which otherwise accumulate
 // indefinitely (the database cache driver never garbage-collects them itself).
 Schedule::command('cache:prune-expired')->daily();
+
+// Set Status=Inactive for any Job Orders employee whose appointment history
+// has fully lapsed (no job_order_appointments row covering today or later).
+// Auto-reactivation on renewal is handled separately, in
+// JobOrderAppointmentService, not by this command.
+Schedule::command('job-order:deactivate-expired')->dailyAt('00:10');

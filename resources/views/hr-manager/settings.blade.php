@@ -142,7 +142,7 @@
 
             {{-- ── SIGNATORIES ── --}}
             <div class="settings-panel" id="tab-signatories">
-                <p class="settings-hint" style="margin-bottom:1rem;">Names and designations that appear on official HRIS-generated documents (Leave Forms, ETAs, payslips).</p>
+                <p class="settings-hint" style="margin-bottom:1rem;">Names and designations that appear on official HRIS-generated documents (Leave Forms, ETAs, payslips, Job Order Appointment documents).</p>
 
                 <div class="hrm-signatory-grid settings-grid">
                     <div class="form-group">
@@ -186,6 +186,20 @@
                                value="{{ old('hr_manager_designation', $settings->hr_manager_designation ?? '') }}"
                                placeholder="e.g. Human Resource Management Officer">
                         @error('hr_manager_designation')<span class="hrm-error">{{ $message }}</span>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label for="budget_officer_name">Budget Officer - Name</label>
+                        <input type="text" class="hrm-input" id="budget_officer_name" name="budget_officer_name"
+                               value="{{ old('budget_officer_name', $settings->budget_officer_name ?? '') }}"
+                               placeholder="e.g. Jannette M. Villas">
+                        @error('budget_officer_name')<span class="hrm-error">{{ $message }}</span>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label for="budget_officer_designation">Budget Officer - Designation</label>
+                        <input type="text" class="hrm-input" id="budget_officer_designation" name="budget_officer_designation"
+                               value="{{ old('budget_officer_designation', $settings->budget_officer_designation ?? '') }}"
+                               placeholder="e.g. OIC City Budget Dept.">
+                        @error('budget_officer_designation')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
                 </div>
             </div>

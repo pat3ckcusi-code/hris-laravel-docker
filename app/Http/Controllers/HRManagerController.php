@@ -303,6 +303,10 @@ class HRManagerController extends Controller
         $user->forceFill(['Status' => $newStatus])->save();
 
         if ($newStatus !== $previousStatus) {
+            // A manual status change always supersedes job-order:deactivate-expired's
+            // own bookkeeping, whichever direction it goes.
+            $user->forceFill(['job_order_auto_deactivated_at' => null])->save();
+
             $this->storeAuditTrail(
                 $request,
                 'records',
@@ -756,6 +760,8 @@ class HRManagerController extends Controller
             'vice_mayor_designation' => 'nullable|string|max:255',
             'hr_manager_name' => 'nullable|string|max:255',
             'hr_manager_designation' => 'nullable|string|max:255',
+            'budget_officer_name' => 'nullable|string|max:255',
+            'budget_officer_designation' => 'nullable|string|max:255',
             // Notification / email from
             'mail_from_address' => 'nullable|email|max:255',
             'mail_from_name' => 'nullable|string|max:255',
