@@ -13,7 +13,10 @@
     @include('partials.table-styles')
     <style>
         /* Filed ETAs table: force fixed layout so long content wraps instead of
-           widening the table past its wrapper and triggering horizontal scroll. */
+           widening the table past its wrapper and triggering horizontal scroll.
+           Below 640px this is reverted (see media query at the end of this block) -
+           at phone widths the fixed percentage columns get too narrow for the
+           nowrap header text, which overflows and overlaps the next column. */
         #filed-etas-table {
             table-layout: fixed;
         }
@@ -45,6 +48,16 @@
         #filed-etas-table td,
         #filed-etas-table th {
             padding: 0.75rem 0.5rem;
+        }
+        /* Phone widths: fall back to the shared .hris-table-wrapper's horizontal
+           scroll instead of squeezing fixed-percentage columns. Headers stay
+           nowrap, so their natural width becomes each column's minimum - the
+           table grows past the viewport and scrolls sideways rather than
+           overlapping. */
+        @media (max-width: 640px) {
+            #filed-etas-table {
+                table-layout: auto;
+            }
         }
     </style>
 @endsection
