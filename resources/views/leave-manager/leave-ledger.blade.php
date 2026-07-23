@@ -89,7 +89,7 @@
                 <table id="ledger-history-table" class="hris-table" style="width:100%;">
                     <thead>
                         <tr>
-                            <th>Date</th>
+                            <th>Period Date</th>
                             <th>Type</th>
                             <th>Leave Type</th>
                             <th class="text-right">Credit VL</th>

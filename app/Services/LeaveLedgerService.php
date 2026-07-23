@@ -13,7 +13,7 @@ class LeaveLedgerService
      *
      * Required params: user_id, transaction_date, transaction_type, leave_type,
      *   vl_balance_after and sl_balance_after are computed internally.
-     * Optional: debit_vl, debit_sl, credit_vl, credit_sl, days_present,
+     * Optional: period_end_date, debit_vl, debit_sl, credit_vl, credit_sl, days_present,
      *   abs_wop_days, reference_id, reference_type, remarks, created_by, is_system.
      */
     public function writeLedgerEntry(array $params): LeaveLedger
@@ -33,6 +33,7 @@ class LeaveLedgerService
         return LeaveLedger::create([
             'user_id' => $userId,
             'transaction_date' => $params['transaction_date'],
+            'period_end_date' => $params['period_end_date'] ?? null,
             'transaction_type' => $params['transaction_type'],
             'leave_type' => $params['leave_type'],
             'days_present' => $params['days_present'] ?? null,

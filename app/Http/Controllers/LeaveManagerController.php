@@ -423,7 +423,8 @@ class LeaveManagerController extends Controller
             try {
                 app(LeaveLedgerService::class)->writeLedgerEntry([
                     'user_id' => $leave->user_id,
-                    'transaction_date' => now()->toDateString(),
+                    'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                    'period_end_date' => $leave->end_date,
                     'transaction_type' => 'LEAVE_CANCELLED',
                     'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
                     'credit_vl' => floatval($applied['VL'] ?? 0),
@@ -629,7 +630,8 @@ class LeaveManagerController extends Controller
             try {
                 app(LeaveLedgerService::class)->writeLedgerEntry([
                     'user_id' => $leave->user_id,
-                    'transaction_date' => now()->toDateString(),
+                    'transaction_date' => $dates->min('leave_date') ?? now()->toDateString(),
+                    'period_end_date' => $dates->max('leave_date'),
                     'transaction_type' => 'LEAVE_CANCELLED',
                     'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
                     'credit_vl' => floatval($restored['VL'] ?? 0),
@@ -885,7 +887,8 @@ class LeaveManagerController extends Controller
                 try {
                     app(LeaveLedgerService::class)->writeLedgerEntry([
                         'user_id' => $leave->user_id,
-                        'transaction_date' => now()->toDateString(),
+                        'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                        'period_end_date' => $leave->end_date,
                         'transaction_type' => 'LEAVE_CANCELLED',
                         'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
                         'credit_vl' => floatval($applied['VL'] ?? 0),
@@ -1357,21 +1360,28 @@ class LeaveManagerController extends Controller
 
         $entries = app(LeaveLedgerService::class)->getLedgerHistory($userId, $filters);
 
-        $data = $entries->map(fn ($e) => [
-            'date' => $e->transaction_date?->toDateString(),
-            'type' => $e->transaction_type,
-            'leave_type' => $e->leave_type,
-            'days_present' => $e->days_present !== null ? number_format($e->days_present, 3) : '-',
-            'abs_wop_days' => $e->abs_wop_days !== null ? number_format($e->abs_wop_days, 3) : '-',
-            'credit_vl' => number_format($e->credit_vl ?? 0, 3),
-            'credit_sl' => number_format($e->credit_sl ?? 0, 3),
-            'debit_vl' => number_format($e->debit_vl ?? 0, 3),
-            'debit_sl' => number_format($e->debit_sl ?? 0, 3),
-            'vl_balance_after' => number_format($e->vl_balance_after, 3),
-            'sl_balance_after' => number_format($e->sl_balance_after, 3),
-            'remarks' => $e->remarks,
-            'posted_by' => $e->is_system ? 'System' : ($e->createdBy ? trim(($e->createdBy->last_name ?? '').', '.($e->createdBy->first_name ?? '')) : '-'),
-        ])->values();
+        $data = $entries->map(function ($e) {
+            $date = $e->transaction_date?->toDateString();
+            if ($e->period_end_date && ! $e->period_end_date->equalTo($e->transaction_date)) {
+                $date .= ' – '.$e->period_end_date->toDateString();
+            }
+
+            return [
+                'date' => $date,
+                'type' => $e->transaction_type,
+                'leave_type' => $e->leave_type,
+                'days_present' => $e->days_present !== null ? number_format($e->days_present, 3) : '-',
+                'abs_wop_days' => $e->abs_wop_days !== null ? number_format($e->abs_wop_days, 3) : '-',
+                'credit_vl' => number_format($e->credit_vl ?? 0, 3),
+                'credit_sl' => number_format($e->credit_sl ?? 0, 3),
+                'debit_vl' => number_format($e->debit_vl ?? 0, 3),
+                'debit_sl' => number_format($e->debit_sl ?? 0, 3),
+                'vl_balance_after' => number_format($e->vl_balance_after, 3),
+                'sl_balance_after' => number_format($e->sl_balance_after, 3),
+                'remarks' => $e->remarks,
+                'posted_by' => $e->is_system ? 'System' : ($e->createdBy ? trim(($e->createdBy->last_name ?? '').', '.($e->createdBy->first_name ?? '')) : '-'),
+            ];
+        })->values();
 
         return response()->json(['data' => $data]);
     }

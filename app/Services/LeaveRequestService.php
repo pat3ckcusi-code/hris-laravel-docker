@@ -758,7 +758,8 @@ class LeaveRequestService
                         try {
                             app(LeaveLedgerService::class)->writeLedgerEntry([
                                 'user_id' => $original->user_id,
-                                'transaction_date' => now()->toDateString(),
+                                'transaction_date' => $datesToCancel->min('leave_date') ?? now()->toDateString(),
+                                'period_end_date' => $datesToCancel->max('leave_date'),
                                 'transaction_type' => 'LEAVE_CANCELLED',
                                 'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
                                 'credit_vl' => floatval($restored['VL'] ?? 0),
@@ -1093,7 +1094,8 @@ class LeaveRequestService
         try {
             app(LeaveLedgerService::class)->writeLedgerEntry([
                 'user_id' => $leave->user_id,
-                'transaction_date' => now()->toDateString(),
+                'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                'period_end_date' => $leave->end_date,
                 'transaction_type' => 'LEAVE_USED',
                 'leave_type' => $column ?? 'OTHER',
                 'debit_vl' => $deductionLog['VL'] ?? 0,

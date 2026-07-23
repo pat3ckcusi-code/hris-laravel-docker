@@ -32,6 +32,7 @@ class LeaveLedger extends Model
     protected $fillable = [
         'user_id',
         'transaction_date',
+        'period_end_date',
         'transaction_type',
         'leave_type',
         'days_present',
@@ -51,6 +52,7 @@ class LeaveLedger extends Model
 
     protected $casts = [
         'transaction_date' => 'date',
+        'period_end_date' => 'date',
         'days_present' => 'float',
         'abs_wop_days' => 'float',
         'debit_vl' => 'float',
