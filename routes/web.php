@@ -348,6 +348,8 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
     Route::post('/api/travel-orders', [TravelOrderController::class, 'store'])->name('api.travel-orders');
     Route::get('/api/department/travel-orders', [TravelOrderController::class, 'index'])->name('api.department.travel-orders');
     Route::get('/api/travel-orders/{id}', [TravelOrderController::class, 'show'])->name('api.travel-orders.show');
+    Route::get('/api/travel-orders/{id}/print', [TravelOrderController::class, 'printExcel'])->name('api.travel-orders.print');
+    Route::put('/api/travel-orders/{id}', [TravelOrderController::class, 'update'])->name('api.travel-orders.update');
     Route::post('/api/office-orders', [OfficeOrderController::class, 'store'])->name('api.office-orders');
     Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
     Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
@@ -359,6 +361,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     // Office order page / file routes (not under throttle:api - a 429 here would be
     // saved by the browser as the .docx download and open as a "corrupted" file)
     Route::get('/office-orders/{id}/edit', [OfficeOrderController::class, 'edit'])->name('office-orders.edit');
+    Route::get('/travel-orders/{id}/edit', [TravelOrderController::class, 'edit'])->name('travel-orders.edit');
     Route::get('/office-orders/{id}/print', [OfficeOrderController::class, 'print'])->name('office-orders.print');
     Route::get('/office-orders/{id}/word', [OfficeOrderController::class, 'downloadWord'])->name('office-orders.word');
 

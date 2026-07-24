@@ -27,8 +27,6 @@
                 @yield('top_actions')
             </div>
 
-            <p>{{ $subtitle ?? 'Welcome to your dashboard.' }}</p>
-
             <section class="grid">
                 @yield('tiles')
             </section>

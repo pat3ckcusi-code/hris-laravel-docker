@@ -12,6 +12,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $travel_order_num
  * @property string|null $purpose
  * @property string|null $destination
+ * @property string|null $per_diem
+ * @property string|null $appropriation
+ * @property string|null $report_to
+ * @property Carbon|null $date_of_last_travel
  * @property Carbon|null $start_date
  * @property Carbon|null $end_date
  * @property string|null $Remarks
@@ -36,6 +40,10 @@ class TravelOrder extends Model
         'travel_order_num',
         'purpose',
         'destination',
+        'per_diem',
+        'appropriation',
+        'report_to',
+        'date_of_last_travel',
         'start_date',
         'end_date',
         'Remarks',
@@ -52,6 +60,7 @@ class TravelOrder extends Model
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
+        'date_of_last_travel' => 'date',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
     ];

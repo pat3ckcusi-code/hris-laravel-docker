@@ -1,68 +1,94 @@
 @extends('dashboards.layout', [
     'title' => 'Department Statistics',
-    'subtitle' => 'Employee ETA / Locator Usage',
 ])
 
 @section('page_head')
-    @include('partials.table-styles')
+<style>
+    /* DataTables' own generated controls, reskinned to match the app's filter/pagination look */
+    .dataTables_wrapper .dataTables_filter input {
+        padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.375rem;
+        font-size: 0.875rem; margin-left: 0.5rem; background: #fff; color: #1e293b;
+    }
+    .dataTables_wrapper .dataTables_filter input:focus {
+        outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    .dataTables_wrapper .dataTables_length select {
+        padding: 0.4rem 0.6rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 0.875rem;
+    }
+    .dataTables_wrapper .dataTables_info { color: #64748b; font-size: 0.875rem; padding-top: 0.75rem; }
+    .dataTables_wrapper .dataTables_paginate { padding-top: 0.75rem; }
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        padding: 0.4rem 0.75rem; margin-left: 0.25rem; border-radius: 0.375rem;
+        border: 1px solid #cbd5e1 !important; background: #fff !important; color: #475569 !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+        background: #3b82f6 !important; border-color: #3b82f6 !important; color: #fff !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.disabled) {
+        background: #f0f9ff !important; border-color: #3b82f6 !important; color: #3b82f6 !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled { opacity: 0.5; cursor: not-allowed; }
+    .dataTables_wrapper .dataTables_processing {
+        background: rgba(255,255,255,0.9); border-radius: 0.5rem; font-weight: 600; color: #475569;
+    }
+
+    /* Usage detail dialogs */
+    .dialog-table { border-collapse: collapse; }
+    .dialog-table th, .dialog-table td { border: 1px solid #e2e8f0; }
+    .dialog-table thead th { padding: 0.6rem 0.75rem; }
+    .dialog-table tbody td { padding: 0.6rem 0.75rem; }
+
+    .stats-footnote { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 0.85rem; padding: 0.85rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+</style>
 @endsection
 
 @section('content')
-<div class="top">
-    <div>
-        <h1>Employee ETA / Locator Usage</h1>
-    </div>
-</div>
-
-<section>
-    <div class="card">
-        @php
-            $prev = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
-            $next = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
-        @endphp
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div style="display:flex;gap:10px;align-items:center;">
-                <button class="month-nav" id="prevMonthBtn" data-month="{{ $prev->format('n') }}" data-year="{{ $prev->format('Y') }}">&laquo; Prev</button>
-                <div class="font-weight-bold month-label">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
-                <button class="month-nav" id="nextMonthBtn" data-month="{{ $next->format('n') }}" data-year="{{ $next->format('Y') }}">Next &raquo;</button>
-            </div>
-            <div style="display:flex;gap:10px;align-items:center;">
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="stats-type-filter">Employee Type</label>
-                    <select id="stats-type-filter" class="hris-filter-select">
-                        <option value="">All Types</option>
-                        <option value="Permanent">Permanent</option>
-                        <option value="Elected Officials">Elected Officials</option>
-                        <option value="Co-Terminus">Co-Terminus</option>
-                        <option value="Casual">Casual</option>
-                        <option value="Job Orders">Job Orders</option>
-                        <option value="Contractual">Contractual</option>
-                    </select>
-                </div>
-                <button class="month-nav" id="monthToday">This Month</button>
-            </div>
+@php
+    $prev = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
+    $next = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
+@endphp
+<x-hris.table-layout
+    title="Employee Usage This Month"
+    subtitle="ETA, Locator, and Leave usage based on approved applications."
+    :showSearch="false"
+    :showMonthFilter="false"
+>
+    <x-slot:filters>
+        <div class="hris-filter-left" style="align-items:center;">
+            <button class="month-nav" id="prevMonthBtn" data-month="{{ $prev->format('n') }}" data-year="{{ $prev->format('Y') }}">&laquo; Prev</button>
+            <div class="font-weight-bold month-label">{{ date('F', mktime(0,0,0,$month,1,$year)) }} {{ $year }}</div>
+            <button class="month-nav" id="nextMonthBtn" data-month="{{ $next->format('n') }}" data-year="{{ $next->format('Y') }}">Next &raquo;</button>
+            <button class="month-nav" id="monthToday">This Month</button>
         </div>
-
-        <div style="overflow:auto;">
-            <table id="stats-table" class="stats-table leave-table hris-table" style="width:100%">
-                <thead>
-                    <tr>
-                        <th>Employee Number</th>
-                        <th>Employee Name</th>
-                        <th>Department</th>
-                        <th class="text-center">Leave</th>
-                        <th class="text-center">ETA Usage</th>
-                        <th class="text-center">Locator Usage</th>
-                        <th class="text-center">Total Usage</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+        <div class="hris-filter-group">
+            <label class="hris-filter-label" for="stats-type-filter">Employee Type</label>
+            <select id="stats-type-filter" class="hris-filter-select">
+                <option value="">All Types</option>
+                <option value="Permanent">Permanent</option>
+                <option value="Elected Officials">Elected Officials</option>
+                <option value="Co-Terminus">Co-Terminus</option>
+                <option value="Casual">Casual</option>
+                <option value="Job Orders">Job Orders</option>
+                <option value="Contractual">Contractual</option>
+            </select>
         </div>
+    </x-slot:filters>
 
-        <div style="margin-top:12px;color:#64748b;font-size:0.95rem;">Showing ETA, Locator and Leave usage based on approved applications</div>
-    </div>
-</section>
+    <table id="stats-table" class="hris-table" style="width:100%">
+        <thead>
+            <tr>
+                <th>Employee Number</th>
+                <th>Employee Name</th>
+                <th>Department</th>
+                <th class="text-center">Leave</th>
+                <th class="text-center">ETA Usage</th>
+                <th class="text-center">Locator Usage</th>
+                <th class="text-center">Total Usage</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</x-hris.table-layout>
 
 <!-- Modals using native dialog -->
 <dialog id="etaUsageModal" class="employee-modal" style="max-width:900px;width:90%;">
@@ -72,7 +98,7 @@
     </div>
     <div class="dialog-body">
         <div style="overflow:auto;">
-            <table class="stats-table dialog-table leave-table" style="min-width:600px;">
+            <table class="dialog-table" style="min-width:600px;width:100%;">
                 <thead><tr><th>Travel Date</th><th>Business Type</th><th>Destination</th><th>Travel Detail</th></tr></thead>
                 <tbody id="etaModalBody"><tr><td colspan="4" class="text-center text-muted">No records.</td></tr></tbody>
             </table>
@@ -87,7 +113,7 @@
     </div>
     <div class="dialog-body">
         <div style="overflow:auto;">
-            <table class="stats-table dialog-table leave-table" style="min-width:800px;">
+            <table class="dialog-table" style="min-width:800px;width:100%;">
                 <thead><tr><th>Travel Date</th><th>Intended Departure</th><th>Intended Arrival</th><th>Destination</th><th>Business Type</th><th>Travel Detail</th><th>Arrival Time</th></tr></thead>
                 <tbody id="locatorModalBody"><tr><td colspan="7" class="text-center text-muted">No records.</td></tr></tbody>
             </table>
@@ -102,7 +128,7 @@
     </div>
     <div class="dialog-body">
         <div style="overflow:auto;">
-            <table class="stats-table dialog-table leave-table" style="min-width:700px;">
+            <table class="dialog-table" style="min-width:700px;width:100%;">
                 <thead><tr><th>Start Date</th><th>End Date</th><th>Leave Type</th><th>Days</th><th>Reason</th></tr></thead>
                 <tbody id="leaveModalBody"><tr><td colspan="5" class="text-center text-muted">No records.</td></tr></tbody>
             </table>

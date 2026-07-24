@@ -1,17 +1,41 @@
 @extends('dashboards.layout', [
     'title' => 'Office Orders',
-    'subtitle' => 'Manage office orders and communications',
+    'subtitle' => 'Issue an internal memo to employees in your department.',
 ])
 
-@section('tiles')
-    <article class="tile">
-        <strong>Office Orders</strong>
-        List and manage office orders for your department.
-    </article>
+@section('page_head')
+<style>
+    #employeesList .form-check { transition: background-color 0.12s ease; border-radius: 6px; }
+    #employeesList .form-check:hover { background: #fff7ed; }
+    .oo-info-banner {
+        display: flex; align-items: flex-start; gap: 10px;
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem;
+        padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.875rem; color: #475569;
+    }
+    .oo-info-banner i { color: var(--accent, #ea580c); margin-top: 2px; }
+    .oo-section-title {
+        font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 0.6rem;
+    }
+</style>
 @endsection
+
 @section('content')
 @php $isEdit = isset($order); @endphp
 <div class="card mb-4 shadow-lg border-0 rounded-lg pro-travel-card">
+    <div class="card-header d-flex" style="padding:1.1rem 1.5rem; justify-content:space-between; align-items:center;">
+        <div>
+            <h3 class="card-title" style="margin:0; display:flex; align-items:center; gap:0.5rem;">
+                <i class="fas fa-file-signature"></i> {{ $isEdit ? 'Edit Office Order' : 'New Office Order' }}
+            </h3>
+            <div class="text-muted" style="font-size:0.85rem; margin-top:2px;">
+                {{ $isEdit ? 'Office Order No. ' . $order->office_order_num . ' — number is preserved' : 'Number is auto-assigned (format: YYYY - NNN)' }}
+            </div>
+        </div>
+        @if ($isEdit)
+            <span class="badge badge-warning">Editing</span>
+        @endif
+    </div>
     <div class="card-body p-4">
         <form id="officeOrderForm"
               action="{{ $isEdit ? route('api.office-orders.update', $order->id) : route('api.office-orders') }}"
@@ -19,15 +43,12 @@
             <input type="hidden" name="_token" value="{{ csrf_token() }}">
             @if ($isEdit)<input type="hidden" name="_method" value="PUT">@endif
 
-            <div class="mb-3 p-2 rounded bg-light border" style="font-size:0.95em;">
-                <div><strong>From:</strong> <span class="text-muted">Department Head of the recipients' department (set automatically on the document).</span></div>
-                @if ($isEdit)
-                    <div class="text-muted" style="font-size:0.9em;">Editing Office Order No. <strong>{{ $order->office_order_num }}</strong> (number is preserved).</div>
-                @else
-                    <div class="text-muted" style="font-size:0.9em;">Office Order No. is auto-assigned (format: YYYY - NNN).</div>
-                @endif
+            <div class="oo-info-banner">
+                <i class="fas fa-circle-info"></i>
+                <div><strong>From:</strong> Department Head of the recipients' department (set automatically on the document).</div>
             </div>
 
+            <div class="oo-section-title">Recipients</div>
             <div class="mb-4">
                 <label class="font-weight-bold mb-2">To (Recipients) <span class="text-muted" style="font-size:0.95em;">(choose one or more)</span></label>
                 <div class="d-flex align-items-center mb-2">
@@ -51,6 +72,7 @@
 
             </div>
 
+            <div class="oo-section-title">Content</div>
             <div class="field-grid">
                 <label>
                     Subject
@@ -73,7 +95,9 @@
             </div>
 
             <div class="text-right">
-                <button type="submit" class="btn btn-lg btn-primary px-5 shadow-sm" id="submitOfficeOrder" style="font-weight:600; letter-spacing:0.5px;">{{ $isEdit ? 'Update Office Order' : 'Submit Office Order' }}</button>
+                <button type="submit" class="btn btn-lg btn-primary px-5 shadow-sm" id="submitOfficeOrder" style="font-weight:600; letter-spacing:0.5px;">
+                    <i class="fas {{ $isEdit ? 'fa-save' : 'fa-paper-plane' }}"></i> {{ $isEdit ? 'Update Office Order' : 'Submit Office Order' }}
+                </button>
             </div>
         </form>
     </div>
