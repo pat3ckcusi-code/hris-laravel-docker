@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\Holiday;
 use App\Models\LeaveRequest;
 use App\Models\PayrollException;
@@ -750,19 +751,65 @@ class HRDashboardService
         $prev30Start = now()->subDays(60)->startOfDay();
         $prev30End = now()->subDays(30)->startOfDay();
 
-        $hiredLast30 = (int) User::query()->where('date_hired', '>=', $now30Start)->count();
+        $hiredLast30 = (int) User::query()->whereBetween('date_hired', [$now30Start, now()])->count();
         $hiredPrev30 = (int) User::query()->where('date_hired', '>=', $prev30Start)->where('date_hired', '<', $prev30End)->count();
-        $separatedLast30 = (int) User::query()->whereIn('Status', ['Separated', 'Inactive'])->where('updated_at', '>=', $now30Start)->count();
-        $separatedPrev30 = (int) User::query()->whereIn('Status', ['Separated', 'Inactive'])->where('updated_at', '>=', $prev30Start)->where('updated_at', '<', $prev30End)->count();
+        $separatedLast30 = (int) HRAuditTrail::query()
+            ->where('module', 'records')
+            ->where('action', 'status_changed')
+            ->whereIn('details->new_status', [User::STATUS_SEPARATED, User::STATUS_INACTIVE])
+            ->where('created_at', '>=', $now30Start)
+            ->count();
+        $separatedPrev30 = (int) HRAuditTrail::query()
+            ->where('module', 'records')
+            ->where('action', 'status_changed')
+            ->whereIn('details->new_status', [User::STATUS_SEPARATED, User::STATUS_INACTIVE])
+            ->where('created_at', '>=', $prev30Start)
+            ->where('created_at', '<', $prev30End)
+            ->count();
 
         $hiredPctChange = $hiredPrev30 > 0 ? round((($hiredLast30 - $hiredPrev30) / $hiredPrev30) * 100, 1) : ($hiredLast30 > 0 ? 100.0 : 0.0);
         $separatedPctChange = $separatedPrev30 > 0 ? round((($separatedLast30 - $separatedPrev30) / $separatedPrev30) * 100, 1) : ($separatedLast30 > 0 ? 100.0 : 0.0);
 
-        $trendLabels = $trendValues = [];
+        $trendLabels = $trendFullLabels = $trendHired = $trendSeparated = $trendHiredDetails = $trendSeparatedDetails = [];
         for ($i = 11; $i >= 0; $i--) {
             $dt = now()->subMonths($i);
             $trendLabels[] = $dt->format('M');
-            $trendValues[] = (int) User::query()->whereYear('date_hired', $dt->year)->whereMonth('date_hired', $dt->month)->count();
+            $trendFullLabels[] = $dt->format('F Y');
+
+            $hiredRows = User::query()
+                ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+                ->whereYear('users.date_hired', $dt->year)
+                ->whereMonth('users.date_hired', $dt->month)
+                ->where('users.date_hired', '<=', now())
+                ->orderBy('users.date_hired')
+                ->get(['users.name', 'users.date_hired', 'departments.Dept_name']);
+            $trendHired[] = $hiredRows->count();
+            $trendHiredDetails[] = $hiredRows->map(fn ($u) => [
+                'name' => $u->name,
+                'department' => $u->Dept_name ?? 'N/A',
+                'date' => $u->date_hired ? Carbon::parse($u->date_hired)->toDateString() : null,
+            ])->values()->all();
+
+            $separatedAudit = HRAuditTrail::query()
+                ->where('module', 'records')
+                ->where('action', 'status_changed')
+                ->whereIn('details->new_status', [User::STATUS_SEPARATED, User::STATUS_INACTIVE])
+                ->whereYear('created_at', $dt->year)
+                ->whereMonth('created_at', $dt->month)
+                ->orderBy('created_at')
+                ->get(['target_id', 'details', 'created_at']);
+            $trendSeparated[] = $separatedAudit->count();
+
+            $sepDeptByUserId = User::query()
+                ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+                ->whereIn('users.id', $separatedAudit->pluck('target_id')->filter())
+                ->pluck('departments.Dept_name', 'users.id');
+
+            $trendSeparatedDetails[] = $separatedAudit->map(fn ($row) => [
+                'name' => $row->details['employee_name'] ?? 'Unknown',
+                'department' => $sepDeptByUserId->get($row->target_id) ?? 'N/A',
+                'date' => optional($row->created_at)->toDateString(),
+            ])->values()->all();
         }
 
         return [
@@ -774,7 +821,14 @@ class HRDashboardService
                 'separated_pct_change' => $separatedPctChange,
                 'net' => $hiredLast30 - $separatedLast30,
             ],
-            'trend' => ['labels' => $trendLabels, 'values' => $trendValues],
+            'trend' => [
+                'labels' => $trendLabels,
+                'full_labels' => $trendFullLabels,
+                'hired' => $trendHired,
+                'separated' => $trendSeparated,
+                'hired_details' => $trendHiredDetails,
+                'separated_details' => $trendSeparatedDetails,
+            ],
         ];
     }
 

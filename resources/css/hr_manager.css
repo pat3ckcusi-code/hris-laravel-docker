@@ -112,6 +112,44 @@
     height: 290px;
 }
 
+/* Workforce Trend modal (Hiring & Separation Trend chart drill-down) */
+.wtm-modal-box {
+    max-width: 640px;
+}
+
+.wtm-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: -0.25rem 0 1.1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.wtm-modal-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    font-size: 1.05rem;
+    background: #cffafe;
+    color: #0e7490;
+}
+
+.wtm-modal-icon.wtm-icon-separated {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.wtm-modal-subtitle {
+    margin: 0.2rem 0 0;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
 .hrm-module {
     margin-top: 1rem;
 }

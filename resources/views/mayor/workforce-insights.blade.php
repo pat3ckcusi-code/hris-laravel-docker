@@ -28,8 +28,34 @@
             </div>
 
             <div class="hrm-chart-card">
-                <h4>12-Month Hiring Trend</h4>
+                <h4>12-Month Hiring &amp; Separation Trend</h4>
+                <small style="color:#64748b;">Click a bar to view the employees behind that month's count.</small>
                 <div class="hrm-chart-wrap hrm-chart-wrap-sm"><canvas id="hiringTrendChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="workforceTrendModal">
+            <div class="modal-box wtm-modal-box">
+                <button type="button" class="modal-close">&times;</button>
+                <div class="wtm-modal-header">
+                    <span class="wtm-modal-icon" id="workforceTrendModalIcon"><i class="fas fa-user"></i></span>
+                    <div>
+                        <h3 id="workforceTrendModalTitle" style="margin:0;"></h3>
+                        <p id="workforceTrendModalSubtitle" class="wtm-modal-subtitle"></p>
+                    </div>
+                </div>
+                <div class="hris-table-wrapper">
+                    <table class="hris-table">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workforceTrendModalBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </section>

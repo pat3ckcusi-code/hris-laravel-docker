@@ -833,6 +833,78 @@ const bindWorkforcePlanning = (root) => {
     let loaded = false;
     let hiringChart = null;
 
+    const trendModal = document.getElementById('workforceTrendModal');
+    const trendModalIcon = document.getElementById('workforceTrendModalIcon');
+    const trendModalTitle = document.getElementById('workforceTrendModalTitle');
+    const trendModalSubtitle = document.getElementById('workforceTrendModalSubtitle');
+    const trendModalBody = document.getElementById('workforceTrendModalBody');
+
+    const closeTrendModal = () => trendModal?.classList.remove('active');
+
+    const formatTrendDate = (iso) => {
+        if (!iso) return '';
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const showTrendModal = (type, month, employees) => {
+        if (!trendModal || !trendModalTitle || !trendModalBody) return;
+
+        const isHired = type === 'hired';
+        const count = employees?.length || 0;
+
+        trendModalTitle.textContent = isHired ? 'Hired' : 'Separated';
+        if (trendModalSubtitle) {
+            trendModalSubtitle.textContent = `${month} · ${count} employee${count === 1 ? '' : 's'}`;
+        }
+        if (trendModalIcon) {
+            trendModalIcon.classList.toggle('wtm-icon-separated', !isHired);
+            trendModalIcon.innerHTML = `<i class="fas ${isHired ? 'fa-user-plus' : 'fa-user-minus'}"></i>`;
+        }
+
+        trendModalBody.innerHTML = '';
+
+        if (!count) {
+            const emptyRow = document.createElement('tr');
+            const emptyCell = document.createElement('td');
+            emptyCell.colSpan = 3;
+            emptyCell.innerHTML = `
+                <div class="hris-empty-state">
+                    <div class="hris-empty-state-icon"><i class="fas fa-user-slash"></i></div>
+                    <div class="hris-empty-state-title">No Employees</div>
+                    <p class="hris-empty-state-text">No employees for this month.</p>
+                </div>
+            `;
+            emptyRow.appendChild(emptyCell);
+            trendModalBody.appendChild(emptyRow);
+        } else {
+            employees.forEach((e) => {
+                const row = document.createElement('tr');
+
+                const nameCell = document.createElement('td');
+                nameCell.textContent = e.name;
+
+                const deptCell = document.createElement('td');
+                deptCell.textContent = e.department || 'N/A';
+
+                const dateCell = document.createElement('td');
+                dateCell.textContent = formatTrendDate(e.date);
+
+                row.appendChild(nameCell);
+                row.appendChild(deptCell);
+                row.appendChild(dateCell);
+                trendModalBody.appendChild(row);
+            });
+        }
+
+        trendModal.classList.add('active');
+    };
+
+    trendModal?.querySelector('.modal-close')?.addEventListener('click', closeTrendModal);
+    trendModal?.addEventListener('click', (e) => {
+        if (e.target === trendModal) closeTrendModal();
+    });
+
     const loadPlanningData = () => {
         fetch(planningUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then((r) => r.json())
@@ -862,9 +934,39 @@ const bindWorkforcePlanning = (root) => {
                     netEl.querySelector('h3').style.color = net >= 0 ? '#28a745' : '#dc3545';
                 }
 
-                // Hiring trend chart
+                // Hiring & separation trend chart
                 if (data.trend && !hiringChart) {
-                    hiringChart = createBarChart('hiringTrendChart', 'New Hires', data.trend, colorSet.cyan);
+                    hiringChart = new Chart(document.getElementById('hiringTrendChart')?.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: data.trend.labels,
+                            datasets: [
+                                { label: 'Hired', data: data.trend.hired, backgroundColor: colorSet.cyan, borderRadius: 6 },
+                                { label: 'Separated', data: data.trend.separated, backgroundColor: colorSet.red, borderRadius: 6 },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: true, position: 'bottom' } },
+                            interaction: { mode: 'nearest', intersect: true },
+                            onHover: (evt, elements) => {
+                                if (evt.native?.target) {
+                                    evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                                }
+                            },
+                            onClick: (evt, elements) => {
+                                if (!elements.length) return;
+
+                                const { datasetIndex, index } = elements[0];
+                                const isHired = datasetIndex === 0;
+                                const month = data.trend.full_labels?.[index] || data.trend.labels[index];
+                                const details = (isHired ? data.trend.hired_details : data.trend.separated_details)?.[index] || [];
+
+                                showTrendModal(isHired ? 'hired' : 'separated', month, details);
+                            },
+                        },
+                    });
                 }
             })
             .catch(() => { /* Silently ignore */ });
