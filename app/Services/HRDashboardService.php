@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Department;
-use App\Models\HRAuditTrail;
 use App\Models\Holiday;
+use App\Models\HRAuditTrail;
 use App\Models\LeaveRequest;
 use App\Models\PayrollException;
 use App\Models\PayrollRun;
@@ -39,9 +39,7 @@ class HRDashboardService
     {
         $chartData = $this->buildChartData(null);
 
-        $totalEmployees = collect($chartData['workforce_per_department']['datasets'])
-            ->flatMap(fn ($ds) => $ds['data'])
-            ->sum();
+        $totalEmployees = User::query()->realEmployee()->count();
 
         $typeMap = array_combine(
             $chartData['employment_status']['labels'],

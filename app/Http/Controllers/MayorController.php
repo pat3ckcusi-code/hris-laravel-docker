@@ -656,13 +656,8 @@ class MayorController extends Controller
         return view('mayor.settings');
     }
 
-    /**
-     * Seeded demo/role accounts (UsersTableSeeder) use an @example.com email and aren't real
-     * employees — exclude them from employee counts and listings. Also exclude
-     * Inactive/Separated employees, per User::scopeActive()'s null-Status-is-active convention.
-     */
     private function realEmployeeQuery(): Builder
     {
-        return User::query()->active()->where('email', 'not like', '%@example.com');
+        return User::query()->realEmployee();
     }
 }

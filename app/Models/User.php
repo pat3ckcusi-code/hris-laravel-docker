@@ -156,6 +156,16 @@ class User extends Authenticatable
         });
     }
 
+    /**
+     * Seeded demo/role accounts (UsersTableSeeder) use an @example.com email and aren't
+     * real employees. Combined with scopeActive(), this is the canonical "real, currently
+     * active staff member" definition used for headline employee-count totals.
+     */
+    public function scopeRealEmployee(Builder $query): Builder
+    {
+        return $query->active()->where('email', 'not like', '%@example.com');
+    }
+
     public function isActive(): bool
     {
         return ! $this->isInactive() && ! $this->isSeparated();
