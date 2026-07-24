@@ -142,7 +142,7 @@
                             <th>Position Title</th>
                             <th>Department / Office</th>
                             <th>SG</th>
-                            <th>Step</th>
+                            <th>Budgeted Step</th>
                             <th>Type</th>
                         </tr>
                     </thead>

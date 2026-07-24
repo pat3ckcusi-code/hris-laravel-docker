@@ -437,7 +437,7 @@ class CscPlantillaImportService
             $expectedIncumbent[$plantilla->id] = $userId;
             $report['matched']++;
 
-            $this->upsertAssignment($userId, $plantilla->id, $report);
+            $this->upsertAssignment($userId, $plantilla->id, $plantilla->step, $report);
 
             $dates = array_filter([
                 'date_of_original_appointment' => $item['original_appointment'],
@@ -455,7 +455,7 @@ class CscPlantillaImportService
         $this->reportDesignatedUnassigned($report);
     }
 
-    private function upsertAssignment(int $userId, int $plantillaId, array &$report): void
+    private function upsertAssignment(int $userId, int $plantillaId, int $plantillaStep, array &$report): void
     {
         $active = EmployeeAssignment::where('employee_id', $userId)
             ->whereNull('end_date')
@@ -474,9 +474,14 @@ class CscPlantillaImportService
             $replaced = true;
         }
 
+        // Unlike a fresh assignment made through the Plantilla screens, this
+        // reflects an already-serving incumbent per the official CSC roster,
+        // so the assignment's step mirrors the imported item's own step
+        // rather than resetting to 1.
         EmployeeAssignment::create([
             'employee_id' => $userId,
             'plantilla_id' => $plantillaId,
+            'step' => $plantillaStep,
             'start_date' => self::ASSIGNMENT_START,
         ]);
 

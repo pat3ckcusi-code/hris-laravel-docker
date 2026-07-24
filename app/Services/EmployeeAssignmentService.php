@@ -25,7 +25,13 @@ class EmployeeAssignmentService
             return;
         }
 
-        $active->update(['end_date' => now()->toDateString()]);
+        if ($active->start_date->isFuture()) {
+            // Hasn't taken effect yet - remove outright rather than leave an
+            // inverted (end < start) range behind, mirroring promote()/store().
+            $active->delete();
+        } else {
+            $active->update(['end_date' => now()->toDateString()]);
+        }
 
         User::where('id', $employeeId)->update([
             'salary_grade' => null,

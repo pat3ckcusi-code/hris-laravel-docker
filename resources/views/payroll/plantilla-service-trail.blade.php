@@ -23,7 +23,12 @@
 
     @if($employee)
         @php
-            $current = $assignments->firstWhere('end_date', null);
+            $today = \Illuminate\Support\Carbon::today();
+            // The assignment actually in effect today - not just whichever
+            // row happens to be open-ended, since that can be a not-yet-
+            // started future promotion.
+            $current = $assignments->first(fn ($a) => $a->start_date->lte($today) && (! $a->end_date || $a->end_date->gte($today)));
+            $upcoming = ! $current ? $assignments->first(fn ($a) => ! $a->end_date && $a->start_date->isFuture()) : null;
             $initials = mb_strtoupper(mb_substr($employee->first_name ?: $employee->name, 0, 1).mb_substr($employee->last_name ?: '', 0, 1));
         @endphp
 
@@ -35,8 +40,11 @@
                 <div class="profile-position">
                     @if($current && $current->plantilla)
                         {{ $current->plantilla->title }}
-                        <span class="sg-badge">SG {{ $current->plantilla->salary_grade }} · Step {{ $current->plantilla->step }}</span>
+                        <span class="sg-badge">SG {{ $current->plantilla->salary_grade }} · Step {{ $current->step }}</span>
                         @if($current->plantilla->item_number)<span class="item-badge">Item {{ $current->plantilla->item_number }}</span>@endif
+                    @elseif($upcoming && $upcoming->plantilla)
+                        {{ $upcoming->plantilla->title }}
+                        <span class="text-muted">(starts {{ $upcoming->start_date->format('M d, Y') }})</span>
                     @else
                         No active plantilla assignment
                     @endif
@@ -61,22 +69,30 @@
             @if($assignments->count())
                 <ul class="trail-timeline">
                     @foreach($assignments as $a)
-                        <li class="trail-entry {{ $a->end_date ? '' : 'trail-active' }}">
+                        @php
+                            $periodLabel = $a->isSuperseded()
+                                ? 'superseded before it took effect'
+                                : ($a->start_date?->format('M d, Y') ?? '-').' – '.($a->end_date?->format('M d, Y') ?? 'present');
+                            $isCurrentlyActive = ! $a->end_date && ! $a->start_date?->isFuture();
+                        @endphp
+                        <li class="trail-entry {{ $isCurrentlyActive ? 'trail-active' : '' }}">
                             <div class="trail-period">
-                                {{ $a->start_date?->format('M d, Y') ?? '-' }}
-                                &ndash;
-                                {{ $a->end_date?->format('M d, Y') ?? 'present' }}
+                                {{ $periodLabel }}
                             </div>
                             <div class="trail-card">
                                 <div class="trail-title">
                                     @if($a->plantilla)
                                         <a href="{{ route("{$routePrefix}.plantilla.show", $a->plantilla->id) }}">{{ $a->plantilla->title }}</a>
-                                        <span class="sg-badge">SG {{ $a->plantilla->salary_grade }} · Step {{ $a->plantilla->step }}</span>
+                                        <span class="sg-badge">SG {{ $a->plantilla->salary_grade }} · Step {{ $a->step }}</span>
                                         @if($a->plantilla->item_number)<span class="item-badge">Item {{ $a->plantilla->item_number }}</span>@endif
                                     @else
                                         <span class="text-muted">(position deleted)</span>
                                     @endif
-                                    @if(!$a->end_date)
+                                    @if($a->isSuperseded())
+                                        <span class="status-chip status-locked">Superseded before it took effect</span>
+                                    @elseif($a->start_date?->isFuture())
+                                        <span class="status-chip status-draft">Not yet started</span>
+                                    @elseif($isCurrentlyActive)
                                         <span class="status-chip status-approved">Active</span>
                                     @endif
                                 </div>

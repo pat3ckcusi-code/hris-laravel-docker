@@ -1185,8 +1185,11 @@ class LeaveRequestService
         if (isset($assignment) && $assignment && $assignment->plantilla_id) {
             $plantilla = $plantilla ?? Plantilla::find($assignment->plantilla_id);
             if ($plantilla) {
+                // The incumbent's own step, not the position's budgeted step -
+                // matches PayrollComputationService's salary resolution so this
+                // printed figure can never disagree with actual payroll.
                 $matrix = SalaryMatrix::where('sg', $plantilla->salary_grade)
-                    ->where('step', $plantilla->step)
+                    ->where('step', $assignment->step)
                     ->orderByDesc('effective_date')
                     ->first();
                 $salary = $matrix ? number_format($matrix->amount, 2) : '';

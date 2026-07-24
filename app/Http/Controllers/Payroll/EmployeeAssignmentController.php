@@ -36,20 +36,40 @@ class EmployeeAssignmentController extends Controller
         $replaced = 0;
 
         if (! $request->filled('end_date')) {
-            $replaced = EmployeeAssignment::where('employee_id', $request->employee_id)
+            $newStart = Carbon::parse($request->start_date);
+            $priorOpen = EmployeeAssignment::where('employee_id', $request->employee_id)
                 ->whereNull('end_date')
-                ->update(['end_date' => Carbon::parse($request->start_date)->subDay()->toDateString()]);
+                ->get();
+            $replaced = $priorOpen->count();
+
+            foreach ($priorOpen as $prior) {
+                if ($prior->start_date->equalTo($newStart)) {
+                    // Being corrected before it ever took effect - delete outright
+                    // rather than leave an inverted (end < start) range behind.
+                    $prior->delete();
+                } else {
+                    // Otherwise truncate as usual - if this row's own start_date is
+                    // still in the future, this intentionally produces an inverted
+                    // range, kept for history (see EmployeeAssignment::isSuperseded()).
+                    $prior->update(['end_date' => $newStart->copy()->subDay()->toDateString()]);
+                }
+            }
         }
 
         EmployeeAssignment::create([
             'employee_id' => $request->employee_id,
             'plantilla_id' => $plantilla->id,
+            // A new incumbency always starts at step 1 - the plantilla's own
+            // step is a fixed position attribute, not the new hire's earned step.
+            'step' => 1,
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
         ]);
 
         $this->syncUserSalary((int) $request->employee_id);
+
         $this->logAssignmentAction('assignment_created', (int) $request->employee_id, $plantilla, [
+            'step' => 1,
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
             'previous_assignment_ended' => (bool) $replaced,
@@ -94,22 +114,38 @@ class EmployeeAssignmentController extends Controller
 
         $effective = Carbon::parse($request->effective_date);
         $from = $current->first()?->plantilla;
+        // The prior assignment's own (personal, possibly step-incremented)
+        // step - not the departing plantilla item's budgeted step.
+        $fromStep = $current->first()?->step;
 
-        DB::transaction(function () use ($current, $target, $employee, $effective, $from) {
+        DB::transaction(function () use ($current, $target, $employee, $effective, $from, $fromStep) {
             foreach ($current as $assignment) {
-                $assignment->update(['end_date' => $effective->copy()->subDay()->toDateString()]);
+                if ($assignment->start_date->equalTo($effective)) {
+                    // Being corrected before it ever took effect - delete outright
+                    // rather than leave an inverted (end < start) range behind.
+                    $assignment->delete();
+                } else {
+                    // Otherwise truncate as usual - if this row's own start_date is
+                    // still in the future, this intentionally produces an inverted
+                    // range, kept for history (see EmployeeAssignment::isSuperseded()).
+                    $assignment->update(['end_date' => $effective->copy()->subDay()->toDateString()]);
+                }
             }
 
             EmployeeAssignment::create([
                 'employee_id' => $employee->id,
                 'plantilla_id' => $target->id,
+                'step' => 1,
                 'start_date' => $effective->toDateString(),
             ]);
 
-            // Query-builder update: designation is intentionally not mass-assignable
+            // Query-builder update: designation is intentionally not mass-assignable.
+            // salary_step always resets to 1 on promotion - it's the employee's own
+            // earned step in the new position, not whatever the target item's
+            // fixed step value happens to be.
             User::where('id', $employee->id)->update([
                 'salary_grade' => $target->salary_grade,
-                'salary_step' => $target->step,
+                'salary_step' => 1,
                 'designation' => $target->title,
                 'date_of_last_promotion' => $effective->toDateString(),
             ]);
@@ -125,13 +161,16 @@ class EmployeeAssignmentController extends Controller
                         'item_number' => $from->item_number,
                         'title' => $from->title,
                         'salary_grade' => $from->salary_grade,
-                        'step' => $from->step,
+                        'step' => $fromStep,
                     ] : null,
                     'to' => [
                         'item_number' => $target->item_number,
                         'title' => $target->title,
                         'salary_grade' => $target->salary_grade,
-                        'step' => $target->step,
+                        // A new assignment always starts at step 1 (see
+                        // EmployeeAssignment::create() above) - never the
+                        // target position's own budgeted step.
+                        'step' => 1,
                     ],
                     'effective_date' => $effective->toDateString(),
                 ],
@@ -140,11 +179,10 @@ class EmployeeAssignmentController extends Controller
 
         return redirect()->route('payroll.plantilla.show', $target->id)
             ->with('status', sprintf(
-                '%s promoted to %s (SG %d Step %d) effective %s.',
+                '%s promoted to %s (SG %d, Step 1) effective %s.',
                 $employee->name,
                 $target->title,
                 $target->salary_grade,
-                $target->step,
                 $effective->format('M d, Y')
             ));
     }
@@ -177,6 +215,7 @@ class EmployeeAssignmentController extends Controller
             EmployeeAssignment::create([
                 'employee_id' => $request->employee_id,
                 'plantilla_id' => $plantilla->id,
+                'step' => $plantilla->step,
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
             ]);
@@ -207,17 +246,21 @@ class EmployeeAssignmentController extends Controller
         $plantilla = Plantilla::findOrFail($plantillaId);
         $assignment = EmployeeAssignment::where('plantilla_id', $plantilla->id)->findOrFail($id);
 
-        $request->validate([
+        $request->validateWithBag('editAssignment', [
             'start_date' => 'required|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            // The employee's own step for this stint - e.g. granting a step
+            // increment - distinct from the plantilla item's own catalog step.
+            'step' => 'required|integer|min:1|max:8',
         ]);
 
-        $assignment->update($request->only('start_date', 'end_date'));
+        $assignment->update($request->only('start_date', 'end_date', 'step'));
 
         $this->syncUserSalary($assignment->employee_id);
         $this->logAssignmentAction('assignment_updated', $assignment->employee_id, $plantilla, [
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
+            'step' => $request->step,
         ]);
 
         return redirect()->route('payroll.plantilla.show', $plantilla->id)
@@ -230,10 +273,12 @@ class EmployeeAssignmentController extends Controller
         $assignment = EmployeeAssignment::where('plantilla_id', $plantilla->id)->findOrFail($id);
 
         $employeeId = $assignment->employee_id;
+        $removedStep = $assignment->step;
         $assignment->delete();
 
         $this->syncUserSalary($employeeId);
         $this->logAssignmentAction('assignment_removed', $employeeId, $plantilla, [
+            'step' => $removedStep,
             'start_date' => $assignment->start_date?->toDateString(),
             'end_date' => $assignment->end_date?->toDateString(),
         ]);
@@ -244,6 +289,9 @@ class EmployeeAssignmentController extends Controller
 
     private function logAssignmentAction(string $action, int $employeeId, Plantilla $plantilla, array $details): void
     {
+        // No 'step' fallback here - the plantilla's own step is a budgeted
+        // catalog value, not what actually happened to the employee's
+        // assignment. Every caller must supply its own accurate 'step'.
         HRAuditTrail::create([
             'actor_user_id' => auth()->id(),
             'module' => 'payroll',
@@ -254,14 +302,16 @@ class EmployeeAssignmentController extends Controller
                 'item_number' => $plantilla->item_number,
                 'title' => $plantilla->title,
                 'salary_grade' => $plantilla->salary_grade,
-                'step' => $plantilla->step,
             ],
         ]);
     }
 
     /**
      * Keep the denormalized users.salary_grade/salary_step in step with the
-     * employee's remaining active assignment (or clear them when none).
+     * employee's remaining active assignment (or clear/reset them when none).
+     * salary_grade follows the position (plantilla.salary_grade); salary_step
+     * follows the assignment's own step, which is personal to this stint -
+     * never the plantilla's shared, position-level step.
      */
     private function syncUserSalary(int $employeeId): void
     {
@@ -273,7 +323,7 @@ class EmployeeAssignmentController extends Controller
 
         User::where('id', $employeeId)->update([
             'salary_grade' => $active?->plantilla?->salary_grade,
-            'salary_step' => $active?->plantilla?->step ?? 1,
+            'salary_step' => $active?->step ?? 1,
         ]);
     }
 }

@@ -102,6 +102,10 @@
                         $incumbent = $p->activeAssignments->first()?->employee;
                         $incumbentLabel = $incumbent ? ($incumbent->last_name ? "{$incumbent->last_name}, {$incumbent->first_name}" : $incumbent->name) : null;
                         $incumbentInitials = $incumbent ? mb_strtoupper(mb_substr($incumbent->first_name ?: $incumbent->name, 0, 1).mb_substr($incumbent->last_name ?: '', 0, 1)) : null;
+                        // The incumbent's own step when filled (personal to their stint);
+                        // resets to 1 when vacant, since there's no assignment to read
+                        // a step from.
+                        $displayStep = $p->activeAssignments->first()?->step ?? 1;
                     @endphp
                     <tr id="plantilla-row-{{ $p->id }}"
                         data-id="{{ $p->id }}"
@@ -109,7 +113,6 @@
                         data-item="{{ $p->item_number }}"
                         data-dept="{{ $p->department }}"
                         data-sg="{{ $p->salary_grade }}"
-                        data-step="{{ $p->step }}"
                         data-type="{{ $p->employment_type }}"
                         data-eligibility="{{ $p->csc_eligibility }}"
                         data-education="{{ $p->education }}"
@@ -117,16 +120,17 @@
                         data-experience="{{ $p->experience }}"
                         data-competency="{{ $p->competency }}"
                         data-emp-id="{{ $incumbent?->id }}"
-                        data-emp-name="{{ $incumbent ? ($incumbent->last_name ? "{$incumbent->last_name}, {$incumbent->first_name}" : $incumbent->name) : '' }}">
+                        data-emp-name="{{ $incumbent ? ($incumbent->last_name ? "{$incumbent->last_name}, {$incumbent->first_name}" : $incumbent->name) : '' }}"
+                        data-current-step="{{ $displayStep }}">
                         <td>@if($p->item_number)<span class="item-badge">{{ $p->item_number }}</span>@else -@endif</td>
                         <td><strong style="font-weight:600">{{ $p->title }}</strong></td>
                         <td class="dept-cell" title="{{ $p->department }}">{{ \Illuminate\Support\Str::limit($p->department, 40) ?: '-' }}</td>
                         <td><span class="sg-badge">SG {{ $p->salary_grade }}</span></td>
                         <td>
-                            <span class="step-label">{{ $p->step }}/8</span>
+                            <span class="step-label">{{ $displayStep }}/8</span>
                             <span class="step-dots">
                                 @for($i = 1; $i <= 8; $i++)
-                                    <span class="dot {{ $i <= $p->step ? 'filled' : '' }}"></span>
+                                    <span class="dot {{ $i <= $displayStep ? 'filled' : '' }}"></span>
                                 @endfor
                             </span>
                         </td>
@@ -184,7 +188,7 @@
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
 
-    <form method="POST" action="{{ route('payroll.plantilla.promote') }}" class="payroll-form" style="margin-top:12px">
+    <form method="POST" action="{{ route('payroll.plantilla.promote') }}" class="payroll-form" style="margin-top:12px" onsubmit="return confirmPromote(event)">
         @csrf
         <input type="hidden" name="employee_id" id="promote-employee-id">
         <div class="form-group">
@@ -205,12 +209,11 @@
                              data-item="{{ $vp->item_number }}"
                              data-title="{{ $vp->title }}"
                              data-sg="{{ $vp->salary_grade }}"
-                             data-step="{{ $vp->step }}"
                              data-dept="{{ $vp->department }}"
                              data-search="{{ strtolower($vp->item_number.' '.$vp->title.' '.$vp->department) }}"
                              onclick="selectPromoteTarget(this)">
                             <div class="co-title">{{ $vp->item_number ? "[{$vp->item_number}] " : '' }}{{ $vp->title }}</div>
-                            <div class="co-meta">{{ $vp->department ?: 'No department' }} &middot; SG {{ $vp->salary_grade }} Step {{ $vp->step }}</div>
+                            <div class="co-meta">{{ $vp->department ?: 'No department' }} &middot; SG {{ $vp->salary_grade }}</div>
                         </div>
                     @endforeach
                     <div class="combobox-empty" style="display:none">No matching vacant positions.</div>
@@ -218,7 +221,7 @@
             </div>
             <div id="promote-target-info" class="target-info-card">
                 <div class="pti-title" id="pti-title"></div>
-                <div>Item No. <span id="pti-item"></span> &middot; SG <span id="pti-sg"></span> &middot; Step <span id="pti-step"></span></div>
+                <div>Item No. <span id="pti-item"></span> &middot; SG <span id="pti-sg"></span></div>
                 <div id="pti-dept" class="text-muted"></div>
             </div>
         </div>
@@ -266,10 +269,6 @@
             <div class="form-group">
                 <label for="c-sg">Salary Grade (SG)</label>
                 <input type="number" name="salary_grade" id="c-sg" min="1" max="33" value="{{ old('salary_grade') }}" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label for="c-step">Step</label>
-                <input type="number" name="step" id="c-step" min="1" max="8" value="{{ old('step', 1) }}" class="form-input" required>
             </div>
         </div>
         <div class="form-group">
@@ -346,10 +345,6 @@
                 <label for="e-sg">Salary Grade (SG)</label>
                 <input type="number" name="salary_grade" id="e-sg" min="1" max="33" class="form-input" required>
             </div>
-            <div class="form-group">
-                <label for="e-step">Step</label>
-                <input type="number" name="step" id="e-step" min="1" max="8" class="form-input" required>
-            </div>
         </div>
         <div class="form-group">
             <label for="e-type">Employment Type</label>
@@ -403,7 +398,7 @@ function openPromote(id) {
     if (!row || !row.dataset.empId) return;
     document.getElementById('promote-employee-id').value = row.dataset.empId;
     document.getElementById('promote-employee-name').value = row.dataset.empName;
-    document.getElementById('promote-subtitle').textContent = 'Currently: ' + row.dataset.title + ' (SG ' + row.dataset.sg + ' Step ' + row.dataset.step + ')';
+    document.getElementById('promote-subtitle').textContent = 'Currently: ' + row.dataset.title + ' (SG ' + row.dataset.sg + ' Step ' + row.dataset.currentStep + ')';
     var search = document.getElementById('promote-target-search');
     search.value = '';
     search.setCustomValidity('Select a position from the list below.');
@@ -419,7 +414,6 @@ function showPromoteTargetInfo(data) {
     document.getElementById('pti-title').textContent = data.title;
     document.getElementById('pti-item').textContent = data.item || '-';
     document.getElementById('pti-sg').textContent = data.sg;
-    document.getElementById('pti-step').textContent = data.step;
     document.getElementById('pti-dept').textContent = data.dept || '';
     info.style.display = 'block';
 }
@@ -469,7 +463,6 @@ function openEditPlantilla(id) {
     document.getElementById('e-item').value = row.dataset.item;
     document.getElementById('e-dept').value = row.dataset.dept;
     document.getElementById('e-sg').value = row.dataset.sg;
-    document.getElementById('e-step').value = row.dataset.step;
     document.getElementById('e-type').value = row.dataset.type;
     document.getElementById('e-eligibility').value = row.dataset.eligibility || '';
     document.getElementById('e-education').value = row.dataset.education || '';
@@ -478,6 +471,33 @@ function openEditPlantilla(id) {
     document.getElementById('e-competency').value = row.dataset.competency || '';
     document.getElementById('edit-plantilla-subtitle').textContent = row.dataset.title;
     document.getElementById('editPlantillaModal').showModal();
+}
+
+function confirmPromote(event) {
+    event.preventDefault();
+    var form = event.target;
+    var employeeName = document.getElementById('promote-employee-name').value;
+    var positionName = document.getElementById('promote-target-search').value;
+    var effectiveRaw = document.getElementById('promote-date').value;
+    var effectiveDate = effectiveRaw
+        ? new Date(effectiveRaw + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+        : effectiveRaw;
+    var message = 'Promote ' + employeeName + ' to ' + positionName + ', effective ' + effectiveDate + '?';
+
+    if (typeof Swal !== 'undefined') {
+        // Native <dialog> renders in the browser's top layer, which sits above
+        // anything appended to document.body (Swal's default target) - point
+        // Swal at the open dialog itself so its popup stacks inside it instead
+        // of behind it.
+        Swal.fire({
+            title: 'Confirm Promotion', text: message, icon: 'question',
+            showCancelButton: true, confirmButtonText: 'Promote',
+            target: document.getElementById('promoteModal'),
+        }).then(function(r) { if (r.isConfirmed) form.submit(); });
+    } else if (confirm(message)) {
+        form.submit();
+    }
+    return false;
 }
 
 function confirmDeletePlantilla(id) {

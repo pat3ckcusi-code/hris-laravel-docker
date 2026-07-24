@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
  * @property int $employee_id
  * @property int|null $pds_id
  * @property int $plantilla_id
+ * @property int $step Personal to this stint - distinct from plantilla.step, which is the position's own fixed catalog value
  * @property Carbon|null $start_date
  * @property Carbon|null $end_date
  * @property Carbon|null $created_at
@@ -30,6 +31,7 @@ class EmployeeAssignment extends Model
         'employee_id',
         'pds_id',
         'plantilla_id',
+        'step',
         'start_date',
         'end_date',
     ];
@@ -55,5 +57,18 @@ class EmployeeAssignment extends Model
     public function pds()
     {
         return $this->belongsTo(Pds::class, 'pds_id');
+    }
+
+    /**
+     * True when a later promote()/store() call fully swallowed this row
+     * before it ever took effect: end_date got truncated to a date before
+     * this row's own start_date, which only happens when start_date was
+     * still in the future at truncation time. Callers displaying this row's
+     * date range should check this first rather than show the raw,
+     * backwards-looking pair - mirrors ShiftAssignment::isSuperseded().
+     */
+    public function isSuperseded(): bool
+    {
+        return $this->end_date !== null && $this->end_date->lt($this->start_date);
     }
 }

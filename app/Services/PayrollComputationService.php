@@ -64,8 +64,9 @@ class PayrollComputationService
                 continue;
             }
 
-            // 1. Basic salary from salary matrix
-            $basicSalary = $this->getBasicSalary($plantilla->salary_grade, $plantilla->step, $run, $errors);
+            // 1. Basic salary from salary matrix. Step is the assignment's own
+            // (personal to this stint), not the plantilla's shared, position-level step.
+            $basicSalary = $this->getBasicSalary($plantilla->salary_grade, $assignment->step, $run, $errors);
 
             // 2. DTR analysis
             $dtrSummary = $this->analyzeDtr($employee->id, $run);

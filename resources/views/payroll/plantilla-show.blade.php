@@ -1,6 +1,12 @@
+@php
+    // The current incumbent's own step when filled (personal to their stint);
+    // resets to 1 when vacant, since there's no assignment to read a step from.
+    $displayStep = $plantilla->assignments->firstWhere('end_date', null)?->step ?? 1;
+@endphp
+
 @extends('dashboards.layout', [
     'title' => $plantilla->title,
-    'subtitle' => "SG-{$plantilla->salary_grade} Step {$plantilla->step} · {$plantilla->employment_type}",
+    'subtitle' => "SG-{$plantilla->salary_grade} Step {$displayStep} · {$plantilla->employment_type}",
 ])
 
 @section('top_actions')
@@ -23,7 +29,7 @@
         <div class="detail-row"><strong>Item Number:</strong> {{ $plantilla->item_number ?: '-' }}</div>
         <div class="detail-row"><strong>Department / Office:</strong> {{ $plantilla->department ?: '-' }}</div>
         <div class="detail-row"><strong>Salary Grade:</strong> {{ $plantilla->salary_grade }}</div>
-        <div class="detail-row"><strong>Step:</strong> {{ $plantilla->step }}</div>
+        <div class="detail-row"><strong>Step:</strong> {{ $displayStep }}</div>
         <div class="detail-row"><strong>Employment Type:</strong> {{ ucfirst($plantilla->employment_type) }}</div>
         <div class="detail-row"><strong>CSC Eligibility Required:</strong> {{ $eligibilityOptions[$plantilla->csc_eligibility] ?? 'Not specified' }}</div>
         <div class="detail-row"><strong>Active Incumbents:</strong> {{ $plantilla->assignments->whereNull('end_date')->count() }}</div>
@@ -46,6 +52,7 @@
                 <thead>
                     <tr>
                         <th>Employee</th>
+                        <th>Step</th>
                         <th>Start Date</th>
                         <th>End Date</th>
                         <th>Status</th>
@@ -59,12 +66,18 @@
                         <tr id="assign-row-{{ $a->id }}"
                             data-id="{{ $a->id }}"
                             data-start="{{ $a->start_date->format('Y-m-d') }}"
-                            data-end="{{ $a->end_date ? $a->end_date->format('Y-m-d') : '' }}">
+                            data-end="{{ $a->end_date ? $a->end_date->format('Y-m-d') : '' }}"
+                            data-step="{{ $a->step }}">
                             <td>{{ $a->employee->name ?? '-' }}</td>
+                            <td>{{ $a->step }}</td>
                             <td>{{ $a->start_date->format('M d, Y') }}</td>
                             <td>{{ $a->end_date ? $a->end_date->format('M d, Y') : '-' }}</td>
                             <td>
-                                @if(!$a->end_date || $a->end_date->isFuture())
+                                @if($a->isSuperseded())
+                                    <span class="status-chip status-locked">Superseded before it took effect</span>
+                                @elseif($a->start_date->isFuture())
+                                    <span class="status-chip status-draft">Not yet started</span>
+                                @elseif(!$a->end_date || $a->end_date->isFuture())
                                     <span class="status-chip status-approved">Active</span>
                                 @else
                                     <span class="status-chip status-rejected">Ended</span>
@@ -145,15 +158,24 @@
     </div>
     <form method="POST" id="editAssignForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
+        <input type="hidden" name="assignment_id" id="edit-assignment-id" value="{{ old('assignment_id') }}">
         <div class="form-row">
             <div class="form-group">
                 <label for="edit-start">Start Date</label>
-                <input type="date" name="start_date" id="edit-start" class="form-input" required>
+                <input type="date" name="start_date" id="edit-start" value="{{ old('start_date') }}" class="form-input" required>
+                @error('start_date', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
             </div>
             <div class="form-group">
                 <label for="edit-end">End Date <small>(optional)</small></label>
-                <input type="date" name="end_date" id="edit-end" class="form-input">
+                <input type="date" name="end_date" id="edit-end" value="{{ old('end_date') }}" class="form-input">
+                @error('end_date', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
             </div>
+        </div>
+        <div class="form-group">
+            <label for="edit-step">Step</label>
+            <input type="number" name="step" id="edit-step" value="{{ old('step') }}" min="1" max="8" class="form-input" required>
+            <small class="text-muted">This employee's own step for this assignment (e.g. granting a step increment) - separate from the position's own catalog step shown in Edit Position.</small>
+            @error('step', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
         </div>
         <div class="form-actions">
             <button type="submit" class="btn">Update</button>
@@ -170,8 +192,10 @@ function openEditAssignment(id) {
     var row = document.getElementById('assign-row-' + id);
     if (!row) return;
     document.getElementById('editAssignForm').action = '{{ url("payroll-manager/plantilla") }}/{{ $plantilla->id }}/assignments/' + id;
+    document.getElementById('edit-assignment-id').value = id;
     document.getElementById('edit-start').value = row.dataset.start;
     document.getElementById('edit-end').value = row.dataset.end;
+    document.getElementById('edit-step').value = row.dataset.step;
     document.getElementById('edit-assign-subtitle').textContent = 'Assignment #' + id;
     document.getElementById('editAssignModal').showModal();
 }
@@ -187,6 +211,16 @@ function confirmDeleteAssignment(id) {
 
 @if ($errors->any())
     document.getElementById('assignModal').showModal();
+@endif
+@if ($errors->editAssignment->any())
+    (function() {
+        var id = document.getElementById('edit-assignment-id').value;
+        if (id) {
+            document.getElementById('editAssignForm').action = '{{ url("payroll-manager/plantilla") }}/{{ $plantilla->id }}/assignments/' + id;
+            document.getElementById('edit-assign-subtitle').textContent = 'Assignment #' + id;
+        }
+        document.getElementById('editAssignModal').showModal();
+    })();
 @endif
 </script>
 @endsection

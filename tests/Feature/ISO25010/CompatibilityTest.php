@@ -77,7 +77,7 @@ class CompatibilityTest extends TestCase
         $employee = $this->createUser('employee');
 
         $plantilla = Plantilla::create(['title' => 'Clerk', 'salary_grade' => 8, 'step' => 2, 'employment_type' => 'permanent']);
-        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantilla->id, 'start_date' => '2026-01-01']);
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantilla->id, 'step' => 2, 'start_date' => '2026-01-01']);
         SalaryMatrix::create(['sg' => 8, 'step' => 2, 'year' => 2026, 'amount' => 21205]);
 
         // Approved leave with LWOP days during payroll period

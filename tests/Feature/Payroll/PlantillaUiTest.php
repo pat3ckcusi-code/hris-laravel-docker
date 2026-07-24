@@ -4,6 +4,7 @@ namespace Tests\Feature\Payroll;
 
 use App\Models\EmployeeAssignment;
 use App\Models\Plantilla;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -213,7 +214,7 @@ class PlantillaUiTest extends TestCase
         $manager = $this->createPayrollManager();
         $employee = $this->createEmployee();
         $old = $this->makePlantilla();
-        $new = $this->makePlantilla(['title' => 'Administrative Aide III', 'item_number' => '902', 'salary_grade' => 3, 'step' => 1]);
+        $new = $this->makePlantilla(['title' => 'Administrative Aide III', 'item_number' => '902', 'salary_grade' => 3, 'step' => 6]);
 
         EmployeeAssignment::create([
             'employee_id' => $employee->id,
@@ -234,9 +235,58 @@ class PlantillaUiTest extends TestCase
             EmployeeAssignment::where('plantilla_id', $old->id)->first()->end_date->toDateString()
         );
 
-        // Denormalized user columns follow the new position
+        // The new assignment's own step always starts at 1, regardless of the
+        // position's own step (6 here) - and the denormalized user column follows it.
+        $this->assertSame(1, $active->first()->step);
         $this->assertSame(3, $employee->fresh()->salary_grade);
         $this->assertSame(1, $employee->fresh()->salary_step);
+    }
+
+    public function test_editing_an_assignment_can_grant_a_step_increment(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla(['step' => 6]);
+        $employee = $this->createEmployee();
+
+        $assignment = EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'step' => 1,
+            'start_date' => '2026-01-01',
+        ]);
+
+        $this->actingAs($manager)->put(
+            route('payroll.plantilla.assignments.update', [$plantilla->id, $assignment->id]),
+            ['start_date' => '2026-01-01', 'end_date' => null, 'step' => 2]
+        )->assertSessionHas('status');
+
+        // The assignment's own step increments, independent of the
+        // plantilla item's own catalog step (6, untouched).
+        $this->assertSame(2, $assignment->fresh()->step);
+        $this->assertSame(6, $plantilla->fresh()->step);
+        $this->assertSame(2, $employee->fresh()->salary_step);
+    }
+
+    public function test_editing_an_assignment_with_an_invalid_step_is_rejected_and_reported(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla();
+        $employee = $this->createEmployee();
+
+        $assignment = EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'step' => 3,
+            'start_date' => '2026-01-01',
+        ]);
+
+        $this->actingAs($manager)->put(
+            route('payroll.plantilla.assignments.update', [$plantilla->id, $assignment->id]),
+            ['start_date' => '2026-01-01', 'end_date' => null, 'step' => 99]
+        )->assertSessionHasErrors('step', null, 'editAssignment');
+
+        // Rejected server-side, not silently swallowed - the step is untouched.
+        $this->assertSame(3, $assignment->fresh()->step);
     }
 
     public function test_assigning_to_an_item_with_active_incumbent_is_rejected(): void
@@ -269,7 +319,7 @@ class PlantillaUiTest extends TestCase
             'title' => 'Administrative Assistant I',
             'item_number' => '910',
             'salary_grade' => 7,
-            'step' => 1,
+            'step' => 4,
         ]);
 
         EmployeeAssignment::create([
@@ -293,6 +343,10 @@ class PlantillaUiTest extends TestCase
             '2026-07-31',
             EmployeeAssignment::where('plantilla_id', $current->id)->first()->end_date->toDateString()
         );
+
+        // The new assignment's own step always starts at 1, regardless of the
+        // target position's own step (4 here).
+        $this->assertSame(1, $active->first()->step);
 
         $employee->refresh();
         $this->assertSame(7, $employee->salary_grade);
@@ -330,6 +384,146 @@ class PlantillaUiTest extends TestCase
             $current->id,
             EmployeeAssignment::where('employee_id', $employee->id)->whereNull('end_date')->first()->plantilla_id
         );
+    }
+
+    public function test_repromoting_with_the_same_future_effective_date_deletes_the_never_effective_row(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $current = $this->makePlantilla();
+        $firstTarget = $this->makePlantilla(['title' => 'Administrative Assistant I', 'item_number' => '910', 'salary_grade' => 7]);
+        $secondTarget = $this->makePlantilla(['title' => 'Administrative Officer I', 'item_number' => '911', 'salary_grade' => 10]);
+
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $current->id, 'start_date' => '2026-01-01']);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $firstTarget->id,
+            'effective_date' => '2026-08-01',
+        ])->assertSessionHas('status');
+
+        // Corrected before it ever took effect: re-promote effective the exact same date.
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $secondTarget->id,
+            'effective_date' => '2026-08-01',
+        ])->assertSessionHas('status');
+
+        // The never-effective first-promotion row is gone outright, not left as an inverted range.
+        $this->assertSame(0, EmployeeAssignment::where('plantilla_id', $firstTarget->id)->count());
+
+        $active = EmployeeAssignment::where('employee_id', $employee->id)->whereNull('end_date')->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($secondTarget->id, $active->first()->plantilla_id);
+
+        // The genuinely-past assignment is still correctly closed out.
+        $this->assertSame(
+            '2026-07-31',
+            EmployeeAssignment::where('plantilla_id', $current->id)->first()->end_date->toDateString()
+        );
+    }
+
+    public function test_repromoting_with_an_earlier_future_effective_date_keeps_the_first_row_as_superseded(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $current = $this->makePlantilla();
+        $firstTarget = $this->makePlantilla(['title' => 'Administrative Assistant I', 'item_number' => '910', 'salary_grade' => 7]);
+        $secondTarget = $this->makePlantilla(['title' => 'Administrative Officer I', 'item_number' => '911', 'salary_grade' => 10]);
+
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $current->id, 'start_date' => '2026-01-01']);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $firstTarget->id,
+            'effective_date' => '2026-08-01',
+        ]);
+
+        // Preempted by a promotion effective earlier than the first promotion's own start date.
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $secondTarget->id,
+            'effective_date' => '2026-07-25',
+        ])->assertSessionHas('status');
+
+        $firstRow = EmployeeAssignment::where('plantilla_id', $firstTarget->id)->firstOrFail();
+        $this->assertTrue($firstRow->isSuperseded(), 'A fully-preempted future row becomes an inverted, permanently unmatchable range.');
+        $this->assertSame('2026-08-01', $firstRow->start_date->toDateString());
+        $this->assertSame('2026-07-24', $firstRow->end_date->toDateString());
+
+        $active = EmployeeAssignment::where('employee_id', $employee->id)->whereNull('end_date')->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($secondTarget->id, $active->first()->plantilla_id);
+    }
+
+    public function test_assigning_twice_with_the_same_future_start_date_deletes_the_never_started_assignment(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $firstTarget = $this->makePlantilla();
+        $secondTarget = $this->makePlantilla(['title' => 'Nurse I', 'item_number' => '911', 'salary_grade' => 15]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $firstTarget->id), [
+            'employee_id' => $employee->id,
+            'start_date' => '2026-08-01',
+        ])->assertSessionHas('status');
+
+        // Corrected before it ever took effect: re-assign effective the exact same date.
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $secondTarget->id), [
+            'employee_id' => $employee->id,
+            'start_date' => '2026-08-01',
+        ])->assertSessionHas('status');
+
+        $this->assertSame(0, EmployeeAssignment::where('plantilla_id', $firstTarget->id)->count());
+
+        $active = EmployeeAssignment::where('employee_id', $employee->id)->whereNull('end_date')->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($secondTarget->id, $active->first()->plantilla_id);
+    }
+
+    public function test_plantilla_show_status_badge_reflects_not_started_active_and_superseded(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-01'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $plantillaA = $this->makePlantilla();
+        $plantillaB = $this->makePlantilla(['title' => 'Administrative Assistant I', 'item_number' => '910', 'salary_grade' => 7]);
+        $plantillaC = $this->makePlantilla(['title' => 'Administrative Officer I', 'item_number' => '911', 'salary_grade' => 10]);
+
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantillaA->id, 'start_date' => '2026-01-01']);
+
+        // Both promotions are dated before "today" (2026-07-01), so plantillaA
+        // properly closes in the past and plantillaB is preempted before it
+        // ever took effect - independent of the "not yet started" case below.
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantillaB->id,
+            'effective_date' => '2026-03-01',
+        ]);
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantillaC->id,
+            'effective_date' => '2026-02-15',
+        ]);
+
+        // plantillaB's row is now superseded (inverted range) - independent of "today".
+        $this->actingAs($manager)->get(route('payroll.plantilla.show', $plantillaB->id))
+            ->assertSee('Superseded before it took effect');
+
+        // plantillaA's row is a genuinely-closed past assignment.
+        $this->actingAs($manager)->get(route('payroll.plantilla.show', $plantillaA->id))
+            ->assertSee('Ended');
+
+        // A separate, freshly-assigned employee starting after "today" hasn't started yet.
+        $futureEmployee = $this->createEmployee();
+        $futurePlantilla = $this->makePlantilla(['title' => 'Nurse I', 'item_number' => '912', 'salary_grade' => 15]);
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $futurePlantilla->id), [
+            'employee_id' => $futureEmployee->id,
+            'start_date' => '2026-09-01',
+        ]);
+        $this->actingAs($manager)->get(route('payroll.plantilla.show', $futurePlantilla->id))
+            ->assertSee('Not yet started');
     }
 
     public function test_reports_page_shows_vacancies_promotions_and_activity(): void
@@ -419,6 +613,7 @@ class PlantillaUiTest extends TestCase
         $this->assertNotNull($historical);
         $this->assertSame('2015-06-01', $historical->start_date->toDateString());
         $this->assertSame('2019-12-31', $historical->end_date->toDateString());
+        $this->assertSame(2, $historical->step);
         $this->assertNull($historical->plantilla->item_number);
 
         // Current active assignment and synced salary are untouched
@@ -516,5 +711,6 @@ class PlantillaUiTest extends TestCase
         )->assertSessionHas('status');
 
         $this->assertNull($employee->fresh()->salary_grade);
+        $this->assertSame(1, $employee->fresh()->salary_step);
     }
 }

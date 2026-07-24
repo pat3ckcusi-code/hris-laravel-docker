@@ -34,6 +34,7 @@ class SalaryMatrixVersioningTest extends TestCase
         EmployeeAssignment::create([
             'employee_id' => $employee->id,
             'plantilla_id' => $plantilla->id,
+            'step' => $step,
             'start_date' => '2020-01-01',
         ]);
 
