@@ -197,17 +197,41 @@ class MayorController extends Controller
     {
         $statusFilter = $request->query('status', 'pending');
 
-        $query = $this->getMayorLeaveQuery();
+        $month = (int) $request->query('month', (int) date('n'));
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
+
+        $baseQuery = $this->getMayorLeaveQuery()
+            ->whereMonth('leave_requests.start_date', $month)
+            ->whereYear('leave_requests.start_date', $year);
+
+        $statusCounts = [
+            'pending' => (clone $baseQuery)->where('leave_requests.status', 'pending')->count(),
+            'approved' => (clone $baseQuery)->where('leave_requests.status', 'approved')->count(),
+            'declined' => (clone $baseQuery)->where('leave_requests.status', 'declined')->count(),
+            'all' => (clone $baseQuery)->count(),
+        ];
+
+        $query = clone $baseQuery;
 
         if ($statusFilter && $statusFilter !== 'all') {
             $query->where('leave_requests.status', $statusFilter);
         }
 
-        $leaveRequests = $query->orderBy('leave_requests.created_at', 'desc')->paginate(10);
+        $leaveRequests = $query->orderBy('leave_requests.created_at', 'desc')->paginate(10)
+            ->appends(['status' => $statusFilter, 'month' => $month, 'year' => $year]);
 
         return view('mayor.approvals', [
             'leaveRequests' => $leaveRequests,
             'statusFilter' => $statusFilter,
+            'statusCounts' => $statusCounts,
+            'month' => $month,
+            'year' => $year,
         ]);
     }
 
@@ -365,7 +389,25 @@ class MayorController extends Controller
     public function travelOrderApprovals(Request $request)
     {
         $statusFilter = $request->query('status', 'Pending');
-        $monthFilter = $request->query('month', now()->format('Y-m'));
+
+        $month = (int) $request->query('month', (int) date('n'));
+        $year = (int) $request->query('year', (int) date('Y'));
+        if ($month < 1 || $month > 12) {
+            $month = (int) date('n');
+        }
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) date('Y');
+        }
+
+        $countBase = DB::table('travel_orders')
+            ->whereMonth('travel_orders.start_date', $month)
+            ->whereYear('travel_orders.start_date', $year);
+        $statusCounts = [
+            'Pending' => (clone $countBase)->where('status', 'Pending')->count(),
+            'Approved' => (clone $countBase)->where('status', 'Approved')->count(),
+            'Rejected' => (clone $countBase)->where('status', 'Rejected')->count(),
+            'All' => (clone $countBase)->count(),
+        ];
 
         $query = DB::table('travel_orders')
             ->select(
@@ -376,22 +418,23 @@ class MayorController extends Controller
                 'travel_orders.status',
                 'travel_orders.created_at',
                 DB::raw('(SELECT COUNT(*) FROM travel_order_employees WHERE travel_order_employees.travel_order_id = travel_orders.id) as employee_count')
-            );
+            )
+            ->whereMonth('travel_orders.start_date', $month)
+            ->whereYear('travel_orders.start_date', $year);
 
         if ($statusFilter && $statusFilter !== 'All') {
             $query->where('travel_orders.status', $statusFilter);
         }
 
-        if ($monthFilter) {
-            $query->whereRaw("DATE_FORMAT(travel_orders.start_date, '%Y-%m') = ?", [$monthFilter]);
-        }
-
-        $travelOrders = $query->orderByDesc('travel_orders.created_at')->paginate(10);
+        $travelOrders = $query->orderByDesc('travel_orders.created_at')->paginate(10)
+            ->appends(['status' => $statusFilter, 'month' => $month, 'year' => $year]);
 
         return view('mayor.travel-order-approvals', [
             'travelOrders' => $travelOrders,
             'statusFilter' => $statusFilter,
-            'monthFilter' => $monthFilter,
+            'statusCounts' => $statusCounts,
+            'month' => $month,
+            'year' => $year,
         ]);
     }
 

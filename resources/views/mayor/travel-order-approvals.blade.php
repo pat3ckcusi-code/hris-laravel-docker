@@ -5,27 +5,93 @@
 
 @section('page_head')
     @vite('resources/css/hr_manager.css')
+    <style>
+        a.kpi-card {
+            text-decoration: none;
+        }
+        .kpi-card.active {
+            border-color: var(--accent, #ea580c);
+            box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08);
+        }
+        .modal-section-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin: 1rem 0 0.5rem;
+            padding-bottom: 0.25rem;
+            border-bottom: 2px solid #e5e7eb;
+            color: #0f172a;
+        }
+        .emp-list-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.375rem;
+            font-size: 0.8125rem;
+        }
+        .emp-list-table th,
+        .emp-list-table td {
+            border: 1px solid #e5e7eb;
+            padding: 0.375rem 0.625rem;
+            text-align: left;
+        }
+        .emp-list-table th {
+            background: #f9fafb;
+            font-weight: 600;
+        }
+    </style>
+@endsection
+
+@section('tiles')
+    @php
+        $toTiles = [
+            ['key' => 'Pending', 'label' => 'Pending', 'icon' => 'fa-hourglass-half', 'accent' => 'accent-leave', 'meta' => 'Awaiting your decision'],
+            ['key' => 'Approved', 'label' => 'Approved', 'icon' => 'fa-circle-check', 'accent' => 'accent-overtime', 'meta' => 'Cleared travel orders'],
+            ['key' => 'Rejected', 'label' => 'Rejected', 'icon' => 'fa-circle-xmark', 'accent' => 'accent-eta', 'meta' => 'Rejected travel orders'],
+            ['key' => 'All', 'label' => 'All Orders', 'icon' => 'fa-layer-group', 'accent' => 'accent-workforce', 'meta' => 'Full history this month'],
+        ];
+    @endphp
+    @foreach($toTiles as $tile)
+        <a href="{{ route('mayor.travel-order-approvals', ['status' => $tile['key'], 'month' => $month, 'year' => $year]) }}"
+           class="kpi-card {{ $tile['accent'] }} {{ $statusFilter === $tile['key'] ? 'active' : '' }}">
+            <div>
+                <div class="kpi-head">
+                    <div class="kpi-icon" aria-hidden="true"><i class="fa-solid {{ $tile['icon'] }}"></i></div>
+                    <div class="kpi-title">{{ $tile['label'] }}</div>
+                </div>
+                <div class="kpi-meta">{{ $tile['meta'] }}</div>
+            </div>
+            <div class="kpi-value">{{ $statusCounts[$tile['key']] ?? 0 }}</div>
+        </a>
+    @endforeach
 @endsection
 
 @section('content')
-<section>
-    <div class="mayor-filter-row">
-        <label for="statusFilter">Status</label>
-        <select id="statusFilter">
-            <option value="Pending" @if($statusFilter === 'Pending') selected @endif>Pending</option>
-            <option value="Approved" @if($statusFilter === 'Approved') selected @endif>Approved</option>
-            <option value="Rejected" @if($statusFilter === 'Rejected') selected @endif>Rejected</option>
-            <option value="All" @if($statusFilter === 'All') selected @endif>All</option>
-        </select>
-
-        <label for="monthFilter">Month</label>
-        <input type="month" id="monthFilter" value="{{ $monthFilter }}">
-    </div>
+@php
+    $prevDate = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
+    $nextDate = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
+@endphp
+<x-hris.table-layout
+    title="Travel Orders"
+    :subtitle="'Showing ' . ($statusFilter === 'All' ? 'all' : $statusFilter) . ' orders for ' . date('F', mktime(0, 0, 0, $month, 1, $year)) . ' ' . $year"
+    :showSearch="false"
+    :showMonthFilter="false"
+    :paginator="$travelOrders"
+>
+    <x-slot:filters>
+        <div class="hris-filter-left" style="align-items:center;">
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.travel-order-approvals', ['status' => $statusFilter, 'month' => $prevDate->format('n'), 'year' => $prevDate->format('Y')]) }}'">&laquo; Prev</button>
+            <div class="font-weight-bold">{{ date('F', mktime(0, 0, 0, $month, 1, $year)) }} {{ $year }}</div>
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.travel-order-approvals', ['status' => $statusFilter, 'month' => $nextDate->format('n'), 'year' => $nextDate->format('Y')]) }}'">Next &raquo;</button>
+        </div>
+        <div>
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.travel-order-approvals', ['status' => $statusFilter, 'month' => date('n'), 'year' => date('Y')]) }}'">This Month</button>
+        </div>
+    </x-slot:filters>
 
     @if($travelOrders->isEmpty())
-        <div class="empty-state">
-            <i class="fas fa-inbox" style="font-size:32px;margin-bottom:12px;"></i>
-            <p>No travel orders found for the selected filters.</p>
+        <div class="hris-empty-state">
+            <div class="hris-empty-state-icon"><i class="fa fa-inbox"></i></div>
+            <div class="hris-empty-state-title">No travel orders found</div>
+            <div class="hris-empty-state-text">There are no {{ $statusFilter === 'All' ? '' : $statusFilter . ' ' }}travel orders for {{ date('F', mktime(0, 0, 0, $month, 1, $year)) }} {{ $year }}.</div>
         </div>
     @else
         <table class="hris-table">
@@ -41,32 +107,23 @@
             </thead>
             <tbody>
                 @foreach($travelOrders as $idx => $to)
-                    @php
-                        $statusClass = match($to->status) {
-                            'Pending' => 'badge-pending',
-                            'Approved' => 'badge-approved',
-                            'Rejected' => 'badge-rejected',
-                            default => 'badge-draft',
-                        };
-                    @endphp
                     <tr>
                         <td>{{ $travelOrders->firstItem() + $idx }}</td>
                         <td>{{ $to->travel_order_num }}</td>
                         <td>{{ \Carbon\Carbon::parse($to->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($to->end_date)->format('M d, Y') }}</td>
                         <td>{{ $to->employee_count }}</td>
-                        <td><span class="badge {{ $statusClass }}">{{ $to->status }}</span></td>
+                        <td><x-hris.status-badge :status="$to->status" /></td>
                         <td>
-                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="viewTravelOrder({{ $to->id }})">View</button>
+                            <div class="action-btns">
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="viewTravelOrder({{ $to->id }})"><i class="fa fa-eye"></i> View</button>
+                            </div>
                         </td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
-        <div class="pagination-wrap">
-            {{ $travelOrders->appends(['status' => $statusFilter, 'month' => $monthFilter])->links() }}
-        </div>
     @endif
-</section>
+</x-hris.table-layout>
 
 {{-- View Details Modal --}}
 <div class="modal-overlay" id="viewModal">
@@ -75,8 +132,8 @@
         <h3>Travel Order Details</h3>
         <div id="viewModalContent">Loading...</div>
         <div class="modal-actions" id="modalActions" style="display:none;">
-            <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" id="btnApproveTO">Approve</button>
-            <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" id="btnRejectTO">Reject</button>
+            <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" id="btnApproveTO"><i class="fa fa-check"></i> Approve</button>
+            <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" id="btnRejectTO"><i class="fa fa-times"></i> Reject</button>
         </div>
     </div>
 </div>
@@ -90,16 +147,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 || '{{ csrf_token() }}';
 
     var currentStatus = '{{ $statusFilter }}';
-    var currentMonth = '{{ $monthFilter }}';
+    var currentMonth = '{{ $month }}';
+    var currentYear = '{{ $year }}';
 
     function applyFilters() {
-        var status = document.getElementById('statusFilter').value;
-        var month = document.getElementById('monthFilter').value;
-        window.location.href = '{{ route("mayor.travel-order-approvals") }}?status=' + encodeURIComponent(status) + '&month=' + encodeURIComponent(month);
+        window.location.href = '{{ route("mayor.travel-order-approvals") }}?status=' + encodeURIComponent(currentStatus) + '&month=' + encodeURIComponent(currentMonth) + '&year=' + encodeURIComponent(currentYear);
     }
-
-    document.getElementById('statusFilter').addEventListener('change', applyFilters);
-    document.getElementById('monthFilter').addEventListener('change', applyFilters);
 
     var currentOrderId = null;
 

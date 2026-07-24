@@ -5,19 +5,62 @@
 
 @section('page_head')
     @vite('resources/css/hr_manager.css')
+    <style>
+        a.kpi-card {
+            text-decoration: none;
+        }
+        .kpi-card.active {
+            border-color: var(--accent, #ea580c);
+            box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08);
+        }
+    </style>
+@endsection
+
+@section('tiles')
+    @php
+        $tiles = [
+            ['key' => 'pending', 'label' => 'Pending', 'icon' => 'fa-hourglass-half', 'accent' => 'accent-leave', 'meta' => 'Awaiting your decision'],
+            ['key' => 'approved', 'label' => 'Approved', 'icon' => 'fa-circle-check', 'accent' => 'accent-overtime', 'meta' => 'Cleared for printing'],
+            ['key' => 'declined', 'label' => 'Declined', 'icon' => 'fa-circle-xmark', 'accent' => 'accent-eta', 'meta' => 'Rejected requests'],
+            ['key' => 'all', 'label' => 'All Requests', 'icon' => 'fa-layer-group', 'accent' => 'accent-workforce', 'meta' => 'Full history'],
+        ];
+        $activeStatus = $statusFilter ?? 'pending';
+    @endphp
+    @foreach($tiles as $tile)
+        <a href="{{ route('mayor.approvals', ['status' => $tile['key'], 'month' => $month, 'year' => $year]) }}"
+           class="kpi-card {{ $tile['accent'] }} {{ $activeStatus === $tile['key'] ? 'active' : '' }}">
+            <div>
+                <div class="kpi-head">
+                    <div class="kpi-icon" aria-hidden="true"><i class="fa-solid {{ $tile['icon'] }}"></i></div>
+                    <div class="kpi-title">{{ $tile['label'] }}</div>
+                </div>
+                <div class="kpi-meta">{{ $tile['meta'] }}</div>
+            </div>
+            <div class="kpi-value">{{ $statusCounts[$tile['key']] ?? 0 }}</div>
+        </a>
+    @endforeach
 @endsection
 
 @section('content')
-<x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$leaveRequests">
+@php
+    $prevDate = (new DateTime())->setDate($year, $month, 1)->modify('-1 month');
+    $nextDate = (new DateTime())->setDate($year, $month, 1)->modify('+1 month');
+@endphp
+<x-hris.table-layout
+    title="Leave Requests"
+    :subtitle="'Showing ' . ($activeStatus === 'all' ? 'all' : $activeStatus) . ' requests for ' . date('F', mktime(0, 0, 0, $month, 1, $year)) . ' ' . $year"
+    :showSearch="false"
+    :showMonthFilter="false"
+    :paginator="$leaveRequests"
+>
     <x-slot:filters>
-        <div style="display:flex;gap:8px;align-items:center">
-            <label class="hris-filter-label" for="statusFilter">Status</label>
-            <select id="statusFilter" class="hris-filter-select" onchange="window.location.href='{{ route('mayor.approvals') }}?status='+this.value">
-                <option value="pending" @if(($statusFilter ?? 'pending') === 'pending') selected @endif>Pending</option>
-                <option value="approved" @if(($statusFilter ?? '') === 'approved') selected @endif>Approved</option>
-                <option value="declined" @if(($statusFilter ?? '') === 'declined') selected @endif>Declined</option>
-                <option value="all" @if(($statusFilter ?? '') === 'all') selected @endif>All</option>
-            </select>
+        <div class="hris-filter-left" style="align-items:center;">
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.approvals', ['status' => $statusFilter, 'month' => $prevDate->format('n'), 'year' => $prevDate->format('Y')]) }}'">&laquo; Prev</button>
+            <div class="font-weight-bold">{{ date('F', mktime(0, 0, 0, $month, 1, $year)) }} {{ $year }}</div>
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.approvals', ['status' => $statusFilter, 'month' => $nextDate->format('n'), 'year' => $nextDate->format('Y')]) }}'">Next &raquo;</button>
+        </div>
+        <div>
+            <button type="button" class="month-nav" onclick="window.location='{{ route('mayor.approvals', ['status' => $statusFilter, 'month' => date('n'), 'year' => date('Y')]) }}'">This Month</button>
         </div>
     </x-slot:filters>
 
@@ -41,27 +84,33 @@
                     $emp = $lr->user;
                     $empName = trim(($emp->first_name ?? '') . ' ' . ($emp->middle_name ?? '') . ' ' . ($emp->last_name ?? ''));
                     if (empty(trim($empName))) $empName = $emp->name ?? 'N/A';
+                    $empInitials = mb_strtoupper(mb_substr($emp->first_name ?: ($emp->name ?? ''), 0, 1) . mb_substr($emp->last_name ?? '', 0, 1));
                 @endphp
                 <tr>
                     <td>{{ $leaveRequests->firstItem() + $idx }}</td>
                     <td>{{ $emp->EmpNo ?? 'N/A' }}</td>
-                    <td>{{ $empName }}</td>
-                    <td>{{ $emp->access_level ?? 'N/A' }}</td>
+                    <td>
+                        <div class="incumbent-cell">
+                            <span class="avatar-sm">{{ $empInitials ?: '?' }}</span>
+                            <span>{{ $empName }}</span>
+                        </div>
+                    </td>
+                    <td><span class="chip">{{ $emp->access_level ?? 'N/A' }}</span></td>
                     <td>{{ $lr->leave_type }}</td>
                     <td>{{ \Carbon\Carbon::parse($lr->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($lr->end_date)->format('M d, Y') }}</td>
                     <td>{{ $lr->total_days ?? '-' }}</td>
                     <td><x-hris.status-badge :status="$lr->status" /></td>
                     <td>
                         <div class="action-btns">
-                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="viewLeaveDetails({{ $lr->id }})">View</button>
+                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="viewLeaveDetails({{ $lr->id }})"><i class="fa fa-eye"></i> View</button>
                             @if($lr->status === 'pending')
                                 <form class="approve-form" action="{{ route('mayor.leave.approve', $lr->id) }}" method="POST" style="display:inline;">
                                     @csrf
-                                    <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm">Approve</button>
+                                    <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm"><i class="fa fa-check"></i> Approve</button>
                                 </form>
                                 <form class="reject-form" action="{{ route('mayor.leave.reject', $lr->id) }}" method="POST" style="display:inline;">
                                     @csrf
-                                    <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm">Reject</button>
+                                    <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm"><i class="fa fa-times"></i> Reject</button>
                                 </form>
                             @endif
                         </div>
@@ -69,7 +118,13 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9" class="text-center text-muted">No leave requests found for the selected filter.</td>
+                    <td colspan="9">
+                        <div class="hris-empty-state">
+                            <div class="hris-empty-state-icon"><i class="fa fa-inbox"></i></div>
+                            <div class="hris-empty-state-title">No leave requests found</div>
+                            <div class="hris-empty-state-text">There are no {{ $activeStatus === 'all' ? '' : $activeStatus . ' ' }}leave requests for {{ date('F', mktime(0, 0, 0, $month, 1, $year)) }} {{ $year }}.</div>
+                        </div>
+                    </td>
                 </tr>
             @endforelse
         </tbody>
