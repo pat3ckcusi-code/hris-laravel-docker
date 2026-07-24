@@ -34,6 +34,7 @@ class MayorController extends Controller
 
         return view('mayor.dashboard', [
             'departments' => $departments,
+            'employeeTypes' => HrisConstants::EMPLOYEE_TYPES,
             'summary' => $this->dashboardService->buildWorkforceCards(),
             'chartDataUrl' => route('mayor.chart-data'),
             'initialChartData' => $this->dashboardService->buildChartData(null),
@@ -43,8 +44,12 @@ class MayorController extends Controller
     public function getChartData(Request $request)
     {
         $departmentId = $request->integer('department');
+        $employeeType = trim((string) $request->query('employee_type', ''));
 
-        return response()->json($this->dashboardService->buildChartData($departmentId > 0 ? $departmentId : null));
+        return response()->json($this->dashboardService->buildChartData(
+            $departmentId > 0 ? $departmentId : null,
+            $employeeType !== '' ? $employeeType : null
+        ));
     }
 
     public function getAlerts(Request $request)
@@ -83,6 +88,7 @@ class MayorController extends Controller
         $department = trim((string) $request->query('department', ''));
         $gender = trim((string) $request->query('gender', ''));
         $status = trim((string) $request->query('status', ''));
+        $employeeType = trim((string) $request->query('employee_type', ''));
         $ageGroup = trim((string) $request->query('age_group', ''));
         $lengthOfService = trim((string) $request->query('length_of_service', ''));
         $sixtyPlus = trim((string) $request->query('sixty_plus', ''));
@@ -113,6 +119,14 @@ class MayorController extends Controller
 
         if ($status !== '') {
             $query->where('users.Status', $status);
+        }
+
+        if ($employeeType !== '') {
+            if (strcasecmp($employeeType, 'Unspecified') === 0) {
+                $query->where(fn ($q) => $q->whereNull('users.employee_type')->orWhere('users.employee_type', ''));
+            } else {
+                $query->where('users.employee_type', $employeeType);
+            }
         }
 
         $rows = $query->orderBy('users.name')->get();

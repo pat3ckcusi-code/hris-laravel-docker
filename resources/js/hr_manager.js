@@ -233,12 +233,26 @@ const initializeWorkforceCharts = (root, initialData) => {
     const filter = document.getElementById('departmentFilter');
     const typeFilter = document.getElementById('employeeTypeFilter');
 
+    // Mirrors HRDashboardService::buildWorkforceCards()'s own total_employees calculation
+    // (sum of workforce_per_department's dataset values) so the card always agrees with
+    // the Total Workforce chart it sits above, under the same filters.
+    const updateTotalEmployeesCard = (payload) => {
+        const card = document.getElementById('summaryTotalEmployees');
+        if (!card) return;
+
+        const total = (payload?.workforce_per_department?.datasets || [])
+            .reduce((sum, ds) => sum + (ds.data || []).reduce((s, v) => s + (Number(v) || 0), 0), 0);
+
+        card.textContent = total.toLocaleString();
+    };
+
     const refreshCharts = (payload) => {
         updateStackedBarChart(charts.totalWorkforceChart, payload.workforce_per_department);
         updateChart(charts.genderChart, payload.gender_distribution);
         updateEmploymentStatusChart(charts.employmentStatusChart, payload.employment_status);
         updateChart(charts.ageGroupChart, payload.age_group_distribution);
         updateChart(charts.lengthOfServiceChart, payload.length_of_service);
+        updateTotalEmployeesCard(payload);
 
         // Re-attach click handlers after chart updates
         attachChartClickHandlers();

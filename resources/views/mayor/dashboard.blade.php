@@ -44,6 +44,14 @@
                     <option value="{{ $department->Dept_id }}">{{ $department->Dept_name }}</option>
                 @endforeach
             </select>
+
+            <label for="employeeTypeFilter">Employee Type</label>
+            <select id="employeeTypeFilter" class="hrm-filter-select">
+                <option value="">All Employee Types</option>
+                @foreach($employeeTypes as $type)
+                    <option value="{{ $type }}">{{ $type }}</option>
+                @endforeach
+            </select>
         </div>
 
         <div class="hrm-chart-grid">
