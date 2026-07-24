@@ -13,6 +13,88 @@
             border-color: var(--accent, #ea580c);
             box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08);
         }
+
+        /* Leave Request Details modal */
+        #viewModal .modal-box {
+            max-width: 640px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .lrd-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.1rem 1.5rem;
+            background: linear-gradient(90deg, #fff7ed 0%, #fffaf0 100%);
+            border-bottom: 1px solid #fdba74;
+        }
+        .lrd-header h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .lrd-header h3 i { color: var(--accent, #ea580c); margin-right: 0.5rem; }
+        .lrd-body { padding: 1.25rem 1.5rem 1.5rem; }
+        .lrd-profile { display: flex; gap: 14px; align-items: center; margin-bottom: 1.1rem; }
+        .lrd-profile .profile-avatar { width: 48px; height: 48px; font-size: 1rem; }
+        .lrd-profile .profile-name { font-size: 1.05rem; }
+        .lrd-profile .profile-position { font-size: 0.82rem; }
+        .lrd-profile .profile-meta { margin-top: 8px; }
+
+        .lrd-banner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.6rem 0.9rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 1.1rem;
+        }
+        .lrd-banner-pending { background: #fef3c7; color: #92400e; }
+        .lrd-banner-approved { background: #dcfce7; color: #166534; }
+        .lrd-banner-declined { background: #fee2e2; color: #991b1b; }
+        .lrd-banner-default { background: #f3f4f6; color: #4b5563; }
+
+        .lrd-section { margin-bottom: 1.1rem; }
+        .lrd-section:last-child { margin-bottom: 0; }
+        .lrd-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+        }
+
+        .lrd-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+        .lrd-grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .lrd-item-wide { grid-column: 1 / -1; }
+        .lrd-item .lrd-label { font-size: 0.75rem; color: #64748b; margin-bottom: 0.15rem; }
+        .lrd-item .lrd-value { font-size: 0.9rem; color: #0f172a; font-weight: 500; word-break: break-word; }
+
+        .lrd-stat {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.5rem;
+            text-align: center;
+        }
+        .lrd-stat .lrd-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        .lrd-stat .lrd-value { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-top: 2px; }
+        .lrd-stat.tone-good .lrd-value { color: #166534; }
+        .lrd-stat.tone-warn { background: #fff7ed; border-color: #fed7aa; }
+        .lrd-stat.tone-warn .lrd-value { color: #9a3412; }
+
+        .lrd-remarks {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 0.5rem;
+            padding: 0.75rem 0.9rem;
+            color: #991b1b;
+            font-size: 0.875rem;
+        }
     </style>
 @endsection
 
@@ -134,9 +216,11 @@
 {{-- View Details Modal --}}
 <div class="modal-overlay" id="viewModal">
     <div class="modal-box">
-        <button class="modal-close" onclick="closeViewModal()">&times;</button>
-        <h3>Leave Request Details</h3>
-        <div id="viewModalContent">Loading...</div>
+        <div class="lrd-header">
+            <h3><i class="fa fa-file-lines"></i>Leave Request Details</h3>
+            <button class="modal-close" onclick="closeViewModal()" style="float:none;">&times;</button>
+        </div>
+        <div class="lrd-body" id="viewModalContent">Loading...</div>
     </div>
 </div>
 @endsection
@@ -253,7 +337,9 @@ document.addEventListener('DOMContentLoaded', function() {
             $dept = \App\Models\Department::find($emp->Dept_id);
             if ($dept) $deptName = $dept->Dept_name ?? 'N/A';
         }
+        $initials = mb_strtoupper(mb_substr($emp->first_name ?: ($emp->name ?? ''), 0, 1) . mb_substr($emp->last_name ?? '', 0, 1));
         return [$lr->id => [
+            'initials' => $initials ?: '?',
             'emp_no' => $emp->EmpNo ?? 'N/A',
             'name' => $empName,
             'role' => $emp->access_level ?? 'N/A',
@@ -273,31 +359,84 @@ document.addEventListener('DOMContentLoaded', function() {
 @endphp
 var leaveDataCache = @json($leaveDataMap);
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+}
+
+function lrdItem(label, value, wide) {
+    return '<div class="lrd-item' + (wide ? ' lrd-item-wide' : '') + '">'
+        + '<div class="lrd-label">' + escapeHtml(label) + '</div>'
+        + '<div class="lrd-value">' + (escapeHtml(value) || '-') + '</div>'
+        + '</div>';
+}
+
+function lrdStat(label, value, tone) {
+    return '<div class="lrd-stat' + (tone ? ' tone-' + tone : '') + '">'
+        + '<div class="lrd-label">' + escapeHtml(label) + '</div>'
+        + '<div class="lrd-value">' + (escapeHtml(value) || '-') + '</div>'
+        + '</div>';
+}
+
+var LRD_STATUS_META = {
+    pending: { icon: 'fa-hourglass-half', label: 'Pending Approval', cls: 'lrd-banner-pending' },
+    approved: { icon: 'fa-circle-check', label: 'Approved', cls: 'lrd-banner-approved' },
+    declined: { icon: 'fa-circle-xmark', label: 'Declined', cls: 'lrd-banner-declined' }
+};
+
 function viewLeaveDetails(id) {
     var data = leaveDataCache[id];
     if (!data) return;
-    var html = '';
-    var rows = [
-        ['Employee No', data.emp_no],
-        ['Name', data.name],
-        ['Role', data.role],
-        ['Department', data.department],
-        ['Leave Type', data.leave_type],
-        ['Date Filed', data.date_filed],
-        ['Start Date', data.start_date],
-        ['End Date', data.end_date],
-        ['Total Days', data.total_days],
-        ['Paid Days', data.paid_days],
-        ['LWOP Days', data.lwop_days],
-        ['Reason', data.reason],
-        ['Status', data.status],
-    ];
+
+    var meta = LRD_STATUS_META[data.status] || { icon: 'fa-circle-info', label: (data.status || 'Unknown'), cls: 'lrd-banner-default' };
+    var lwopDays = parseFloat(data.lwop_days);
+
+    var html = ''
+        + '<div class="lrd-profile">'
+        +   '<span class="profile-avatar">' + escapeHtml(data.initials || '?') + '</span>'
+        +   '<div class="profile-body">'
+        +     '<div class="profile-name">' + escapeHtml(data.name) + '</div>'
+        +     '<div class="profile-position">' + escapeHtml(data.emp_no) + '</div>'
+        +     '<div class="profile-meta">'
+        +       '<span class="meta-chip"><i class="fa fa-user-tie"></i>' + escapeHtml(data.role) + '</span>'
+        +       '<span class="meta-chip"><i class="fa fa-building"></i>' + escapeHtml(data.department) + '</span>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="lrd-banner ' + meta.cls + '"><i class="fa ' + meta.icon + '"></i> ' + escapeHtml(meta.label) + '</div>'
+        + '<div class="lrd-section">'
+        +   '<div class="lrd-section-title">Leave Information</div>'
+        +   '<div class="lrd-grid">'
+        +     lrdItem('Leave Type', data.leave_type)
+        +     lrdItem('Date Filed', data.date_filed)
+        +     lrdItem('Reason', data.reason, true)
+        +   '</div>'
+        + '</div>'
+        + '<div class="lrd-section">'
+        +   '<div class="lrd-section-title">Duration</div>'
+        +   '<div class="lrd-grid lrd-grid-3">'
+        +     lrdStat('Start Date', data.start_date)
+        +     lrdStat('End Date', data.end_date)
+        +     lrdStat('Total Days', data.total_days)
+        +   '</div>'
+        + '</div>'
+        + '<div class="lrd-section">'
+        +   '<div class="lrd-section-title">Balance Impact</div>'
+        +   '<div class="lrd-grid">'
+        +     lrdStat('Paid Days', data.paid_days, 'good')
+        +     lrdStat('LWOP Days', data.lwop_days, lwopDays > 0 ? 'warn' : null)
+        +   '</div>'
+        + '</div>';
+
     if (data.status === 'declined' && data.rejection_notes !== '-') {
-        rows.push(['Rejection Remarks', data.rejection_notes]);
+        html += '<div class="lrd-section">'
+            + '<div class="lrd-section-title">Rejection Remarks</div>'
+            + '<div class="lrd-remarks">' + escapeHtml(data.rejection_notes) + '</div>'
+            + '</div>';
     }
-    for (var i = 0; i < rows.length; i++) {
-        html += '<div class="detail-row"><strong>' + rows[i][0] + '</strong><span>' + (rows[i][1] || '-') + '</span></div>';
-    }
+
     document.getElementById('viewModalContent').innerHTML = html;
     document.getElementById('viewModal').classList.add('active');
 }

@@ -13,14 +13,6 @@
             border-color: var(--accent, #ea580c);
             box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08);
         }
-        .modal-section-title {
-            font-weight: 600;
-            font-size: 0.95rem;
-            margin: 1rem 0 0.5rem;
-            padding-bottom: 0.25rem;
-            border-bottom: 2px solid #e5e7eb;
-            color: #0f172a;
-        }
         .emp-list-table {
             width: 100%;
             border-collapse: collapse;
@@ -36,6 +28,108 @@
         .emp-list-table th {
             background: #f9fafb;
             font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        .emp-list-wrapper {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            margin-top: 0.375rem;
+        }
+        .emp-list-wrapper .emp-list-table { margin-top: 0; border: none; }
+        .emp-list-wrapper .emp-list-table th,
+        .emp-list-wrapper .emp-list-table td { border: none; border-bottom: 1px solid #f1f5f9; }
+
+        /* Travel Order Details modal */
+        #viewModal .modal-box {
+            max-width: 680px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .tod-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.1rem 1.5rem;
+            background: linear-gradient(90deg, #fff7ed 0%, #fffaf0 100%);
+            border-bottom: 1px solid #fdba74;
+        }
+        .tod-header h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .tod-header h3 i { color: var(--accent, #ea580c); margin-right: 0.5rem; }
+        .tod-body { padding: 1.25rem 1.5rem 1.5rem; max-height: 70vh; overflow-y: auto; }
+
+        .tod-trip { display: flex; gap: 14px; align-items: center; margin-bottom: 1.1rem; }
+        .tod-trip-icon {
+            flex: 0 0 auto;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #fff7ed;
+            border: 2px solid #fed7aa;
+            color: #9a3412;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+        }
+        .tod-trip-title { font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+        .tod-trip-sub { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+
+        .tod-banner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.6rem 0.9rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 1.1rem;
+        }
+        .tod-banner-pending { background: #fef3c7; color: #92400e; }
+        .tod-banner-approved { background: #dcfce7; color: #166534; }
+        .tod-banner-rejected { background: #fee2e2; color: #991b1b; }
+        .tod-banner-default { background: #f3f4f6; color: #4b5563; }
+
+        .tod-section { margin-bottom: 1.1rem; }
+        .tod-section:last-child { margin-bottom: 0; }
+        .tod-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+        }
+
+        .tod-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+        .tod-item-wide { grid-column: 1 / -1; }
+        .tod-item .tod-label { font-size: 0.75rem; color: #64748b; margin-bottom: 0.15rem; }
+        .tod-item .tod-value { font-size: 0.9rem; color: #0f172a; font-weight: 500; word-break: break-word; }
+
+        .tod-stat {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.5rem;
+            text-align: center;
+        }
+        .tod-stat .tod-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        .tod-stat .tod-value { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-top: 2px; }
+
+        .tod-remarks {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 0.5rem;
+            padding: 0.75rem 0.9rem;
+            color: #991b1b;
+            font-size: 0.875rem;
         }
     </style>
 @endsection
@@ -128,10 +222,12 @@
 {{-- View Details Modal --}}
 <div class="modal-overlay" id="viewModal">
     <div class="modal-box">
-        <button class="modal-close" onclick="closeViewModal()">&times;</button>
-        <h3>Travel Order Details</h3>
-        <div id="viewModalContent">Loading...</div>
-        <div class="modal-actions" id="modalActions" style="display:none;">
+        <div class="tod-header">
+            <h3><i class="fa fa-route"></i>Travel Order Details</h3>
+            <button class="modal-close" onclick="closeViewModal()" style="float:none;">&times;</button>
+        </div>
+        <div class="tod-body" id="viewModalContent">Loading...</div>
+        <div class="modal-actions" id="modalActions" style="display:none;padding:0 1.5rem 1.25rem;">
             <button type="button" class="hris-btn hris-btn-primary hris-btn-sm" id="btnApproveTO"><i class="fa fa-check"></i> Approve</button>
             <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" id="btnRejectTO"><i class="fa fa-times"></i> Reject</button>
         </div>
@@ -175,39 +271,65 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             var d = result.data;
-            var html = '';
 
-            // Details section
-            var rows = [
-                ['Travel Order #', d.travel_order_num],
-                ['Destination', d.destination],
-                ['Purpose', d.purpose],
-                ['Start Date', formatDate(d.start_date)],
-                ['End Date', formatDate(d.end_date)],
-                ['Remarks', d.remarks || '-'],
-                ['Created By', d.created_by],
-                ['Recommender', d.recommender],
-                ['Status', d.status],
-            ];
+            var statusMeta = {
+                Pending: { icon: 'fa-hourglass-half', label: 'Pending Approval', cls: 'tod-banner-pending' },
+                Approved: { icon: 'fa-circle-check', label: 'Approved', cls: 'tod-banner-approved' },
+                Rejected: { icon: 'fa-circle-xmark', label: 'Rejected', cls: 'tod-banner-rejected' }
+            };
+            var meta = statusMeta[d.status] || { icon: 'fa-circle-info', label: (d.status || 'Unknown'), cls: 'tod-banner-default' };
+
+            var html = ''
+                + '<div class="tod-trip">'
+                +   '<div class="tod-trip-icon"><i class="fa fa-route"></i></div>'
+                +   '<div>'
+                +     '<div class="tod-trip-title">' + escapeHtml(d.travel_order_num) + '</div>'
+                +     '<div class="tod-trip-sub">' + escapeHtml(d.destination) + '</div>'
+                +   '</div>'
+                + '</div>'
+                + '<div class="tod-banner ' + meta.cls + '"><i class="fa ' + meta.icon + '"></i> ' + escapeHtml(meta.label) + '</div>'
+                + '<div class="tod-section">'
+                +   '<div class="tod-section-title">Trip Details</div>'
+                +   '<div class="tod-grid">'
+                +     todItem('Purpose', d.purpose, true)
+                +     todItem('Remarks', d.remarks, true)
+                +   '</div>'
+                + '</div>'
+                + '<div class="tod-section">'
+                +   '<div class="tod-section-title">Duration</div>'
+                +   '<div class="tod-grid">'
+                +     todStat('Start Date', formatDate(d.start_date))
+                +     todStat('End Date', formatDate(d.end_date))
+                +   '</div>'
+                + '</div>'
+                + '<div class="tod-section">'
+                +   '<div class="tod-section-title">Approval Chain</div>'
+                +   '<div class="tod-grid">'
+                +     todItem('Created By', d.created_by)
+                +     todItem('Recommender', d.recommender)
+                +   '</div>'
+                + '</div>';
+
             if (d.status === 'Rejected' && d.rejection_note) {
-                rows.push(['Rejection Note', d.rejection_note]);
-            }
-            for (var i = 0; i < rows.length; i++) {
-                html += '<div class="detail-row"><strong>' + rows[i][0] + '</strong><span>' + (rows[i][1] || '-') + '</span></div>';
+                html += '<div class="tod-section">'
+                    + '<div class="tod-section-title">Rejection Note</div>'
+                    + '<div class="tod-remarks">' + escapeHtml(d.rejection_note) + '</div>'
+                    + '</div>';
             }
 
-            // Employees section
-            html += '<div class="modal-section-title">Employees (' + d.employees.length + ')</div>';
+            html += '<div class="tod-section">'
+                + '<div class="tod-section-title">Employees (' + d.employees.length + ')</div>';
             if (d.employees.length > 0) {
-                html += '<table class="emp-list-table"><thead><tr><th>#</th><th>Emp No</th><th>Name</th><th>Designation</th></tr></thead><tbody>';
+                html += '<div class="emp-list-wrapper"><table class="emp-list-table"><thead><tr><th>#</th><th>Emp No</th><th>Name</th><th>Designation</th></tr></thead><tbody>';
                 for (var j = 0; j < d.employees.length; j++) {
                     var emp = d.employees[j];
                     html += '<tr><td>' + (j + 1) + '</td><td>' + escapeHtml(emp.emp_no) + '</td><td>' + escapeHtml(emp.name) + '</td><td>' + escapeHtml(emp.designation) + '</td></tr>';
                 }
-                html += '</tbody></table>';
+                html += '</tbody></table></div>';
             } else {
                 html += '<p style="color:#6b7280;font-size:13px;">No employees linked to this travel order.</p>';
             }
+            html += '</div>';
 
             document.getElementById('viewModalContent').innerHTML = html;
 
@@ -336,6 +458,20 @@ document.addEventListener('DOMContentLoaded', function() {
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
+    }
+
+    function todItem(label, value, wide) {
+        return '<div class="tod-item' + (wide ? ' tod-item-wide' : '') + '">'
+            + '<div class="tod-label">' + escapeHtml(label) + '</div>'
+            + '<div class="tod-value">' + (escapeHtml(value) || '-') + '</div>'
+            + '</div>';
+    }
+
+    function todStat(label, value) {
+        return '<div class="tod-stat">'
+            + '<div class="tod-label">' + escapeHtml(label) + '</div>'
+            + '<div class="tod-value">' + (escapeHtml(value) || '-') + '</div>'
+            + '</div>';
     }
 });
 </script>
