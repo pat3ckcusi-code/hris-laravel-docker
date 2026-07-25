@@ -47,10 +47,12 @@ class ImportAttendanceLogsJob implements ShouldQueue
 
         // Auto-import runs every minute; a routine no-op (nothing imported, no
         // error) would otherwise re-log the same unmatched-EmpNo warnings to
-        // hr_audit_trails on every tick forever. That diagnostic is still
-        // available via the Log::info call in PersonnelLogImportService, so
-        // only persist an audit row when something actually happened.
-        if ($failed || $result['imported'] > 0) {
+        // hr_audit_trails on every tick forever, so the scheduler's own runs
+        // (actorUserId is always null - see AutoImportAttendanceLogs) stay
+        // silent unless something happened. A manually-triggered pull always
+        // logs regardless of outcome, so the user gets feedback for their own
+        // action even when the range genuinely has nothing new to import.
+        if ($failed || $result['imported'] > 0 || $this->actorUserId !== null) {
             HRAuditTrail::create([
                 'actor_user_id' => $this->actorUserId,
                 'module' => 'attendance',

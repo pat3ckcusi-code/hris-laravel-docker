@@ -25,6 +25,7 @@ class AttendanceImportController extends Controller
 
         $recentImports = HRAuditTrail::where('module', 'attendance')
             ->where('action', 'attendance_import')
+            ->whereNotNull('actor_user_id')
             ->orderByDesc('created_at')
             ->limit(5)
             ->get(['details', 'created_at', 'actor_user_id']);
