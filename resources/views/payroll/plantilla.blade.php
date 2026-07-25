@@ -4,11 +4,14 @@
 ])
 
 @section('top_actions')
-    <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
-    <a href="{{ route("{$routePrefix}.plantilla.reports") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-chart-bar"></i> Reports</a>
-    @if($routePrefix === 'payroll')
-        <button type="button" class="btn btn-sm btn-add-position" onclick="openCreatePlantilla()"><i class="fas fa-plus"></i> Add Position</button>
-    @endif
+    <div class="plantilla-actions-group">
+        <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="plantilla-quiet-link"><i class="fas fa-route"></i> Service Trail</a>
+        <a href="{{ route("{$routePrefix}.plantilla.reports") }}" class="plantilla-quiet-link"><i class="fas fa-chart-bar"></i> Reports</a>
+        @if($routePrefix === 'payroll')
+            <a href="{{ route('payroll.csc-eligibility.index') }}" class="plantilla-quiet-link"><i class="fas fa-certificate"></i> CSC Eligibility</a>
+            <button type="button" class="btn btn-sm btn-add-position" onclick="openCreatePlantilla()"><i class="fas fa-plus"></i> Add Position</button>
+        @endif
+    </div>
 @endsection
 
 @section('content')
@@ -57,6 +60,7 @@
                     <option value="">All Positions</option>
                     <option value="filled" @selected(request('status') === 'filled')>Filled</option>
                     <option value="vacant" @selected(request('status') === 'vacant')>Vacant</option>
+                    <option value="abolished" @selected(request('status') === 'abolished')>Abolished</option>
                 </select>
                 <select name="eligibility" class="hris-filter-select">
                     <option value="">All Eligibilities</option>
@@ -137,7 +141,7 @@
                         <td>{{ ucwords(str_replace('_', ' ', $p->employment_type)) }}</td>
                         <td>
                             @if($p->csc_eligibility)
-                                <span class="status-chip eligibility-{{ $p->csc_eligibility }}">{{ $eligibilityOptions[$p->csc_eligibility] }}</span>
+                                <span class="status-chip eligibility-badge">{{ $eligibilityOptions[$p->csc_eligibility] ?? 'Not specified' }}</span>
                             @else
                                 <span class="text-muted">Not specified</span>
                             @endif
@@ -148,6 +152,8 @@
                                     <span class="avatar-sm">{{ $incumbentInitials ?: '?' }}</span>
                                     <a href="{{ route("{$routePrefix}.plantilla.service-trail", ['employee_id' => $incumbent->id]) }}" title="View service trail">{{ $incumbentLabel }}</a>
                                 </div>
+                            @elseif($p->is_abolished)
+                                <span class="status-chip status-abolished">Abolished</span>
                             @else
                                 <span class="status-chip status-vacant">Vacant</span>
                             @endif
@@ -156,14 +162,22 @@
                             <div class="action-btns">
                                 <a href="{{ route("{$routePrefix}.plantilla.show", $p->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm" title="View details"><i class="fas fa-eye"></i></a>
                                 @if($routePrefix === 'payroll')
-                                    @if($incumbent)
-                                        <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPromote({{ $p->id }})" title="Promote employee"><i class="fas fa-arrow-trend-up"></i></button>
+                                    @if($p->is_abolished)
+                                        <form method="POST" action="{{ route('payroll.plantilla.restore', $p->id) }}" style="display:inline" id="restore-plantilla-{{ $p->id }}">
+                                            @csrf
+                                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="confirmRestorePlantilla({{ $p->id }})" title="Restore position"><i class="fas fa-rotate-left"></i></button>
+                                        </form>
+                                    @else
+                                        @if($incumbent)
+                                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openPromote({{ $p->id }})" title="Promote employee"><i class="fas fa-arrow-trend-up"></i></button>
+                                        @endif
+                                        <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditPlantilla({{ $p->id }})" title="Edit position"><i class="fas fa-pen"></i></button>
+                                        <form method="POST" action="{{ route('payroll.plantilla.abolish', $p->id) }}" style="display:inline" id="abolish-plantilla-{{ $p->id }}">
+                                            @csrf
+                                            <input type="hidden" name="reason" id="abolish-reason-{{ $p->id }}">
+                                            <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmAbolishPlantilla({{ $p->id }})" title="Abolish position"><i class="fas fa-ban"></i></button>
+                                        </form>
                                     @endif
-                                    <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openEditPlantilla({{ $p->id }})" title="Edit position"><i class="fas fa-pen"></i></button>
-                                    <form method="POST" action="{{ route('payroll.plantilla.destroy', $p->id) }}" style="display:inline" id="delete-plantilla-{{ $p->id }}">
-                                        @csrf @method('DELETE')
-                                        <button type="button" class="hris-btn hris-btn-danger hris-btn-sm" onclick="confirmDeletePlantilla({{ $p->id }})" title="Delete position"><i class="fas fa-trash"></i></button>
-                                    </form>
                                 @endif
                             </div>
                         </td>
@@ -500,12 +514,30 @@ function confirmPromote(event) {
     return false;
 }
 
-function confirmDeletePlantilla(id) {
+function confirmAbolishPlantilla(id) {
     if (typeof Swal !== 'undefined') {
-        Swal.fire({ title: 'Delete this position?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Delete' })
-            .then(function(r) { if (r.isConfirmed) document.getElementById('delete-plantilla-' + id).submit(); });
-    } else if (confirm('Delete?')) {
-        document.getElementById('delete-plantilla-' + id).submit();
+        Swal.fire({
+            title: 'Abolish this position?',
+            text: 'It will no longer be available for assignment, but its history will remain.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'Abolish',
+            input: 'textarea', inputPlaceholder: 'Reason (optional)',
+        }).then(function(r) {
+            if (r.isConfirmed) {
+                document.getElementById('abolish-reason-' + id).value = r.value || '';
+                document.getElementById('abolish-plantilla-' + id).submit();
+            }
+        });
+    } else if (confirm('Abolish this position? It will no longer be available for assignment, but its history will remain.')) {
+        document.getElementById('abolish-plantilla-' + id).submit();
+    }
+}
+
+function confirmRestorePlantilla(id) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({ title: 'Restore this position?', text: 'It will become available for assignment again.', icon: 'question', showCancelButton: true, confirmButtonText: 'Restore' })
+            .then(function(r) { if (r.isConfirmed) document.getElementById('restore-plantilla-' + id).submit(); });
+    } else if (confirm('Restore this position?')) {
+        document.getElementById('restore-plantilla-' + id).submit();
     }
 }
 

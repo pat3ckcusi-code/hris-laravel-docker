@@ -392,6 +392,14 @@ class CscPlantillaImportService
         $userIndex = $this->buildUserIndex();
 
         foreach ($items as $item) {
+            $existing = Plantilla::where('item_number', $item['item_number'])->first();
+
+            if ($existing && $existing->is_abolished) {
+                $report['warnings'][] = "Sheet '{$item['sheet']}' row {$item['row']}: item number '{$item['item_number']}' matches an abolished plantilla item (#{$existing->id}) - skipped. Restore the position first if this is a legitimate reuse.";
+
+                continue;
+            }
+
             $plantilla = Plantilla::updateOrCreate(
                 ['item_number' => $item['item_number']],
                 [
@@ -458,7 +466,7 @@ class CscPlantillaImportService
     private function upsertAssignment(int $userId, int $plantillaId, int $plantillaStep, array &$report): void
     {
         $active = EmployeeAssignment::where('employee_id', $userId)
-            ->whereNull('end_date')
+            ->current()
             ->get();
 
         if ($active->contains('plantilla_id', $plantillaId)) {
@@ -495,7 +503,7 @@ class CscPlantillaImportService
     private function endStaleAssignments(array $plantillaIds, array $expectedIncumbent, array &$report): void
     {
         EmployeeAssignment::whereIn('plantilla_id', $plantillaIds)
-            ->whereNull('end_date')
+            ->current()
             ->get()
             ->each(function (EmployeeAssignment $assignment) use ($expectedIncumbent, &$report) {
                 if (($expectedIncumbent[$assignment->plantilla_id] ?? null) !== $assignment->employee_id) {
@@ -509,7 +517,9 @@ class CscPlantillaImportService
     {
         $report['users_synced'] = DB::update('
             UPDATE users u
-            JOIN employee_assignments ea ON ea.employee_id = u.id AND ea.end_date IS NULL
+            JOIN employee_assignments ea ON ea.employee_id = u.id
+                AND ea.start_date <= CURDATE()
+                AND (ea.end_date IS NULL OR ea.end_date >= CURDATE())
             JOIN plantillas p ON p.id = ea.plantilla_id
             SET u.salary_grade = p.salary_grade, u.salary_step = p.step
             WHERE u.salary_grade IS NULL OR u.salary_grade != p.salary_grade
@@ -524,10 +534,16 @@ class CscPlantillaImportService
             ->where('designation', '!=', '')
             ->whereIn('employee_type', ['Permanent', 'Elected Officials', 'Co-Terminus'])
             ->whereNotExists(function ($query) {
+                $today = now()->toDateString();
+
                 $query->selectRaw('1')
                     ->from('employee_assignments')
                     ->whereColumn('employee_assignments.employee_id', 'users.id')
-                    ->whereNull('employee_assignments.end_date');
+                    ->where('employee_assignments.start_date', '<=', $today)
+                    ->where(function ($q) use ($today) {
+                        $q->whereNull('employee_assignments.end_date')
+                            ->orWhere('employee_assignments.end_date', '>=', $today);
+                    });
             })
             ->orderBy('last_name')
             ->get(['id', 'last_name', 'first_name', 'designation'])

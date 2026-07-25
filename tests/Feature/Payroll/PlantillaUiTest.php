@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Payroll;
 
+use App\Models\CscEligibilityOption;
 use App\Models\EmployeeAssignment;
+use App\Models\HRAuditTrail;
 use App\Models\Plantilla;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
@@ -712,5 +715,387 @@ class PlantillaUiTest extends TestCase
 
         $this->assertNull($employee->fresh()->salary_grade);
         $this->assertSame(1, $employee->fresh()->salary_step);
+    }
+
+    public function test_abolish_succeeds_for_a_vacant_position(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla();
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.abolish', $plantilla->id), [
+            'reason' => 'Position no longer needed per reorg.',
+        ])->assertRedirect(route('payroll.plantilla.show', $plantilla->id))
+            ->assertSessionHas('status');
+
+        $plantilla->refresh();
+        $this->assertTrue($plantilla->is_abolished);
+        $this->assertNotNull($plantilla->abolished_at);
+        $this->assertSame($manager->id, $plantilla->abolished_by);
+        $this->assertSame('Position no longer needed per reorg.', $plantilla->abolished_reason);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'actor_user_id' => $manager->id,
+            'module' => 'payroll',
+            'action' => 'plantilla_abolished',
+            'target_type' => Plantilla::class,
+            'target_id' => $plantilla->id,
+        ]);
+    }
+
+    public function test_abolish_is_blocked_when_an_active_incumbent_exists(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $plantilla = $this->makePlantilla();
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => '2026-01-01',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.abolish', $plantilla->id))
+            ->assertSessionHas('error');
+
+        $this->assertFalse($plantilla->fresh()->is_abolished);
+        $this->assertDatabaseMissing('hr_audit_trails', [
+            'action' => 'plantilla_abolished',
+            'target_id' => $plantilla->id,
+        ]);
+    }
+
+    public function test_abolish_is_blocked_when_already_abolished(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla(['is_abolished' => true, 'abolished_at' => now()]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.abolish', $plantilla->id))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('hr_audit_trails', [
+            'action' => 'plantilla_abolished',
+            'target_id' => $plantilla->id,
+        ]);
+    }
+
+    public function test_abolished_position_is_excluded_from_stats_and_vacant_dropdown_but_still_visible_in_table_and_show(): void
+    {
+        $manager = $this->createPayrollManager();
+        $filled = $this->makePlantilla();
+        $employee = $this->createEmployee();
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $filled->id, 'start_date' => '2026-01-01']);
+
+        $abolished = $this->makePlantilla(['title' => 'Nurse I', 'item_number' => '902', 'salary_grade' => 15]);
+        $this->actingAs($manager)->post(route('payroll.plantilla.abolish', $abolished->id))->assertSessionHas('status');
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.index'))
+            ->assertViewHas('stats', function ($stats) {
+                return $stats['total'] === 1 && $stats['filled'] === 1 && $stats['vacant'] === 0;
+            })
+            ->assertViewHas('vacantPlantillas', fn ($vacantPlantillas) => ! $vacantPlantillas->contains('id', $abolished->id))
+            ->assertSee('Nurse I');
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.reports'))
+            ->assertViewHas('stats', function ($stats) {
+                return $stats['total'] === 1 && $stats['filled'] === 1 && $stats['vacant'] === 0;
+            })
+            ->assertViewHas('vacantPositions', fn ($vacantPositions) => ! collect($vacantPositions->items())->contains('id', $abolished->id));
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.show', $abolished->id))
+            ->assertStatus(200)
+            ->assertSee('Nurse I')
+            ->assertSee('Abolished');
+    }
+
+    public function test_store_assignment_is_rejected_for_an_abolished_position(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $plantilla = $this->makePlantilla(['is_abolished' => true, 'abolished_at' => now()]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $plantilla->id), [
+            'employee_id' => $employee->id,
+            'start_date' => '2026-08-01',
+        ])->assertSessionHas('error');
+
+        $this->assertSame(0, EmployeeAssignment::where('plantilla_id', $plantilla->id)->count());
+    }
+
+    public function test_promote_is_rejected_when_target_is_abolished(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $current = $this->makePlantilla();
+        $target = $this->makePlantilla([
+            'title' => 'Nurse I', 'item_number' => '911', 'salary_grade' => 15,
+            'is_abolished' => true, 'abolished_at' => now(),
+        ]);
+
+        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $current->id, 'start_date' => '2026-01-01']);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $target->id,
+            'effective_date' => '2026-08-01',
+        ])->assertSessionHas('error');
+
+        $this->assertSame(
+            $current->id,
+            EmployeeAssignment::where('employee_id', $employee->id)->whereNull('end_date')->first()->plantilla_id
+        );
+    }
+
+    public function test_restore_reinstates_an_abolished_position(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla([
+            'is_abolished' => true,
+            'abolished_at' => now(),
+            'abolished_by' => $manager->id,
+            'abolished_reason' => 'Reorg reversed.',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.restore', $plantilla->id))
+            ->assertRedirect(route('payroll.plantilla.show', $plantilla->id))
+            ->assertSessionHas('status');
+
+        $plantilla->refresh();
+        $this->assertFalse($plantilla->is_abolished);
+        $this->assertNull($plantilla->abolished_at);
+        $this->assertNull($plantilla->abolished_by);
+        $this->assertNull($plantilla->abolished_reason);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'actor_user_id' => $manager->id,
+            'module' => 'payroll',
+            'action' => 'plantilla_restored',
+            'target_type' => Plantilla::class,
+            'target_id' => $plantilla->id,
+        ]);
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.index'))
+            ->assertViewHas('vacantPlantillas', fn ($vacantPlantillas) => $vacantPlantillas->contains('id', $plantilla->id));
+    }
+
+    public function test_restore_is_blocked_when_not_abolished(): void
+    {
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla();
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.restore', $plantilla->id))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('hr_audit_trails', [
+            'action' => 'plantilla_restored',
+            'target_id' => $plantilla->id,
+        ]);
+    }
+
+    public function test_hard_delete_route_no_longer_exists(): void
+    {
+        $this->assertFalse(Route::has('payroll.plantilla.destroy'));
+    }
+
+    public function test_fixed_term_assignment_counts_as_filled_and_shows_as_incumbent(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee(['last_name' => 'Romero', 'first_name' => 'Ramil']);
+        $filled = $this->makePlantilla();
+        $vacant = $this->makePlantilla(['title' => 'Nurse I', 'item_number' => '902', 'salary_grade' => 15]);
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $filled->id,
+            'start_date' => '2026-07-24',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.index'))
+            ->assertSee('Romero, Ramil')
+            ->assertViewHas('stats', fn ($stats) => $stats['total'] === 2 && $stats['filled'] === 1 && $stats['vacant'] === 1);
+
+        // Note: the vacant item still appears in the page's Promote-modal
+        // dropdown regardless of the table's own status filter (documented,
+        // pre-existing behavior - see test_store_and_update_accept_csc_eligibility_and_index_filters_by_it),
+        // so this only asserts on the table's own content, not the whole page.
+        $this->actingAs($manager)->get(route('payroll.plantilla.index', ['status' => 'filled']))
+            ->assertSee('Administrative Aide II');
+
+        $this->actingAs($manager)->get(route('payroll.plantilla.index', ['status' => 'vacant']))
+            ->assertSee('Nurse I')
+            ->assertDontSee('Administrative Aide II');
+
+        $response = $this->actingAs($manager)->get(route('payroll.plantilla.show', $filled->id));
+        $response->assertSee('Romero');
+        $this->assertStringContainsString('Active Incumbents:</strong> 1', $response->getContent());
+        $this->assertStringContainsString('status-chip status-approved">Active</span>', $response->getContent());
+    }
+
+    public function test_fixed_term_assignment_blocks_a_second_assignment_to_the_same_item(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $plantilla = $this->makePlantilla();
+        $holder = $this->createEmployee();
+        $other = $this->createEmployee();
+
+        EmployeeAssignment::create([
+            'employee_id' => $holder->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => '2026-07-24',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $plantilla->id), [
+            'employee_id' => $other->id,
+            'start_date' => '2026-07-26',
+        ])->assertSessionHas('error');
+
+        $this->assertSame(1, EmployeeAssignment::where('plantilla_id', $plantilla->id)->count());
+    }
+
+    public function test_fixed_term_assignment_blocks_abolish(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $plantilla = $this->makePlantilla();
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => '2026-07-24',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.abolish', $plantilla->id))
+            ->assertSessionHas('error');
+
+        $this->assertFalse($plantilla->fresh()->is_abolished);
+    }
+
+    public function test_assigning_new_position_auto_truncates_a_current_fixed_term_assignment(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $old = $this->makePlantilla();
+        $new = $this->makePlantilla(['title' => 'Administrative Aide III', 'item_number' => '902', 'salary_grade' => 3, 'step' => 6]);
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $old->id,
+            'start_date' => '2026-07-24',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.assignments.store', $new->id), [
+            'employee_id' => $employee->id,
+            'start_date' => '2026-07-25',
+        ])->assertSessionHas('status');
+
+        $active = EmployeeAssignment::where('employee_id', $employee->id)->current()->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($new->id, $active->first()->plantilla_id);
+        $this->assertSame(
+            '2026-07-24',
+            EmployeeAssignment::where('plantilla_id', $old->id)->first()->end_date->toDateString()
+        );
+
+        // The employee's synced salary must follow the *new* position, not
+        // get wiped just because their prior assignment had a defined end_date.
+        $this->assertSame(3, $employee->fresh()->salary_grade);
+        $this->assertSame(1, $employee->fresh()->salary_step);
+    }
+
+    public function test_promote_auto_truncates_a_current_fixed_term_assignment(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee(['designation' => 'Administrative Aide II']);
+        $current = $this->makePlantilla();
+        $higher = $this->makePlantilla([
+            'title' => 'Administrative Assistant I',
+            'item_number' => '910',
+            'salary_grade' => 7,
+            'step' => 4,
+        ]);
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $current->id,
+            'start_date' => '2026-07-24',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $higher->id,
+            'effective_date' => '2026-08-01',
+        ])->assertSessionHas('status');
+
+        $active = EmployeeAssignment::where('employee_id', $employee->id)->current(now()->addDays(7)->toDateString())->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($higher->id, $active->first()->plantilla_id);
+        $this->assertSame(
+            '2026-07-31',
+            EmployeeAssignment::where('plantilla_id', $current->id)->first()->end_date->toDateString()
+        );
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'action' => 'promotion',
+            'target_id' => $employee->id,
+        ]);
+        $trail = HRAuditTrail::where('action', 'promotion')->where('target_id', $employee->id)->first();
+        $this->assertSame('Administrative Aide II', $trail->details['from']['title']);
+    }
+
+    public function test_plantilla_show_status_badge_treats_an_assignment_ending_today_as_active(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $plantilla = $this->makePlantilla();
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-07-25',
+        ]);
+
+        $response = $this->actingAs($manager)->get(route('payroll.plantilla.show', $plantilla->id));
+        $response->assertDontSee('Ended');
+        $this->assertStringContainsString('status-chip status-approved">Active</span>', $response->getContent());
+    }
+
+    public function test_new_csc_eligibility_category_is_immediately_usable_without_a_deploy(): void
+    {
+        $manager = $this->createPayrollManager();
+        CscEligibilityOption::create([
+            'key' => 'career_service_professional_2nd_level',
+            'label' => 'CS Professional (2nd Level)',
+        ]);
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.store'), [
+            'title' => 'Administrative Officer V',
+            'item_number' => '999',
+            'salary_grade' => 18,
+            'step' => 1,
+            'employment_type' => 'permanent',
+            'csc_eligibility' => 'career_service_professional_2nd_level',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'career_service_professional_2nd_level',
+            Plantilla::where('item_number', '999')->first()->csc_eligibility
+        );
     }
 }

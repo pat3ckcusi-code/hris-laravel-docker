@@ -236,7 +236,7 @@
             ['label' => 'Payroll Runs',        'icon' => 'payroll_runs',    'route' => 'payroll.runs.index',          'active' => ['payroll.runs.*']],
 
             ['section' => 'Compensation'],
-            ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',      'route' => 'payroll.plantilla.index',     'active' => ['payroll.plantilla.*']],
+            ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',      'route' => 'payroll.plantilla.index',     'active' => ['payroll.plantilla.*', 'payroll.csc-eligibility.*']],
             ['label' => 'Salary Matrix',       'icon' => 'salary_matrix',   'route' => 'payroll.salary-matrix.index', 'active' => ['payroll.salary-matrix.*']],
             ['label' => 'Earnings (Allowances)', 'icon' => 'earnings',      'route' => 'payroll.earnings.index',      'active' => ['payroll.earnings.*']],
             ['label' => 'Deductions',          'icon' => 'deductions',      'route' => 'payroll.deductions.index',    'active' => ['payroll.deductions.*']],

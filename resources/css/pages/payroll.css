@@ -201,34 +201,6 @@ textarea.form-input {
     background: linear-gradient(120deg, #dc2626, #f87171);
 }
 
-/* ── Plantilla module top-nav buttons (Service Trail / Reports / Add Position) ──
-   Pill shape + icon badge + hover lift give these more visual weight than a
-   plain .btn-outline, without introducing new brand colors - everything stays
-   on the existing --accent orange so it still reads as one design system. */
-.plantilla-nav-btn.btn-outline {
-    border-radius: 999px;
-    border-width: 1.5px;
-    padding-left: 14px;
-    transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
-}
-
-.plantilla-nav-btn.btn-outline i {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: var(--chip-bg);
-    font-size: 0.68rem;
-}
-
-.plantilla-nav-btn.btn-outline:hover {
-    background: var(--chip-bg);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(234, 88, 12, 0.18);
-}
-
 .btn-add-position {
     border-radius: 999px;
     padding-left: 14px;
@@ -251,6 +223,66 @@ textarea.form-input {
     opacity: 1;
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(234, 88, 12, 0.45);
+}
+
+/* ── Plantilla top-bar action grouping ──
+   .top is a single flex row with justify-content:space-between; with the
+   page's action buttons as bare siblings of <h1> in it, 2+ buttons get
+   spread evenly across the whole row instead of clustering together.
+   Wrapping them in this group makes the group itself the one flex item
+   on the right, so space-between only separates it from the title. */
+.plantilla-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Service Trail / Reports are destinations, not actions on these pages -
+   demoted to quiet text links so the page's one real action button keeps
+   the only strong color in the row. */
+.plantilla-quiet-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 4px;
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: color 140ms ease, background-color 140ms ease;
+}
+
+.plantilla-quiet-link i {
+    font-size: 0.78rem;
+}
+
+.plantilla-quiet-link:hover {
+    color: var(--accent);
+    background: var(--chip-bg);
+}
+
+/* Abolishing a position is rare and one-way - icon-only ghost-red so it's
+   found on purpose rather than sitting at the same visual weight as
+   Assign Employee/Back. */
+.plantilla-icon-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+    background: #fff5f5;
+    color: #dc2626;
+    cursor: pointer;
+    transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.plantilla-icon-btn-danger:hover {
+    background: #fee2e2;
+    transform: translateY(-1px);
 }
 
 /* ── Filters ────────────────────────────────────── */
@@ -661,19 +693,19 @@ textarea.form-input {
     color: #92400e;
 }
 
-.status-chip.eligibility-professional {
+/* Abolished reads as "closed", not "vacant" - solid, not dashed, to signal it's not an open opportunity */
+.status-chip.status-abolished {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+}
+
+/* Categories are admin-managed and unbounded (see csc_eligibility_options) -
+   one flat style for all of them rather than a hand-picked color per key,
+   which would silently look unstyled for every new category. */
+.status-chip.eligibility-badge {
     background: #e0e7ff;
     color: #3730a3;
-}
-
-.status-chip.eligibility-sub_professional {
-    background: #dbeafe;
-    color: #1e40af;
-}
-
-.status-chip.eligibility-none {
-    background: #f1f5f9;
-    color: #475569;
 }
 
 .incumbent-cell {

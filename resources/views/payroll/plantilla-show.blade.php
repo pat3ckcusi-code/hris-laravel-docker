@@ -1,7 +1,7 @@
 @php
     // The current incumbent's own step when filled (personal to their stint);
     // resets to 1 when vacant, since there's no assignment to read a step from.
-    $displayStep = $plantilla->assignments->firstWhere('end_date', null)?->step ?? 1;
+    $displayStep = $plantilla->assignments->first(fn ($a) => $a->isCurrent())?->step ?? 1;
 @endphp
 
 @extends('dashboards.layout', [
@@ -10,10 +10,24 @@
 ])
 
 @section('top_actions')
-    @if($routePrefix === 'payroll')
-        <button type="button" class="btn btn-sm" onclick="document.getElementById('assignModal').showModal()"><i class="fas fa-user-plus"></i> Assign Employee</button>
-    @endif
-    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back</a>
+    <div class="plantilla-actions-group">
+        @if($routePrefix === 'payroll')
+            @if($plantilla->is_abolished)
+                <form method="POST" action="{{ route('payroll.plantilla.restore', $plantilla->id) }}" style="display:inline" id="restore-plantilla-{{ $plantilla->id }}">
+                    @csrf
+                    <button type="button" class="btn btn-sm" onclick="confirmRestorePlantilla({{ $plantilla->id }})"><i class="fas fa-rotate-left"></i> Restore Position</button>
+                </form>
+            @else
+                <button type="button" class="btn btn-sm" onclick="document.getElementById('assignModal').showModal()"><i class="fas fa-user-plus"></i> Assign Employee</button>
+                <form method="POST" action="{{ route('payroll.plantilla.abolish', $plantilla->id) }}" style="display:inline" id="abolish-plantilla-{{ $plantilla->id }}">
+                    @csrf
+                    <input type="hidden" name="reason" id="abolish-reason-{{ $plantilla->id }}">
+                    <button type="button" class="plantilla-icon-btn-danger" onclick="confirmAbolishPlantilla({{ $plantilla->id }})" title="Abolish position"><i class="fas fa-ban"></i></button>
+                </form>
+            @endif
+        @endif
+        <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back</a>
+    </div>
 @endsection
 
 @section('content')
@@ -32,7 +46,18 @@
         <div class="detail-row"><strong>Step:</strong> {{ $displayStep }}</div>
         <div class="detail-row"><strong>Employment Type:</strong> {{ ucfirst($plantilla->employment_type) }}</div>
         <div class="detail-row"><strong>CSC Eligibility Required:</strong> {{ $eligibilityOptions[$plantilla->csc_eligibility] ?? 'Not specified' }}</div>
-        <div class="detail-row"><strong>Active Incumbents:</strong> {{ $plantilla->assignments->whereNull('end_date')->count() }}</div>
+        <div class="detail-row"><strong>Active Incumbents:</strong> {{ $plantilla->assignments->filter(fn ($a) => $a->isCurrent())->count() }}</div>
+        @if($plantilla->is_abolished)
+            <div class="detail-row">
+                <strong>Status:</strong>
+                <span class="status-chip status-abolished">Abolished</span>
+                on {{ $plantilla->abolished_at?->format('M d, Y') }}
+                by {{ $plantilla->abolishedBy->name ?? 'Unknown' }}
+                @if($plantilla->abolished_reason)
+                    &mdash; {{ $plantilla->abolished_reason }}
+                @endif
+            </div>
+        @endif
     </div>
 
     <section class="payroll-section">
@@ -77,7 +102,7 @@
                                     <span class="status-chip status-locked">Superseded before it took effect</span>
                                 @elseif($a->start_date->isFuture())
                                     <span class="status-chip status-draft">Not yet started</span>
-                                @elseif(!$a->end_date || $a->end_date->isFuture())
+                                @elseif($a->isCurrent())
                                     <span class="status-chip status-approved">Active</span>
                                 @else
                                     <span class="status-chip status-rejected">Ended</span>
@@ -206,6 +231,33 @@ function confirmDeleteAssignment(id) {
             .then(function(r) { if (r.isConfirmed) document.getElementById('delete-assign-' + id).submit(); });
     } else if (confirm('Remove this assignment?')) {
         document.getElementById('delete-assign-' + id).submit();
+    }
+}
+
+function confirmAbolishPlantilla(id) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Abolish this position?',
+            text: 'It will no longer be available for assignment, but its history will remain.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'Abolish',
+            input: 'textarea', inputPlaceholder: 'Reason (optional)',
+        }).then(function(r) {
+            if (r.isConfirmed) {
+                document.getElementById('abolish-reason-' + id).value = r.value || '';
+                document.getElementById('abolish-plantilla-' + id).submit();
+            }
+        });
+    } else if (confirm('Abolish this position? It will no longer be available for assignment, but its history will remain.')) {
+        document.getElementById('abolish-plantilla-' + id).submit();
+    }
+}
+
+function confirmRestorePlantilla(id) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({ title: 'Restore this position?', text: 'It will become available for assignment again.', icon: 'question', showCancelButton: true, confirmButtonText: 'Restore' })
+            .then(function(r) { if (r.isConfirmed) document.getElementById('restore-plantilla-' + id).submit(); });
+    } else if (confirm('Restore this position?')) {
+        document.getElementById('restore-plantilla-' + id).submit();
     }
 }
 

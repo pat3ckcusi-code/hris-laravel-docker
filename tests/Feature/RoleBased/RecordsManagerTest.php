@@ -7,6 +7,9 @@ use App\Models\EmployeeAssignment;
 use App\Models\Plantilla;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
@@ -157,6 +160,58 @@ class RecordsManagerTest extends TestCase
         ]);
     }
 
+    public function test_separating_employee_ends_a_current_fixed_term_assignment_and_logs_audit(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee(['Status' => 'Active', 'salary_grade' => 10, 'salary_step' => 1]);
+
+        $plantilla = Plantilla::create([
+            'title' => 'Test Position',
+            'salary_grade' => 10,
+            'step' => 1,
+            'employment_type' => 'Permanent',
+        ]);
+
+        // A fixed-term stint currently in effect - both dates set, end_date
+        // still in the future - not the open-ended (end_date null) case the
+        // sibling test above already covers.
+        $assignment = EmployeeAssignment::create([
+            'employee_id' => $emp->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($rm)->put(
+            route('dashboard.records-manager.users.update', $emp->id),
+            [
+                'last_name' => $emp->last_name,
+                'first_name' => $emp->first_name,
+                'email' => $emp->email,
+                'Dept_id' => $emp->Dept_id,
+                'Status' => 'Separated',
+                'access_level' => 'employee',
+                'date_hired' => now()->subYears(2)->toDateString(),
+            ]
+        );
+
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Separate employee failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $this->assertSame(now()->toDateString(), $assignment->fresh()->end_date?->toDateString());
+        $this->assertNull($emp->fresh()->salary_grade);
+        $this->assertSame(1, $emp->fresh()->salary_step);
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'payroll',
+            'action' => 'assignment_ended',
+            'target_type' => User::class,
+            'target_id' => $emp->id,
+        ]);
+    }
+
     public function test_bulk_employee_operations(): void
     {
         $rm = $this->createRecordsManager();
@@ -216,7 +271,7 @@ class RecordsManagerTest extends TestCase
     {
         $rm = $this->createRecordsManager();
 
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet;
+        $spreadsheet = new Spreadsheet;
         $spreadsheet->getActiveSheet()->fromArray([
             ['EmpNo', 'Last Name', 'First Name', 'Middle Name', 'Email', 'Designation', 'Department', 'Date Hired', 'Employee Type', 'Access Level'],
             ['', 'DELA CRUZ', 'JUAN', '', 'juan.import.test@example.com', '', '', '2026-01-15', 'Permanent', 'employee'],
@@ -226,8 +281,8 @@ class RecordsManagerTest extends TestCase
         ]);
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'import').'.xlsx';
-        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save($tmpPath);
-        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($tmpPath));
+        (new Xlsx($spreadsheet))->save($tmpPath);
+        $file = UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($tmpPath));
         unlink($tmpPath);
 
         $response = $this->actingAs($rm)->post(route('dashboard.records-manager.employees.import'), [

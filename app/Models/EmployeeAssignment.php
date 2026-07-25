@@ -71,4 +71,49 @@ class EmployeeAssignment extends Model
     {
         return $this->end_date !== null && $this->end_date->lt($this->start_date);
     }
+
+    /**
+     * Rows whose date range covers $onDate (default today) - open-ended
+     * (end_date null) or fixed-term, both count as "in effect". A superseded
+     * row (end_date < start_date) can never satisfy this: chaining
+     * start_date <= $onDate <= end_date < start_date is a contradiction, so
+     * no separate exclusion is needed.
+     */
+    public function scopeCurrent(Builder $query, ?string $onDate = null): Builder
+    {
+        $date = $onDate ?? Carbon::today()->toDateString();
+
+        return $query->where('start_date', '<=', $date)
+            ->where(fn (Builder $q) => $q->whereNull('end_date')->orWhere('end_date', '>=', $date));
+    }
+
+    /** Instance-side equivalent of scopeCurrent(), for already-loaded collections (Blade). */
+    public function isCurrent(?Carbon $onDate = null): bool
+    {
+        $date = $onDate ?? Carbon::today();
+
+        return $this->start_date !== null
+            && $this->start_date->lte($date)
+            && (! $this->end_date || $this->end_date->gte($date));
+    }
+
+    /**
+     * Rows that haven't concluded as of $onDate (default today) - broader
+     * than scopeCurrent(): also catches a not-yet-started assignment (future
+     * start_date), since that's a real "the employee already has something
+     * queued up" state a new assignment/promotion still needs to close out
+     * or preempt. Excludes already-superseded (inverted end_date < start_date)
+     * rows so a prior truncation is never re-touched by a later one.
+     */
+    public function scopeNotEnded(Builder $query, ?string $onDate = null): Builder
+    {
+        $date = $onDate ?? Carbon::today()->toDateString();
+
+        return $query->where(function (Builder $q) use ($date) {
+            $q->whereNull('end_date')
+                ->orWhere(function (Builder $q2) use ($date) {
+                    $q2->where('end_date', '>=', $date)->whereColumn('end_date', '>=', 'start_date');
+                });
+        });
+    }
 }

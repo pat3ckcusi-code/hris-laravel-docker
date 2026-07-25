@@ -4,8 +4,10 @@
 ])
 
 @section('top_actions')
-    <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="btn btn-sm btn-outline plantilla-nav-btn"><i class="fas fa-route"></i> Service Trail</a>
-    <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
+    <div class="plantilla-actions-group">
+        <a href="{{ route("{$routePrefix}.plantilla.service-trail") }}" class="plantilla-quiet-link"><i class="fas fa-route"></i> Service Trail</a>
+        <a href="{{ route("{$routePrefix}.plantilla.index") }}" class="btn btn-sm btn-outline">Back to Plantilla</a>
+    </div>
 @endsection
 
 @section('content')

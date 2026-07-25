@@ -17,7 +17,7 @@ class EmployeeAssignmentService
     public function endActiveAssignmentForStatusChange(int $employeeId, string $newStatus): void
     {
         $active = EmployeeAssignment::where('employee_id', $employeeId)
-            ->whereNull('end_date')
+            ->notEnded()
             ->with('plantilla')
             ->first();
 
@@ -51,6 +51,43 @@ class EmployeeAssignmentService
                 'title' => $active->plantilla?->title,
                 'end_date' => $active->end_date?->toDateString(),
             ],
+        ]);
+    }
+
+    /**
+     * The salary_grade/salary_step values the employee's current assignment
+     * (date-range containment, not just open-ended) implies right now - split
+     * out from syncUserSalary() so a dry-run reconciliation can preview the
+     * target values without writing them.
+     */
+    public function currentSalaryFor(int $employeeId): array
+    {
+        $current = EmployeeAssignment::where('employee_id', $employeeId)
+            ->current()
+            ->with('plantilla')
+            ->orderByDesc('start_date')
+            ->first();
+
+        return [
+            'salary_grade' => $current?->plantilla?->salary_grade,
+            'salary_step' => $current?->step ?? 1,
+        ];
+    }
+
+    /**
+     * Keep the denormalized users.salary_grade/salary_step in step with the
+     * employee's current plantilla assignment (or clear/reset them when none).
+     * salary_grade follows the position (plantilla.salary_grade); salary_step
+     * follows the assignment's own step, which is personal to this stint -
+     * never the plantilla's shared, position-level step.
+     */
+    public function syncUserSalary(int $employeeId): void
+    {
+        $target = $this->currentSalaryFor($employeeId);
+
+        User::where('id', $employeeId)->update([
+            'salary_grade' => $target['salary_grade'],
+            'salary_step' => $target['salary_step'],
         ]);
     }
 }

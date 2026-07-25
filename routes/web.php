@@ -39,6 +39,7 @@ use App\Http\Controllers\OicAssignmentController;
 use App\Http\Controllers\Payroll\ApprovalsController;
 use App\Http\Controllers\Payroll\AttendanceController as PayrollAttendanceController;
 use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
+use App\Http\Controllers\Payroll\CscEligibilityOptionsController;
 use App\Http\Controllers\Payroll\DeductionsController;
 use App\Http\Controllers\Payroll\EarningsController;
 use App\Http\Controllers\Payroll\EmployeeAssignmentController;
@@ -767,14 +768,13 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'attendance.update',
         'destroy' => 'attendance.destroy',
     ]);
-    Route::resource('plantilla', PlantillaController::class)->names([
+    Route::resource('plantilla', PlantillaController::class)->except(['destroy'])->names([
         'index' => 'plantilla.index',
         'create' => 'plantilla.create',
         'store' => 'plantilla.store',
         'show' => 'plantilla.show',
         'edit' => 'plantilla.edit',
         'update' => 'plantilla.update',
-        'destroy' => 'plantilla.destroy',
     ]);
 
     // Plantilla Employee Assignments
@@ -782,6 +782,8 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
     Route::get('plantilla-service-trail', [PlantillaController::class, 'serviceTrail'])->name('plantilla.service-trail');
     Route::post('plantilla-history', [EmployeeAssignmentController::class, 'storeHistorical'])->name('plantilla.history.store');
     Route::post('plantilla-promote', [EmployeeAssignmentController::class, 'promote'])->name('plantilla.promote');
+    Route::post('plantilla/{plantilla}/abolish', [PlantillaController::class, 'abolish'])->name('plantilla.abolish');
+    Route::post('plantilla/{plantilla}/restore', [PlantillaController::class, 'restore'])->name('plantilla.restore');
     Route::post('plantilla/{plantilla}/assignments', [EmployeeAssignmentController::class, 'store'])->name('plantilla.assignments.store');
     Route::put('plantilla/{plantilla}/assignments/{assignment}', [EmployeeAssignmentController::class, 'update'])->name('plantilla.assignments.update');
     Route::delete('plantilla/{plantilla}/assignments/{assignment}', [EmployeeAssignmentController::class, 'destroy'])->name('plantilla.assignments.destroy');
@@ -816,6 +818,14 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'edit' => 'deductions.edit',
         'update' => 'deductions.update',
         'destroy' => 'deductions.destroy',
+    ]);
+    Route::resource('csc-eligibility', CscEligibilityOptionsController::class)->except(['show'])->names([
+        'index' => 'csc-eligibility.index',
+        'create' => 'csc-eligibility.create',
+        'store' => 'csc-eligibility.store',
+        'edit' => 'csc-eligibility.edit',
+        'update' => 'csc-eligibility.update',
+        'destroy' => 'csc-eligibility.destroy',
     ]);
     Route::resource('leave-integration', LeaveIntegrationController::class)->names([
         'index' => 'leave-integration.index',

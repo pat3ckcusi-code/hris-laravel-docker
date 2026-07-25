@@ -1170,7 +1170,7 @@ class LeaveRequestService
         $position = $employee->designation ?? '';
         if (empty($position)) {
             $assignment = EmployeeAssignment::where('employee_id', $employee->id)
-                ->whereNull('end_date')
+                ->current()
                 ->latest('start_date')
                 ->first();
             if ($assignment && $assignment->plantilla_id) {

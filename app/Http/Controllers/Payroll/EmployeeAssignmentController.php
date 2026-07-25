@@ -7,6 +7,7 @@ use App\Models\EmployeeAssignment;
 use App\Models\HRAuditTrail;
 use App\Models\Plantilla;
 use App\Models\User;
+use App\Services\EmployeeAssignmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\DB;
 
 class EmployeeAssignmentController extends Controller
 {
+    public function __construct(private EmployeeAssignmentService $employeeAssignmentService) {}
+
     public function store(Request $request, int $plantillaId): RedirectResponse
     {
         $plantilla = Plantilla::findOrFail($plantillaId);
@@ -23,6 +26,11 @@ class EmployeeAssignmentController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
+
+        if ($plantilla->is_abolished) {
+            return redirect()->route('payroll.plantilla.show', $plantilla->id)
+                ->with('error', 'This position has been abolished and cannot accept new assignments.');
+        }
 
         // A plantilla item holds one incumbent at a time (historical,
         // already-ended assignments may still be recorded freely).
@@ -38,7 +46,7 @@ class EmployeeAssignmentController extends Controller
         if (! $request->filled('end_date')) {
             $newStart = Carbon::parse($request->start_date);
             $priorOpen = EmployeeAssignment::where('employee_id', $request->employee_id)
-                ->whereNull('end_date')
+                ->notEnded()
                 ->get();
             $replaced = $priorOpen->count();
 
@@ -66,7 +74,7 @@ class EmployeeAssignmentController extends Controller
             'end_date' => $request->end_date,
         ]);
 
-        $this->syncUserSalary((int) $request->employee_id);
+        $this->employeeAssignmentService->syncUserSalary((int) $request->employee_id);
 
         $this->logAssignmentAction('assignment_created', (int) $request->employee_id, $plantilla, [
             'step' => 1,
@@ -97,13 +105,18 @@ class EmployeeAssignmentController extends Controller
         $target = Plantilla::findOrFail($request->plantilla_id);
         $employee = User::findOrFail($request->employee_id);
 
+        if ($target->is_abolished) {
+            return redirect()->route('payroll.plantilla.index')
+                ->with('error', 'The selected position has been abolished and is not available for assignment.');
+        }
+
         if ($target->activeAssignments()->exists()) {
             return redirect()->route('payroll.plantilla.index')
                 ->with('error', 'The selected position already has an active incumbent.');
         }
 
         $current = EmployeeAssignment::where('employee_id', $employee->id)
-            ->whereNull('end_date')
+            ->notEnded()
             ->with('plantilla')
             ->get();
 
@@ -256,7 +269,7 @@ class EmployeeAssignmentController extends Controller
 
         $assignment->update($request->only('start_date', 'end_date', 'step'));
 
-        $this->syncUserSalary($assignment->employee_id);
+        $this->employeeAssignmentService->syncUserSalary($assignment->employee_id);
         $this->logAssignmentAction('assignment_updated', $assignment->employee_id, $plantilla, [
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
@@ -276,7 +289,7 @@ class EmployeeAssignmentController extends Controller
         $removedStep = $assignment->step;
         $assignment->delete();
 
-        $this->syncUserSalary($employeeId);
+        $this->employeeAssignmentService->syncUserSalary($employeeId);
         $this->logAssignmentAction('assignment_removed', $employeeId, $plantilla, [
             'step' => $removedStep,
             'start_date' => $assignment->start_date?->toDateString(),
@@ -303,27 +316,6 @@ class EmployeeAssignmentController extends Controller
                 'title' => $plantilla->title,
                 'salary_grade' => $plantilla->salary_grade,
             ],
-        ]);
-    }
-
-    /**
-     * Keep the denormalized users.salary_grade/salary_step in step with the
-     * employee's remaining active assignment (or clear/reset them when none).
-     * salary_grade follows the position (plantilla.salary_grade); salary_step
-     * follows the assignment's own step, which is personal to this stint -
-     * never the plantilla's shared, position-level step.
-     */
-    private function syncUserSalary(int $employeeId): void
-    {
-        $active = EmployeeAssignment::where('employee_id', $employeeId)
-            ->whereNull('end_date')
-            ->with('plantilla')
-            ->orderByDesc('start_date')
-            ->first();
-
-        User::where('id', $employeeId)->update([
-            'salary_grade' => $active?->plantilla?->salary_grade,
-            'salary_step' => $active?->step ?? 1,
         ]);
     }
 }

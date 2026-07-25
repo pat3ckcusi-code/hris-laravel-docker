@@ -41,6 +41,7 @@ class PlantillaController extends Controller
             ->when($request->query('department'), fn ($q, $dept) => $q->where('department', $dept))
             ->when($request->query('status') === 'vacant', fn ($q) => $q->whereDoesntHave('activeAssignments'))
             ->when($request->query('status') === 'filled', fn ($q) => $q->whereHas('activeAssignments'))
+            ->when($request->query('status') === 'abolished', fn ($q) => $q->where('is_abolished', true))
             ->when($request->query('eligibility'), fn ($q, $elig) => $q->where('csc_eligibility', $elig))
             ->orderBy('salary_grade')
             ->paginate(20)
@@ -52,18 +53,19 @@ class PlantillaController extends Controller
             ->pluck('department');
 
         $vacantPlantillas = Plantilla::where('is_historical', false)
+            ->where('is_abolished', false)
             ->whereDoesntHave('activeAssignments')
             ->orderBy('salary_grade')
             ->orderBy('title')
             ->get(['id', 'item_number', 'title', 'department', 'salary_grade', 'step']);
 
         $stats = [
-            'total' => Plantilla::where('is_historical', false)->count(),
-            'filled' => Plantilla::where('is_historical', false)->whereHas('activeAssignments')->count(),
+            'total' => Plantilla::where('is_historical', false)->where('is_abolished', false)->count(),
+            'filled' => Plantilla::where('is_historical', false)->where('is_abolished', false)->whereHas('activeAssignments')->count(),
         ];
         $stats['vacant'] = $stats['total'] - $stats['filled'];
 
-        $eligibilityOptions = Plantilla::ELIGIBILITY_OPTIONS;
+        $eligibilityOptions = Plantilla::eligibilityOptions();
         $routePrefix = $this->routePrefix($request);
 
         return view('payroll.plantilla', compact('plantillas', 'departments', 'vacantPlantillas', 'stats', 'eligibilityOptions', 'routePrefix'));
@@ -72,8 +74,8 @@ class PlantillaController extends Controller
     public function reports(Request $request): View
     {
         $stats = [
-            'total' => Plantilla::where('is_historical', false)->count(),
-            'filled' => Plantilla::where('is_historical', false)->whereHas('activeAssignments')->count(),
+            'total' => Plantilla::where('is_historical', false)->where('is_abolished', false)->count(),
+            'filled' => Plantilla::where('is_historical', false)->where('is_abolished', false)->whereHas('activeAssignments')->count(),
             'promotions_this_year' => HRAuditTrail::where('module', 'payroll')
                 ->where('action', 'promotion')
                 ->whereYear('created_at', now()->year)
@@ -85,6 +87,7 @@ class PlantillaController extends Controller
         $vacantDepartment = $request->query('vacant_department');
 
         $vacantPositions = Plantilla::where('is_historical', false)
+            ->where('is_abolished', false)
             ->whereDoesntHave('activeAssignments')
             ->when($vacantSearch !== '', function ($query) use ($vacantSearch) {
                 $query->where(function ($q) use ($vacantSearch) {
@@ -200,7 +203,7 @@ class PlantillaController extends Controller
             'salary_grade' => 'required|integer|min:1|max:33',
             'step' => 'nullable|integer|min:1|max:8',
             'employment_type' => 'required|string|max:100',
-            'csc_eligibility' => ['nullable', Rule::in(array_keys(Plantilla::ELIGIBILITY_OPTIONS))],
+            'csc_eligibility' => ['nullable', Rule::in(array_keys(Plantilla::eligibilityOptions()))],
             'education' => 'nullable|string|max:2000',
             'training' => 'nullable|string|max:2000',
             'experience' => 'nullable|string|max:2000',
@@ -218,11 +221,11 @@ class PlantillaController extends Controller
         $plantilla = Plantilla::with('assignments.employee')->findOrFail($id);
         $employees = User::active()->orderBy('last_name')
             ->get(['id', 'name', 'last_name', 'first_name', 'designation', 'EmpNo']);
-        $currentAssignments = EmployeeAssignment::whereNull('end_date')
+        $currentAssignments = EmployeeAssignment::current()
             ->with('plantilla')
             ->get()
             ->keyBy('employee_id');
-        $eligibilityOptions = Plantilla::ELIGIBILITY_OPTIONS;
+        $eligibilityOptions = Plantilla::eligibilityOptions();
         $routePrefix = $this->routePrefix($request);
 
         return view('payroll.plantilla-show', compact('plantilla', 'employees', 'currentAssignments', 'eligibilityOptions', 'routePrefix'));
@@ -242,7 +245,7 @@ class PlantillaController extends Controller
             'salary_grade' => 'required|integer|min:1|max:33',
             'step' => 'nullable|integer|min:1|max:8',
             'employment_type' => 'required|string|max:100',
-            'csc_eligibility' => ['nullable', Rule::in(array_keys(Plantilla::ELIGIBILITY_OPTIONS))],
+            'csc_eligibility' => ['nullable', Rule::in(array_keys(Plantilla::eligibilityOptions()))],
             'education' => 'nullable|string|max:2000',
             'training' => 'nullable|string|max:2000',
             'experience' => 'nullable|string|max:2000',
@@ -255,12 +258,83 @@ class PlantillaController extends Controller
             ->with('status', 'Plantilla position updated.');
     }
 
-    public function destroy(int $id): RedirectResponse
+    public function abolish(Request $request, int $id): RedirectResponse
     {
-        Plantilla::findOrFail($id)->delete();
+        $plantilla = Plantilla::findOrFail($id);
 
-        return redirect()->route('payroll.plantilla.index')
-            ->with('status', 'Plantilla position deleted.');
+        $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        if ($plantilla->is_abolished) {
+            return redirect()->route('payroll.plantilla.show', $plantilla->id)
+                ->with('error', 'This position is already abolished.');
+        }
+
+        if ($plantilla->activeAssignments()->exists()) {
+            return redirect()->route('payroll.plantilla.show', $plantilla->id)
+                ->with('error', 'This position has an active incumbent and cannot be abolished. Reassign or remove the incumbent first.');
+        }
+
+        $plantilla->update([
+            'is_abolished' => true,
+            'abolished_at' => now(),
+            'abolished_by' => auth()->id(),
+            'abolished_reason' => $request->input('reason'),
+        ]);
+
+        // Position-keyed, not employee-keyed, so this is logged directly rather than via
+        // EmployeeAssignmentController::logAssignmentAction() (which hardcodes target_type=User).
+        HRAuditTrail::create([
+            'actor_user_id' => auth()->id(),
+            'module' => 'payroll',
+            'action' => 'plantilla_abolished',
+            'target_type' => Plantilla::class,
+            'target_id' => $plantilla->id,
+            'details' => [
+                'item_number' => $plantilla->item_number,
+                'title' => $plantilla->title,
+                'salary_grade' => $plantilla->salary_grade,
+                'department' => $plantilla->department,
+                'reason' => $request->input('reason'),
+            ],
+        ]);
+
+        return redirect()->route('payroll.plantilla.show', $plantilla->id)
+            ->with('status', 'Position abolished. It is no longer available for assignment; its history remains intact.');
+    }
+
+    public function restore(int $id): RedirectResponse
+    {
+        $plantilla = Plantilla::findOrFail($id);
+
+        if (! $plantilla->is_abolished) {
+            return redirect()->route('payroll.plantilla.show', $plantilla->id)
+                ->with('error', 'This position is not abolished.');
+        }
+
+        $plantilla->update([
+            'is_abolished' => false,
+            'abolished_at' => null,
+            'abolished_by' => null,
+            'abolished_reason' => null,
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => auth()->id(),
+            'module' => 'payroll',
+            'action' => 'plantilla_restored',
+            'target_type' => Plantilla::class,
+            'target_id' => $plantilla->id,
+            'details' => [
+                'item_number' => $plantilla->item_number,
+                'title' => $plantilla->title,
+                'salary_grade' => $plantilla->salary_grade,
+            ],
+        ]);
+
+        return redirect()->route('payroll.plantilla.show', $plantilla->id)
+            ->with('status', 'Position restored and available for assignment again.');
     }
 
     /**

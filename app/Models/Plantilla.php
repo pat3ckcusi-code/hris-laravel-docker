@@ -22,22 +22,21 @@ use Illuminate\Support\Carbon;
  * @property string|null $experience
  * @property string|null $competency
  * @property bool $is_historical
+ * @property bool $is_abolished
+ * @property Carbon|null $abolished_at
+ * @property int|null $abolished_by
+ * @property string|null $abolished_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, EmployeeAssignment> $assignments
  * @property-read Collection<int, EmployeeAssignment> $activeAssignments
+ * @property-read User|null $abolishedBy
  *
  * @mixin Builder
  */
 class Plantilla extends Model
 {
     use HasFactory;
-
-    public const ELIGIBILITY_OPTIONS = [
-        'professional' => 'Professional',
-        'sub_professional' => 'Sub-Professional',
-        'none' => 'No Required CSC',
-    ];
 
     protected $fillable = [
         'title',
@@ -52,10 +51,16 @@ class Plantilla extends Model
         'experience',
         'competency',
         'is_historical',
+        'is_abolished',
+        'abolished_at',
+        'abolished_by',
+        'abolished_reason',
     ];
 
     protected $casts = [
         'is_historical' => 'boolean',
+        'is_abolished' => 'boolean',
+        'abolished_at' => 'datetime',
     ];
 
     public function assignments()
@@ -65,6 +70,17 @@ class Plantilla extends Model
 
     public function activeAssignments()
     {
-        return $this->hasMany(EmployeeAssignment::class)->whereNull('end_date');
+        return $this->hasMany(EmployeeAssignment::class)->current();
+    }
+
+    public function abolishedBy()
+    {
+        return $this->belongsTo(User::class, 'abolished_by');
+    }
+
+    /** [key => label] map for the CSC Eligibility dropdown/filter/label lookups - admin-managed via csc_eligibility_options. */
+    public static function eligibilityOptions(): array
+    {
+        return CscEligibilityOption::orderBy('id')->pluck('label', 'key')->all();
     }
 }

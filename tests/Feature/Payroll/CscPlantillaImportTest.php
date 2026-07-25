@@ -11,6 +11,7 @@ use App\Services\CscPlantillaImportService;
 use App\Services\PayrollComputationService;
 use Database\Seeders\SalaryMatrix2026Seeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xls as XlsWriter;
 use Tests\TestCase;
@@ -209,6 +210,97 @@ class CscPlantillaImportTest extends TestCase
         $active = EmployeeAssignment::where('employee_id', $juan->id)->whereNull('end_date')->get();
         $this->assertCount(1, $active);
         $this->assertSame('901', $active->first()->plantilla->item_number);
+    }
+
+    public function test_import_truncates_and_syncs_an_employee_whose_current_assignment_is_fixed_term(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        [$juan] = $this->createIncumbents();
+
+        $oldPlantilla = Plantilla::create([
+            'title' => 'Old Position',
+            'item_number' => '999',
+            'salary_grade' => 10,
+            'step' => 1,
+            'employment_type' => 'permanent',
+        ]);
+        $oldAssignment = EmployeeAssignment::create([
+            'employee_id' => $juan->id,
+            'plantilla_id' => $oldPlantilla->id,
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $report = $this->service->import($this->fixturePath);
+
+        $this->assertSame(1, $report['assignments_replaced']);
+
+        // Found and closed even though it had a defined future end_date -
+        // this is the exact case the old whereNull('end_date') query missed.
+        $this->assertSame('2025-12-31', $oldAssignment->fresh()->end_date?->toDateString());
+
+        $active = EmployeeAssignment::where('employee_id', $juan->id)->current()->get();
+        $this->assertCount(1, $active);
+        $this->assertSame('901', $active->first()->plantilla->item_number);
+
+        // Salary synced from the new position, not left stale/nulled because
+        // of the prior fixed-term row.
+        $this->assertSame(2, $juan->refresh()->salary_grade);
+        $this->assertSame(5, $juan->salary_step);
+    }
+
+    public function test_designated_unassigned_report_excludes_employees_whose_only_assignment_is_fixed_term(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-25'));
+
+        $employee = $this->createEmployee(['designation' => 'Some Officer', 'last_name' => 'Fixedterm']);
+        $otherPlantilla = Plantilla::create([
+            'title' => 'Other Position',
+            'item_number' => '998',
+            'salary_grade' => 8,
+            'step' => 1,
+            'employment_type' => 'permanent',
+        ]);
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $otherPlantilla->id,
+            'start_date' => '2026-07-01',
+            'end_date' => '2026-07-31',
+        ]);
+
+        $report = $this->service->import($this->fixturePath);
+
+        $this->assertFalse(
+            collect($report['users_designated_unassigned'])->contains('id', (string) $employee->id),
+            'Employee with a fixed-term-current assignment was wrongly reported as unassigned.'
+        );
+    }
+
+    public function test_import_skips_and_warns_when_item_number_matches_an_abolished_plantilla(): void
+    {
+        $abolished = Plantilla::create([
+            'title' => 'Old Administrative Aide II',
+            'item_number' => '901',
+            'department' => 'OLD DEPARTMENT',
+            'salary_grade' => 2,
+            'step' => 5,
+            'employment_type' => 'permanent',
+            'is_abolished' => true,
+            'abolished_at' => now(),
+        ]);
+
+        $report = $this->service->import($this->fixturePath);
+
+        $abolished->refresh();
+        $this->assertSame('Old Administrative Aide II', $abolished->title);
+        $this->assertSame('OLD DEPARTMENT', $abolished->department);
+        $this->assertTrue($abolished->is_abolished);
+
+        $this->assertNotEmpty(array_filter(
+            $report['warnings'],
+            fn (string $w) => str_contains($w, 'abolished') && str_contains($w, '901')
+        ));
     }
 
     public function test_dry_run_persists_nothing(): void
