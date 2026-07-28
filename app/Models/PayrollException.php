@@ -23,6 +23,21 @@ class PayrollException extends Model
 {
     use HasFactory;
 
+    /**
+     * Type values PayrollComputationService::compute() creates automatically
+     * on every recompute - as opposed to a Payroll Manager's manually-logged
+     * exception (arbitrary type, via ExceptionsController::store()). compute()
+     * clears rows of these types before regenerating them so repeated
+     * recomputes of the same run don't accumulate stale duplicates; manual
+     * entries are left untouched since they aren't re-derived by compute().
+     */
+    public const AUTO_TYPES = [
+        'no_assignments',
+        'absences_detected',
+        'lwop_deduction',
+        'missing_withholding_tax',
+    ];
+
     protected $table = 'payroll_exceptions';
 
     protected $fillable = [

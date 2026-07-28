@@ -14,6 +14,7 @@
                 <th class="text-right">Deductions</th>
                 <th class="text-right">Net Pay</th>
                 <th class="text-center">Status</th>
+                <th class="text-center">Download</th>
             </tr>
         </thead>
         <tbody>
@@ -21,16 +22,19 @@
             <tr>
                 <td>{{ $payslip->payrollRun->period ?? '-' }}</td>
                 <td class="text-right">₱{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
-                <td class="text-right">₱{{ number_format($payslip->total_earnings ?? 0, 2) }}</td>
+                <td class="text-right">₱{{ number_format($payslip->gross_pay ?? 0, 2) }}</td>
                 <td class="text-right">₱{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
                 <td class="text-right font-weight-bold">₱{{ number_format($payslip->net_pay ?? 0, 2) }}</td>
                 <td class="text-center">
                     <x-hris.status-badge :status="$payslip->payrollRun->status ?? 'pending'" />
                 </td>
+                <td class="text-center">
+                    <a href="{{ route('dashboard.employee.payslips.download', $payslip->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">PDF</a>
+                </td>
             </tr>
             @empty
             <tr>
-                <td colspan="6" class="text-center text-muted">No payslips found.</td>
+                <td colspan="7" class="text-center text-muted">No payslips found.</td>
             </tr>
             @endforelse
         </tbody>

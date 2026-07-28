@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\ISO25010;
 
-use App\Models\ApprovalLog;
+use App\Models\Deduction;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\EmployeeAssignment;
+use App\Models\EmployeeDeduction;
 use App\Models\HRAuditTrail;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollDetail;
@@ -15,6 +16,7 @@ use App\Models\Plantilla;
 use App\Models\SalaryMatrix;
 use App\Models\User;
 use App\Services\PayrollComputationService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -30,12 +32,12 @@ class ReliabilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Database\Eloquent\Model::unguard();
+        Model::unguard();
     }
 
     protected function tearDown(): void
     {
-        \Illuminate\Database\Eloquent\Model::reguard();
+        Model::reguard();
         parent::tearDown();
     }
 
@@ -44,7 +46,7 @@ class ReliabilityTest extends TestCase
         return Department::create([
             'DeptCode' => 'TST',
             'Dept_name' => 'Test Department',
-            'EmpNo' => 'DH' . uniqid(),
+            'EmpNo' => 'DH'.uniqid(),
             'Designation' => 'Department Head',
         ]);
     }
@@ -52,16 +54,17 @@ class ReliabilityTest extends TestCase
     private function createUser(string $role = 'employee', array $extra = []): User
     {
         $dept = $this->createDepartment();
+
         return User::create(array_merge([
             'name' => 'Reliable User',
             'first_name' => 'Reliable',
             'last_name' => 'User',
-            'email' => 'rel' . uniqid() . '@test.com',
+            'email' => 'rel'.uniqid().'@test.com',
             'password' => bcrypt('password'),
             'access_level' => $role,
             'employee_type' => 'permanent',
             'Dept_id' => $dept->Dept_id,
-            'EmpNo' => 'R' . uniqid(),
+            'EmpNo' => 'R'.uniqid(),
         ], $extra));
     }
 
@@ -83,7 +86,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $result = $service->compute($run, $admin);
 
         // Should not crash - should create an exception record
@@ -124,7 +127,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $result = $service->compute($run, $admin);
 
         // Should not crash - error should be reported
@@ -158,7 +161,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)
@@ -234,7 +237,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $log = PayrollAuditLog::where('payroll_run_id', $run->id)
@@ -265,7 +268,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $exception = PayrollException::where('payroll_run_id', $run->id)
@@ -309,8 +312,8 @@ class ReliabilityTest extends TestCase
         SalaryMatrix::create(['sg' => 1, 'step' => 1, 'year' => 2026, 'amount' => 1000]);
 
         // Massive deduction
-        $ded = \App\Models\Deduction::create(['type' => 'Big Ded', 'description' => 'test']);
-        \App\Models\EmployeeDeduction::create([
+        $ded = Deduction::create(['type' => 'Big Ded', 'description' => 'test']);
+        EmployeeDeduction::create([
             'employee_id' => $employee->id,
             'deduction_id' => $ded->id,
             'amount' => 99999,
@@ -325,7 +328,7 @@ class ReliabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)

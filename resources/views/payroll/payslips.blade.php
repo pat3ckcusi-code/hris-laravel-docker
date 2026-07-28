@@ -1,6 +1,6 @@
 @extends('dashboards.layout', [
     'title' => 'Payslips',
-    'subtitle' => 'Generated payslips for approved payroll runs.',
+    'subtitle' => 'Generated payslips for locked payroll runs.',
 ])
 
 @section('top_actions')
@@ -22,6 +22,9 @@
     @if (session('status'))
         <div class="notice success">{{ session('status') }}</div>
     @endif
+    @if (session('error'))
+        <div class="notice error">{{ session('error') }}</div>
+    @endif
 
     <x-hris.table-layout :showSearch="false" :showMonthFilter="false" :paginator="$payslips">
         <table class="hris-table" id="payslips-table">
@@ -30,7 +33,7 @@
                     <th>ID</th>
                     <th>Employee</th>
                     <th>Payroll Run</th>
-                    <th>PDF</th>
+                    <th class="text-right">Net Pay</th>
                     <th>Generated</th>
                     <th>Actions</th>
                 </tr>
@@ -40,21 +43,16 @@
                     <tr id="payslip-row-{{ $ps->id }}"
                         data-employee="{{ $ps->employee->name ?? '-' }}"
                         data-run="Run #{{ $ps->payroll_run_id }} - {{ $ps->payrollRun->period ?? '' }}"
-                        data-pdf="{{ $ps->pdf_path ? asset($ps->pdf_path) : '' }}"
+                        data-download="{{ route('payroll.payslips.download', $ps->id) }}"
                         data-date="{{ $ps->created_at->format('M d, Y H:i') }}">
                         <td>{{ $ps->id }}</td>
                         <td>{{ $ps->employee->name ?? '-' }}</td>
                         <td>Run #{{ $ps->payroll_run_id }} - {{ $ps->payrollRun->period ?? '' }}</td>
-                        <td>
-                            @if($ps->pdf_path)
-                                <a href="{{ asset($ps->pdf_path) }}" target="_blank" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-download"></i></a>
-                            @else
-                                <span class="text-muted">Pending</span>
-                            @endif
-                        </td>
+                        <td class="text-right">₱{{ number_format($ps->net_pay, 2) }}</td>
                         <td>{{ $ps->created_at->format('M d, Y') }}</td>
                         <td>
                             <div class="action-btns">
+                                <a href="{{ route('payroll.payslips.download', $ps->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-download"></i> PDF</a>
                                 <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openShowPayslip({{ $ps->id }})">View</button>
                             </div>
                         </td>
@@ -72,17 +70,17 @@
     <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
         <div>
             <h3 style="margin:0">Generate Payslips</h3>
-            <span class="record-email">Generate payslips from an approved payroll run</span>
+            <span class="record-email">Generate payslips from a locked payroll run</span>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.payslips.store') }}" class="payroll-form" style="margin-top:12px">
         @csrf
         <div class="form-group">
-            <label for="c-run">Payroll Run (Approved)</label>
+            <label for="c-run">Payroll Run (Locked)</label>
             <select name="payroll_run_id" id="c-run" class="form-input" required>
                 <option value="">Select run</option>
-                @foreach($approvedRuns as $run)
+                @foreach($lockedRuns as $run)
                     <option value="{{ $run->id }}">Run #{{ $run->id }} - {{ $run->period }}</option>
                 @endforeach
             </select>
@@ -111,7 +109,7 @@
 function openShowPayslip(id) {
     var row = document.getElementById('payslip-row-' + id);
     if (!row) return;
-    var pdfLink = row.dataset.pdf ? '<a href="' + row.dataset.pdf + '" target="_blank">Download PDF</a>' : 'Not yet generated';
+    var pdfLink = '<a href="' + row.dataset.download + '">Download PDF</a>';
     document.getElementById('showPayslipBody').innerHTML =
         '<table style="width:100%;border-collapse:collapse"><tbody>' +
         '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + row.dataset.employee + '</td></tr>' +

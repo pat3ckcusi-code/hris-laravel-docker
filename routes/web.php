@@ -36,16 +36,17 @@ use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\MayorController;
 use App\Http\Controllers\OfficeOrderController;
 use App\Http\Controllers\OicAssignmentController;
-use App\Http\Controllers\Payroll\ApprovalsController;
 use App\Http\Controllers\Payroll\AttendanceController as PayrollAttendanceController;
 use App\Http\Controllers\Payroll\AuditLogController as PayrollAuditLogController;
 use App\Http\Controllers\Payroll\CscEligibilityOptionsController;
 use App\Http\Controllers\Payroll\DeductionsController;
 use App\Http\Controllers\Payroll\EarningsController;
 use App\Http\Controllers\Payroll\EmployeeAssignmentController;
+use App\Http\Controllers\Payroll\EmployeeDeductionController;
 use App\Http\Controllers\Payroll\EmployeeEarningController;
 use App\Http\Controllers\Payroll\ExceptionsController;
 use App\Http\Controllers\Payroll\LeaveIntegrationController;
+use App\Http\Controllers\Payroll\LoanController;
 use App\Http\Controllers\Payroll\PayrollDashboardController;
 use App\Http\Controllers\Payroll\PayrollRunController;
 use App\Http\Controllers\Payroll\PayrollSettingsController;
@@ -53,6 +54,7 @@ use App\Http\Controllers\Payroll\PayslipController;
 use App\Http\Controllers\Payroll\PlantillaController;
 use App\Http\Controllers\Payroll\ReportsController as PayrollReportsController;
 use App\Http\Controllers\Payroll\SalaryMatrixController;
+use App\Http\Controllers\Payroll\WithholdingTaxController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\Records\JobOrderAppointmentController;
 use App\Http\Controllers\RecordsManagerController;
@@ -208,6 +210,8 @@ Route::middleware('auth')->group(function () {
     // Employee Self-Service: Payslips (read-only, scoped to logged-in user)
     Route::get('/dashboard/employee/payslips', [EmployeePayslipController::class, 'index'])
         ->name('dashboard.employee.payslips');
+    Route::get('/dashboard/employee/payslips/{payslip}/download', [EmployeePayslipController::class, 'download'])
+        ->name('dashboard.employee.payslips.download');
 
     // Attendance DTR - list view and Form 48 download (role-branching handled in controller)
     Route::get('/attendance/dtr', [DtrController::class, 'index'])
@@ -798,6 +802,11 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'destroy' => 'salary-matrix.destroy',
     ]);
     Route::post('salary-matrix-versions', [SalaryMatrixController::class, 'storeVersion'])->name('salary-matrix.versions.store');
+    Route::put('salary-matrix-versions', [SalaryMatrixController::class, 'updateVersion'])->name('salary-matrix.versions.update');
+    Route::post('withholding-tax', [WithholdingTaxController::class, 'store'])->name('withholding-tax.store');
+    Route::put('withholding-tax/{withholdingTax}', [WithholdingTaxController::class, 'update'])->name('withholding-tax.update');
+    Route::get('withholding-tax-template', [WithholdingTaxController::class, 'downloadTemplate'])->name('withholding-tax.template');
+    Route::post('withholding-tax-upload', [WithholdingTaxController::class, 'upload'])->name('withholding-tax.upload');
     Route::resource('earnings', EarningsController::class)->names([
         'index' => 'earnings.index',
         'create' => 'earnings.create',
@@ -810,15 +819,29 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
     Route::post('earnings/{earning}/assignments', [EmployeeEarningController::class, 'store'])->name('earnings.assignments.store');
     Route::put('earnings/{earning}/assignments/{assignment}', [EmployeeEarningController::class, 'update'])->name('earnings.assignments.update');
     Route::delete('earnings/{earning}/assignments/{assignment}', [EmployeeEarningController::class, 'destroy'])->name('earnings.assignments.destroy');
-    Route::resource('deductions', DeductionsController::class)->names([
-        'index' => 'deductions.index',
-        'create' => 'deductions.create',
-        'store' => 'deductions.store',
-        'show' => 'deductions.show',
-        'edit' => 'deductions.edit',
-        'update' => 'deductions.update',
-        'destroy' => 'deductions.destroy',
+    Route::resource('contributions', DeductionsController::class)->names([
+        'index' => 'contributions.index',
+        'create' => 'contributions.create',
+        'store' => 'contributions.store',
+        'show' => 'contributions.show',
+        'edit' => 'contributions.edit',
+        'update' => 'contributions.update',
+        'destroy' => 'contributions.destroy',
     ]);
+    Route::get('loans', [LoanController::class, 'index'])->name('loans.index');
+    Route::post('contributions/{contribution}/loans', [LoanController::class, 'store'])->name('contributions.loans.store');
+    Route::post('contributions/{contribution}/loans/bulk-assign', [LoanController::class, 'bulkAssign'])->name('contributions.loans.bulk-assign');
+    Route::get('contributions/{contribution}/loans/billing-template', [LoanController::class, 'downloadBillingTemplate'])->name('contributions.loans.billing-template');
+    Route::post('contributions/{contribution}/loans/billing', [LoanController::class, 'uploadBilling'])->name('contributions.loans.billing.upload');
+    Route::put('contributions/{contribution}/loans/{loan}', [LoanController::class, 'update'])->name('contributions.loans.update');
+    Route::delete('contributions/{contribution}/loans/{loan}', [LoanController::class, 'destroy'])->name('contributions.loans.destroy');
+    Route::post('contributions/{contribution}/employee-deductions', [EmployeeDeductionController::class, 'store'])->name('contributions.employee-deductions.store');
+    Route::post('contributions/{contribution}/employee-deductions/bulk-by-type', [EmployeeDeductionController::class, 'bulkAssignByType'])->name('contributions.employee-deductions.bulk-by-type');
+    Route::put('contributions/{contribution}/employee-deductions/{employeeDeduction}', [EmployeeDeductionController::class, 'update'])->name('contributions.employee-deductions.update');
+    Route::delete('contributions/{contribution}/employee-deductions/{employeeDeduction}', [EmployeeDeductionController::class, 'destroy'])->name('contributions.employee-deductions.destroy');
+    Route::put('contributions/{contribution}/mandatory-config', [DeductionsController::class, 'updateMandatoryConfig'])->name('contributions.mandatory-config.update');
+    Route::put('contributions/{contribution}/toggle-active', [DeductionsController::class, 'toggleActive'])->name('contributions.toggle-active');
+    Route::put('contributions/{contribution}/eligibility', [DeductionsController::class, 'updateEligibility'])->name('contributions.eligibility.update');
     Route::resource('csc-eligibility', CscEligibilityOptionsController::class)->except(['show'])->names([
         'index' => 'csc-eligibility.index',
         'create' => 'csc-eligibility.create',
@@ -845,15 +868,6 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'exceptions.update',
         'destroy' => 'exceptions.destroy',
     ]);
-    Route::resource('approvals', ApprovalsController::class)->names([
-        'index' => 'approvals.index',
-        'create' => 'approvals.create',
-        'store' => 'approvals.store',
-        'show' => 'approvals.show',
-        'edit' => 'approvals.edit',
-        'update' => 'approvals.update',
-        'destroy' => 'approvals.destroy',
-    ]);
     Route::resource('payslips', PayslipController::class)->names([
         'index' => 'payslips.index',
         'create' => 'payslips.create',
@@ -863,6 +877,7 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'payslips.update',
         'destroy' => 'payslips.destroy',
     ]);
+    Route::get('payslips/{payslip}/download', [PayslipController::class, 'download'])->name('payslips.download');
     Route::resource('reports', PayrollReportsController::class)->names([
         'index' => 'reports.index',
         'create' => 'reports.create',

@@ -3,7 +3,10 @@
 namespace Tests\Feature\ISO25010;
 
 use App\Models\Department;
+use App\Models\PayrollRun;
+use App\Models\Setting;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -20,12 +23,12 @@ class PortabilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Database\Eloquent\Model::unguard();
+        Model::unguard();
     }
 
     protected function tearDown(): void
     {
-        \Illuminate\Database\Eloquent\Model::reguard();
+        Model::reguard();
         parent::tearDown();
     }
 
@@ -34,7 +37,7 @@ class PortabilityTest extends TestCase
         return Department::create([
             'DeptCode' => 'TST',
             'Dept_name' => 'Test Department',
-            'EmpNo' => 'DH' . uniqid(),
+            'EmpNo' => 'DH'.uniqid(),
             'Designation' => 'Department Head',
         ]);
     }
@@ -42,16 +45,17 @@ class PortabilityTest extends TestCase
     private function createUser(string $role = 'employee'): User
     {
         $dept = $this->createDepartment();
+
         return User::create([
             'name' => 'Port User',
             'first_name' => 'Port',
             'last_name' => 'User',
-            'email' => 'port' . uniqid() . '@test.com',
+            'email' => 'port'.uniqid().'@test.com',
             'password' => bcrypt('password'),
             'access_level' => $role,
             'employee_type' => 'permanent',
             'Dept_id' => $dept->Dept_id,
-            'EmpNo' => 'P' . uniqid(),
+            'EmpNo' => 'P'.uniqid(),
         ]);
     }
 
@@ -88,7 +92,6 @@ class PortabilityTest extends TestCase
             'dtrs',
             'leave_records',
             'payroll_exceptions',
-            'approval_logs',
             'payslips',
             'payroll_audit_logs',
             'payroll_settings',
@@ -131,7 +134,6 @@ class PortabilityTest extends TestCase
         $this->assertTrue(Schema::hasColumn('payroll_runs', 'status'));
         $this->assertTrue(Schema::hasColumn('payroll_runs', 'locked_at'));
         $this->assertTrue(Schema::hasColumn('payroll_runs', 'created_by'));
-        $this->assertTrue(Schema::hasColumn('payroll_runs', 'approved_by'));
 
         // payroll_details
         $this->assertTrue(Schema::hasColumn('payroll_details', 'payroll_run_id'));
@@ -240,7 +242,7 @@ class PortabilityTest extends TestCase
     public function setting_model_works_for_system_configuration(): void
     {
         // The migration seeds a default settings row. Update it instead of creating a new one.
-        $settings = \App\Models\Setting::first();
+        $settings = Setting::first();
         $this->assertNotNull($settings, 'Settings row should be seeded by migration');
 
         $settings->update([
@@ -260,7 +262,7 @@ class PortabilityTest extends TestCase
     {
         $admin = $this->createUser('payroll-manager');
 
-        $run = \App\Models\PayrollRun::create([
+        $run = PayrollRun::create([
             'period' => '2026-04 2nd',
             'period_start' => '2026-04-16',
             'period_end' => '2026-04-30',

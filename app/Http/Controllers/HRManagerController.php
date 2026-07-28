@@ -762,6 +762,8 @@ class HRManagerController extends Controller
             'hr_manager_designation' => 'nullable|string|max:255',
             'budget_officer_name' => 'nullable|string|max:255',
             'budget_officer_designation' => 'nullable|string|max:255',
+            'payroll_preparer_name' => 'nullable|string|max:255',
+            'payroll_preparer_designation' => 'nullable|string|max:255',
             // Notification / email from
             'mail_from_address' => 'nullable|email|max:255',
             'mail_from_name' => 'nullable|string|max:255',

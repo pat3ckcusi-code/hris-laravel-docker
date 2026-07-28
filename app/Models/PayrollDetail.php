@@ -20,6 +20,8 @@ use Illuminate\Support\Carbon;
  * @property float $deductions
  * @property float $lwop_deduction
  * @property float $loan_deduction
+ * @property float $other_deductions
+ * @property array|null $deduction_breakdown
  * @property float $net_pay
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -49,6 +51,8 @@ class PayrollDetail extends Model
         'bir_deduction',
         'lwop_deduction',
         'loan_deduction',
+        'other_deductions',
+        'deduction_breakdown',
         'net_pay',
     ];
 
@@ -69,6 +73,8 @@ class PayrollDetail extends Model
             'bir_deduction' => 'float',
             'lwop_deduction' => 'float',
             'loan_deduction' => 'float',
+            'other_deductions' => 'float',
+            'deduction_breakdown' => 'array',
             'net_pay' => 'float',
         ];
     }

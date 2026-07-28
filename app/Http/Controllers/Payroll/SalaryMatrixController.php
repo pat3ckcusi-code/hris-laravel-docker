@@ -8,6 +8,7 @@ use App\Models\SalaryMatrix;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SalaryMatrixController extends Controller
@@ -105,6 +106,76 @@ class SalaryMatrixController extends Controller
 
         return redirect()->route('payroll.salary-matrix.index', ['version' => $request->effective_date])
             ->with('status', "New rate tranche published: {$saved} entries effective {$request->effective_date}.");
+    }
+
+    /**
+     * Move every entry in an already-published tranche to a new effective
+     * date (and/or update its ordinance reference) - store()/storeVersion()
+     * can only create/touch a row at a given date, never retarget one, since
+     * (sg, step, effective_date) is the lookup/uniqueness key. Rejected
+     * up front (not left to a partial-transaction DB error) if the target
+     * date already has any overlapping (sg, step) cell. year is set
+     * explicitly alongside effective_date since SalaryMatrix::booted()'s
+     * saving hook only derives whichever of the two is missing - both are
+     * already set on an existing row, so neither branch would fire.
+     */
+    public function updateVersion(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'current_effective_date' => 'required|date',
+            'effective_date' => 'required|date',
+            'ordinance_reference' => 'nullable|string|max:255',
+        ]);
+
+        $rows = SalaryMatrix::where('effective_date', $request->current_effective_date)->get();
+
+        if ($rows->isEmpty()) {
+            return redirect()->route('payroll.salary-matrix.index')
+                ->with('error', 'No tranche found for that date.');
+        }
+
+        if ($request->effective_date !== $request->current_effective_date) {
+            $sourcePairs = $rows->map(fn ($r) => "{$r->sg}-{$r->step}")->all();
+            $targetPairs = SalaryMatrix::where('effective_date', $request->effective_date)
+                ->get(['sg', 'step'])
+                ->map(fn ($r) => "{$r->sg}-{$r->step}")
+                ->all();
+            $collisions = array_intersect($sourcePairs, $targetPairs);
+
+            if (! empty($collisions)) {
+                return redirect()->route('payroll.salary-matrix.index', ['version' => $request->current_effective_date])
+                    ->withInput()
+                    ->with('error', count($collisions).' entries already exist on that date for the same grade/step — cannot move this tranche there.');
+            }
+        }
+
+        $newYear = Carbon::parse($request->effective_date)->year;
+
+        DB::transaction(function () use ($rows, $request, $newYear) {
+            foreach ($rows as $row) {
+                $row->update([
+                    'effective_date' => $request->effective_date,
+                    'year' => $newYear,
+                    'ordinance_reference' => $request->ordinance_reference,
+                ]);
+            }
+
+            HRAuditTrail::create([
+                'actor_user_id' => auth()->id(),
+                'module' => 'payroll',
+                'action' => 'salary_matrix_version_updated',
+                'target_type' => SalaryMatrix::class,
+                'details' => [
+                    'from_effective_date' => $request->current_effective_date,
+                    'to_effective_date' => $request->effective_date,
+                    'ordinance_reference' => $request->ordinance_reference,
+                    'rows' => $rows->count(),
+                ],
+            ]);
+        });
+
+        return redirect()->route('payroll.salary-matrix.index', ['version' => $request->effective_date])
+            ->with('status', "Tranche moved to {$request->effective_date} ({$rows->count()} entries updated).");
     }
 
     public function show(int $id): RedirectResponse

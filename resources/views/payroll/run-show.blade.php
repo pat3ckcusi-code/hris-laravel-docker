@@ -6,13 +6,13 @@
 @section('top_actions')
     <div class="header-actions">
         @if(!$run->locked_at)
-            <form method="POST" action="{{ route('payroll.runs.compute', $run->id) }}" style="display:inline">
+            <form method="POST" action="{{ route('payroll.runs.compute', $run->id) }}" style="display:inline" id="compute-form">
                 @csrf
-                <button type="submit" class="btn btn-sm"><i class="fas fa-calculator"></i> Compute</button>
+                <button type="button" class="btn btn-sm" id="compute-btn" onclick="confirmCompute()"><i class="fas fa-calculator"></i> Compute</button>
             </form>
             <form method="POST" action="{{ route('payroll.runs.lock', $run->id) }}" style="display:inline" id="lock-form">
                 @csrf
-                <button type="button" class="btn btn-sm btn-danger" onclick="confirmLock()"><i class="fas fa-lock"></i> Lock</button>
+                <button type="button" class="btn btn-sm btn-danger" id="lock-btn" onclick="confirmLock()"><i class="fas fa-lock"></i> Lock</button>
             </form>
         @endif
         <a href="{{ route('payroll.runs.export', $run->id) }}" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export</a>
@@ -43,6 +43,15 @@
     @if (session('status'))
         <div class="notice success">{{ session('status') }}</div>
     @endif
+    @if (session('computed_summary'))
+        <div class="notice success" style="display:flex;align-items:center;gap:12px">
+            <i class="fas fa-circle-check" style="font-size:1.4rem"></i>
+            <div>
+                <strong>Payroll Computed Successfully</strong><br>
+                <span style="font-weight:400">{{ session('computed_summary')['count'] }} employee(s) processed for {{ session('computed_summary')['period'] }}.</span>
+            </div>
+        </div>
+    @endif
     @if (session('error'))
         <div class="notice error">{{ session('error') }}</div>
     @endif
@@ -50,80 +59,105 @@
     <section class="payroll-section">
         <h2>Payroll Details</h2>
         @if($run->details->count())
-            <div class="hris-table-wrapper">
-            <table class="hris-table">
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Days</th>
-                        <th>Late</th>
-                        <th>UT</th>
-                        <th>Absent</th>
-                        <th>Basic Salary</th>
-                        <th>Allowances</th>
-                        <th>Gross Pay</th>
-                        <th>GSIS</th>
-                        <th>PhilHealth</th>
-                        <th>Pag-IBIG</th>
-                        <th>BIR</th>
-                        <th>Loans</th>
-                        <th>LWOP</th>
-                        <th>Net Pay</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($run->details as $detail)
-                        <tr>
-                            <td>{{ $detail->employee->name ?? '-' }}</td>
-                            <td>{{ $detail->days_worked ?? '-' }}</td>
-                            <td>{{ $detail->late_minutes ?? 0 }}</td>
-                            <td>{{ $detail->undertime_minutes ?? 0 }}</td>
-                            <td>{{ $detail->absent_days ?? 0 }}</td>
-                            <td>₱{{ number_format($detail->basic_salary, 2) }}</td>
-                            <td>₱{{ number_format($detail->earnings, 2) }}</td>
-                            <td>₱{{ number_format($detail->gross_pay ?? ($detail->basic_salary + $detail->earnings), 2) }}</td>
-                            <td>₱{{ number_format($detail->gsis_deduction ?? 0, 2) }}</td>
-                            <td>₱{{ number_format($detail->philhealth_deduction ?? 0, 2) }}</td>
-                            <td>₱{{ number_format($detail->pagibig_deduction ?? 0, 2) }}</td>
-                            <td>₱{{ number_format($detail->bir_deduction ?? 0, 2) }}</td>
-                            <td>₱{{ number_format($detail->loan_deduction ?? 0, 2) }}</td>
-                            <td>₱{{ number_format($detail->lwop_deduction ?? 0, 2) }}</td>
-                            <td><strong>₱{{ number_format($detail->net_pay, 2) }}</strong></td>
-                        </tr>
+            <form method="GET" action="{{ route('payroll.runs.show', $run->id) }}" class="plantilla-filter-form" style="margin-bottom:14px">
+                <input type="text" name="search" value="{{ $search }}" placeholder="Search employee name or Employee Agency Number..." class="hris-search-input" style="min-width:260px">
+                <select name="department" class="hris-filter-select">
+                    <option value="">All Departments</option>
+                    @foreach($departments as $dept)
+                        <option value="{{ $dept->Dept_id }}" @selected($selectedDepartment === (string) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
                     @endforeach
-                </tbody>
-            </table>
-            </div>
+                </select>
+                <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
+                @if(request()->hasAny(['search', 'department']))
+                    <a href="{{ route('payroll.runs.show', $run->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                @endif
+            </form>
+
+            @if($details->total())
+                <div class="hris-table-wrapper">
+                <table class="hris-table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Basic Salary</th>
+                            <th>Allowances</th>
+                            <th>Gross Pay</th>
+                            <th>GSIS</th>
+                            <th>PhilHealth</th>
+                            <th>Pag-IBIG</th>
+                            <th>BIR</th>
+                            <th>Loans</th>
+                            @foreach($otherDeductionTypes as $odt)
+                                <th>{{ $odt->type }}</th>
+                            @endforeach
+                            <th>LWOP</th>
+                            <th>Net Pay</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($details as $detail)
+                            <tr>
+                                <td>{{ $detail->employee->name ?? '-' }}</td>
+                                <td>₱{{ number_format($detail->basic_salary, 2) }}</td>
+                                <td>₱{{ number_format($detail->earnings, 2) }}</td>
+                                <td>₱{{ number_format($detail->gross_pay ?? ($detail->basic_salary + $detail->earnings), 2) }}</td>
+                                <td>₱{{ number_format($detail->gsis_deduction ?? 0, 2) }}</td>
+                                <td>₱{{ number_format($detail->philhealth_deduction ?? 0, 2) }}</td>
+                                <td>₱{{ number_format($detail->pagibig_deduction ?? 0, 2) }}</td>
+                                <td>₱{{ number_format($detail->bir_deduction ?? 0, 2) }}</td>
+                                <td>₱{{ number_format($detail->loan_deduction ?? 0, 2) }}</td>
+                                @foreach($otherDeductionTypes as $odt)
+                                    @php
+                                        $otherLine = collect($detail->deduction_breakdown ?? [])
+                                            ->first(fn ($item) => ($item['category'] ?? null) === 'other' && ($item['label'] ?? null) === $odt->type);
+                                    @endphp
+                                    <td>₱{{ number_format($otherLine['amount'] ?? 0, 2) }}</td>
+                                @endforeach
+                                <td>₱{{ number_format($detail->lwop_deduction ?? 0, 2) }}</td>
+                                <td><strong>₱{{ number_format($detail->net_pay, 2) }}</strong></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                </div>
+
+                <x-hris.table-pagination :paginator="$details" />
+            @else
+                <p class="empty-state">No employees match your search/filter.</p>
+            @endif
         @else
             <p class="empty-state">No payroll details computed yet. Click <strong>Compute</strong> to generate.</p>
-        @endif
-    </section>
-
-    <section class="payroll-section">
-        <h2>Approval History</h2>
-        @if($run->approvalLogs->count())
-            <div class="hris-table-wrapper">
-            <table class="hris-table">
-                <thead><tr><th>Approver</th><th>Status</th><th>Date</th></tr></thead>
-                <tbody>
-                    @foreach($run->approvalLogs as $log)
-                        <tr>
-                            <td>{{ $log->approver->name ?? '-' }}</td>
-                            <td><span class="status-chip status-{{ $log->status }}">{{ ucfirst($log->status) }}</span></td>
-                            <td>{{ $log->actioned_at ? $log->actioned_at->format('M d, Y H:i') : '-' }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-            </div>
-        @else
-            <p class="empty-state">No approval actions yet.</p>
         @endif
     </section>
 @endsection
 
 @section('page_scripts_after')
 <script>
+function confirmCompute() {
+    const message = 'This (re)calculates pay for every active employee this period from current DTR, leave, and salary data. Any previously computed figures for this run will be overwritten.';
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Compute payroll for this run?',
+            text: message,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Compute',
+        }).then((result) => { if (result.isConfirmed) startComputing(); });
+    } else if (confirm(message)) {
+        startComputing();
+    }
+}
+
+function startComputing() {
+    const computeBtn = document.getElementById('compute-btn');
+    const lockBtn = document.getElementById('lock-btn');
+    computeBtn.disabled = true;
+    computeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Computing...';
+    if (lockBtn) lockBtn.disabled = true;
+    document.getElementById('compute-form').submit();
+}
+
 function confirmLock() {
     if (typeof Swal !== 'undefined') {
         Swal.fire({

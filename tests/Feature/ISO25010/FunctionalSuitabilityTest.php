@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\ISO25010;
 
-use App\Models\ApprovalLog;
 use App\Models\Deduction;
 use App\Models\Department;
 use App\Models\DocumentRequest;
@@ -11,21 +10,20 @@ use App\Models\Earning;
 use App\Models\EmployeeAssignment;
 use App\Models\EmployeeDeduction;
 use App\Models\EmployeeEarning;
+use App\Models\Eta;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\Loan;
-use App\Models\PayrollAuditLog;
+use App\Models\Locator;
 use App\Models\PayrollDetail;
-use App\Models\PayrollException;
 use App\Models\PayrollRun;
 use App\Models\PayrollSetting;
-use App\Models\Payslip;
 use App\Models\Plantilla;
 use App\Models\SalaryMatrix;
-use App\Models\Setting;
 use App\Models\User;
 use App\Services\PayrollComputationService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -41,12 +39,12 @@ class FunctionalSuitabilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Database\Eloquent\Model::unguard();
+        Model::unguard();
     }
 
     protected function tearDown(): void
     {
-        \Illuminate\Database\Eloquent\Model::reguard();
+        Model::reguard();
         parent::tearDown();
     }
 
@@ -57,7 +55,7 @@ class FunctionalSuitabilityTest extends TestCase
         return Department::create(array_merge([
             'DeptCode' => 'TST',
             'Dept_name' => 'Test Department',
-            'EmpNo' => 'DH' . uniqid(),
+            'EmpNo' => 'DH'.uniqid(),
             'Designation' => 'Department Head',
         ], $attrs));
     }
@@ -65,16 +63,17 @@ class FunctionalSuitabilityTest extends TestCase
     private function createUser(string $role = 'employee', array $extra = []): User
     {
         $dept = $this->createDepartment();
+
         return User::create(array_merge([
             'name' => 'Test User',
             'first_name' => 'Test',
             'last_name' => 'User',
-            'email' => 'user' . uniqid() . '@test.com',
+            'email' => 'user'.uniqid().'@test.com',
             'password' => bcrypt('password'),
             'access_level' => $role,
             'employee_type' => 'permanent',
             'Dept_id' => $dept->Dept_id,
-            'EmpNo' => 'EMP' . uniqid(),
+            'EmpNo' => 'EMP'.uniqid(),
         ], $extra));
     }
 
@@ -123,7 +122,7 @@ class FunctionalSuitabilityTest extends TestCase
         ]);
 
         // Compute
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $result = $service->compute($run, $admin);
 
         $this->assertGreaterThanOrEqual(1, $result['employee_count']);
@@ -160,7 +159,7 @@ class FunctionalSuitabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)
@@ -248,7 +247,7 @@ class FunctionalSuitabilityTest extends TestCase
     {
         $employee = $this->createUser('employee');
 
-        $eta = \App\Models\Eta::create([
+        $eta = Eta::create([
             'user_id' => $employee->id,
             'departure_date' => '2026-04-07',
             'arrival_date' => '2026-04-07',
@@ -257,7 +256,7 @@ class FunctionalSuitabilityTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $locator = \App\Models\Locator::create([
+        $locator = Locator::create([
             'user_id' => $employee->id,
             'application_type' => 'Official',
             'location' => 'Provincial Capitol',
@@ -338,7 +337,7 @@ class FunctionalSuitabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)
@@ -374,7 +373,7 @@ class FunctionalSuitabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)
@@ -418,7 +417,7 @@ class FunctionalSuitabilityTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $service = new PayrollComputationService();
+        $service = new PayrollComputationService;
         $service->compute($run, $admin);
 
         $detail = PayrollDetail::where('payroll_run_id', $run->id)
@@ -427,31 +426,6 @@ class FunctionalSuitabilityTest extends TestCase
         $this->assertNotNull($detail);
         $this->assertEquals(2, $detail->days_worked);
         $this->assertEquals(1, $detail->absent_days);
-    }
-
-    /** @test */
-    public function approval_log_records_payroll_approval(): void
-    {
-        $admin = $this->createUser('payroll-manager');
-        $run = PayrollRun::create([
-            'period' => '2026-04 1st',
-            'period_start' => '2026-04-01',
-            'period_end' => '2026-04-15',
-            'status' => 'computed',
-            'created_by' => $admin->id,
-        ]);
-
-        ApprovalLog::create([
-            'payroll_run_id' => $run->id,
-            'approver_id' => $admin->id,
-            'status' => 'approved',
-            'actioned_at' => now(),
-        ]);
-
-        $this->assertDatabaseHas('approval_logs', [
-            'payroll_run_id' => $run->id,
-            'status' => 'approved',
-        ]);
     }
 
     /** @test */
@@ -521,13 +495,13 @@ class FunctionalSuitabilityTest extends TestCase
         $balance = LeaveBalance::updateOrCreate(
             ['EmpNo' => $employee->EmpNo],
             [
-            'VL' => 15.0,
-            'SL' => 15.0,
-            'WLNS' => 3.0,
-            'SPL' => 7.0,
-            'CTO' => 0,
-            'SP' => 3.0,
-        ]);
+                'VL' => 15.0,
+                'SL' => 15.0,
+                'WLNS' => 3.0,
+                'SPL' => 7.0,
+                'CTO' => 0,
+                'SP' => 3.0,
+            ]);
 
         $this->assertEquals(15.0, (float) $balance->VL);
         $this->assertEquals(15.0, (float) $balance->SL);

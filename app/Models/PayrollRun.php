@@ -16,14 +16,11 @@ use Illuminate\Support\Carbon;
  * @property string $status
  * @property Carbon|null $locked_at
  * @property int|null $created_by
- * @property int|null $approved_by
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
- * @property-read User|null $approver
  * @property-read Collection<int, PayrollDetail> $details
  * @property-read Collection<int, PayrollException> $exceptions
- * @property-read Collection<int, ApprovalLog> $approvalLogs
  * @property-read Collection<int, Payslip> $payslips
  * @property-read Collection<int, PayrollAuditLog> $auditLogs
  *
@@ -40,7 +37,6 @@ class PayrollRun extends Model
         'status',
         'locked_at',
         'created_by',
-        'approved_by',
     ];
 
     protected function casts(): array
@@ -57,11 +53,6 @@ class PayrollRun extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function approver()
-    {
-        return $this->belongsTo(User::class, 'approved_by');
-    }
-
     public function details()
     {
         return $this->hasMany(PayrollDetail::class);
@@ -70,11 +61,6 @@ class PayrollRun extends Model
     public function exceptions()
     {
         return $this->hasMany(PayrollException::class);
-    }
-
-    public function approvalLogs()
-    {
-        return $this->hasMany(ApprovalLog::class);
     }
 
     public function payslips()

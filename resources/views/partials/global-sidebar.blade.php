@@ -76,7 +76,8 @@
         'plantilla'           => 'fas fa-building fa-fw',
         'salary_matrix'       => 'fas fa-table fa-fw',
         'earnings'            => 'fas fa-coins fa-fw',
-        'deductions'          => 'fas fa-minus-circle fa-fw',
+        'contributions'       => 'fas fa-minus-circle fa-fw',
+        'loans'               => 'fas fa-hand-holding-dollar fa-fw',
         'exceptions'          => 'fas fa-exclamation-triangle fa-fw',
         'approvals'           => 'fas fa-check-circle fa-fw',
         'payslips'            => 'fas fa-file-invoice-dollar fa-fw',
@@ -239,14 +240,14 @@
             ['label' => 'Plantilla &amp; Salary',  'icon' => 'plantilla',      'route' => 'payroll.plantilla.index',     'active' => ['payroll.plantilla.*', 'payroll.csc-eligibility.*']],
             ['label' => 'Salary Matrix',       'icon' => 'salary_matrix',   'route' => 'payroll.salary-matrix.index', 'active' => ['payroll.salary-matrix.*']],
             ['label' => 'Earnings (Allowances)', 'icon' => 'earnings',      'route' => 'payroll.earnings.index',      'active' => ['payroll.earnings.*']],
-            ['label' => 'Deductions',          'icon' => 'deductions',      'route' => 'payroll.deductions.index',    'active' => ['payroll.deductions.*']],
+            ['label' => 'Deductions',       'icon' => 'contributions',   'route' => 'payroll.contributions.index',    'active' => ['payroll.contributions.*']],
+            ['label' => 'Loans',               'icon' => 'loans',           'route' => 'payroll.loans.index',         'active' => ['payroll.loans.*']],
 
             ['section' => 'Integration'],
             ['label' => 'Leave Integration',   'icon' => 'leave_integration', 'route' => 'payroll.leave-integration.index', 'active' => ['payroll.leave-integration.*']],
 
             ['section' => 'Review &amp; Finalize'],
             ['label' => 'Exceptions',          'icon' => 'exceptions',      'route' => 'payroll.exceptions.index',    'active' => ['payroll.exceptions.*']],
-            ['label' => 'Approvals',           'icon' => 'approvals',       'route' => 'payroll.approvals.index',     'active' => ['payroll.approvals.*']],
             ['label' => 'Payslips',            'icon' => 'payslips',        'route' => 'payroll.payslips.index',      'active' => ['payroll.payslips.*']],
 
             ['section' => 'Monitoring'],

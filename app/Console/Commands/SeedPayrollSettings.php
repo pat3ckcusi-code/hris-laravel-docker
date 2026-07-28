@@ -14,18 +14,18 @@ class SeedPayrollSettings extends Command
     public function handle(): int
     {
         $defaults = [
-            'gsis_premium_rate'  => '0.09',
-            'philhealth_rate'    => '0.05',
-            'philhealth_floor'   => '400.00',
+            'gsis_premium_rate' => '0.09',
+            'philhealth_rate' => '0.05',
+            'philhealth_floor' => '400.00',
             'philhealth_ceiling' => '3750.00',
-            'pagibig_amount'     => '100.00',
-            'bir_tax_brackets'   => json_encode([
-                ['min' => 0,      'max' => 10417,  'base' => 0.00,      'rate' => 0.00],
-                ['min' => 10417,  'max' => 16667,  'base' => 0.00,      'rate' => 0.15],
-                ['min' => 16667,  'max' => 33333,  'base' => 937.50,    'rate' => 0.20],
-                ['min' => 33333,  'max' => 83333,  'base' => 4270.83,   'rate' => 0.25],
-                ['min' => 83333,  'max' => 333333, 'base' => 16770.83,  'rate' => 0.30],
-                ['min' => 333333, 'max' => null,   'base' => 91770.83,  'rate' => 0.35],
+            'pagibig_amount' => '100.00',
+            'bir_tax_brackets' => json_encode([
+                ['min' => 0,      'max' => 20833,  'base' => 0.00,      'rate' => 0.00],
+                ['min' => 20833,  'max' => 33333,  'base' => 0.00,      'rate' => 0.15],
+                ['min' => 33333,  'max' => 66667,  'base' => 1875.00,   'rate' => 0.20],
+                ['min' => 66667,  'max' => 166667, 'base' => 8541.80,   'rate' => 0.25],
+                ['min' => 166667, 'max' => 666667, 'base' => 33541.80,  'rate' => 0.30],
+                ['min' => 666667, 'max' => null,   'base' => 183541.80, 'rate' => 0.35],
             ]),
         ];
 
@@ -36,6 +36,7 @@ class SeedPayrollSettings extends Command
 
             if ($exists && ! $force) {
                 $this->line("  <comment>skip</comment>  {$key} (already set; use --force to overwrite)");
+
                 continue;
             }
 

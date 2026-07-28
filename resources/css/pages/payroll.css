@@ -102,6 +102,17 @@
     max-width: 640px;
 }
 
+/* Wider than the default .payroll-form cap - the bracket table's 5 number
+   columns (Min/Max/Base/Marginal Rate) need real room, since values here
+   run up to 6-7 digits (e.g. 666667, 183541.80) and felt cramped at 640px. */
+#mandatory-config-form {
+    max-width: 820px;
+}
+
+#bir-brackets-table .form-input {
+    min-width: 100px;
+}
+
 .form-group {
     margin-bottom: 16px;
 }
@@ -110,20 +121,25 @@
     display: block;
     font-weight: 600;
     font-size: 0.88rem;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     color: var(--ink);
 }
 
 .form-input {
     width: 100%;
-    padding: 9px 12px;
-    border: 1px solid #cbd5e1;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
     border-radius: 8px;
     font: inherit;
     font-size: 0.9rem;
     background: #fff;
     color: var(--ink);
-    transition: border-color 140ms ease;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.form-input:hover:not(:disabled):not(:focus) {
+    border-color: #94a3b8;
 }
 
 .form-input:focus {
@@ -132,12 +148,125 @@
     box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
 }
 
+.form-input:disabled {
+    background: #f1f5f9;
+    color: var(--muted);
+    border-color: #e2e8f0;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
 select.form-input {
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 14px;
+    padding-right: 34px;
 }
 
 textarea.form-input {
     resize: vertical;
+}
+
+/* ── Input affix (₱/% prefix or suffix icon inside the field) ───── */
+.input-affix {
+    position: relative;
+}
+
+.input-affix .form-input {
+    padding-left: 30px;
+}
+
+.input-affix.suffix .form-input {
+    padding-left: 12px;
+    padding-right: 34px;
+}
+
+.input-affix-icon {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.input-affix.suffix .input-affix-icon {
+    left: auto;
+    right: 12px;
+}
+
+/* ── Computation Type picker (radio-cards) ───────── */
+.computation-type-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.computation-type-option {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 16px 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    cursor: pointer;
+    background: #fff;
+    transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.computation-type-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.computation-type-option:hover {
+    border-color: #94a3b8;
+}
+
+.computation-type-option:has(input:checked) {
+    border-color: var(--accent);
+    background: #fff7ed;
+    box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+}
+
+.computation-type-option .ct-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 1rem;
+    transition: background-color 140ms ease, color 140ms ease;
+}
+
+.computation-type-option:has(input:checked) .ct-icon {
+    background: var(--accent);
+    color: #fff;
+}
+
+.computation-type-option .ct-label {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--ink);
+}
+
+.computation-type-option .ct-desc {
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.3;
 }
 
 .form-row {
@@ -174,11 +303,28 @@ textarea.form-input {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    transition: opacity 140ms ease;
+    box-shadow: 0 1px 3px rgba(234, 88, 12, 0.3), 0 1px 2px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 160ms ease, transform 120ms ease, filter 160ms ease;
 }
 
 .btn:hover {
-    opacity: 0.9;
+    box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35);
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+}
+
+.btn:active {
+    box-shadow: 0 1px 3px rgba(234, 88, 12, 0.25);
+    transform: translateY(0);
+    filter: brightness(0.96);
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+    filter: none;
 }
 
 .btn-sm {
@@ -191,14 +337,29 @@ textarea.form-input {
     background: transparent;
     color: var(--accent);
     border: 1px solid var(--accent);
+    box-shadow: none;
 }
 
 .btn-outline:hover {
     background: var(--chip-bg);
+    box-shadow: 0 2px 8px rgba(234, 88, 12, 0.15);
+    transform: translateY(-1px);
+    filter: none;
+}
+
+.btn-outline:active {
+    background: var(--chip-bg);
+    transform: translateY(0);
+    box-shadow: none;
 }
 
 .btn-danger {
     background: linear-gradient(120deg, #dc2626, #f87171);
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.3), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.btn-danger:hover {
+    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.35);
 }
 
 .btn-add-position {
@@ -252,6 +413,12 @@ textarea.form-input {
     text-decoration: none;
     border-radius: 6px;
     transition: color 140ms ease, background-color 140ms ease;
+    /* Reset browser button chrome - harmless no-op on <a>, needed when this
+       class is applied to a <button> that opens a modal instead of navigating. */
+    border: 0;
+    background: none;
+    font-family: inherit;
+    cursor: pointer;
 }
 
 .plantilla-quiet-link i {
@@ -377,6 +544,12 @@ textarea.form-input {
 .notice ul {
     margin: 4px 0 0 16px;
     padding: 0;
+}
+
+/* ── Assign Employee Types modal ─────────────────── */
+#assign-eligibility-modal .modal-close {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 /* ── Header actions ─────────────────────────────── */
@@ -883,4 +1056,19 @@ textarea.form-input {
 /* ── Wide modal variant (salary matrix bulk tranche entry) ──────── */
 .employee-modal.modal-lg {
     width: min(960px, calc(100vw - 24px));
+}
+
+/* New Rate Tranche's 9-column (SG + Step 1-8) grid needs more room than
+   .modal-lg gives every other bulk modal - at 960px with the shared
+   .hris-table's default 1rem/1.25rem cell padding, only ~6 of the 9 columns
+   fit before the panel's own overflow-x-auto kicks in. Widen just this
+   modal and tighten just this table's cell padding so all 9 columns show
+   at once without horizontal scrolling. */
+#newTrancheModal {
+    width: min(1240px, calc(100vw - 24px));
+}
+
+#newTrancheModal .hris-table th,
+#newTrancheModal .hris-table td {
+    padding: 0.5rem 0.6rem;
 }

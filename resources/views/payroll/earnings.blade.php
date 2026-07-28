@@ -17,6 +17,7 @@
             <thead>
                 <tr>
                     <th>Type</th>
+                    <th>Allowance Type</th>
                     <th>Description</th>
                     <th>Recurring</th>
                     <th>Assigned To</th>
@@ -28,9 +29,11 @@
                     <tr id="earning-row-{{ $e->id }}"
                         data-id="{{ $e->id }}"
                         data-type="{{ $e->type }}"
+                        data-allowance-type="{{ $e->allowance_type ?? '' }}"
                         data-description="{{ $e->description ?? '' }}"
                         data-recurring="{{ $e->recurring ? '1' : '0' }}">
                         <td>{{ $e->type }}</td>
+                        <td>{{ $e->allowance_type ? ucfirst(str_replace('_', ' ', $e->allowance_type)) : '-' }}</td>
                         <td>{{ $e->description ?? '-' }}</td>
                         <td>{{ $e->recurring ? 'Yes' : 'No' }}</td>
                         <td>{{ $e->employee_earnings_count }} employees</td>
@@ -46,7 +49,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-muted">No earning types defined.</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted">No earning types defined.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -68,6 +71,17 @@
         <div class="form-group">
             <label for="c-type">Type / Name</label>
             <input type="text" name="type" id="c-type" value="{{ old('type') }}" class="form-input" required placeholder="e.g. PERA, LCA, Hazard Pay">
+        </div>
+        <div class="form-group">
+            <label for="c-allowance-type">Allowance Type</label>
+            <select name="allowance_type" id="c-allowance-type" class="form-input">
+                <option value="">- Select allowance type -</option>
+                <option value="pera" @selected(old('allowance_type') === 'pera')>PERA</option>
+                <option value="hazard_pay" @selected(old('allowance_type') === 'hazard_pay')>Hazard Pay</option>
+                <option value="subsistence_allowance" @selected(old('allowance_type') === 'subsistence_allowance')>Subsistence Allowance</option>
+                <option value="laundry_allowance" @selected(old('allowance_type') === 'laundry_allowance')>Laundry Allowance</option>
+                <option value="other" @selected(old('allowance_type') === 'other')>Other</option>
+            </select>
         </div>
         <div class="form-group">
             <label for="c-desc">Description</label>
@@ -102,6 +116,17 @@
             <input type="text" name="type" id="e-type" class="form-input" required>
         </div>
         <div class="form-group">
+            <label for="e-allowance-type">Allowance Type</label>
+            <select name="allowance_type" id="e-allowance-type" class="form-input">
+                <option value="">- Select allowance type -</option>
+                <option value="pera">PERA</option>
+                <option value="hazard_pay">Hazard Pay</option>
+                <option value="subsistence_allowance">Subsistence Allowance</option>
+                <option value="laundry_allowance">Laundry Allowance</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+        <div class="form-group">
             <label for="e-desc">Description</label>
             <textarea name="description" id="e-desc" class="form-input" rows="3"></textarea>
         </div>
@@ -126,6 +151,7 @@ function openEditEarning(id) {
     if (!row) return;
     document.getElementById('editEarningForm').action = '{{ url("payroll-manager/earnings") }}/' + id;
     document.getElementById('e-type').value = row.dataset.type;
+    document.getElementById('e-allowance-type').value = row.dataset.allowanceType;
     document.getElementById('e-desc').value = row.dataset.description;
     document.getElementById('e-recurring').checked = row.dataset.recurring === '1';
     document.getElementById('edit-earning-subtitle').textContent = row.dataset.type;

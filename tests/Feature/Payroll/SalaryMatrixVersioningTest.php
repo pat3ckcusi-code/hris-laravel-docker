@@ -151,4 +151,99 @@ class SalaryMatrixVersioningTest extends TestCase
         // still resolve to something rather than silently paying zero.
         $this->assertEquals(19716.0, $this->computeBasicSalary($employee->id, '2025-01-01', '2025-01-31'));
     }
+
+    public function test_updating_a_tranche_moves_all_rows_to_the_new_date(): void
+    {
+        $manager = $this->createPayrollManager();
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716, 'ordinance_reference' => 'Third Tranche']);
+        SalaryMatrix::create(['sg' => 6, 'step' => 2, 'effective_date' => '2026-01-01', 'amount' => 20000, 'ordinance_reference' => 'Third Tranche']);
+
+        $response = $this->actingAs($manager)->put(route('payroll.salary-matrix.versions.update'), [
+            'current_effective_date' => '2026-01-01',
+            'effective_date' => '2026-03-15',
+            'ordinance_reference' => 'Third Tranche (corrected date)',
+        ]);
+
+        $response->assertRedirect(route('payroll.salary-matrix.index', ['version' => '2026-03-15']));
+        $response->assertSessionHas('status');
+
+        $this->assertSame(0, SalaryMatrix::where('effective_date', '2026-01-01')->count());
+        $moved = SalaryMatrix::where('effective_date', '2026-03-15')->orderBy('step')->get();
+        $this->assertCount(2, $moved);
+        $this->assertSame(2026, $moved->first()->year);
+        $this->assertTrue($moved->every(fn ($row) => $row->ordinance_reference === 'Third Tranche (corrected date)'));
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'actor_user_id' => $manager->id,
+            'module' => 'payroll',
+            'action' => 'salary_matrix_version_updated',
+        ]);
+    }
+
+    public function test_updating_a_tranche_is_rejected_when_target_date_has_overlapping_cells(): void
+    {
+        $manager = $this->createPayrollManager();
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15', 'amount' => 21000]);
+
+        $response = $this->actingAs($manager)->put(route('payroll.salary-matrix.versions.update'), [
+            'current_effective_date' => '2026-01-01',
+            'effective_date' => '2026-07-15',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15', 'amount' => 21000]);
+    }
+
+    public function test_updating_a_tranche_succeeds_when_target_date_has_no_overlapping_cells(): void
+    {
+        $manager = $this->createPayrollManager();
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        SalaryMatrix::create(['sg' => 10, 'step' => 3, 'effective_date' => '2026-07-15', 'amount' => 25000]);
+
+        $response = $this->actingAs($manager)->put(route('payroll.salary-matrix.versions.update'), [
+            'current_effective_date' => '2026-01-01',
+            'effective_date' => '2026-07-15',
+        ]);
+
+        $response->assertSessionHas('status');
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15', 'amount' => 19716]);
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 10, 'step' => 3, 'effective_date' => '2026-07-15', 'amount' => 25000]);
+    }
+
+    public function test_updating_ordinance_reference_only_keeps_the_same_date(): void
+    {
+        $manager = $this->createPayrollManager();
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716, 'ordinance_reference' => 'Draft label']);
+
+        $this->actingAs($manager)->put(route('payroll.salary-matrix.versions.update'), [
+            'current_effective_date' => '2026-01-01',
+            'effective_date' => '2026-01-01',
+            'ordinance_reference' => 'Final label',
+        ])->assertSessionHas('status');
+
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'ordinance_reference' => 'Final label']);
+    }
+
+    public function test_moving_a_tranches_date_changes_an_unlocked_runs_recompute(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-01', 'amount' => 21000]);
+
+        // Before the move: July period sees the second tranche's rate.
+        $this->assertEquals(21000.0, $this->computeBasicSalary($employee->id, '2026-07-15', '2026-07-31'));
+
+        $manager = $this->createPayrollManager();
+        $this->actingAs($manager)->put(route('payroll.salary-matrix.versions.update'), [
+            'current_effective_date' => '2026-07-01',
+            'effective_date' => '2026-09-01',
+        ])->assertSessionHas('status');
+
+        // After the move: the same July period now falls back to the
+        // earlier tranche, since the second one no longer applies until September.
+        $this->assertEquals(19716.0, $this->computeBasicSalary($employee->id, '2026-07-15', '2026-07-31'));
+        $this->assertEquals(21000.0, $this->computeBasicSalary($employee->id, '2026-09-15', '2026-09-30'));
+    }
 }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read User|null $employee
  * @property-read Deduction|null $deduction
+ * @property-read Collection<int, LoanBillingHistory> $billingHistory
  *
  * @mixin Builder
  */
@@ -49,5 +51,10 @@ class Loan extends Model
     public function deduction()
     {
         return $this->belongsTo(Deduction::class);
+    }
+
+    public function billingHistory()
+    {
+        return $this->hasMany(LoanBillingHistory::class)->orderByDesc('billing_month');
     }
 }
