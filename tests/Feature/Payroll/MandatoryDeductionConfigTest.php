@@ -95,6 +95,60 @@ class MandatoryDeductionConfigTest extends TestCase
         $this->assertEquals(100.00, $detail->pagibig_deduction);
     }
 
+    public function test_gsis_percentage_truncates_instead_of_rounding_up(): void
+    {
+        $admin = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+
+        $plantilla = Plantilla::create([
+            'title' => 'Clerk III',
+            'salary_grade' => 6,
+            'step' => 1,
+            'employment_type' => 'permanent',
+        ]);
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $plantilla->id,
+            'start_date' => '2026-01-01',
+        ]);
+        // 11111.17 * 0.09 = 1000.0053 - the 3rd decimal is 5, so round()
+        // would round up to 1000.01. Truncation must keep 1000.00.
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'year' => 2026, 'amount' => 11111.17]);
+
+        $run = PayrollRun::create([
+            'period' => '2026-04 1st',
+            'period_start' => '2026-04-01',
+            'period_end' => '2026-04-15',
+            'status' => 'draft',
+            'created_by' => $admin->id,
+        ]);
+
+        (new PayrollComputationService)->compute($run, $admin);
+
+        $detail = PayrollDetail::where('payroll_run_id', $run->id)->where('employee_id', $employee->id)->firstOrFail();
+        $this->assertEquals(1000.00, $detail->gsis_deduction);
+        $this->assertNotEquals(1000.01, $detail->gsis_deduction);
+    }
+
+    public function test_philhealth_ceiling_clamp_still_applies_after_truncation(): void
+    {
+        ['admin' => $admin, 'employee' => $employee, 'run' => $run] = $this->seedPayrollScaffold();
+
+        $philhealth = Deduction::where('mandatory_key', 'philhealth')->firstOrFail();
+        $philhealth->update(['mandatory_config' => ['rate' => 0.025, 'floor' => 400.00, 'ceiling' => 3750.00]]);
+
+        // 18620.00 basic salary * 0.025 = 465.50, well under the 3750
+        // ceiling - bump the underlying salary matrix so the raw percentage
+        // clearly exceeds the ceiling either way, proving the clamp still
+        // wins over a truncated (not rounded) base amount.
+        SalaryMatrix::where('sg', 6)->where('step', 1)->update(['amount' => 200000.00]);
+
+        (new PayrollComputationService)->compute($run, $admin);
+
+        $detail = PayrollDetail::where('payroll_run_id', $run->id)->where('employee_id', $employee->id)->firstOrFail();
+        $this->assertEquals(3750.00, $detail->philhealth_deduction);
+    }
+
     public function test_updating_gsis_rate_changes_next_payroll_computation(): void
     {
         ['admin' => $admin, 'employee' => $employee, 'run' => $run] = $this->seedPayrollScaffold();

@@ -214,6 +214,21 @@ class PayrollRunDetailsFilterTest extends TestCase
         $response->assertSee('₱200.00');
     }
 
+    public function test_pagination_links_point_back_to_the_run_not_the_site_root(): void
+    {
+        $manager = $this->createPayrollManager();
+        $run = $this->makeRun();
+        for ($i = 0; $i < 25; $i++) {
+            $this->makeDetail($run, $this->createEmployee(['name' => "Employee $i"]));
+        }
+
+        $response = $this->actingAs($manager)->get(route('payroll.runs.show', $run->id));
+
+        $response->assertOk();
+        $response->assertSee('href="'.route('payroll.runs.show', $run->id).'?page=2"', false);
+        $response->assertDontSee('href="/?page=2"', false);
+    }
+
     public function test_other_deduction_column_shows_zero_when_employee_has_no_breakdown_line(): void
     {
         $manager = $this->createPayrollManager();

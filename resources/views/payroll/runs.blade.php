@@ -113,8 +113,20 @@
             </div>
             <div class="form-group">
                 <label for="period_end"><i class="fas fa-calendar-check"></i> Period End</label>
-                <input type="date" id="period_end" name="period_end" value="{{ old('period_end') }}" required class="form-input">
+                <input type="date" id="period_end" name="period_end" value="{{ old('period_end') }}" min="{{ old('period_start') }}" required class="form-input">
+                <div class="text-danger" id="period-end-error" style="font-size:0.85rem;margin-top:4px;display:none">Period End cannot be before Period Start.</div>
+                @error('period_end') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
             </div>
+        </div>
+        <div class="form-group">
+            <label><i class="fas fa-users"></i> Employee Types to Include</label>
+            @foreach($employeeTypes as $type)
+                <label class="checkbox-label" style="display:flex;margin-bottom:8px;font-weight:700">
+                    <input type="checkbox" name="employee_types[]" value="{{ $type }}"
+                           @checked(old('employee_types') === null || in_array($type, old('employee_types', []), true))>
+                    {{ $type }}
+                </label>
+            @endforeach
         </div>
         <div class="form-actions">
             <button type="submit" class="btn"><i class="fas fa-plus"></i> Create Payroll Run</button>
@@ -132,5 +144,37 @@
     @if ($errors->any())
         document.getElementById('createRunModal').showModal();
     @endif
+
+    (function () {
+        var periodStart = document.getElementById('period_start');
+        var periodEnd = document.getElementById('period_end');
+        var periodEndError = document.getElementById('period-end-error');
+        var createRunForm = periodEnd ? periodEnd.closest('form') : null;
+
+        function syncMinAndValidate() {
+            if (!periodStart.value) { return; }
+            periodEnd.min = periodStart.value;
+            if (periodEnd.value && periodEnd.value < periodStart.value) {
+                periodEndError.style.display = 'block';
+            } else {
+                periodEndError.style.display = 'none';
+            }
+        }
+
+        if (periodStart && periodEnd) {
+            periodStart.addEventListener('change', syncMinAndValidate);
+            periodEnd.addEventListener('change', syncMinAndValidate);
+        }
+
+        if (createRunForm) {
+            createRunForm.addEventListener('submit', function (e) {
+                if (periodStart.value && periodEnd.value && periodEnd.value < periodStart.value) {
+                    e.preventDefault();
+                    periodEndError.style.display = 'block';
+                    periodEnd.focus();
+                }
+            });
+        }
+    })();
 </script>
 @endsection

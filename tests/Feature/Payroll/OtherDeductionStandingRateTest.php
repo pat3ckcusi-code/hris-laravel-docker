@@ -191,6 +191,23 @@ class OtherDeductionStandingRateTest extends TestCase
         $this->assertTrue(collect($detail->deduction_breakdown)->contains(fn ($item) => $item['label'] === 'LIFE' && (float) $item['amount'] === 150.0));
     }
 
+    public function test_standing_rate_percentage_still_rounds_unlike_mandatory_deductions(): void
+    {
+        $this->makeOtherDeduction(['computation_type' => 'percentage', 'mandatory_config' => ['rate' => 0.09]]);
+        $employee = $this->createEmployee(['employee_type' => 'Permanent']);
+        // Same 11111.17 basic salary and 0.09 rate used by
+        // MandatoryDeductionConfigTest::test_gsis_percentage_truncates_instead_of_rounding_up -
+        // GSIS truncates that to 1000.00, but this shared computeMandatoryAmount()
+        // call site (computeOtherDeductions()) never passes truncate:true,
+        // so Standing Rate "Other" deductions must keep rounding up to 1000.01.
+        $run = $this->makeRunForEmployee($employee, 10, 1, 11111.17);
+
+        (new PayrollComputationService)->compute($run, $run->creator);
+
+        $detail = PayrollDetail::where('payroll_run_id', $run->id)->where('employee_id', $employee->id)->firstOrFail();
+        $this->assertEquals(1000.01, $detail->other_deductions);
+    }
+
     public function test_standing_rate_charges_zero_and_omits_breakdown_line_for_an_ineligible_type(): void
     {
         $this->makeOtherDeduction([

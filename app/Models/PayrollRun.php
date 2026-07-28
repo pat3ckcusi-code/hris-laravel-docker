@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $period_start
  * @property Carbon|null $period_end
  * @property string $status
+ * @property array|null $eligible_employee_types
  * @property Carbon|null $locked_at
  * @property int|null $created_by
  * @property Carbon|null $created_at
@@ -35,6 +36,7 @@ class PayrollRun extends Model
         'period_start',
         'period_end',
         'status',
+        'eligible_employee_types',
         'locked_at',
         'created_by',
     ];
@@ -44,6 +46,7 @@ class PayrollRun extends Model
         return [
             'period_start' => 'date',
             'period_end' => 'date',
+            'eligible_employee_types' => 'array',
             'locked_at' => 'datetime',
         ];
     }

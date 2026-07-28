@@ -16,6 +16,8 @@ use Illuminate\Support\Carbon;
  * @property int $undertime_minutes
  * @property int $absent_days
  * @property float $basic_salary
+ * @property int|null $salary_matrix_id
+ * @property array|null $basic_salary_breakdown
  * @property float $earnings
  * @property float $deductions
  * @property float $lwop_deduction
@@ -27,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read PayrollRun|null $payrollRun
  * @property-read User|null $employee
+ * @property-read SalaryMatrix|null $salaryMatrix
  *
  * @mixin Builder
  */
@@ -42,6 +45,8 @@ class PayrollDetail extends Model
         'undertime_minutes',
         'absent_days',
         'basic_salary',
+        'salary_matrix_id',
+        'basic_salary_breakdown',
         'gross_pay',
         'earnings',
         'deductions',
@@ -64,6 +69,7 @@ class PayrollDetail extends Model
             'undertime_minutes' => 'integer',
             'absent_days' => 'integer',
             'basic_salary' => 'float',
+            'basic_salary_breakdown' => 'array',
             'gross_pay' => 'float',
             'earnings' => 'float',
             'deductions' => 'float',
@@ -87,5 +93,10 @@ class PayrollDetail extends Model
     public function employee()
     {
         return $this->belongsTo(User::class, 'employee_id');
+    }
+
+    public function salaryMatrix()
+    {
+        return $this->belongsTo(SalaryMatrix::class);
     }
 }

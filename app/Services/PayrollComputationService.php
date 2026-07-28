@@ -50,6 +50,9 @@ class PayrollComputationService
                 $q->whereNull('end_date')
                     ->orWhere('end_date', '>=', $run->period_start);
             })
+            ->when($run->eligible_employee_types, function ($q) use ($run) {
+                $q->whereHas('employee', fn ($eq) => $eq->whereIn('employee_type', $run->eligible_employee_types));
+            })
             ->get();
 
         if ($assignments->isEmpty()) {
@@ -87,7 +90,9 @@ class PayrollComputationService
 
             // 1. Basic salary from salary matrix. Step is the assignment's own
             // (personal to this stint), not the plantilla's shared, position-level step.
-            $basicSalary = $this->getBasicSalary($plantilla->salary_grade, $assignment->step, $run, $errors);
+            $salaryMatrixId = null;
+            $basicSalaryBreakdown = [];
+            $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown);
 
             // 2. DTR analysis
             $dtrSummary = $this->analyzeDtr($employee->id, $run);
@@ -177,6 +182,8 @@ class PayrollComputationService
                 'undertime_minutes' => $dtrSummary['undertime_minutes'],
                 'absent_days' => $dtrSummary['absent_days'],
                 'basic_salary' => $basicSalary,
+                'salary_matrix_id' => $salaryMatrixId,
+                'basic_salary_breakdown' => $basicSalaryBreakdown,
                 'gross_pay' => $grossPay,
                 'earnings' => $allowances['total'],
                 'gsis_deduction' => $mandatory['gsis'],
@@ -211,35 +218,160 @@ class PayrollComputationService
     }
 
     /**
-     * Look up basic salary from the salary matrix.
+     * Look up basic salary from the salary matrix. A period with a single
+     * applicable tranche (the common case) returns that tranche's amount
+     * directly, byte-identical to a plain lookup. A period spanning a
+     * mid-year ordinance's effective_date instead pays the tranche
+     * governing period_end in full, then applies a CSC daily-wage-rate
+     * adjustment (Monthly Salary ÷ payroll_working_days_per_month) for each
+     * earlier tranche's working days - see the multi-segment branch below
+     * for why this, not a per-segment share of the whole period.
      */
-    protected function getBasicSalary(int $sg, int $step, PayrollRun $run, array &$errors): float
+    protected function getBasicSalary(User $employee, int $sg, int $step, PayrollRun $run, array &$errors, ?int &$salaryMatrixId = null, array &$breakdown = []): float
     {
-        // The latest matrix version whose effective_date has been reached by
-        // the run's period - this is what makes a mid-year ordinance apply
-        // exactly when it takes effect, not just at the next calendar year.
-        $entry = SalaryMatrix::where('sg', $sg)
+        $periodStart = $run->period_start->copy()->startOfDay();
+        $periodEnd = $run->period_end->copy()->startOfDay();
+        $totalDays = $periodStart->diffInDays($periodEnd) + 1;
+
+        // The tranche already in force at the start of the period (if any) -
+        // there may be several older versions on record, only the latest matters.
+        $baseEntry = SalaryMatrix::where('sg', $sg)
             ->where('step', $step)
-            ->where('effective_date', '<=', $run->period_start)
+            ->where('effective_date', '<=', $periodStart)
             ->orderByDesc('effective_date')
             ->first();
 
-        if (! $entry) {
-            // Period predates all known versions for this sg/step - fall
-            // back to the earliest one on record rather than paying zero.
+        // Any tranche that takes effect strictly inside the period - each
+        // one starts a new segment.
+        $midEntries = SalaryMatrix::where('sg', $sg)
+            ->where('step', $step)
+            ->where('effective_date', '>', $periodStart)
+            ->where('effective_date', '<=', $periodEnd)
+            ->orderBy('effective_date')
+            ->get();
+
+        $segments = collect($baseEntry ? [$baseEntry] : [])->concat($midEntries)->values();
+
+        if ($segments->isEmpty()) {
+            // Nothing has ever taken effect by period end - fall back to the
+            // earliest one on record for the whole period rather than paying zero.
             $entry = SalaryMatrix::where('sg', $sg)
                 ->where('step', $step)
                 ->orderBy('effective_date')
                 ->first();
+
+            if (! $entry) {
+                $errors[] = "No salary matrix entry for SG-{$sg} Step {$step}.";
+                $salaryMatrixId = null;
+                $breakdown = [];
+
+                return 0;
+            }
+
+            $salaryMatrixId = $entry->id;
+            $amount = round((float) $entry->amount, 2);
+            $breakdown = [[
+                'salary_matrix_id' => $entry->id,
+                'effective_date' => $entry->effective_date->toDateString(),
+                'ordinance_reference' => $entry->ordinance_reference,
+                'date_range' => $periodStart->toDateString().($periodStart->eq($periodEnd) ? '' : ' to '.$periodEnd->toDateString()),
+                'days' => $totalDays,
+                'amount' => $amount,
+                'is_base' => true,
+                'not_yet_effective' => true,
+            ]];
+
+            return $amount;
         }
 
-        if (! $entry) {
-            $errors[] = "No salary matrix entry for SG-{$sg} Step {$step}.";
+        // Common case: no mid-period transition - one segment covers the
+        // whole period. Return the raw amount directly rather than round-
+        // tripping through /days*days, so this stays byte-identical to a
+        // plain lookup with no proration math involved.
+        if ($segments->count() === 1) {
+            $entry = $segments->first();
+            $salaryMatrixId = $entry->id;
+            $amount = round((float) $entry->amount, 2);
+            $breakdown = [[
+                'salary_matrix_id' => $entry->id,
+                'effective_date' => $entry->effective_date->toDateString(),
+                'ordinance_reference' => $entry->ordinance_reference,
+                'date_range' => $periodStart->toDateString().($periodStart->eq($periodEnd) ? '' : ' to '.$periodEnd->toDateString()),
+                'days' => $totalDays,
+                'amount' => $amount,
+                'is_base' => true,
+                'not_yet_effective' => false,
+            ]];
 
-            return 0;
+            return $amount;
         }
 
-        return (float) $entry->amount;
+        // Multiple tranches apply within this period: pay the tranche that
+        // governs period_end (the current/final approved rate) in full for
+        // the whole period, then apply a small CSC daily-wage-rate
+        // adjustment (Monthly Salary ÷ payroll_working_days_per_month) for
+        // each EARLIER segment - not a per-segment share of the whole
+        // period. The ÷22 formula (same one computeLwopDeduction() uses) is
+        // a marginal daily rate meant for small corrections; naively
+        // dividing by 22 and multiplying by a segment's full calendar span
+        // would wildly distort anything longer than a few days (a 30-day
+        // segment against a 22-day divisor overpays by ~36%), and using it
+        // as a full-period reconstruction divisor instead of a plain lookup
+        // would overpay every ordinary month by ~40% (real months run
+        // 28-31 calendar days against a fixed 22).
+        $workingDaysPerMonth = Setting::first()?->payroll_working_days_per_month ?? 22;
+        $baseTranche = $segments->last();
+        $totalAmount = round((float) $baseTranche->amount, 2);
+        $salaryMatrixId = $baseTranche->id;
+
+        $breakdown = [[
+            'salary_matrix_id' => $baseTranche->id,
+            'effective_date' => $baseTranche->effective_date->toDateString(),
+            'ordinance_reference' => $baseTranche->ordinance_reference,
+            'date_range' => $periodStart->toDateString().' to '.$periodEnd->toDateString(),
+            'days' => $totalDays,
+            'amount' => $totalAmount,
+            'is_base' => true,
+            'not_yet_effective' => false,
+        ]];
+
+        $lastIndex = $segments->count() - 1;
+
+        foreach ($segments as $i => $entry) {
+            if ($i === $lastIndex) {
+                continue; // this is the base tranche itself, already accounted for above
+            }
+
+            $segStart = $i === 0 ? $periodStart->copy() : $entry->effective_date->copy();
+            $next = $segments->get($i + 1);
+            $segEnd = $next->effective_date->copy()->subDay();
+
+            $workingDays = 0;
+            $cursor = $segStart->copy();
+            while ($cursor->lte($segEnd)) {
+                if (WorkSchedule::isWorkday($employee, $cursor)) {
+                    $workingDays++;
+                }
+                $cursor->addDay();
+            }
+
+            $adjustment = round((((float) $entry->amount - (float) $baseTranche->amount) / $workingDaysPerMonth) * $workingDays, 2);
+            $totalAmount += $adjustment;
+
+            $breakdown[] = [
+                'salary_matrix_id' => $entry->id,
+                'effective_date' => $entry->effective_date->toDateString(),
+                'ordinance_reference' => $entry->ordinance_reference,
+                'date_range' => $segStart->toDateString().($segStart->eq($segEnd) ? '' : ' to '.$segEnd->toDateString()),
+                'days' => $segEnd->diffInDays($segStart) + 1,
+                'working_days' => $workingDays,
+                'amount' => $adjustment,
+                'is_base' => false,
+                'not_yet_effective' => false,
+            ];
+        }
+
+        return round($totalAmount, 2);
     }
 
     /**
@@ -361,9 +493,9 @@ class PayrollComputationService
         $philhealthRow = $mandatoryTypes->get('philhealth');
         $pagibigRow = $mandatoryTypes->get('pagibig');
 
-        $gsis = $this->computeMandatoryAmount($gsisRow?->computation_type ?? 'percentage', $gsisRow?->mandatory_config ?? ['rate' => 0.09], $basicSalary, $this->mandatoryAppliesToEmployee($gsisRow, $employeeType));
-        $philhealth = $this->computeMandatoryAmount($philhealthRow?->computation_type ?? 'percentage', $philhealthRow?->mandatory_config ?? ['rate' => 0.025, 'floor' => 400.00, 'ceiling' => 3750.00], $basicSalary, $this->mandatoryAppliesToEmployee($philhealthRow, $employeeType));
-        $pagibig = $this->computeMandatoryAmount($pagibigRow?->computation_type ?? 'flat', $pagibigRow?->mandatory_config ?? ['amount' => 100.00], $basicSalary, $this->mandatoryAppliesToEmployee($pagibigRow, $employeeType));
+        $gsis = $this->computeMandatoryAmount($gsisRow?->computation_type ?? 'percentage', $gsisRow?->mandatory_config ?? ['rate' => 0.09], $basicSalary, $this->mandatoryAppliesToEmployee($gsisRow, $employeeType), true);
+        $philhealth = $this->computeMandatoryAmount($philhealthRow?->computation_type ?? 'percentage', $philhealthRow?->mandatory_config ?? ['rate' => 0.025, 'floor' => 400.00, 'ceiling' => 3750.00], $basicSalary, $this->mandatoryAppliesToEmployee($philhealthRow, $employeeType), true);
+        $pagibig = $this->computeMandatoryAmount($pagibigRow?->computation_type ?? 'flat', $pagibigRow?->mandatory_config ?? ['amount' => 100.00], $basicSalary, $this->mandatoryAppliesToEmployee($pagibigRow, $employeeType), true);
 
         return [
             'gsis' => $gsis,
@@ -443,7 +575,7 @@ class PayrollComputationService
      * per-employee assignment row to fall back on, so this takes effect
      * immediately on the next payroll run.
      */
-    protected function computeMandatoryAmount(?string $computationType, array $config, float $base, bool $applies = true): float
+    protected function computeMandatoryAmount(?string $computationType, array $config, float $base, bool $applies = true, bool $truncate = false): float
     {
         if (! $applies) {
             return 0.0;
@@ -451,18 +583,33 @@ class PayrollComputationService
 
         return match ($computationType) {
             'flat' => (float) ($config['amount'] ?? 0),
-            'bracket' => $this->computeBracketAmount($base, $config['brackets'] ?? []),
-            default => $this->clampAmount($base * (float) ($config['rate'] ?? 0), $config['floor'] ?? null, $config['ceiling'] ?? null),
+            'bracket' => $this->computeBracketAmount($base, $config['brackets'] ?? [], $truncate),
+            default => $this->clampAmount($base * (float) ($config['rate'] ?? 0), $config['floor'] ?? null, $config['ceiling'] ?? null, $truncate),
         };
     }
 
     /**
-     * Round then clamp to an optional floor/ceiling - either bound left null
-     * means no clamp on that side (e.g. a plain percentage with no cap).
+     * Truncate to 2 decimal places without rounding up - e.g. ₱100.567
+     * becomes ₱100.56, not ₱100.57. Statutory mandatory-deduction formulas
+     * (GSIS/PhilHealth/Pag-IBIG) must never round in either direction, only
+     * truncate. Rounds to 6 decimals first purely to cancel binary
+     * floating-point representation noise (e.g. 2.675 actually stored as
+     * 2.6749999999...) before truncating, so a value that's mathematically
+     * exact at 2 decimals is never truncated down by a float artifact.
      */
-    protected function clampAmount(float $amount, ?float $floor, ?float $ceiling): float
+    protected function truncateToCents(float $amount): float
     {
-        $amount = round($amount, 2);
+        return floor(round($amount, 6) * 100) / 100;
+    }
+
+    /**
+     * Round (or truncate, for statutory mandatory rows) then clamp to an
+     * optional floor/ceiling - either bound left null means no clamp on
+     * that side (e.g. a plain percentage with no cap).
+     */
+    protected function clampAmount(float $amount, ?float $floor, ?float $ceiling, bool $truncate = false): float
+    {
+        $amount = $truncate ? $this->truncateToCents($amount) : round($amount, 2);
 
         if ($floor !== null) {
             $amount = max($floor, $amount);
@@ -480,11 +627,13 @@ class PayrollComputationService
      * brackets) - reusable by any mandatory row set to computation_type
      * "bracket", not just BIR specifically.
      */
-    protected function computeBracketAmount(float $base, array $brackets): float
+    protected function computeBracketAmount(float $base, array $brackets, bool $truncate = false): float
     {
         foreach (array_reverse($brackets) as $bracket) {
             if ($base > $bracket['min']) {
-                return round($bracket['base'] + ($base - $bracket['min']) * $bracket['rate'], 2);
+                $result = $bracket['base'] + ($base - $bracket['min']) * $bracket['rate'];
+
+                return $truncate ? $this->truncateToCents($result) : round($result, 2);
             }
         }
 

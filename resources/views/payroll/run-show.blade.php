@@ -37,6 +37,10 @@
         <span class="metric-label">Exceptions</span>
         <strong>{{ $run->exceptions->where('resolved_flag', false)->count() }}</strong>
     </article>
+    <article class="tile metric-tile">
+        <span class="metric-label">Employee Types</span>
+        <strong>{{ $run->eligible_employee_types ? implode(', ', $run->eligible_employee_types) : 'All' }}</strong>
+    </article>
 @endsection
 
 @section('content')
@@ -80,6 +84,7 @@
                         <tr>
                             <th>Employee</th>
                             <th>Basic Salary</th>
+                            <th>Matrix Tranche</th>
                             <th>Allowances</th>
                             <th>Gross Pay</th>
                             <th>GSIS</th>
@@ -99,6 +104,27 @@
                             <tr>
                                 <td>{{ $detail->employee->name ?? '-' }}</td>
                                 <td>₱{{ number_format($detail->basic_salary, 2) }}</td>
+                                <td>
+                                    @forelse($detail->basic_salary_breakdown ?? [] as $segment)
+                                        <div style="{{ !$loop->last ? 'margin-bottom:6px' : '' }}">
+                                            @if(!($segment['is_base'] ?? true))
+                                                <span class="text-muted">Adjustment —</span>
+                                            @endif
+                                            <strong>{{ $segment['date_range'] }}</strong>
+                                            ({{ $segment['days'] }} {{ Str::plural('day', $segment['days']) }}@if(isset($segment['working_days'])), {{ $segment['working_days'] }} working @endif):
+                                            {{ $segment['effective_date'] }}
+                                            @if($segment['ordinance_reference'])
+                                                <span class="text-muted">({{ $segment['ordinance_reference'] }})</span>
+                                            @endif
+                                            — {{ $segment['amount'] < 0 ? '-' : '' }}₱{{ number_format(abs($segment['amount']), 2) }}
+                                            @if($segment['not_yet_effective'] ?? false)
+                                                <br><span class="status-chip status-draft" title="This tranche was not yet effective by the end of this run's period — the earliest available rate was used as a fallback.">⚠ not yet effective</span>
+                                            @endif
+                                        </div>
+                                    @empty
+                                        <span class="text-muted">—</span>
+                                    @endforelse
+                                </td>
                                 <td>₱{{ number_format($detail->earnings, 2) }}</td>
                                 <td>₱{{ number_format($detail->gross_pay ?? ($detail->basic_salary + $detail->earnings), 2) }}</td>
                                 <td>₱{{ number_format($detail->gsis_deduction ?? 0, 2) }}</td>

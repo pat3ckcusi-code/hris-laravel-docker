@@ -71,6 +71,82 @@ class SalaryMatrixVersioningTest extends TestCase
         $this->assertEquals(21000.0, $this->computeBasicSalary($employee->id, '2026-12-01', '2026-12-31'));
     }
 
+    public function test_ordinance_effective_mid_period_applies_csc_daily_rate_adjustment_for_working_days(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716, 'ordinance_reference' => 'Second Tranche']);
+        // August 2026: Aug 1 is a Saturday. Effective Aug 8 (a Saturday) so
+        // the earlier segment (Aug 1-7) contains real weekdays (Mon 3 - Fri
+        // 7 = 5 working days) to exercise the CSC ÷22 adjustment formula.
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-08', 'amount' => 22000, 'ordinance_reference' => 'Third Tranche']);
+
+        // Base = Third Tranche, paid in full for the whole period. Adjustment
+        // = (old - new) / 22 working days per month * 5 working days in the
+        // Aug 1-7 segment (no shift assignment - falls back to Mon-Fri).
+        $expected = round(22000, 2) + round((19716 - 22000) / 22 * 5, 2);
+        $this->assertEquals($expected, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+        $this->assertEquals(21480.91, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+    }
+
+    public function test_ordinance_effective_on_a_weekend_produces_no_adjustment(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        // Reproduces the exact reported real-world case: EO No. 64, s. 2024,
+        // effective 2026-08-02 (a Sunday) mid an August 1-31 run. The only
+        // differing day (Aug 1, a Saturday) isn't a working day at all, so
+        // the CSC daily-rate adjustment for it is correctly zero - the
+        // whole period is simply paid at the new tranche's rate.
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-02', 'amount' => 22000]);
+
+        $this->assertEquals(22000.0, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+    }
+
+    public function test_ordinance_effective_exactly_on_period_end_adjusts_for_the_rest_of_the_month(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        // Effective the very last day of the period (Aug 31, a Monday) -
+        // base = this tranche for the whole period, adjusted for the
+        // Aug 1-30 segment's 20 working days at the prior rate.
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-31', 'amount' => 22000]);
+
+        $expected = round(22000, 2) + round((19716 - 22000) / 22 * 20, 2);
+        $this->assertEquals($expected, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+        $this->assertEquals(19923.64, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+    }
+
+    public function test_ordinance_effective_the_day_after_period_end_does_not_apply(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-09-01', 'amount' => 22000]);
+
+        $this->assertEquals(19716.0, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+    }
+
+    public function test_two_mid_period_transitions_apply_two_csc_adjustments(): void
+    {
+        [$employee] = $this->makeAssignment(6, 1);
+
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 15000]);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-10', 'amount' => 18000]);
+        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-20', 'amount' => 21000]);
+
+        // Base = the 2026-08-20 tranche (21000), paid for the whole period.
+        // Adjustment 1: Aug 1-9 segment, 5 working days (Mon 3 - Fri 7).
+        // Adjustment 2: Aug 10-19 segment, 8 working days (Mon 10 - Fri 14, Mon 17 - Wed 19).
+        $expected = round(21000, 2)
+            + round((15000 - 21000) / 22 * 5, 2)
+            + round((18000 - 21000) / 22 * 8, 2);
+        $this->assertEquals($expected, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+        $this->assertEquals(18545.45, $this->computeBasicSalary($employee->id, '2026-08-01', '2026-08-31'));
+    }
+
     public function test_two_versions_in_the_same_year_do_not_violate_uniqueness(): void
     {
         SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);

@@ -7,10 +7,12 @@ use App\Models\Deduction;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollRun;
 use App\Services\PayrollComputationService;
+use App\Support\HrisConstants;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\Rule;
 
 class PayrollRunController extends Controller
 {
@@ -27,7 +29,9 @@ class PayrollRunController extends Controller
             'locked' => PayrollRun::where('status', 'locked')->count(),
         ];
 
-        return view('payroll.runs', compact('runs', 'stats'));
+        $employeeTypes = HrisConstants::EMPLOYEE_TYPES;
+
+        return view('payroll.runs', compact('runs', 'stats', 'employeeTypes'));
     }
 
     public function create(): RedirectResponse
@@ -41,13 +45,23 @@ class PayrollRunController extends Controller
             'period' => 'required|string|max:100',
             'period_start' => 'required|date',
             'period_end' => 'required|date|after_or_equal:period_start',
+            'employee_types' => 'nullable|array',
+            'employee_types.*' => [Rule::in(HrisConstants::EMPLOYEE_TYPES)],
         ]);
+
+        $selected = $request->input('employee_types');
+        $eligibleEmployeeTypes = null;
+        if ($selected) {
+            $coversEveryType = count(array_diff(HrisConstants::EMPLOYEE_TYPES, $selected)) === 0;
+            $eligibleEmployeeTypes = $coversEveryType ? null : array_values($selected);
+        }
 
         $run = PayrollRun::create([
             'period' => $request->period,
             'period_start' => $request->period_start,
             'period_end' => $request->period_end,
             'status' => 'draft',
+            'eligible_employee_types' => $eligibleEmployeeTypes,
             'created_by' => $request->user()->id,
         ]);
 
@@ -98,9 +112,9 @@ class PayrollRunController extends Controller
             $filteredDetails->forPage($page, $perPage)->values(),
             $filteredDetails->count(),
             $perPage,
-            $page
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
         );
-        $details->withQueryString();
 
         $departments = $run->details
             ->pluck('employee.department')
