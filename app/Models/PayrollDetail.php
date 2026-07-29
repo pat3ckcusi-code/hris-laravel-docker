@@ -11,10 +11,6 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $payroll_run_id
  * @property int $employee_id
- * @property int $days_worked
- * @property int $late_minutes
- * @property int $undertime_minutes
- * @property int $absent_days
  * @property float $basic_salary
  * @property int|null $salary_matrix_id
  * @property array|null $basic_salary_breakdown
@@ -40,10 +36,6 @@ class PayrollDetail extends Model
     protected $fillable = [
         'payroll_run_id',
         'employee_id',
-        'days_worked',
-        'late_minutes',
-        'undertime_minutes',
-        'absent_days',
         'basic_salary',
         'salary_matrix_id',
         'basic_salary_breakdown',
@@ -64,10 +56,6 @@ class PayrollDetail extends Model
     protected function casts(): array
     {
         return [
-            'days_worked' => 'integer',
-            'late_minutes' => 'integer',
-            'undertime_minutes' => 'integer',
-            'absent_days' => 'integer',
             'basic_salary' => 'float',
             'basic_salary_breakdown' => 'array',
             'gross_pay' => 'float',

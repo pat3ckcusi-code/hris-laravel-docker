@@ -386,49 +386,6 @@ class FunctionalSuitabilityTest extends TestCase
     }
 
     /** @test */
-    public function dtr_absent_days_counted_correctly(): void
-    {
-        $admin = $this->createUser('payroll-manager');
-        $employee = $this->createUser('employee');
-        $this->seedPayrollScaffold($employee);
-
-        // Create DTR for some days only (Mon 2026-04-01 to Fri 2026-04-03 = 3 weekdays)
-        // Only provide DTR for 2 of 3 weekdays → 1 absent day (within 3 day range)
-        foreach (['2026-04-01', '2026-04-02'] as $date) {
-            Dtr::create([
-                'employee_id' => $employee->id,
-                'date' => $date,
-                'time_in_am' => '08:00',
-                'time_out_am' => '12:00',
-                'time_in_pm' => '13:00',
-                'time_out_pm' => '17:00',
-                'status' => 'present',
-                'late_minutes' => 0,
-                'undertime_minutes' => 0,
-                'is_absent' => false,
-            ]);
-        }
-
-        $run = PayrollRun::create([
-            'period' => '2026-04 test',
-            'period_start' => '2026-04-01',
-            'period_end' => '2026-04-03',
-            'status' => 'draft',
-            'created_by' => $admin->id,
-        ]);
-
-        $service = new PayrollComputationService;
-        $service->compute($run, $admin);
-
-        $detail = PayrollDetail::where('payroll_run_id', $run->id)
-            ->where('employee_id', $employee->id)->first();
-
-        $this->assertNotNull($detail);
-        $this->assertEquals(2, $detail->days_worked);
-        $this->assertEquals(1, $detail->absent_days);
-    }
-
-    /** @test */
     public function plantilla_assignment_links_employee_to_position(): void
     {
         $employee = $this->createUser('employee');

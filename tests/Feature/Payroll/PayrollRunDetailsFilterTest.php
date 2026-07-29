@@ -29,7 +29,6 @@ class PayrollRunDetailsFilterTest extends TestCase
         return PayrollDetail::create([
             'payroll_run_id' => $run->id,
             'employee_id' => $employee->id,
-            'days_worked' => 15,
             'basic_salary' => 20000,
             'earnings' => 0,
             'deductions' => 0,

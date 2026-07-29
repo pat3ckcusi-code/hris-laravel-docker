@@ -3,11 +3,9 @@
 namespace App\Services;
 
 use App\Models\Deduction;
-use App\Models\Dtr;
 use App\Models\EmployeeAssignment;
 use App\Models\EmployeeDeduction;
 use App\Models\EmployeeEarning;
-use App\Models\EmployeeShiftSchedule;
 use App\Models\LeaveRequest;
 use App\Models\Loan;
 use App\Models\PayrollAuditLog;
@@ -94,17 +92,14 @@ class PayrollComputationService
             $basicSalaryBreakdown = [];
             $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown);
 
-            // 2. DTR analysis
-            $dtrSummary = $this->analyzeDtr($employee->id, $run);
-
-            // 3. Allowances (PERA, Hazard Pay, Subsistence, Laundry, Other)
+            // 2. Allowances (PERA, Hazard Pay, Subsistence, Laundry, Other)
             $allowances = $this->computeAllowances($employee->id, $basicSalary);
             $grossPay = $basicSalary + $allowances['total'];
 
-            // 4. Mandatory deductions (GSIS, PhilHealth, Pag-IBIG)
+            // 3. Mandatory deductions (GSIS, PhilHealth, Pag-IBIG)
             $mandatory = $this->computeMandatoryDeductions($basicSalary, $grossPay, $mandatoryTypes, $employee->employee_type);
 
-            // 4b. Withholding tax - no longer bracket-computed; Accounting
+            // 3b. Withholding tax - no longer bracket-computed; Accounting
             // computes it and it's uploaded monthly, looked up here and split
             // across however many runs fall in the same calendar month. See
             // computeWithholdingTax() and "Replace computed BIR withholding
@@ -113,19 +108,19 @@ class PayrollComputationService
             $mandatory['bir'] = $withholdingTax['amount'];
             $mandatory['total'] += $mandatory['bir'];
 
-            // 5. Loan deductions (named, per-provider breakdown)
+            // 4. Loan deductions (named, per-provider breakdown)
             $loanResult = $this->computeLoanDeductions($employee->id);
 
-            // 6. Other recurring deductions (named, flat, non-loan — e.g. insurance, GSIS MP2, cellphone plan)
+            // 5. Other recurring deductions (named, flat, non-loan — e.g. insurance, GSIS MP2, cellphone plan)
             $otherResult = $this->computeOtherDeductions($employee->id, $basicSalary, $autoRateOtherTypes, $employee->employee_type);
 
-            // 7. LWOP deduction
+            // 6. LWOP deduction
             $lwopDeduction = $this->computeLwopDeduction($employee->id, $run, $basicSalary);
 
-            // 8. Net pay
+            // 7. Net pay
             $netPay = max(0, $grossPay - $mandatory['total'] - $loanResult['total'] - $otherResult['total'] - $lwopDeduction);
 
-            // 9. Flat, ordered breakdown of every named deduction line for the payslip.
+            // 8. Flat, ordered breakdown of every named deduction line for the payslip.
             // A deactivated mandatory row is omitted entirely rather than shown as ₱0.00.
             $mandatoryDefaultLabels = [
                 'gsis' => 'Life & Retirement',
@@ -150,14 +145,6 @@ class PayrollComputationService
                 ...array_map(fn ($item) => [...$item, 'category' => 'other'], $otherResult['items']),
             ];
 
-            if ($dtrSummary['absent_days'] > 0) {
-                PayrollException::create([
-                    'payroll_run_id' => $run->id,
-                    'type' => 'absences_detected',
-                    'description' => "{$employee->name}: {$dtrSummary['absent_days']} absent day(s) in period.",
-                ]);
-            }
-
             if ($lwopDeduction > 0) {
                 PayrollException::create([
                     'payroll_run_id' => $run->id,
@@ -177,10 +164,6 @@ class PayrollComputationService
             PayrollDetail::create([
                 'payroll_run_id' => $run->id,
                 'employee_id' => $employee->id,
-                'days_worked' => $dtrSummary['days_worked'],
-                'late_minutes' => $dtrSummary['late_minutes'],
-                'undertime_minutes' => $dtrSummary['undertime_minutes'],
-                'absent_days' => $dtrSummary['absent_days'],
                 'basic_salary' => $basicSalary,
                 'salary_matrix_id' => $salaryMatrixId,
                 'basic_salary_breakdown' => $basicSalaryBreakdown,
@@ -372,66 +355,6 @@ class PayrollComputationService
         }
 
         return round($totalAmount, 2);
-    }
-
-    /**
-     * Analyze DTR records for the payroll period.
-     *
-     * @return array{days_worked: int, late_minutes: int, undertime_minutes: int, absent_days: int}
-     */
-    protected function analyzeDtr(int $employeeId, PayrollRun $run): array
-    {
-        $dtrs = Dtr::where('employee_id', $employeeId)
-            ->whereBetween('date', [$run->period_start, $run->period_end])
-            ->get();
-
-        $daysWorked = 0;
-        $totalLate = 0;
-        $totalUndertime = 0;
-        $absentDays = 0;
-
-        $dtrDates = $dtrs->pluck('date')->map(fn ($d) => $d->format('Y-m-d'))->toArray();
-
-        // Pre-load per-date shift assignments so workday checks are O(1).
-        $employee = User::with('shift')->find($employeeId);
-        $assignments = EmployeeShiftSchedule::where('user_id', $employeeId)
-            ->whereBetween('date', [$run->period_start->toDateString(), $run->period_end->toDateString()])
-            ->get()
-            ->keyBy(fn ($a) => $a->date->toDateString());
-
-        // Warm the shift-assignment-history memo once so the per-date
-        // WorkSchedule::isWorkday() calls in the cursor loop below stay O(1).
-        WorkSchedule::preloadShiftAssignments([$employeeId]);
-
-        $cursor = $run->period_start->copy();
-        while ($cursor <= $run->period_end) {
-            $isWorkday = $employee
-                ? WorkSchedule::isWorkday($employee, $cursor, $assignments)
-                : $cursor->isWeekday();
-
-            if ($isWorkday) {
-                if (in_array($cursor->format('Y-m-d'), $dtrDates)) {
-                    $dtr = $dtrs->first(fn ($d) => $d->date->format('Y-m-d') === $cursor->format('Y-m-d'));
-                    if ($dtr && ! $dtr->is_absent && $dtr->status !== 'absent') {
-                        $daysWorked++;
-                        $totalLate += $dtr->late_minutes ?? 0;
-                        $totalUndertime += $dtr->undertime_minutes ?? 0;
-                    } else {
-                        $absentDays++;
-                    }
-                } else {
-                    $absentDays++;
-                }
-            }
-            $cursor->addDay();
-        }
-
-        return [
-            'days_worked' => $daysWorked,
-            'late_minutes' => $totalLate,
-            'undertime_minutes' => $totalUndertime,
-            'absent_days' => $absentDays,
-        ];
     }
 
     /**

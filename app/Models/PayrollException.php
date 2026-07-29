@@ -33,7 +33,6 @@ class PayrollException extends Model
      */
     public const AUTO_TYPES = [
         'no_assignments',
-        'absences_detected',
         'lwop_deduction',
         'missing_withholding_tax',
     ];

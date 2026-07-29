@@ -4,7 +4,6 @@ namespace Tests\Feature\ISO25010;
 
 use App\Models\Deduction;
 use App\Models\Department;
-use App\Models\Dtr;
 use App\Models\EmployeeAssignment;
 use App\Models\EmployeeDeduction;
 use App\Models\HRAuditTrail;
@@ -142,36 +141,6 @@ class ReliabilityTest extends TestCase
         $this->assertEquals(0, (float) $detail->basic_salary);
     }
 
-    /** @test */
-    public function missing_dtr_records_employee_as_absent(): void
-    {
-        $admin = $this->createUser('payroll-manager');
-        $employee = $this->createUser('employee');
-
-        $plantilla = Plantilla::create(['title' => 'Clerk', 'salary_grade' => 6, 'step' => 1, 'employment_type' => 'permanent']);
-        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantilla->id, 'start_date' => '2026-01-01']);
-        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'year' => 2026, 'amount' => 18620]);
-
-        // NO DTR records at all for the period
-        $run = PayrollRun::create([
-            'period' => '2026-04 no-dtr',
-            'period_start' => '2026-04-01',
-            'period_end' => '2026-04-03', // Wed-Fri = 3 working days
-            'status' => 'draft',
-            'created_by' => $admin->id,
-        ]);
-
-        $service = new PayrollComputationService;
-        $service->compute($run, $admin);
-
-        $detail = PayrollDetail::where('payroll_run_id', $run->id)
-            ->where('employee_id', $employee->id)->first();
-
-        $this->assertNotNull($detail);
-        $this->assertEquals(0, $detail->days_worked);
-        $this->assertGreaterThan(0, $detail->absent_days);
-    }
-
     // ═══════════════════════════════════════════════════════════════════════
     // 5.2 PAYROLL LOCKING - no modifications after lock
     // ═══════════════════════════════════════════════════════════════════════
@@ -247,36 +216,6 @@ class ReliabilityTest extends TestCase
         $this->assertNotNull($log, 'Payroll computation must log audit entry');
         $this->assertEquals($admin->id, $log->user_id);
         $this->assertStringContainsString('1 employee', $log->details);
-    }
-
-    /** @test */
-    public function absence_detection_creates_payroll_exception(): void
-    {
-        $admin = $this->createUser('payroll-manager');
-        $employee = $this->createUser('employee');
-
-        $plantilla = Plantilla::create(['title' => 'Clerk', 'salary_grade' => 6, 'step' => 1, 'employment_type' => 'permanent']);
-        EmployeeAssignment::create(['employee_id' => $employee->id, 'plantilla_id' => $plantilla->id, 'start_date' => '2026-01-01']);
-        SalaryMatrix::create(['sg' => 6, 'step' => 1, 'year' => 2026, 'amount' => 18620]);
-
-        // No DTR → absences will be detected
-        $run = PayrollRun::create([
-            'period' => '2026-04 excep',
-            'period_start' => '2026-04-01',
-            'period_end' => '2026-04-03',
-            'status' => 'draft',
-            'created_by' => $admin->id,
-        ]);
-
-        $service = new PayrollComputationService;
-        $service->compute($run, $admin);
-
-        $exception = PayrollException::where('payroll_run_id', $run->id)
-            ->where('type', 'absences_detected')
-            ->first();
-
-        $this->assertNotNull($exception, 'Absence detection should create a payroll exception');
-        $this->assertStringContainsString('absent', $exception->description);
     }
 
     /** @test */

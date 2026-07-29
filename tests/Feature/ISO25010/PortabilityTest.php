@@ -144,8 +144,6 @@ class PortabilityTest extends TestCase
         $this->assertTrue(Schema::hasColumn('payroll_details', 'net_pay'));
         $this->assertTrue(Schema::hasColumn('payroll_details', 'lwop_deduction'));
         $this->assertTrue(Schema::hasColumn('payroll_details', 'loan_deduction'));
-        $this->assertTrue(Schema::hasColumn('payroll_details', 'days_worked'));
-        $this->assertTrue(Schema::hasColumn('payroll_details', 'absent_days'));
     }
 
     /** @test */
