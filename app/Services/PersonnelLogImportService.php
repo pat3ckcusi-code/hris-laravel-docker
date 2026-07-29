@@ -284,6 +284,8 @@ class PersonnelLogImportService
             ->get();
 
         if ($logs->isEmpty()) {
+            $this->deleteOrphanedBiometricDtrRows($user, $from, $to, []);
+
             return;
         }
 
@@ -306,11 +308,15 @@ class PersonnelLogImportService
             ->get()
             ->keyBy(fn (WorkSuspension $s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
 
+        $producedDates = [];
+
         foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
             if ($date < $from || $date > $to) {
                 continue;
             }
+
+            $producedDates[] = $date;
 
             // Rest days with no punches won't appear here (grouper only produces
             // entries when there are actual punches). If someone punched in on a
@@ -352,6 +358,27 @@ class PersonnelLogImportService
                 ]
             );
         }
+
+        $this->deleteOrphanedBiometricDtrRows($user, $from, $to, $producedDates);
+    }
+
+    /**
+     * A schedule/shift change can reshuffle which shift-date an existing punch
+     * groups onto (a 24-hour crossing shift's exact time_in==time_out boundary
+     * does this constantly - see WorkSchedule::shiftDateFor()'s docblock).
+     * Without this, the row at the date's OLD attribution is never cleaned up,
+     * since the upsert loop above only ever touches dates the CURRENT grouping
+     * pass actually produces. Scoped to source='biometric' so a manually
+     * entered row (source='manual', or NULL from Payroll\AttendanceController)
+     * is never touched.
+     */
+    private function deleteOrphanedBiometricDtrRows(User $user, string $from, string $to, array $producedDates): void
+    {
+        Dtr::where('employee_id', $user->id)
+            ->whereBetween('date', [$from, $to])
+            ->where('source', 'biometric')
+            ->whereNotIn('date', $producedDates)
+            ->delete();
     }
 
     // ── PRIVATE HELPERS ───────────────────────────────────────────────────────

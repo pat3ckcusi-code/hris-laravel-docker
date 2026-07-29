@@ -5,10 +5,13 @@ namespace Tests\Feature\Attendance;
 use App\Enums\AttendanceStatus;
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
+use App\Models\Shift;
 use App\Services\Attendance\AttendanceStatusResolver;
 use App\Services\Attendance\MatchResult;
 use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
+use App\Services\ShiftAssignmentService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -381,5 +384,99 @@ class AttendanceComputationTest extends TestCase
 
         $this->assertNotSame('absent', $dtr->status);
         $this->assertSame('missing_out', $dtr->status);
+    }
+
+    public function test_recompute_deletes_a_biometric_dtr_row_orphaned_by_a_shift_change(): void
+    {
+        $user = $this->createEmployee();
+        $shift = Shift::create([
+            'name' => 'Night Shift',
+            'time_in' => '22:00',
+            'break_out' => '02:00',
+            'break_in' => '02:30',
+            'time_out' => '06:00',
+            'crosses_midnight' => true,
+            'is_active' => true,
+        ]);
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse('2026-06-10'), null, null, null, [0, 1, 2, 3, 4, 5, 6], false
+        );
+
+        // A post-midnight departure punch, well inside the night shift's real
+        // off-period boundary, so it folds back onto the PREVIOUS day's shift-date.
+        AttendanceLog::create([
+            'user_id' => $user->id,
+            'emp_no' => $user->EmpNo,
+            'logdate' => '2026-06-12',
+            'logtime' => '05:55:00',
+        ]);
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, '2026-06-11', '2026-06-12');
+
+        $this->assertDatabaseHas('dtrs', [
+            'employee_id' => $user->id, 'date' => '2026-06-11', 'time_out_pm' => '05:55:00',
+        ]);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-06-12']);
+
+        // The shift template changes to a plain non-crossing day shift - the
+        // same punch now belongs to its own logdate directly.
+        $shift->update([
+            'time_in' => '08:00', 'break_out' => '12:00', 'break_in' => '13:00',
+            'time_out' => '17:00', 'crosses_midnight' => false,
+        ]);
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, '2026-06-11', '2026-06-12');
+
+        $this->assertDatabaseHas('dtrs', [
+            'employee_id' => $user->id, 'date' => '2026-06-12', 'time_in_am' => '05:55:00',
+        ]);
+        $this->assertDatabaseMissing(
+            'dtrs',
+            ['employee_id' => $user->id, 'date' => '2026-06-11']
+        );
+    }
+
+    /**
+     * End-to-end regression for a real reported case: a 24-on/24-off rotation
+     * where the closing punch lands after two consecutive configured rest
+     * days. ShiftPunchGrouper already buckets both punches together (see
+     * ShiftScheduleTest's grouper-level coverage), but AttendanceMatcher's own
+     * pm_out window/scoring must also accept a punch this many days later, or
+     * the correctly-grouped pair still resolves as two incomplete halves
+     * instead of one combined present day.
+     */
+    public function test_import_combines_a_24_hour_shift_spanning_two_rest_days_into_one_row(): void
+    {
+        $shift = Shift::create([
+            'name' => '24-Hour Duty', 'time_in' => '08:00', 'time_out' => '08:00',
+            'break_out' => null, 'break_in' => null, 'crosses_midnight' => true, 'is_active' => true,
+        ]);
+        $user = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse('2026-07-16'), null, null, null, [0, 1, 2, 3, 4, 5, 6], true
+        );
+        foreach (['2026-07-17', '2026-07-18'] as $date) {
+            EmployeeShiftSchedule::create([
+                'user_id' => $user->id, 'date' => $date, 'shift_id' => null, 'type' => 'rest', 'created_by' => $user->id,
+            ]);
+        }
+
+        foreach (['2026-07-16 08:00:00', '2026-07-18 07:56:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, '2026-07-16', '2026-07-18');
+
+        $dtr = Dtr::where('employee_id', $user->id)->whereDate('date', '2026-07-16')->firstOrFail();
+
+        $this->assertSame('08:00:00', $dtr->time_in_am);
+        $this->assertSame('07:56:00', $dtr->time_out_pm);
+        $this->assertSame(47.93, $dtr->hours_worked);
+        $this->assertSame('present', $dtr->status);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-07-17']);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-07-18']);
     }
 }

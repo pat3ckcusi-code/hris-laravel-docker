@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
+use App\Jobs\BulkShiftRecomputeJob;
 use App\Models\Department;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\HRAuditTrail;
@@ -498,6 +499,12 @@ class ShiftScheduleController extends Controller
             $employee, $validated['shift_id'], $validated['on_days'], $validated['off_days'], $start, $end, $actor, $noBreak
         );
 
+        // The ShiftAssignment written above is open-ended (see writeRotationForEmployee()'s
+        // docblock), so it can change which schedule resolves for dates well beyond $end -
+        // a bounded recompute would leave any already-computed dtrs row past $end stale.
+        // Full-history recompute mirrors EmployeeScheduleController::recomputeEmployee().
+        $this->importService->recomputeFullRange($employee);
+
         $this->logScheduleAction($actor, $employee, 'rotation_generated', [
             'shift_id' => $validated['shift_id'],
             'on_days' => $validated['on_days'],
@@ -519,10 +526,12 @@ class ShiftScheduleController extends Controller
      * Generate the same on/off rotation for a hand-picked set of employees
      * (checked on the Shift Schedule screen), so a whole rotating/24-7
      * department crew doesn't need the same cycle entered one employee at a
-     * time. Recompute stays synchronous (not queued): unlike
-     * EmployeeScheduleController::bulkAssign()'s full-history recompute, this
-     * is already bounded to the rotation's own date range per employee, which
-     * stays cheap for the department-crew-sized groups this targets.
+     * time. Each employee's ShiftAssignment is open-ended (see
+     * writeRotationForEmployee()'s docblock), so recompute must cover that
+     * employee's full attendance history, not just the rotation's own date
+     * range - exactly like EmployeeScheduleController::bulkAssign()'s
+     * identical underlying mutation, recompute is deferred to
+     * BulkShiftRecomputeJob rather than run synchronously per employee.
      */
     public function generatePatternBulk(Request $request): RedirectResponse
     {
@@ -568,7 +577,11 @@ class ShiftScheduleController extends Controller
             );
         }
 
-        $this->logBulkScheduleAction($actor, $employees->pluck('id')->all(), 'rotation_generated', [
+        $employeeIds = $employees->pluck('id')->all();
+
+        BulkShiftRecomputeJob::dispatch($employeeIds);
+
+        $this->logBulkScheduleAction($actor, $employeeIds, 'rotation_generated', [
             'shift_id' => $validated['shift_id'],
             'on_days' => $validated['on_days'],
             'off_days' => $validated['off_days'],
@@ -581,7 +594,7 @@ class ShiftScheduleController extends Controller
 
         return redirect()->route('attendance.shift-schedule.index', [
             'dept_id' => $request->input('dept_id'),
-        ])->with('schedule_status', "Rotation pattern generated for {$count} employee(s) from {$start->toDateString()} to {$end->toDateString()}.");
+        ])->with('schedule_status', "Rotation pattern generated for {$count} employee(s) from {$start->toDateString()} to {$end->toDateString()}. Time records are being recomputed in the background.");
     }
 
     /**
@@ -589,7 +602,12 @@ class ShiftScheduleController extends Controller
      * employee's ongoing default (so "on" days need no per-date row at all,
      * written through ShiftAssignmentService rather than a raw shift_id column
      * update - see generatePattern()'s docblock for why) and writes explicit
-     * 'rest' rows only for the "off" days in the cycle.
+     * 'rest' rows only for the "off" days in the cycle. Write-only - DTR
+     * recompute is each caller's own responsibility (synchronous full-range
+     * for generatePattern()'s single employee, a queued
+     * BulkShiftRecomputeJob for generatePatternBulk()'s batch), since the
+     * ShiftAssignment written here is open-ended and can affect dtrs rows
+     * well beyond $end.
      */
     private function writeRotationForEmployee(User $employee, int $shiftId, int $onDays, int $offDays, Carbon $start, Carbon $end, User $actor, bool $noBreak = false): void
     {
@@ -617,8 +635,6 @@ class ShiftScheduleController extends Controller
                     ->delete();
             }
         }
-
-        $this->importService->recomputeDtr($employee, $start->toDateString(), $end->toDateString());
     }
 
     private function logScheduleAction(User $actor, User $employee, string $action, array $details): void

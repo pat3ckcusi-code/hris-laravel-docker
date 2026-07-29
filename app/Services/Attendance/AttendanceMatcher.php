@@ -56,7 +56,7 @@ class AttendanceMatcher
         $deduped = $this->normalize($punches);
         $events = $this->buildExpectedEvents($shiftDate, $schedule, $excludedSlots);
 
-        [$pairs, $unmatchedIdx] = $this->align($deduped, $events);
+        [$pairs, $unmatchedIdx] = $this->align($deduped, $events, $schedule);
 
         $matched = array_fill_keys(self::SLOT_ORDER, null);
         foreach ($pairs as [$punchIdx, $eventIdx]) {
@@ -142,11 +142,18 @@ class AttendanceMatcher
         // Standard Day schedules widen PM Out's own late-side window to the
         // end of the shift date (instead of the late_out_hours cap) so a
         // lone very-late punch always stays eligible for PM Out rather than
-        // being excluded and misread as an orphaned OT In. Every other
-        // schedule keeps today's exact late_out_hours-capped window.
-        $pmOutWindowEnd = $schedule->isStandardDay
-            ? $end->copy()->endOfDay()
-            : $end->copy()->addMinutes((int) round($lateOut * 60));
+        // being excluded and misread as an orphaned OT In. A true 24h
+        // crossing shift (time_in === time_out) gets a similarly wide
+        // window - its closing punch can legitimately land days later,
+        // through however many rest days ShiftPunchGrouper's own
+        // schedule-aware eligibility window allows (see its class docblock);
+        // 30 days mirrors that same safety cap. Every other schedule keeps
+        // today's exact late_out_hours-capped window.
+        $pmOutWindowEnd = match (true) {
+            $schedule->isStandardDay => $end->copy()->endOfDay(),
+            $schedule->crossesMidnight && $schedule->workStart === $schedule->workEnd => $end->copy()->addDays(30),
+            default => $end->copy()->addMinutes((int) round($lateOut * 60)),
+        };
 
         if ($schedule->noBreak) {
             $candidates = [
@@ -218,7 +225,7 @@ class AttendanceMatcher
      * @param  list<ExpectedEvent>  $events
      * @return array{0: list<array{0:int, 1:int}>, 1: list<int>} matched [punchIdx, eventIdx] pairs and unmatched punch indexes
      */
-    private function align(array $punches, array $events): array
+    private function align(array $punches, array $events, WorkSchedule $schedule): array
     {
         $n = count($punches);
         $m = count($events);
@@ -240,7 +247,7 @@ class AttendanceMatcher
                 $choice = null;
 
                 if ($this->eligible($punches[$i], $events[$j])) {
-                    $gain = $reward - $this->weightedDistance($punches[$i], $events[$j]);
+                    $gain = $reward - $this->weightedDistance($punches[$i], $events[$j], $schedule);
                     $best = $dp[$i + 1][$j + 1][0] + $gain;
                     $choice = 'M';
                 }
@@ -307,14 +314,28 @@ class AttendanceMatcher
      * post-scheduled distance counts for less than pre-scheduled distance.
      * When tie_break is 'in', IN events get a hair's-width nudge so an
      * exactly equidistant punch prefers the IN reading.
+     *
+     * For a true 24h crossing shift, the late-side distance is additionally
+     * capped at what an ordinary late_out_hours-late punch would already
+     * score: ShiftPunchGrouper's own schedule-aware eligibility window (see
+     * its class docblock) can legitimately place the closing punch days
+     * later, through however many rest days are configured, and once a punch
+     * has already passed that gatekeeping, further elapsed time shouldn't
+     * keep eroding its match confidence toward an unmatched result.
      */
-    private function weightedDistance(Carbon $punch, ExpectedEvent $event): float
+    private function weightedDistance(Carbon $punch, ExpectedEvent $event, WorkSchedule $schedule): float
     {
         $distance = abs($punch->getTimestamp() - $event->scheduledAt->getTimestamp()) / 60.0;
 
         if ($punch->gt($event->scheduledAt)) {
             $key = $event->isIn ? 'in_late_bias' : 'out_late_bias';
-            $distance *= (float) config("attendance.matching.$key", 0.5);
+            $bias = (float) config("attendance.matching.$key", 0.5);
+            $distance *= $bias;
+
+            if ($schedule->crossesMidnight && $schedule->workStart === $schedule->workEnd) {
+                $lateOutHours = (float) config('attendance.matching.late_out_hours', 4.0);
+                $distance = min($distance, $lateOutHours * 60 * $bias);
+            }
         }
 
         if ($event->isIn && config('attendance.matching.tie_break', 'in') === 'in') {

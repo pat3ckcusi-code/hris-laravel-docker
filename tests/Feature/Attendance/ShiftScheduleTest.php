@@ -443,6 +443,163 @@ class ShiftScheduleTest extends TestCase
         $this->assertCount(2, $groups['2026-06-01']);
     }
 
+    /** @return array{0: \App\Models\User, 1: \App\Models\Shift} an employee on an open-ended 24h crossing shift from $from */
+    private function employeeOnTwentyFourHourShift(string $from): array
+    {
+        $shift = $this->twentyFourHourShiftModel();
+        $user = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse($from), null, null, null, [0, 1, 2, 3, 4, 5, 6], true
+        );
+
+        return [$user, $shift];
+    }
+
+    private function markRestDay(User $user, string $date): void
+    {
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id, 'date' => $date, 'shift_id' => null, 'type' => 'rest', 'created_by' => $user->id,
+        ]);
+    }
+
+    /**
+     * The user's exact real-world case: an on-day arrival whose checkout only
+     * arrives after two consecutive configured rest days, not within any
+     * fixed clock-hour grace period. Must still combine into one row for the
+     * first on-day.
+     */
+    public function test_24_hour_shift_combines_arrival_and_checkout_across_two_rest_days(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-07-16');
+        $this->markRestDay($user, '2026-07-17');
+        $this->markRestDay($user, '2026-07-18');
+
+        foreach (['2026-07-16 08:00:00', '2026-07-18 07:56:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-07-16', $groups);
+        $this->assertCount(2, $groups['2026-07-16']);
+        $this->assertArrayNotHasKey('2026-07-17', $groups);
+        $this->assertArrayNotHasKey('2026-07-18', $groups);
+    }
+
+    /** A clean ~24h-apart pair with no rest-day gap - the fixed grace side alone must still combine it. */
+    public function test_24_hour_shift_combines_a_clean_pair_via_grace_alone(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+
+        foreach (['2026-06-01 08:07:00', '2026-06-02 08:11:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(2, $groups['2026-06-01']);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+    }
+
+    /** A gap wider than the next scheduled workday must stay a genuinely unclosed row, not phantom-fold. */
+    public function test_24_hour_shift_leaves_a_genuine_gap_unclosed(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+        $this->markRestDay($user, '2026-06-02');
+        $this->markRestDay($user, '2026-06-03');
+
+        AttendanceLog::create([
+            'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => '2026-06-01', 'logtime' => '08:00:00',
+        ]);
+        // 2026-06-04 is the next on-day; this punch arrives an hour after its
+        // own start, well past 2026-06-01's shift's eligibility window.
+        AttendanceLog::create([
+            'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => '2026-06-04', 'logtime' => '09:00:00',
+        ]);
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(1, $groups['2026-06-01']);
+        $this->assertArrayHasKey('2026-06-04', $groups);
+        $this->assertCount(1, $groups['2026-06-04']);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+        $this->assertArrayNotHasKey('2026-06-03', $groups);
+    }
+
+    /** A stray mid-shift punch must not clobber the tracker before the real closing punch arrives. */
+    public function test_24_hour_shift_absorbs_a_stray_mid_shift_punch_before_the_real_close(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+        $this->markRestDay($user, '2026-06-02');
+
+        foreach (['2026-06-01 08:00:00', '2026-06-01 20:00:00', '2026-06-02 07:56:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(3, $groups['2026-06-01']);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+    }
+
+    /** A large early departure (well before the 24h mark) must still fold onto the shift's start - not newly capped. */
+    public function test_24_hour_shift_folds_a_large_early_departure_onto_start(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+        $this->markRestDay($user, '2026-06-02');
+
+        foreach (['2026-06-01 08:00:00', '2026-06-02 02:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(2, $groups['2026-06-01']);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+    }
+
+    /**
+     * Documents the accepted, narrow limitation for back-to-back 24h shifts
+     * with zero rest between them: a single punch physically cannot both
+     * close one shift and open the next, so the middle day's own arrival is
+     * absorbed into the previous day's bucket instead of getting its own.
+     */
+    public function test_back_to_back_24_hour_shifts_absorb_the_middle_arrival(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+
+        foreach (['2026-06-01 08:00:00', '2026-06-02 08:00:00', '2026-06-03 08:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(2, $groups['2026-06-01']);
+        $this->assertArrayNotHasKey('2026-06-02', $groups);
+        $this->assertArrayHasKey('2026-06-03', $groups);
+        $this->assertCount(1, $groups['2026-06-03']);
+    }
+
     /**
      * Regression: WorkSchedule::shiftDateFor()'s boundary used to be computed
      * as a bare 'HH:MM' string, correct only when workStart + workEnd sums to
@@ -1731,6 +1888,55 @@ class ShiftScheduleTest extends TestCase
         );
     }
 
+    public function test_generate_pattern_recomputes_dtr_rows_dated_after_the_rotation_end_date(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $employee = $this->createEmployee();
+        $shift = Shift::create([
+            'name' => 'Rotation Day Shift',
+            'time_in' => '08:00',
+            'break_out' => '12:00',
+            'break_in' => '13:00',
+            'time_out' => '17:00',
+            'crosses_midnight' => false,
+            'is_active' => true,
+        ]);
+
+        // Punches dated well after the rotation form's own end_date - the
+        // ShiftAssignment writeRotationForEmployee() writes is open-ended, so
+        // it governs this date too, but the old bounded recomputeDtr($start,
+        // $end) call never reached it, leaving this dtrs row perpetually
+        // stale/nonexistent.
+        $lateDate = '2026-08-20';
+        foreach (['08:00:00', '12:00:00', '13:00:00', '17:00:00'] as $time) {
+            AttendanceLog::create([
+                'user_id' => $employee->id,
+                'emp_no' => $employee->EmpNo,
+                'logdate' => $lateDate,
+                'logtime' => $time,
+                'in_out' => 'IN',
+            ]);
+        }
+
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $employee->id, 'date' => $lateDate]);
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.generate-pattern'), [
+            'user_id' => $employee->id,
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 0,
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-03',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('dtrs', [
+            'employee_id' => $employee->id,
+            'date' => $lateDate,
+            'time_in_am' => '08:00:00',
+            'time_out_pm' => '17:00:00',
+        ]);
+    }
+
     public function test_time_keeper_bulk_generates_rotation_for_checked_employees_only(): void
     {
         $tk = $this->createTimeKeeper();
@@ -1768,6 +1974,36 @@ class ShiftScheduleTest extends TestCase
 
         $this->assertDatabaseMissing('shift_assignments', ['user_id' => $unchecked->id]);
         $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $unchecked->id]);
+    }
+
+    public function test_generate_pattern_bulk_dispatches_recompute_job_for_checked_employees_only(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $shift = $this->twentyFourHourShiftModel();
+        $checked1 = $this->createEmployee();
+        $checked2 = $this->createEmployee();
+        $unchecked = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.generate-pattern-bulk'), [
+            'user_ids' => [$checked1->id, $checked2->id],
+            'shift_id' => $shift->id,
+            'on_days' => 2,
+            'off_days' => 2,
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-08',
+        ])->assertRedirect();
+
+        // The rotation's ShiftAssignment is open-ended, so recompute must
+        // cover each employee's full attendance history (not just [start,
+        // end]) - deferred to the same queued job bulkAssign()/bulkRemove()
+        // already use for the identical underlying assign() mutation.
+        Queue::assertPushed(BulkShiftRecomputeJob::class, function ($job) use ($checked1, $checked2, $unchecked) {
+            return in_array($checked1->id, $job->userIds, true)
+                && in_array($checked2->id, $job->userIds, true)
+                && ! in_array($unchecked->id, $job->userIds, true);
+        });
     }
 
     public function test_granted_department_head_bulk_generates_rotation_scoped_to_own_department(): void
