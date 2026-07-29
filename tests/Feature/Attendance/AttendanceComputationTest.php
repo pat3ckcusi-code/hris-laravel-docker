@@ -7,9 +7,11 @@ use App\Models\AttendanceLog;
 use App\Models\Dtr;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Shift;
+use App\Models\User;
 use App\Services\Attendance\AttendanceStatusResolver;
 use App\Services\Attendance\MatchResult;
 use App\Services\DtrPunchResolver;
+use App\Services\Form48ExportService;
 use App\Services\PersonnelLogImportService;
 use App\Services\ShiftAssignmentService;
 use App\Support\WorkSchedule;
@@ -35,6 +37,25 @@ class AttendanceComputationTest extends TestCase
     {
         // workStart 08:00, lunchReturn 13:00, workEnd 17:00, morningEnd 12:00
         return new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, $noBreak, $isStandardDay);
+    }
+
+    /**
+     * Assigns a real 08:00/12:00/13:00/17:00 Shift (matching specDay() and the
+     * real reported case's actual shift config) so WorkSchedule::forUserOnDate()
+     * - the schedule source Form48ExportService actually resolves against -
+     * agrees with it, rather than relying on createEmployee()'s own default
+     * (unassigned) schedule.
+     */
+    private function assignEightToTwelveThirteenToFiveShift(User $user): void
+    {
+        $shift = Shift::create([
+            'name' => 'Eight To Five',
+            'time_in' => '08:00', 'break_out' => '12:00', 'break_in' => '13:00', 'time_out' => '17:00',
+            'crosses_midnight' => false, 'is_active' => true,
+        ]);
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse(self::DATE)->subDay(), null, null, null, [0, 1, 2, 3, 4, 5, 6], false
+        );
     }
 
     /** @param  list<string>  $times  H:i on the shift date */
@@ -478,5 +499,109 @@ class AttendanceComputationTest extends TestCase
         $this->assertSame('present', $dtr->status);
         $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-07-17']);
         $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-07-18']);
+    }
+
+    /**
+     * Regression for a real reported export failure ("Undefined array key
+     * 17"): Form48ExportService::buildRecords()'s attendance_logs fallback
+     * (used for a day with raw punches but no dtrs row yet) must not crash
+     * just because that day has no DtrExcuse row - which is true for the
+     * overwhelming majority of days.
+     */
+    public function test_form48_export_fallback_does_not_crash_for_a_day_with_no_dtr_and_no_excuse_row(): void
+    {
+        $user = $this->createEmployee(); // standard day: 08:00 / 11:00 / 13:00 / 17:00
+
+        AttendanceLog::create([
+            'user_id' => $user->id,
+            'emp_no' => $user->EmpNo,
+            'logdate' => '2026-07-17',
+            'logtime' => '08:00:00',
+        ]);
+
+        $records = app(Form48ExportService::class)->buildRecords($user->id, '2026-07-01', '2026-07-31');
+
+        $this->assertArrayHasKey(17, $records);
+        $this->assertSame('2026-07-17', $records[17]['date']);
+    }
+
+    /**
+     * Regression for a real reported case (GUIANG, LIZAFE): a missing AM-in
+     * punch with AM-out present proves the employee was there that morning,
+     * but the real late_minutes calculators never charge lateness without an
+     * actual AM-in punch, so the stored dtrs value stays 0. DtrController's
+     * DTR page already fills this gap with DtrPunchResolver::imputedLateMinutes()
+     * (the full workStart->morningEnd block - 08:00-12:00 = 240 minutes for
+     * the standard day schedule). Form48ExportService::buildRecords() must
+     * apply the same fallback for its DTR-row-driven path, or the exported
+     * spreadsheet silently disagrees with what the DTR page shows.
+     */
+    public function test_form48_export_imputes_late_minutes_for_a_missing_am_in_dtr_row(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => null,
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'missing_in',
+            'source' => 'biometric',
+        ]);
+
+        $day = (int) Carbon::parse(self::DATE)->day;
+        $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
+
+        $this->assertSame(240, $records[$day]['tardiness']);
+        $this->assertSame(0, $records[$day]['undertime']);
+    }
+
+    /** Same missing-AM-in scenario, but via the attendance_logs fallback path (no dtrs row at all). */
+    public function test_form48_export_imputes_late_minutes_for_a_missing_am_in_via_the_log_fallback(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        foreach (['12:00:00', '13:00:00', '17:00:00'] as $time) {
+            AttendanceLog::create([
+                'user_id' => $user->id,
+                'emp_no' => $user->EmpNo,
+                'logdate' => self::DATE,
+                'logtime' => $time,
+            ]);
+        }
+
+        $day = (int) Carbon::parse(self::DATE)->day;
+        $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
+
+        $this->assertSame(240, $records[$day]['tardiness']);
+        $this->assertSame(0, $records[$day]['undertime']);
+    }
+
+    /** A normal complete, on-time day must not have anything imputed on top of it. */
+    public function test_form48_export_does_not_impute_anything_on_a_complete_on_time_day(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        foreach (['08:00:00', '12:00:00', '13:00:00', '17:00:00'] as $time) {
+            AttendanceLog::create([
+                'user_id' => $user->id,
+                'emp_no' => $user->EmpNo,
+                'logdate' => self::DATE,
+                'logtime' => $time,
+            ]);
+        }
+
+        $day = (int) Carbon::parse(self::DATE)->day;
+        $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
+
+        $this->assertSame(0, $records[$day]['tardiness']);
+        $this->assertSame(0, $records[$day]['undertime']);
     }
 }

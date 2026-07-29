@@ -70,20 +70,39 @@ class Form48ExportService
     {
         $records = [];
 
+        $user = User::find($userId);
+
+        // Warm the shift-assignment-history memo once so the per-date
+        // WorkSchedule calls below (here and inside punchGrouper->group()) stay O(1).
+        WorkSchedule::preloadShiftAssignments([$userId]);
+
         // Primary: use the computed DTR rows (accurate AM/PM split + penalties).
+        // A stored 0 falls back to the same imputed missing-punch estimate
+        // DtrController's DTR page already shows (DtrPunchResolver::imputedLateMinutes()/
+        // imputedUndertimeMinutes()) - otherwise this export silently disagrees with the
+        // on-screen DTR whenever a sibling punch proves presence but the anchor punch is
+        // missing (e.g. AM Out exists, AM In doesn't). Both helpers already no-op back to
+        // 0 unless their exact precondition holds, so calling them unconditionally here is
+        // harmless on an ordinary complete/on-time day.
         foreach (Dtr::where('employee_id', $userId)
             ->whereBetween('date', [$from, $to])
             ->orderBy('date')
             ->get() as $dtr) {
             $day = (int) $dtr->date->day;
+            $dateStr = $dtr->date->format('Y-m-d');
+            $daySchedule = WorkSchedule::forUserOnDate($user, $dtr->date);
             $records[$day] = [
-                'date' => $dtr->date->format('Y-m-d'),
+                'date' => $dateStr,
                 'am_in' => $dtr->time_in_am,
                 'am_out' => $dtr->time_out_am,
                 'pm_in' => $dtr->time_in_pm,
                 'pm_out' => $dtr->time_out_pm,
-                'tardiness' => $dtr->late_minutes ?? 0,
-                'undertime' => $dtr->undertime_minutes ?? 0,
+                'tardiness' => $dtr->late_minutes ?: $this->punchResolver->imputedLateMinutes(
+                    $dtr->time_in_am, $dtr->time_out_am, $dateStr, $daySchedule
+                ),
+                'undertime' => $dtr->undertime_minutes ?: $this->punchResolver->imputedUndertimeMinutes(
+                    $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $daySchedule
+                ),
             ];
         }
 
@@ -91,12 +110,6 @@ class Form48ExportService
         // via the shared grouper + resolver (same logic the import uses). Widen
         // the fetch by a day on each side so night shifts at the range edges are
         // complete.
-        $user = User::find($userId);
-
-        // Warm the shift-assignment-history memo once so the per-date
-        // WorkSchedule calls below (here and inside punchGrouper->group()) stay O(1).
-        WorkSchedule::preloadShiftAssignments([$userId]);
-
         $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($from));
         $pad = $schedule->crossesMidnight ? 1 : 0;
 
@@ -131,7 +144,7 @@ class Form48ExportService
             }
 
             $excludedSlots = array_merge(
-                array_fill_keys($excuseMap[$day]?->excludedSlotKeys() ?? [], null),
+                array_fill_keys(($excuseMap[$day] ?? null)?->excludedSlotKeys() ?? [], null),
                 $locatorSlotMap[$date] ?? [],
                 $suspensionSlots
             );
@@ -143,8 +156,12 @@ class Form48ExportService
                 'am_out' => $resolved['am_out'],
                 'pm_in' => $resolved['pm_in'],
                 'pm_out' => $resolved['pm_out'],
-                'tardiness' => $resolved['late_minutes'],
-                'undertime' => $resolved['undertime_minutes'],
+                'tardiness' => $resolved['late_minutes'] ?: $this->punchResolver->imputedLateMinutes(
+                    $resolved['am_in'], $resolved['am_out'], $date, $daySchedule
+                ),
+                'undertime' => $resolved['undertime_minutes'] ?: $this->punchResolver->imputedUndertimeMinutes(
+                    $resolved['pm_in'], $resolved['pm_out'], $date, $daySchedule
+                ),
             ];
         }
 
