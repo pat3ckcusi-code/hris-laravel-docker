@@ -8,5 +8,14 @@
         window.addEventListener('load', function () {
             navigator.serviceWorker.register('/sw.js');
         });
+
+        function clearAppBadgeOnFocus() {
+            if (document.visibilityState === 'visible' && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_BADGE' });
+            }
+        }
+
+        document.addEventListener('visibilitychange', clearAppBadgeOnFocus);
+        window.addEventListener('load', clearAppBadgeOnFocus);
     }
 </script>

@@ -66,6 +66,71 @@ self.addEventListener('fetch', (event) => {
     }
 });
 
+// App-icon badge count. The Badging API is set/clear only (no read-back), and
+// this service worker is ephemeral (killed after ~30s idle), so the running
+// count has to be persisted here rather than kept in memory or it would reset
+// to 0 — and each new push would overwrite the badge with 1 instead of
+// incrementing — every time the worker restarts.
+const BADGE_DB = 'hris-badge';
+const BADGE_STORE = 'meta';
+const BADGE_KEY = 'count';
+
+function openBadgeDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(BADGE_DB, 1);
+        request.onupgradeneeded = () => {
+            request.result.createObjectStore(BADGE_STORE);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function getBadgeCount() {
+    const db = await openBadgeDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BADGE_STORE, 'readonly');
+        const request = tx.objectStore(BADGE_STORE).get(BADGE_KEY);
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function setBadgeCount(count) {
+    const db = await openBadgeDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BADGE_STORE, 'readwrite');
+        tx.objectStore(BADGE_STORE).put(count, BADGE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function incrementBadge() {
+    const count = (await getBadgeCount()) + 1;
+    await setBadgeCount(count);
+
+    if ('setAppBadge' in navigator) {
+        try {
+            await navigator.setAppBadge(count);
+        } catch (e) {
+            // Unsupported/unavailable in this context — no-op.
+        }
+    }
+}
+
+async function clearBadge() {
+    await setBadgeCount(0);
+
+    if ('clearAppBadge' in navigator) {
+        try {
+            await navigator.clearAppBadge();
+        } catch (e) {
+            // Unsupported/unavailable in this context — no-op.
+        }
+    }
+}
+
 self.addEventListener('push', (event) => {
     let payload = { title: '[HRIS] Notification', body: '' };
 
@@ -85,7 +150,9 @@ self.addEventListener('push', (event) => {
         data: { url: (payload.data && payload.data.url) || '/dashboard' },
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(
+        Promise.all([self.registration.showNotification(title, options), incrementBadge()])
+    );
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -94,15 +161,24 @@ self.addEventListener('notificationclick', (event) => {
     const targetUrl = (event.notification.data && event.notification.data.url) || '/dashboard';
 
     event.waitUntil(
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-            for (const client of clients) {
-                if (client.url.includes(self.location.origin) && 'focus' in client) {
-                    client.navigate(targetUrl);
-                    return client.focus();
+        Promise.all([
+            clearBadge(),
+            self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+                for (const client of clients) {
+                    if (client.url.includes(self.location.origin) && 'focus' in client) {
+                        client.navigate(targetUrl);
+                        return client.focus();
+                    }
                 }
-            }
 
-            return self.clients.openWindow(targetUrl);
-        })
+                return self.clients.openWindow(targetUrl);
+            }),
+        ])
     );
+});
+
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'CLEAR_BADGE') {
+        event.waitUntil(clearBadge());
+    }
 });
