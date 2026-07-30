@@ -12,6 +12,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PayrollRunController extends Controller
@@ -162,18 +163,26 @@ class PayrollRunController extends Controller
     {
         $run = PayrollRun::findOrFail($id);
 
-        $run->update([
-            'status' => 'locked',
-            'locked_at' => now(),
-        ]);
+        if ($run->status === 'locked') {
+            return back()->with('error', 'This payroll run is already locked.');
+        }
 
-        PayrollAuditLog::create([
-            'action' => 'payroll_locked',
-            'user_id' => $request->user()->id,
-            'payroll_run_id' => $run->id,
-            'details' => 'Payroll run locked.',
-            'actioned_at' => now(),
-        ]);
+        DB::transaction(function () use ($run, $request) {
+            $run->update([
+                'status' => 'locked',
+                'locked_at' => now(),
+            ]);
+
+            PayrollAuditLog::create([
+                'action' => 'payroll_locked',
+                'user_id' => $request->user()->id,
+                'payroll_run_id' => $run->id,
+                'details' => 'Payroll run locked.',
+                'actioned_at' => now(),
+            ]);
+
+            (new PayrollComputationService)->applyLoanDeductions($run, $request->user());
+        });
 
         return back()->with('status', 'Payroll run has been locked.');
     }

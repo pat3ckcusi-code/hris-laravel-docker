@@ -33,7 +33,7 @@ class LoanBillingImportTemplate implements FromArray, ShouldAutoSize, WithStyles
         $monthLabel = Carbon::createFromFormat('Y-m', $this->billingMonth)->format('F Y');
 
         $out = [
-            ["Billing Month: {$monthLabel} — {$this->deduction->type}"],
+            ["Billing Month: {$monthLabel} - {$this->deduction->type}"],
             ['Employee Agency Number', 'Name', 'Department', 'Monthly Payment', 'Balance'],
         ];
 

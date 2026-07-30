@@ -268,7 +268,7 @@
                            name="payroll_working_days_per_month"
                            value="{{ old('payroll_working_days_per_month', $settings->payroll_working_days_per_month ?? 22) }}"
                            min="1" max="31">
-                    <span class="settings-hint">Used as the divisor for daily rate and LWOP deduction (standard CSC: 22).</span>
+                    <span class="settings-hint">Used as the divisor for LWOP deduction (standard CSC: 22).</span>
                     @error('payroll_working_days_per_month')<span class="hrm-error">{{ $message }}</span>@enderror
                 </div>
 

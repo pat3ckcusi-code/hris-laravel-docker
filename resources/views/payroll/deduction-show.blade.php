@@ -184,9 +184,9 @@
 
     @unless($deduction->is_active || $deduction->isWithholdingTax())
         @if($deduction->mandatory_key)
-            <p class="notice error" style="margin-bottom:12px">⚠ This mandatory government deduction is INACTIVE — it is not being withheld from any employee's pay on any payroll run. Reactivate it to resume withholding.</p>
+            <p class="notice error" style="margin-bottom:12px">⚠ This mandatory government deduction is INACTIVE - it is not being withheld from any employee's pay on any payroll run. Reactivate it to resume withholding.</p>
         @else
-            <p class="empty-state" style="margin-bottom:12px">This deduction type is inactive — new employees can't be assigned to it. Existing employees keep being deducted as normal.</p>
+            <p class="empty-state" style="margin-bottom:12px">This deduction type is inactive - new employees can't be assigned to it. Existing employees keep being deducted as normal.</p>
         @endif
     @endunless
 
@@ -200,9 +200,9 @@
         <section class="payroll-section">
             <h2><i class="fas fa-sliders"></i> Rate Configuration</h2>
             @if($deduction->mandatory_key)
-                <p class="empty-state" style="margin-bottom:12px">This is a system mandatory government deduction — the computation type and rate below directly change how it's computed on every future payroll run. Switching computation type (e.g. from Flat Amount to Percentage) needs no code change.</p>
+                <p class="empty-state" style="margin-bottom:12px">This is a system mandatory government deduction - the computation type and rate below directly change how it's computed on every future payroll run. Switching computation type (e.g. from Flat Amount to Percentage) needs no code change.</p>
             @else
-                <p class="empty-state" style="margin-bottom:12px">Choose <strong>Individually Assigned</strong> (the default) to keep assigning specific employees with their own custom amount via "Assign Employee(s)"/"Assign by Type". Or choose a Standing Rate (Flat/Percentage/Bracket) to automatically charge every eligible employee the same amount on every future payroll run — no per-employee assignment needed at all. Switching modes never deletes existing individual assignments; they just go inactive while a Standing Rate is in effect, and resume automatically if you switch back.</p>
+                <p class="empty-state" style="margin-bottom:12px">Choose <strong>Individually Assigned</strong> (the default) to keep assigning specific employees with their own custom amount via "Assign Employee(s)"/"Assign by Type". Or choose a Standing Rate (Flat/Percentage/Bracket) to automatically charge every eligible employee the same amount on every future payroll run - no per-employee assignment needed at all. Switching modes never deletes existing individual assignments; they just go inactive while a Standing Rate is in effect, and resume automatically if you switch back.</p>
             @endif
             @if($dormantCount > 0)
                 <p class="notice error" style="margin-bottom:12px">⚠ {{ $dormantCount }} employee(s) have an individually-assigned amount for this deduction, but {{ $dormantCount === 1 ? 'it is' : 'they are' }} currently INACTIVE while a Standing Rate is in effect. Switch back to "Individually Assigned" above to restore {{ $dormantCount === 1 ? 'it' : 'them' }}.</p>
@@ -264,7 +264,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="mc-floor">Floor — optional, leave blank for no minimum</label>
+                        <label for="mc-floor">Floor - optional, leave blank for no minimum</label>
                         <div class="input-affix">
                             <span class="input-affix-icon">₱</span>
                             <input type="text" inputmode="decimal" name="floor" id="mc-floor" class="form-input currency-input"
@@ -272,7 +272,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="mc-ceiling">Ceiling — optional, leave blank for no maximum</label>
+                        <label for="mc-ceiling">Ceiling - optional, leave blank for no maximum</label>
                         <div class="input-affix">
                             <span class="input-affix-icon">₱</span>
                             <input type="text" inputmode="decimal" name="ceiling" id="mc-ceiling" class="form-input currency-input"
@@ -323,16 +323,19 @@
         <dialog id="assign-eligibility-modal" class="employee-modal">
             <form method="POST" action="{{ route('payroll.contributions.eligibility.update', $deduction->id) }}" class="payroll-form">
                 @csrf @method('PUT')
-                <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-                    <div>
-                        <h3 style="margin:0"><i class="fas fa-user-check" style="color:var(--accent);margin-right:8px"></i>Assign Employee Types</h3>
-                        <span class="record-email">Choose which employee types {{ $deduction->type }} applies to</span>
+                <div class="modal-icon-header">
+                    <div class="modal-icon-heading">
+                        <span class="modal-icon-badge"><i class="fas fa-user-check"></i></span>
+                        <div>
+                            <h3>Assign Employee Types</h3>
+                            <p class="modal-subtitle">Choose which employee types {{ $deduction->type }} applies to</p>
+                        </div>
                     </div>
                     <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('assign-eligibility-modal').close()">✕</button>
                 </div>
                 <p class="empty-state" style="text-align:left;padding:0;margin:16px 0 20px">
                     <i class="fas fa-circle-info" style="color:var(--muted);margin-right:6px"></i>
-                    Uncheck a type to exclude it from {{ $deduction->type }} entirely — e.g. Job Orders are typically not GSIS members. An excluded employee is charged ₱0 for this program and it's omitted from their payslip. At least one type must stay checked.
+                    Uncheck a type to exclude it from {{ $deduction->type }} entirely - e.g. Job Orders are typically not GSIS members. An excluded employee is charged ₱0 for this program and it's omitted from their payslip. At least one type must stay checked.
                 </p>
 
                 @error('employee_types')
@@ -352,7 +355,7 @@
 
                 <div class="form-actions">
                     <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-eligibility-modal').close()">Cancel</button>
-                    <button type="submit" class="btn btn-sm">Save</button>
+                    <button type="submit" class="btn btn-sm"><i class="fas fa-check"></i> Save</button>
                 </div>
             </form>
         </dialog>
@@ -366,11 +369,17 @@
         <dialog id="assign-by-type-modal" class="employee-modal">
             <form method="POST" action="{{ route('payroll.contributions.employee-deductions.bulk-by-type', $deduction->id) }}" class="payroll-form">
                 @csrf
-                <div class="modal-top-actions">
-                    <h3>Assign by Employee Type</h3>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-by-type-modal').close()">✕</button>
+                <div class="modal-icon-header">
+                    <div class="modal-icon-heading">
+                        <span class="modal-icon-badge"><i class="fas fa-list-check"></i></span>
+                        <div>
+                            <h3>Assign by Employee Type</h3>
+                            <p class="modal-subtitle">Charge every active employee of the checked type(s) the same amount</p>
+                        </div>
+                    </div>
+                    <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('assign-by-type-modal').close()">✕</button>
                 </div>
-                <p class="empty-state" style="margin-bottom:12px">Assigns this deduction to every active employee of the checked type(s), all at the same amount. Anyone already assigned is skipped — their existing amount is left untouched.</p>
+                <p class="empty-state" style="margin-bottom:12px">Assigns this deduction to every active employee of the checked type(s), all at the same amount. Anyone already assigned is skipped -their existing amount is left untouched.</p>
 
                 @error('employee_types')
                     <div class="notice error">{{ $message }}</div>
@@ -386,7 +395,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="abt-amount">Amount</label>
+                    <label for="abt-amount"><i class="fas fa-wallet"></i> Amount</label>
                     <div class="input-affix">
                         <span class="input-affix-icon">₱</span>
                         <input type="text" inputmode="decimal" name="amount" id="abt-amount" class="form-input currency-input" required placeholder="e.g. 100.00">
@@ -401,7 +410,7 @@
 
                 <div class="form-actions">
                     <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-by-type-modal').close()">Cancel</button>
-                    <button type="submit" class="btn btn-sm">Save</button>
+                    <button type="submit" class="btn btn-sm"><i class="fas fa-plus"></i> Save</button>
                 </div>
             </form>
         </dialog>
@@ -422,7 +431,7 @@
                                 <td>{{ $ed->recurring ? 'Yes' : 'No' }}</td>
                                 <td>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        onclick="openEditEmployeeDeduction({{ $ed->id }}, '{{ $ed->amount }}', {{ $ed->recurring ? 'true' : 'false' }})">Edit</button>
+                                        onclick='openEditEmployeeDeduction({{ $ed->id }}, "{{ $ed->amount }}", {{ $ed->recurring ? "true" : "false" }}, "{{ $ed->employee->name ?? "-" }}")'>Edit</button>
                                     <button type="button" class="btn btn-sm btn-danger"
                                         onclick="confirmDeleteEmployeeDeduction({{ $deduction->id }}, {{ $ed->id }})">Remove</button>
                                 </td>
@@ -446,6 +455,21 @@
                     <thead><tr><th>Employee</th><th>Balance</th><th>Monthly</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody>
                         @foreach($deduction->loans as $loan)
+                            @php
+                                $loanHistory = $loan->billingHistory->map(fn ($h) => [
+                                    'sort' => $h->billing_month,
+                                    'month' => $h->billing_month->format('F Y'),
+                                    'balance' => number_format($h->balance, 2),
+                                    'monthly_payment' => number_format($h->monthly_payment, 2),
+                                    'source' => 'Billing Upload',
+                                ])->concat($loan->payrollDeductions->map(fn ($d) => [
+                                    'sort' => $d->created_at,
+                                    'month' => $d->payrollRun->period ?? $d->created_at->format('F Y'),
+                                    'balance' => number_format($d->balance_after, 2),
+                                    'monthly_payment' => number_format($d->amount, 2),
+                                    'source' => 'Payroll Run',
+                                ]))->sortByDesc('sort')->values()->map(fn ($row) => collect($row)->except('sort')->all());
+                            @endphp
                             <tr>
                                 <td>{{ $loan->employee->name ?? '-' }}</td>
                                 <td>₱{{ number_format($loan->balance, 2) }}</td>
@@ -453,9 +477,9 @@
                                 <td><span class="status-chip status-{{ $loan->status }}">{{ ucfirst($loan->status) }}</span></td>
                                 <td>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        onclick="openEditLoan({{ $loan->id }}, '{{ $loan->balance }}', '{{ $loan->monthly_payment }}', '{{ $loan->status }}')">Edit</button>
+                                        onclick='openEditLoan({{ $loan->id }}, "{{ $loan->balance }}", "{{ $loan->monthly_payment }}", "{{ $loan->status }}", "{{ $loan->employee->name ?? "-" }}")'>Edit</button>
                                     <button type="button" class="btn btn-sm btn-outline"
-                                        onclick='openLoanHistory("{{ $loan->employee->name ?? "-" }}", {{ $loan->billingHistory->map(fn ($h) => ["month" => $h->billing_month->format("F Y"), "balance" => number_format($h->balance, 2), "monthly_payment" => number_format($h->monthly_payment, 2)])->toJson() }})'>History</button>
+                                        onclick='openLoanHistory("{{ $loan->employee->name ?? "-" }}", {{ $loanHistory->toJson() }})'>History</button>
                                     <button type="button" class="btn btn-sm btn-danger"
                                         onclick="confirmDeleteLoan({{ $deduction->id }}, {{ $loan->id }})">Remove</button>
                                 </td>
@@ -475,12 +499,18 @@
     <dialog id="assign-loan-modal" class="employee-modal">
         <form method="POST" action="{{ route('payroll.contributions.loans.store', $deduction->id) }}" class="payroll-form">
             @csrf
-            <div class="modal-top-actions">
-                <h3>Assign Loan</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-loan-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue"><i class="fas fa-hand-holding-dollar"></i></span>
+                    <div>
+                        <h3>Assign Loan</h3>
+                        <p class="modal-subtitle">Add a new loan under {{ $deduction->type }}{{ $deduction->provider ? ' ('.$deduction->provider.')' : '' }}</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="document.getElementById('assign-loan-modal').close()" aria-label="Close">✕</button>
             </div>
             <div class="form-group">
-                <label for="loan-employee">Employee</label>
+                <label for="loan-employee"><i class="fas fa-user"></i> Employee</label>
                 <select name="employee_id" id="loan-employee" class="form-input" required>
                     <option value="">- Select employee -</option>
                     @foreach($employees as $emp)
@@ -490,22 +520,24 @@
                     @endforeach
                 </select>
             </div>
-            <div class="form-group">
-                <label for="loan-balance">Balance</label>
-                <div class="input-affix">
-                    <span class="input-affix-icon">₱</span>
-                    <input type="text" inputmode="decimal" name="balance" id="loan-balance" class="form-input currency-input" required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="loan-balance"><i class="fas fa-wallet"></i> Balance</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="balance" id="loan-balance" class="form-input currency-input" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="loan-monthly"><i class="fas fa-calendar-check"></i> Monthly Payment</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="monthly_payment" id="loan-monthly" class="form-input currency-input" required>
+                    </div>
                 </div>
             </div>
             <div class="form-group">
-                <label for="loan-monthly">Monthly Payment</label>
-                <div class="input-affix">
-                    <span class="input-affix-icon">₱</span>
-                    <input type="text" inputmode="decimal" name="monthly_payment" id="loan-monthly" class="form-input currency-input" required>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="loan-status">Status</label>
+                <label for="loan-status"><i class="fas fa-toggle-on"></i> Status</label>
                 <select name="status" id="loan-status" class="form-input" required>
                     <option value="active">Active</option>
                     <option value="paid">Paid</option>
@@ -514,7 +546,7 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-loan-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Save</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-plus"></i> Save</button>
             </div>
         </form>
     </dialog>
@@ -525,54 +557,78 @@
     <dialog id="bulk-assign-loan-modal" class="employee-modal modal-lg">
         <form method="POST" action="{{ route('payroll.contributions.loans.bulk-assign', $deduction->id) }}" class="payroll-form">
             @csrf
-            <div class="modal-top-actions">
-                <h3>Add to Roster</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('bulk-assign-loan-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-users"></i></span>
+                    <div>
+                        <h3>Add to Roster</h3>
+                        <p class="modal-subtitle">Pre-fill employees for {{ $deduction->provider ?: $deduction->type }}'s next billing upload</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="document.getElementById('bulk-assign-loan-modal').close()" aria-label="Close">✕</button>
             </div>
 
             @error('employee_ids')
                 <div class="notice error">{{ $message }}</div>
             @enderror
 
-            <p class="empty-state" style="margin-bottom:12px;text-align:left;padding:0">
-                Adds a placeholder loan (₱0 balance) for each selected employee so they appear on the next billing
-                template with their Employee Agency Number, Name, and Department already filled in — fill in their
-                real Monthly Payment and Balance there instead of here.
-            </p>
+            <div class="roster-info-note">
+                <i class="fas fa-circle-info"></i>
+                <p>
+                    Adds a placeholder loan (₱0 balance) for each selected employee so they appear on the next billing
+                    template with their Employee Agency Number, Name, and Department already filled in — fill in their
+                    real Monthly Payment and Balance there instead of here.
+                </p>
+            </div>
 
             <div class="form-group">
                 <label>Employees</label>
-                <div class="form-row" style="gap:12px;align-items:center;flex-wrap:wrap;">
-                    <select id="assign-emp-type-filter" class="form-input" style="max-width:220px" onchange="filterAssignEmployees()">
+
+                <div class="roster-toolbar">
+                    <div class="input-affix roster-search">
+                        <i class="fas fa-magnifying-glass input-affix-icon"></i>
+                        <input type="text" id="assign-emp-search" class="form-input" placeholder="Search name or Employee Agency Number…" oninput="filterAssignEmployees()">
+                    </div>
+                    <select id="assign-emp-type-filter" class="form-input roster-type-filter" onchange="filterAssignEmployees()">
                         <option value="">All types</option>
                         @foreach($employeeTypes as $type)
                             <option value="{{ $type }}">{{ $type }}</option>
                         @endforeach
                         <option value="Unspecified">Unspecified</option>
                     </select>
-                    <input type="text" id="assign-emp-search" class="form-input" style="max-width:240px" placeholder="Search name or Employee Agency Number…" oninput="filterAssignEmployees()">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
-                    </label>
-                    <span id="assign-selected-count" style="font-size:.8rem;color:#64748b">0 selected</span>
                 </div>
 
-                <div id="assign-emp-list" style="max-height:280px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;margin-top:8px;padding:6px 10px">
+                <div class="roster-toolbar roster-toolbar-secondary">
+                    <label class="checkbox-label roster-select-all">
+                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
+                    </label>
+                    <span id="assign-selected-count" class="roster-count-badge">0 selected</span>
+                </div>
+
+                <div id="assign-emp-list" class="roster-emp-list">
                     @forelse($employees as $emp)
-                        @php $alreadyAssigned = in_array($emp->id, $loanedEmployeeIds); @endphp
-                        <div class="assign-emp-row"
+                        @php
+                            $alreadyAssigned = in_array($emp->id, $loanedEmployeeIds);
+                            $empInitials = mb_strtoupper(mb_substr($emp->first_name ?: $emp->name, 0, 1).mb_substr($emp->last_name ?: '', 0, 1));
+                        @endphp
+                        <label class="assign-emp-row roster-emp-row {{ $alreadyAssigned ? 'is-disabled' : '' }}"
                              data-name="{{ strtolower($emp->name.' '.$emp->EmpNo) }}"
-                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}"
-                             style="padding:4px 0">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
-                                       class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
-                                       {{ $alreadyAssigned ? 'disabled' : '' }}>
-                                {{ $emp->name }}
-                                @if($emp->EmpNo)<span style="color:#94a3b8">({{ $emp->EmpNo }})</span>@endif
-                                @if($alreadyAssigned)<span class="status-chip" style="margin-left:6px">Already on roster</span>@endif
-                            </label>
-                        </div>
+                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}">
+                            <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
+                                   class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
+                                   {{ $alreadyAssigned ? 'disabled' : '' }}>
+                            <span class="avatar-sm">{{ $empInitials ?: '?' }}</span>
+                            <span class="roster-emp-info">
+                                <span class="roster-emp-name">{{ $emp->name }}</span>
+                                <span class="roster-emp-meta">
+                                    @if($emp->EmpNo)<span>{{ $emp->EmpNo }}</span>@endif
+                                    @if($emp->employee_type)<span>{{ $emp->employee_type }}</span>@endif
+                                </span>
+                            </span>
+                            @if($alreadyAssigned)
+                                <span class="status-chip roster-already-chip">Already on roster</span>
+                            @endif
+                        </label>
                     @empty
                         <p class="empty-state">No employees found.</p>
                     @endforelse
@@ -582,7 +638,7 @@
 
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('bulk-assign-loan-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Save</button>
+                <button type="submit" id="roster-submit-btn" class="btn btn-sm" disabled><i class="fas fa-user-plus"></i> Add Selected</button>
             </div>
         </form>
     </dialog>
@@ -593,9 +649,15 @@
     <dialog id="upload-billing-modal" class="employee-modal">
         <form method="POST" action="{{ route('payroll.contributions.loans.billing.upload', $deduction->id) }}" enctype="multipart/form-data" class="payroll-form" onsubmit="return confirmUploadBilling(event)">
             @csrf
-            <div class="modal-top-actions">
-                <h3>Upload Billing</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('upload-billing-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue"><i class="fas fa-file-arrow-up"></i></span>
+                    <div>
+                        <h3>Upload Billing</h3>
+                        <p class="modal-subtitle">Bulk-update balances and monthly payments for {{ $deduction->type }}</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('upload-billing-modal').close()">✕</button>
             </div>
             <div style="margin-bottom:12px">
                 <a id="download-template-link"
@@ -612,16 +674,16 @@
                 </p>
             </div>
             <div class="form-group">
-                <label for="billing-month">Billing Month</label>
+                <label for="billing-month"><i class="fas fa-calendar-days"></i> Billing Month</label>
                 <input type="month" name="billing_month" id="billing-month" class="form-input" required value="{{ now()->format('Y-m') }}">
             </div>
             <div class="form-group">
-                <label for="billing-file">Billing File (xlsx, xls, or csv)</label>
+                <label for="billing-file"><i class="fas fa-file-csv"></i> Billing File (xlsx, xls, or csv)</label>
                 <input type="file" name="billing_file" id="billing-file" class="form-input" accept=".xlsx,.xls,.csv" required>
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('upload-billing-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Upload</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-file-arrow-up"></i> Upload</button>
             </div>
         </form>
     </dialog>
@@ -629,13 +691,19 @@
 
     {{-- Loan billing History modal (read-only, shared by every loan row) --}}
     <dialog id="loan-history-modal" class="employee-modal">
-        <div class="modal-top-actions">
-            <h3 id="loan-history-title">Billing History</h3>
-            <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('loan-history-modal').close()">✕</button>
+        <div class="modal-icon-header">
+            <div class="modal-icon-heading">
+                <span class="modal-icon-badge is-blue"><i class="fas fa-clock-rotate-left"></i></span>
+                <div>
+                    <h3 id="loan-history-title">Billing History</h3>
+                    <p class="modal-subtitle">Monthly balance and payment record</p>
+                </div>
+            </div>
+            <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('loan-history-modal').close()">✕</button>
         </div>
         <div class="hris-table-wrapper">
             <table class="hris-table">
-                <thead><tr><th>Month</th><th>Balance</th><th>Monthly Payment</th></tr></thead>
+                <thead><tr><th>Month</th><th>Balance</th><th>Monthly Payment</th><th>Source</th></tr></thead>
                 <tbody id="loan-history-body"></tbody>
             </table>
         </div>
@@ -649,26 +717,34 @@
     <dialog id="edit-loan-modal" class="employee-modal">
         <form method="POST" id="edit-loan-form" class="payroll-form">
             @csrf @method('PUT')
-            <div class="modal-top-actions">
-                <h3>Edit Loan</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-loan-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue" id="edit-loan-avatar">?</span>
+                    <div>
+                        <h3>Edit Loan</h3>
+                        <p class="modal-subtitle" id="edit-loan-subtitle">&mdash;</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="document.getElementById('edit-loan-modal').close()" aria-label="Close">✕</button>
             </div>
-            <div class="form-group">
-                <label for="edit-loan-balance">Balance</label>
-                <div class="input-affix">
-                    <span class="input-affix-icon">₱</span>
-                    <input type="text" inputmode="decimal" name="balance" id="edit-loan-balance" class="form-input currency-input" required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-loan-balance"><i class="fas fa-wallet"></i> Balance</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="balance" id="edit-loan-balance" class="form-input currency-input" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-loan-monthly"><i class="fas fa-calendar-check"></i> Monthly Payment</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="monthly_payment" id="edit-loan-monthly" class="form-input currency-input" required>
+                    </div>
                 </div>
             </div>
             <div class="form-group">
-                <label for="edit-loan-monthly">Monthly Payment</label>
-                <div class="input-affix">
-                    <span class="input-affix-icon">₱</span>
-                    <input type="text" inputmode="decimal" name="monthly_payment" id="edit-loan-monthly" class="form-input currency-input" required>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="edit-loan-status">Status</label>
+                <label for="edit-loan-status"><i class="fas fa-toggle-on"></i> Status</label>
                 <select name="status" id="edit-loan-status" class="form-input" required>
                     <option value="active">Active</option>
                     <option value="paid">Paid</option>
@@ -677,7 +753,7 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-loan-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Update</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-floppy-disk"></i> Update</button>
             </div>
         </form>
     </dialog>
@@ -692,9 +768,15 @@
     <dialog id="assign-modal" class="employee-modal modal-lg">
         <form method="POST" action="{{ route('payroll.contributions.employee-deductions.store', $deduction->id) }}" class="payroll-form">
             @csrf
-            <div class="modal-top-actions">
-                <h3>Assign Employee(s)</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-user-plus"></i></span>
+                    <div>
+                        <h3>Assign Employee(s)</h3>
+                        <p class="modal-subtitle">Add {{ $deduction->type }} as a recurring deduction for selected employees</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="document.getElementById('assign-modal').close()" aria-label="Close">✕</button>
             </div>
 
             @error('employee_ids')
@@ -703,37 +785,52 @@
 
             <div class="form-group">
                 <label>Employees</label>
-                <div class="form-row" style="gap:12px;align-items:center;flex-wrap:wrap;">
-                    <select id="assign-emp-type-filter" class="form-input" style="max-width:220px" onchange="filterAssignEmployees()">
+
+                <div class="roster-toolbar">
+                    <div class="input-affix roster-search">
+                        <i class="fas fa-magnifying-glass input-affix-icon"></i>
+                        <input type="text" id="assign-emp-search" class="form-input" placeholder="Search name or Employee Agency Number…" oninput="filterAssignEmployees()">
+                    </div>
+                    <select id="assign-emp-type-filter" class="form-input roster-type-filter" onchange="filterAssignEmployees()">
                         <option value="">All types</option>
                         @foreach($employeeTypes as $type)
                             <option value="{{ $type }}">{{ $type }}</option>
                         @endforeach
                         <option value="Unspecified">Unspecified</option>
                     </select>
-                    <input type="text" id="assign-emp-search" class="form-input" style="max-width:240px" placeholder="Search name or EmpNo…" oninput="filterAssignEmployees()">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
-                    </label>
-                    <span id="assign-selected-count" style="font-size:.8rem;color:#64748b">0 selected</span>
                 </div>
 
-                <div id="assign-emp-list" style="max-height:280px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;margin-top:8px;padding:6px 10px">
+                <div class="roster-toolbar roster-toolbar-secondary">
+                    <label class="checkbox-label roster-select-all">
+                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
+                    </label>
+                    <span id="assign-selected-count" class="roster-count-badge">0 selected</span>
+                </div>
+
+                <div id="assign-emp-list" class="roster-emp-list">
                     @forelse($employees as $emp)
-                        @php $alreadyAssigned = in_array($emp->id, $assignedEmployeeIds); @endphp
-                        <div class="assign-emp-row"
+                        @php
+                            $alreadyAssigned = in_array($emp->id, $assignedEmployeeIds);
+                            $empInitials = mb_strtoupper(mb_substr($emp->first_name ?: $emp->name, 0, 1).mb_substr($emp->last_name ?: '', 0, 1));
+                        @endphp
+                        <label class="assign-emp-row roster-emp-row {{ $alreadyAssigned ? 'is-disabled' : '' }}"
                              data-name="{{ strtolower($emp->name.' '.$emp->EmpNo) }}"
-                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}"
-                             style="padding:4px 0">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
-                                       class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
-                                       {{ $alreadyAssigned ? 'disabled' : '' }}>
-                                {{ $emp->name }}
-                                @if($emp->EmpNo)<span style="color:#94a3b8">({{ $emp->EmpNo }})</span>@endif
-                                @if($alreadyAssigned)<span class="status-chip" style="margin-left:6px">Already assigned</span>@endif
-                            </label>
-                        </div>
+                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}">
+                            <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
+                                   class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
+                                   {{ $alreadyAssigned ? 'disabled' : '' }}>
+                            <span class="avatar-sm">{{ $empInitials ?: '?' }}</span>
+                            <span class="roster-emp-info">
+                                <span class="roster-emp-name">{{ $emp->name }}</span>
+                                <span class="roster-emp-meta">
+                                    @if($emp->EmpNo)<span>{{ $emp->EmpNo }}</span>@endif
+                                    @if($emp->employee_type)<span>{{ $emp->employee_type }}</span>@endif
+                                </span>
+                            </span>
+                            @if($alreadyAssigned)
+                                <span class="status-chip roster-already-chip">Already assigned</span>
+                            @endif
+                        </label>
                     @empty
                         <p class="empty-state">No employees found.</p>
                     @endforelse
@@ -742,7 +839,7 @@
             </div>
 
             <div class="form-group">
-                <label for="od-amount">Amount</label>
+                <label for="od-amount"><i class="fas fa-wallet"></i> Amount</label>
                 <div class="input-affix">
                     <span class="input-affix-icon">₱</span>
                     <input type="text" inputmode="decimal" name="amount" id="od-amount" class="form-input currency-input" required placeholder="e.g. 100.00">
@@ -757,7 +854,7 @@
 
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Save</button>
+                <button type="submit" id="roster-submit-btn" class="btn btn-sm" disabled><i class="fas fa-user-plus"></i> Add Selected</button>
             </div>
         </form>
     </dialog>
@@ -767,12 +864,18 @@
     <dialog id="edit-ed-modal" class="employee-modal">
         <form method="POST" id="edit-ed-form" class="payroll-form">
             @csrf @method('PUT')
-            <div class="modal-top-actions">
-                <h3>Edit Deduction Assignment</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-ed-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge" id="edit-ed-avatar">?</span>
+                    <div>
+                        <h3>Edit Deduction Assignment</h3>
+                        <p class="modal-subtitle" id="edit-ed-subtitle">&mdash;</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('edit-ed-modal').close()">✕</button>
             </div>
             <div class="form-group">
-                <label for="edit-ed-amount">Amount</label>
+                <label for="edit-ed-amount"><i class="fas fa-wallet"></i> Amount</label>
                 <div class="input-affix">
                     <span class="input-affix-icon">₱</span>
                     <input type="text" inputmode="decimal" name="amount" id="edit-ed-amount" class="form-input currency-input" required>
@@ -785,7 +888,7 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-ed-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Update</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-floppy-disk"></i> Update</button>
             </div>
         </form>
     </dialog>
@@ -797,10 +900,13 @@
 
     @if($deduction->isWithholdingTax())
         <dialog id="editWithholdingTaxModal" class="employee-modal">
-            <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-                <div>
-                    <h3 style="margin:0" id="wt-modal-title">Edit Withholding Tax Entry</h3>
-                    <span class="record-email" id="edit-wt-subtitle">Update amount</span>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+                    <div>
+                        <h3 id="wt-modal-title">Edit Withholding Tax Entry</h3>
+                        <p class="modal-subtitle" id="edit-wt-subtitle">Update amount</p>
+                    </div>
                 </div>
                 <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
             </div>
@@ -812,21 +918,24 @@
                 <input type="hidden" name="year" id="wt-year">
                 <input type="hidden" name="month" id="wt-month">
                 <div class="form-group">
-                    <label for="wt-amount">Amount (₱)</label>
+                    <label for="wt-amount"><i class="fas fa-wallet"></i> Amount (₱)</label>
                     <input type="text" inputmode="decimal" name="amount" id="wt-amount" class="form-input currency-input" required>
                 </div>
                 <div class="form-actions">
-                    <button type="submit" class="btn">Update</button>
+                    <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
                     <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
                 </div>
             </form>
         </dialog>
 
         <dialog id="uploadWithholdingTaxModal" class="employee-modal">
-            <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-                <div>
-                    <h3 style="margin:0"><i class="fas fa-upload" style="color:var(--accent);margin-right:8px"></i>Upload Withholding Tax</h3>
-                    <span class="record-email">Upload Accounting's monthly figures for a year</span>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-file-arrow-up"></i></span>
+                    <div>
+                        <h3>Upload Withholding Tax</h3>
+                        <p class="modal-subtitle">Upload Accounting's monthly figures for a year</p>
+                    </div>
                 </div>
                 <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('uploadWithholdingTaxModal').close()">✕</button>
             </div>
@@ -834,11 +943,11 @@
             <form method="POST" action="{{ route('payroll.withholding-tax.upload') }}" enctype="multipart/form-data" class="payroll-form" style="margin-top:12px" onsubmit="return confirmUploadWithholdingTax(event)">
                 @csrf
                 <div class="form-group">
-                    <label for="wt-upload-year">Year</label>
+                    <label for="wt-upload-year"><i class="fas fa-calendar-days"></i> Year</label>
                     <input type="number" name="year" id="wt-upload-year" value="{{ $withholdingSelectedYear }}" min="2000" max="2100" class="form-input" required>
                 </div>
                 <div class="form-group">
-                    <label for="wt-upload-file">File (.xlsx, .xls, .csv)</label>
+                    <label for="wt-upload-file"><i class="fas fa-file-csv"></i> File (.xlsx, .xls, .csv)</label>
                     <input type="file" name="withholding_tax_file" id="wt-upload-file" accept=".xlsx,.xls,.csv" class="form-input" required>
                 </div>
                 <p class="empty-state" style="text-align:left;padding:0;font-size:0.82rem">
@@ -848,7 +957,7 @@
                     month cell in the file is left untouched.
                 </p>
                 <div class="form-actions">
-                    <button type="submit" class="btn"><i class="fas fa-upload"></i> Upload</button>
+                    <button type="submit" class="btn"><i class="fas fa-file-arrow-up"></i> Upload</button>
                     <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
                 </div>
             </form>
@@ -886,6 +995,13 @@ function formatCurrencyInput(input) {
 }
 function unformatCurrencyInput(input) {
     input.value = String(input.value).replace(/,/g, '');
+}
+function initialsOf(name) {
+    if (!name || name === '-') { return '?'; }
+    var parts = name.trim().split(/\s+/);
+    var first = parts[0] ? parts[0][0] : '';
+    var last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase() || '?';
 }
 document.querySelectorAll('.currency-input').forEach(function (input) {
     if (input.value !== '') { formatCurrencyInput(input); }
@@ -940,7 +1056,7 @@ function confirmToggleActive(form) {
     if (typeof Swal !== 'undefined') {
         var html;
         if (isMandatory && !isActivate) {
-            html = '<b>' + name + '</b> is a mandatory government deduction. Deactivating it will STOP withholding it from EVERY employee\'s pay starting the very next payroll run — this is not just hidden from new assignment, it stops for everyone immediately.';
+            html = '<b>' + name + '</b> is a mandatory government deduction. Deactivating it will STOP withholding it from EVERY employee\'s pay starting the very next payroll run - this is not just hidden from new assignment, it stops for everyone immediately.';
         } else if (isMandatory) {
             html = '<b>' + name + '</b> will resume being withheld from every employee\'s pay on the next payroll run.';
         } else if (isActivate) {
@@ -962,7 +1078,7 @@ function confirmToggleActive(form) {
     }
 }
 
-function openEditLoan(id, balance, monthlyPayment, status) {
+function openEditLoan(id, balance, monthlyPayment, status, employeeName) {
     document.getElementById('edit-loan-form').action =
         '{{ url("payroll-manager/contributions") }}/{{ $deduction->id }}/loans/' + id;
     var balanceInput = document.getElementById('edit-loan-balance');
@@ -972,16 +1088,19 @@ function openEditLoan(id, balance, monthlyPayment, status) {
     monthlyInput.value = monthlyPayment;
     formatCurrencyInput(monthlyInput);
     document.getElementById('edit-loan-status').value = status;
+    document.getElementById('edit-loan-avatar').textContent = initialsOf(employeeName);
+    document.getElementById('edit-loan-subtitle').textContent =
+        employeeName + ' — {{ $deduction->type }}{{ $deduction->provider ? " (".$deduction->provider.")" : "" }}';
     document.getElementById('edit-loan-modal').showModal();
 }
 
 function openLoanHistory(employeeName, history) {
-    document.getElementById('loan-history-title').textContent = 'Billing History — ' + employeeName;
+    document.getElementById('loan-history-title').textContent = 'Billing History - ' + employeeName;
     const tbody = document.getElementById('loan-history-body');
     tbody.innerHTML = '';
     history.forEach(function (h) {
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td>' + h.month + '</td><td>₱' + h.balance + '</td><td>₱' + h.monthly_payment + '</td>';
+        tr.innerHTML = '<td>' + h.month + '</td><td>₱' + h.balance + '</td><td>₱' + h.monthly_payment + '</td><td>' + h.source + '</td>';
         tbody.appendChild(tr);
     });
     document.getElementById('loan-history-empty').style.display = history.length ? 'none' : '';
@@ -1003,13 +1122,15 @@ function confirmDeleteLoan(deductionId, loanId) {
     }
 }
 
-function openEditEmployeeDeduction(id, amount, recurring) {
+function openEditEmployeeDeduction(id, amount, recurring, employeeName) {
     document.getElementById('edit-ed-form').action =
         '{{ url("payroll-manager/contributions") }}/{{ $deduction->id }}/employee-deductions/' + id;
     var amountInput = document.getElementById('edit-ed-amount');
     amountInput.value = amount;
     formatCurrencyInput(amountInput);
     document.getElementById('edit-ed-recurring').checked = recurring;
+    document.getElementById('edit-ed-avatar').textContent = initialsOf(employeeName);
+    document.getElementById('edit-ed-subtitle').textContent = employeeName + ' — {{ $deduction->type }}';
     document.getElementById('edit-ed-modal').showModal();
 }
 
@@ -1067,6 +1188,14 @@ function updateAssignSelectedState() {
     const selectAllCb = document.getElementById('assign-select-all');
     if (selectAllCb) {
         selectAllCb.checked = visibleCheckboxes.length > 0 && checkedCount === visibleCheckboxes.length;
+    }
+
+    const rosterSubmitBtn = document.getElementById('roster-submit-btn');
+    if (rosterSubmitBtn) {
+        rosterSubmitBtn.disabled = checkedCount === 0;
+        rosterSubmitBtn.innerHTML = checkedCount > 0
+            ? '<i class="fas fa-user-plus"></i> Add ' + checkedCount + ' Selected'
+            : '<i class="fas fa-user-plus"></i> Add Selected';
     }
 }
 

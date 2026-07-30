@@ -57,8 +57,11 @@
 
 @section('modals')
 <dialog id="showAuditModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div><h3 style="margin:0">Audit Log Details</h3></div>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-clock-rotate-left"></i></span>
+            <div><h3>Audit Log Details</h3></div>
+        </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <div id="showAuditBody" style="margin-top:12px"></div>

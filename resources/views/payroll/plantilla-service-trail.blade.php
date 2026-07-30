@@ -166,10 +166,13 @@
 @if($employee && $routePrefix === 'payroll')
     {{-- Add Past Position modal --}}
     <dialog id="addPastPositionModal" class="employee-modal">
-        <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-            <div>
-                <h3 style="margin:0">Add Past Position</h3>
-                <span class="record-email">Record a position {{ $employee->last_name ?: $employee->name }} held before joining the current plantilla</span>
+        <div class="modal-icon-header">
+            <div class="modal-icon-heading">
+                <span class="modal-icon-badge"><i class="fas fa-clock-rotate-left"></i></span>
+                <div>
+                    <h3>Add Past Position</h3>
+                    <p class="modal-subtitle">Record a position {{ $employee->last_name ?: $employee->name }} held before joining the current plantilla</p>
+                </div>
             </div>
             <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
         </div>

@@ -73,17 +73,20 @@
 
 @section('modals')
 <dialog id="createExceptionModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Log Exception</h3>
-            <span class="record-email">Report a payroll-related exception</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-triangle-exclamation"></i></span>
+            <div>
+                <h3>Log Exception</h3>
+                <p class="modal-subtitle">Report a payroll-related exception</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.exceptions.store') }}" class="payroll-form" style="margin-top:12px">
         @csrf
         <div class="form-group">
-            <label for="c-run">Payroll Run</label>
+            <label for="c-run"><i class="fas fa-money-bill-wave"></i> Payroll Run</label>
             <select name="payroll_run_id" id="c-run" class="form-input" required>
                 <option value="">Select run</option>
                 @foreach($runs as $run)
@@ -92,36 +95,39 @@
             </select>
         </div>
         <div class="form-group">
-            <label for="c-type">Exception Type</label>
+            <label for="c-type"><i class="fas fa-tag"></i> Exception Type</label>
             <input type="text" name="type" id="c-type" value="{{ old('type') }}" class="form-input" required placeholder="e.g. Missing DTR, Salary Mismatch">
         </div>
         <div class="form-group">
-            <label for="c-desc">Description</label>
+            <label for="c-desc"><i class="fas fa-align-left"></i> Description</label>
             <textarea name="description" id="c-desc" class="form-input" rows="4">{{ old('description') }}</textarea>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Submit</button>
+            <button type="submit" class="btn"><i class="fas fa-plus"></i> Submit</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
 </dialog>
 
 <dialog id="editExceptionModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Exception</h3>
-            <span class="record-email" id="edit-exception-subtitle">Update exception</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Exception</h3>
+                <p class="modal-subtitle" id="edit-exception-subtitle">Update exception</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" id="editExceptionForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
         <div class="form-group">
-            <label for="e-type">Exception Type</label>
+            <label for="e-type"><i class="fas fa-tag"></i> Exception Type</label>
             <input type="text" name="type" id="e-type" class="form-input" required>
         </div>
         <div class="form-group">
-            <label for="e-desc">Description</label>
+            <label for="e-desc"><i class="fas fa-align-left"></i> Description</label>
             <textarea name="description" id="e-desc" class="form-input" rows="4"></textarea>
         </div>
         <div class="form-group">
@@ -131,15 +137,18 @@
             </label>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
 </dialog>
 
 <dialog id="showExceptionModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div><h3 style="margin:0">Exception Details</h3></div>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-circle-info"></i></span>
+            <div><h3>Exception Details</h3></div>
+        </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <div id="showExceptionBody" style="margin-top:12px"></div>

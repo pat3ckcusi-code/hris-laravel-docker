@@ -143,7 +143,7 @@ class WithholdingTaxController extends Controller
             $message .= ' Employee Agency Number not found: '.implode(', ', $result['unmatched']).'.';
         }
         if (! empty($result['mismatchedNames'])) {
-            $message .= ' Name mismatch — please double-check: '.implode('; ', $result['mismatchedNames']).'.';
+            $message .= ' Name mismatch - please double-check: '.implode('; ', $result['mismatchedNames']).'.';
         }
 
         return $this->backToBirRow(['year' => (int) $request->year])

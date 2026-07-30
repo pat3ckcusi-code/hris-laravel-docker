@@ -56,22 +56,25 @@
 @section('modals')
 {{-- Create Eligibility Modal --}}
 <dialog id="createEligibilityModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Add CSC Eligibility Category</h3>
-            <span class="record-email">Define a new eligibility category for plantilla positions</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-certificate"></i></span>
+            <div>
+                <h3>Add CSC Eligibility Category</h3>
+                <p class="modal-subtitle">Define a new eligibility category for plantilla positions</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.csc-eligibility.store') }}" class="payroll-form" style="margin-top:12px">
         @csrf
         <div class="form-group">
-            <label for="c-eligibility-label">Label</label>
+            <label for="c-eligibility-label"><i class="fas fa-tag"></i> Label</label>
             <input type="text" name="label" id="c-eligibility-label" value="{{ old('label') }}" class="form-input" required maxlength="150" placeholder="e.g. Career Service Professional (2nd Level)">
             @error('label') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Save</button>
+            <button type="submit" class="btn"><i class="fas fa-plus"></i> Save</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
@@ -79,22 +82,25 @@
 
 {{-- Edit Eligibility Modal --}}
 <dialog id="editEligibilityModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit CSC Eligibility Category</h3>
-            <span class="record-email" id="edit-eligibility-subtitle">Update category</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit CSC Eligibility Category</h3>
+                <p class="modal-subtitle" id="edit-eligibility-subtitle">Update category</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" id="editEligibilityForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
         <div class="form-group">
-            <label for="e-eligibility-label">Label</label>
+            <label for="e-eligibility-label"><i class="fas fa-tag"></i> Label</label>
             <input type="text" name="label" id="e-eligibility-label" class="form-input" required maxlength="150">
         </div>
         <p class="record-email">Machine value: <code id="e-eligibility-key-display"></code> (cannot be changed)</p>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>

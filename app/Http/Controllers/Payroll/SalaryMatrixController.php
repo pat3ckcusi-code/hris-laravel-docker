@@ -145,7 +145,7 @@ class SalaryMatrixController extends Controller
             if (! empty($collisions)) {
                 return redirect()->route('payroll.salary-matrix.index', ['version' => $request->current_effective_date])
                     ->withInput()
-                    ->with('error', count($collisions).' entries already exist on that date for the same grade/step — cannot move this tranche there.');
+                    ->with('error', count($collisions).' entries already exist on that date for the same grade/step - cannot move this tranche there.');
             }
         }
 

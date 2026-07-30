@@ -11,13 +11,14 @@ use App\Models\Loan;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollDetail;
 use App\Models\PayrollException;
+use App\Models\PayrollLoanDeduction;
 use App\Models\PayrollRun;
 use App\Models\SalaryMatrix;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WithholdingTax;
-use App\Support\WorkSchedule;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class PayrollComputationService
 {
@@ -90,14 +91,15 @@ class PayrollComputationService
             // (personal to this stint), not the plantilla's shared, position-level step.
             $salaryMatrixId = null;
             $basicSalaryBreakdown = [];
-            $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown);
+            $currentTrancheAmount = null;
+            $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown, $currentTrancheAmount);
 
             // 2. Allowances (PERA, Hazard Pay, Subsistence, Laundry, Other)
             $allowances = $this->computeAllowances($employee->id, $basicSalary);
             $grossPay = $basicSalary + $allowances['total'];
 
             // 3. Mandatory deductions (GSIS, PhilHealth, Pag-IBIG)
-            $mandatory = $this->computeMandatoryDeductions($basicSalary, $grossPay, $mandatoryTypes, $employee->employee_type);
+            $mandatory = $this->computeMandatoryDeductions($basicSalary, $currentTrancheAmount, $grossPay, $mandatoryTypes, $employee->employee_type);
 
             // 3b. Withholding tax - no longer bracket-computed; Accounting
             // computes it and it's uploaded monthly, looked up here and split
@@ -201,16 +203,112 @@ class PayrollComputationService
     }
 
     /**
+     * Decrement each Loan actually charged in this run's PayrollDetail rows
+     * by the amount frozen in deduction_breakdown, flipping status to 'paid'
+     * once balance reaches zero. Only ever called once a run is locked (its
+     * numbers are final) - never from compute(), which is a repeatable
+     * wipe-and-rebuild and would double-decrement on every recompute.
+     *
+     * @return array{decremented: int, paid_off: int, total_amount: float}
+     */
+    public function applyLoanDeductions(PayrollRun $run, User $actor): array
+    {
+        $decremented = 0;
+        $paidOff = 0;
+        $totalAmount = 0.0;
+
+        DB::transaction(function () use ($run, $actor, &$decremented, &$paidOff, &$totalAmount) {
+            $details = PayrollDetail::where('payroll_run_id', $run->id)->get();
+
+            foreach ($details as $detail) {
+                foreach ($detail->deduction_breakdown ?? [] as $line) {
+                    if (($line['category'] ?? null) !== 'loan' || empty($line['loan_id'])) {
+                        continue;
+                    }
+
+                    $loanId = $line['loan_id'];
+
+                    $alreadyApplied = PayrollLoanDeduction::where('payroll_run_id', $run->id)
+                        ->where('loan_id', $loanId)
+                        ->exists();
+
+                    if ($alreadyApplied) {
+                        continue;
+                    }
+
+                    $loan = Loan::where('id', $loanId)->lockForUpdate()->first();
+
+                    if (! $loan) {
+                        continue;
+                    }
+
+                    $amount = (float) $line['amount'];
+                    $balanceBefore = (float) $loan->balance;
+                    $balanceAfter = max(0.0, round($balanceBefore - $amount, 2));
+
+                    $loan->balance = $balanceAfter;
+                    if ($balanceAfter <= 0.0) {
+                        $loan->status = 'paid';
+                        $paidOff++;
+                    }
+                    $loan->save();
+
+                    PayrollLoanDeduction::create([
+                        'payroll_run_id' => $run->id,
+                        'payroll_detail_id' => $detail->id,
+                        'loan_id' => $loan->id,
+                        'amount' => $amount,
+                        'balance_before' => $balanceBefore,
+                        'balance_after' => $balanceAfter,
+                    ]);
+
+                    $decremented++;
+                    $totalAmount += $amount;
+                }
+            }
+
+            if ($decremented > 0) {
+                PayrollAuditLog::create([
+                    'action' => 'loan_deductions_applied',
+                    'user_id' => $actor->id,
+                    'payroll_run_id' => $run->id,
+                    'details' => "{$decremented} loan(s) decremented totaling ₱".number_format($totalAmount, 2)
+                        .($paidOff > 0 ? ". {$paidOff} loan(s) paid in full." : '.'),
+                    'actioned_at' => now(),
+                ]);
+            }
+        });
+
+        return [
+            'decremented' => $decremented,
+            'paid_off' => $paidOff,
+            'total_amount' => $totalAmount,
+        ];
+    }
+
+    /**
      * Look up basic salary from the salary matrix. A period with a single
      * applicable tranche (the common case) returns that tranche's amount
      * directly, byte-identical to a plain lookup. A period spanning a
      * mid-year ordinance's effective_date instead pays the tranche
-     * governing period_end in full, then applies a CSC daily-wage-rate
-     * adjustment (Monthly Salary ÷ payroll_working_days_per_month) for each
-     * earlier tranche's working days - see the multi-segment branch below
-     * for why this, not a per-segment share of the whole period.
+     * governing period_end in full, then applies a daily-rate correction
+     * (Monthly Salary ÷ calendar days in the period's month) for each
+     * earlier tranche's calendar days - see the multi-segment branch below
+     * for why the total is computed this way rather than as a per-segment
+     * share of the whole period. The breakdown returned for display,
+     * however, presents that same total as an additive split (each
+     * tranche's own calendar-day share), not as "base + correction".
+     *
+     * $currentTrancheAmount is a second, separate out-param: the tranche
+     * governing period_end's own full, unprorated monthly amount - identical
+     * to the returned basic_salary except during a mid-period transition,
+     * where it deliberately excludes the earlier tranche's blended-in
+     * correction. PhilHealth/Pag-IBIG are computed against this instead of
+     * the blended basic_salary (see computeMandatoryDeductions()) - those are
+     * monthly obligations that should follow whichever salary is officially
+     * in effect, not a mid-month blended actual-pay figure.
      */
-    protected function getBasicSalary(User $employee, int $sg, int $step, PayrollRun $run, array &$errors, ?int &$salaryMatrixId = null, array &$breakdown = []): float
+    protected function getBasicSalary(User $employee, int $sg, int $step, PayrollRun $run, array &$errors, ?int &$salaryMatrixId = null, array &$breakdown = [], ?float &$currentTrancheAmount = null): float
     {
         $periodStart = $run->period_start->copy()->startOfDay();
         $periodEnd = $run->period_end->copy()->startOfDay();
@@ -253,6 +351,7 @@ class PayrollComputationService
 
             $salaryMatrixId = $entry->id;
             $amount = round((float) $entry->amount, 2);
+            $currentTrancheAmount = $amount;
             $breakdown = [[
                 'salary_matrix_id' => $entry->id,
                 'effective_date' => $entry->effective_date->toDateString(),
@@ -275,6 +374,7 @@ class PayrollComputationService
             $entry = $segments->first();
             $salaryMatrixId = $entry->id;
             $amount = round((float) $entry->amount, 2);
+            $currentTrancheAmount = $amount;
             $breakdown = [[
                 'salary_matrix_id' => $entry->id,
                 'effective_date' => $entry->effective_date->toDateString(),
@@ -289,72 +389,79 @@ class PayrollComputationService
             return $amount;
         }
 
-        // Multiple tranches apply within this period: pay the tranche that
-        // governs period_end (the current/final approved rate) in full for
-        // the whole period, then apply a small CSC daily-wage-rate
-        // adjustment (Monthly Salary ÷ payroll_working_days_per_month) for
-        // each EARLIER segment - not a per-segment share of the whole
-        // period. The ÷22 formula (same one computeLwopDeduction() uses) is
-        // a marginal daily rate meant for small corrections; naively
-        // dividing by 22 and multiplying by a segment's full calendar span
-        // would wildly distort anything longer than a few days (a 30-day
-        // segment against a 22-day divisor overpays by ~36%), and using it
-        // as a full-period reconstruction divisor instead of a plain lookup
-        // would overpay every ordinary month by ~40% (real months run
-        // 28-31 calendar days against a fixed 22).
-        $workingDaysPerMonth = Setting::first()?->payroll_working_days_per_month ?? 22;
+        // Multiple tranches apply within this period: the total is still
+        // "pay the tranche governing period_end in full, then apply a
+        // marginal daily-rate correction (Monthly Salary ÷ calendar days in
+        // the period's month) for each EARLIER segment's calendar days" -
+        // not a per-segment share of the whole period, and deliberately
+        // not gated on whether those days are working days, so an
+        // ordinance/memo that takes effect on a weekend still produces a
+        // nonzero correction instead of silently rounding to zero.
+        //
+        // The breakdown shown to the payroll preparer is presented as an
+        // additive split instead - each earlier tranche's own calendar-day
+        // share of its segment, plus whatever the base tranche's own
+        // remaining share works out to once those are subtracted from the
+        // total above - so the displayed lines always sum to that
+        // already-correct total exactly, with no separate independent-
+        // rounding risk of landing a centavo off.
+        $daysInMonth = $periodStart->daysInMonth;
         $baseTranche = $segments->last();
         $totalAmount = round((float) $baseTranche->amount, 2);
+        $currentTrancheAmount = $totalAmount;
         $salaryMatrixId = $baseTranche->id;
 
-        $breakdown = [[
-            'salary_matrix_id' => $baseTranche->id,
-            'effective_date' => $baseTranche->effective_date->toDateString(),
-            'ordinance_reference' => $baseTranche->ordinance_reference,
-            'date_range' => $periodStart->toDateString().' to '.$periodEnd->toDateString(),
-            'days' => $totalDays,
-            'amount' => $totalAmount,
-            'is_base' => true,
-            'not_yet_effective' => false,
-        ]];
-
         $lastIndex = $segments->count() - 1;
+        $earlierSegments = [];
 
         foreach ($segments as $i => $entry) {
             if ($i === $lastIndex) {
-                continue; // this is the base tranche itself, already accounted for above
+                continue; // this is the base tranche itself, handled after the loop
             }
 
             $segStart = $i === 0 ? $periodStart->copy() : $entry->effective_date->copy();
             $next = $segments->get($i + 1);
             $segEnd = $next->effective_date->copy()->subDay();
+            $segDays = $segStart->diffInDays($segEnd) + 1;
 
-            $workingDays = 0;
-            $cursor = $segStart->copy();
-            while ($cursor->lte($segEnd)) {
-                if (WorkSchedule::isWorkday($employee, $cursor)) {
-                    $workingDays++;
-                }
-                $cursor->addDay();
-            }
-
-            $adjustment = round((((float) $entry->amount - (float) $baseTranche->amount) / $workingDaysPerMonth) * $workingDays, 2);
+            $adjustment = round((((float) $entry->amount - (float) $baseTranche->amount) / $daysInMonth) * $segDays, 2);
             $totalAmount += $adjustment;
 
-            $breakdown[] = [
+            $earlierSegments[] = [
                 'salary_matrix_id' => $entry->id,
                 'effective_date' => $entry->effective_date->toDateString(),
                 'ordinance_reference' => $entry->ordinance_reference,
                 'date_range' => $segStart->toDateString().($segStart->eq($segEnd) ? '' : ' to '.$segEnd->toDateString()),
-                'days' => $segEnd->diffInDays($segStart) + 1,
-                'working_days' => $workingDays,
-                'amount' => $adjustment,
+                'days' => $segDays,
+                'amount' => round(((float) $entry->amount / $daysInMonth) * $segDays, 2),
                 'is_base' => false,
                 'not_yet_effective' => false,
             ];
         }
 
-        return round($totalAmount, 2);
+        $totalAmount = round($totalAmount, 2);
+
+        $baseSegStart = $baseTranche->effective_date->copy();
+        if ($baseSegStart->lt($periodStart)) {
+            $baseSegStart = $periodStart->copy();
+        }
+        $baseDays = $baseSegStart->diffInDays($periodEnd) + 1;
+        $basePortion = round($totalAmount - array_sum(array_column($earlierSegments, 'amount')), 2);
+
+        $breakdown = [[
+            'salary_matrix_id' => $baseTranche->id,
+            'effective_date' => $baseTranche->effective_date->toDateString(),
+            'ordinance_reference' => $baseTranche->ordinance_reference,
+            'date_range' => $baseSegStart->toDateString().($baseSegStart->eq($periodEnd) ? '' : ' to '.$periodEnd->toDateString()),
+            'days' => $baseDays,
+            'amount' => $basePortion,
+            'is_base' => true,
+            'not_yet_effective' => false,
+        ]];
+
+        $breakdown = array_merge($breakdown, $earlierSegments);
+
+        return $totalAmount;
     }
 
     /**
@@ -407,18 +514,27 @@ class PayrollComputationService
      * an Accounting-uploaded monthly table"; the 'bir' key below is a
      * placeholder overwritten by the caller immediately after this returns.
      *
+     * GSIS is computed off $basicSalary (the blended, possibly mid-period-
+     * prorated figure actually paid this period). PhilHealth and Pag-IBIG are
+     * deliberately computed off $philhealthPagibigBase instead - the tranche
+     * governing period_end's own full monthly amount (see getBasicSalary()'s
+     * $currentTrancheAmount out-param) - since those are monthly obligations
+     * that should follow whichever salary is officially in effect, not a
+     * mid-month blended actual-pay figure. The two bases are identical
+     * outside a mid-period tranche transition.
+     *
      * @param  Collection<string, Deduction>  $mandatoryTypes
      * @return array{gsis: float, philhealth: float, pagibig: float, bir: float, total: float}
      */
-    protected function computeMandatoryDeductions(float $basicSalary, float $grossPay, Collection $mandatoryTypes, ?string $employeeType): array
+    protected function computeMandatoryDeductions(float $basicSalary, float $philhealthPagibigBase, float $grossPay, Collection $mandatoryTypes, ?string $employeeType): array
     {
         $gsisRow = $mandatoryTypes->get('gsis');
         $philhealthRow = $mandatoryTypes->get('philhealth');
         $pagibigRow = $mandatoryTypes->get('pagibig');
 
         $gsis = $this->computeMandatoryAmount($gsisRow?->computation_type ?? 'percentage', $gsisRow?->mandatory_config ?? ['rate' => 0.09], $basicSalary, $this->mandatoryAppliesToEmployee($gsisRow, $employeeType), true);
-        $philhealth = $this->computeMandatoryAmount($philhealthRow?->computation_type ?? 'percentage', $philhealthRow?->mandatory_config ?? ['rate' => 0.025, 'floor' => 400.00, 'ceiling' => 3750.00], $basicSalary, $this->mandatoryAppliesToEmployee($philhealthRow, $employeeType), true);
-        $pagibig = $this->computeMandatoryAmount($pagibigRow?->computation_type ?? 'flat', $pagibigRow?->mandatory_config ?? ['amount' => 100.00], $basicSalary, $this->mandatoryAppliesToEmployee($pagibigRow, $employeeType), true);
+        $philhealth = $this->computeMandatoryAmount($philhealthRow?->computation_type ?? 'percentage', $philhealthRow?->mandatory_config ?? ['rate' => 0.025, 'floor' => 400.00, 'ceiling' => 3750.00], $philhealthPagibigBase, $this->mandatoryAppliesToEmployee($philhealthRow, $employeeType), true);
+        $pagibig = $this->computeMandatoryAmount($pagibigRow?->computation_type ?? 'flat', $pagibigRow?->mandatory_config ?? ['amount' => 100.00], $philhealthPagibigBase, $this->mandatoryAppliesToEmployee($pagibigRow, $employeeType), true);
 
         return [
             'gsis' => $gsis,
@@ -568,7 +684,7 @@ class PayrollComputationService
      * payslip line items (label/provider come from the loan's own Deduction
      * catalog row, e.g. "Salary Loan" / "LBP").
      *
-     * @return array{total: float, items: array<array{label: string, amount: float, provider: string|null}>}
+     * @return array{total: float, items: array<array{loan_id: int, label: string, amount: float, provider: string|null}>}
      */
     protected function computeLoanDeductions(int $employeeId): array
     {
@@ -584,6 +700,7 @@ class PayrollComputationService
         foreach ($loans as $loan) {
             $amount = (float) $loan->monthly_payment;
             $items[] = [
+                'loan_id' => $loan->id,
                 'label' => $loan->deduction->type ?? 'Loan',
                 'amount' => $amount,
                 'provider' => $loan->deduction->provider ?? null,

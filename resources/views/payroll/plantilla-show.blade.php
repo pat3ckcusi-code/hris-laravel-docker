@@ -133,17 +133,20 @@
 @if($routePrefix === 'payroll')
 {{-- Assign Employee Modal --}}
 <dialog id="assignModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Assign Employee</h3>
-            <span class="record-email">Link an employee to {{ $plantilla->title }}</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-user-plus"></i></span>
+            <div>
+                <h3>Assign Employee</h3>
+                <p class="modal-subtitle">Link an employee to {{ $plantilla->title }}</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.plantilla.assignments.store', $plantilla->id) }}" class="payroll-form" style="margin-top:12px">
         @csrf
         <div class="form-group">
-            <label for="assign-employee">Employee</label>
+            <label for="assign-employee"><i class="fas fa-user"></i> Employee</label>
             <select name="employee_id" id="assign-employee" class="form-input" required>
                 <option value="">Select employee</option>
                 @foreach($employees as $emp)
@@ -157,16 +160,16 @@
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label for="assign-start">Start Date</label>
+                <label for="assign-start"><i class="fas fa-calendar-check"></i> Start Date</label>
                 <input type="date" name="start_date" id="assign-start" value="{{ old('start_date', date('Y-m-d')) }}" class="form-input" required>
             </div>
             <div class="form-group">
-                <label for="assign-end">End Date <small>(optional)</small></label>
+                <label for="assign-end"><i class="fas fa-calendar-xmark"></i> End Date <small>(optional)</small></label>
                 <input type="date" name="end_date" id="assign-end" value="{{ old('end_date') }}" class="form-input">
             </div>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Assign</button>
+            <button type="submit" class="btn"><i class="fas fa-user-plus"></i> Assign</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
@@ -174,10 +177,13 @@
 
 {{-- Edit Assignment Modal --}}
 <dialog id="editAssignModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Assignment</h3>
-            <span class="record-email" id="edit-assign-subtitle">Update dates</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Assignment</h3>
+                <p class="modal-subtitle" id="edit-assign-subtitle">Update dates</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -186,24 +192,24 @@
         <input type="hidden" name="assignment_id" id="edit-assignment-id" value="{{ old('assignment_id') }}">
         <div class="form-row">
             <div class="form-group">
-                <label for="edit-start">Start Date</label>
+                <label for="edit-start"><i class="fas fa-calendar-check"></i> Start Date</label>
                 <input type="date" name="start_date" id="edit-start" value="{{ old('start_date') }}" class="form-input" required>
                 @error('start_date', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
             </div>
             <div class="form-group">
-                <label for="edit-end">End Date <small>(optional)</small></label>
+                <label for="edit-end"><i class="fas fa-calendar-xmark"></i> End Date <small>(optional)</small></label>
                 <input type="date" name="end_date" id="edit-end" value="{{ old('end_date') }}" class="form-input">
                 @error('end_date', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
             </div>
         </div>
         <div class="form-group">
-            <label for="edit-step">Step</label>
+            <label for="edit-step"><i class="fas fa-stairs"></i> Step</label>
             <input type="number" name="step" id="edit-step" value="{{ old('step') }}" min="1" max="8" class="form-input" required>
             <small class="text-muted">This employee's own step for this assignment (e.g. granting a step increment) - separate from the position's own catalog step shown in Edit Position.</small>
             @error('step', 'editAssignment') <div class="text-danger" style="font-size:0.85rem;margin-top:4px">{{ $message }}</div> @enderror
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>

@@ -58,7 +58,7 @@ class EmployeeEarningController extends Controller
 
         if ($assignedCount === 0) {
             $message = $skippedCount > 0
-                ? "No new assignments made — all {$skippedCount} selected employee(s) already had this earning."
+                ? "No new assignments made - all {$skippedCount} selected employee(s) already had this earning."
                 : 'No eligible employees were selected.';
 
             return redirect()->route('payroll.earnings.show', $earningId)->with('error', $message);

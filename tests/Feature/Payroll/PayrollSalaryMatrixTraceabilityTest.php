@@ -175,9 +175,8 @@ class PayrollSalaryMatrixTraceabilityTest extends TestCase
     {
         $manager = $this->createPayrollManager();
         SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'ordinance_reference' => 'Second Tranche', 'amount' => 19716]);
-        // Aug 8, 2026 is a Saturday - the earlier segment (Aug 1-7) contains
-        // 5 real working days (Mon 3 - Fri 7), giving a clean, nonzero CSC
-        // ÷22 adjustment to render.
+        // The earlier segment (Aug 1-7) spans 7 calendar days, giving a
+        // clean, nonzero CSC ÷22 adjustment to render.
         SalaryMatrix::create(['sg' => 6, 'step' => 1, 'effective_date' => '2026-08-08', 'ordinance_reference' => 'Third Tranche', 'amount' => 22000]);
 
         $employee = $this->createEmployee();
@@ -197,8 +196,13 @@ class PayrollSalaryMatrixTraceabilityTest extends TestCase
         $this->assertCount(2, $detail->basic_salary_breakdown);
         $this->assertTrue($detail->basic_salary_breakdown[0]['is_base']);
         $this->assertFalse($detail->basic_salary_breakdown[1]['is_base']);
-        $this->assertEquals(5, $detail->basic_salary_breakdown[1]['working_days']);
-        $this->assertEquals(21480.91, $detail->basic_salary);
+        // Displayed as an additive split: Third Tranche's own share for its
+        // 24 remaining days (Aug 8-31) plus Second Tranche's own share for
+        // the 7 days (Aug 1-7) before it took effect - both positive, and
+        // summing exactly to the total.
+        $this->assertEquals(24, $detail->basic_salary_breakdown[0]['days']);
+        $this->assertEquals(7, $detail->basic_salary_breakdown[1]['days']);
+        $this->assertEquals(21484.26, $detail->basic_salary);
 
         $response = $this->actingAs($manager)->get(route('payroll.runs.show', $run->id));
 
@@ -209,8 +213,8 @@ class PayrollSalaryMatrixTraceabilityTest extends TestCase
         $response->assertSee('Second Tranche');
         $response->assertSee('Third Tranche');
         $response->assertSee('Adjustment');
-        $response->assertSee('₱22,000.00');
-        $response->assertSee('-₱519.09', false);
-        $response->assertSee('₱21,480.91');
+        $response->assertSee('₱17,032.26');
+        $response->assertSee('₱4,452.00');
+        $response->assertSee('₱21,484.26');
     }
 }

@@ -59,32 +59,37 @@
 @section('modals')
 {{-- Create Earning Modal --}}
 <dialog id="createEarningModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Add Earning Type</h3>
-            <span class="record-email">Define a new earning or allowance type</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-sack-dollar"></i></span>
+            <div>
+                <h3>Add Earning Type</h3>
+                <p class="modal-subtitle">Define a new earning or allowance type</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.earnings.store') }}" class="payroll-form" style="margin-top:12px">
         @csrf
-        <div class="form-group">
-            <label for="c-type">Type / Name</label>
-            <input type="text" name="type" id="c-type" value="{{ old('type') }}" class="form-input" required placeholder="e.g. PERA, LCA, Hazard Pay">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="c-type"><i class="fas fa-tag"></i> Type / Name</label>
+                <input type="text" name="type" id="c-type" value="{{ old('type') }}" class="form-input" required placeholder="e.g. PERA, LCA, Hazard Pay">
+            </div>
+            <div class="form-group">
+                <label for="c-allowance-type"><i class="fas fa-layer-group"></i> Allowance Type</label>
+                <select name="allowance_type" id="c-allowance-type" class="form-input">
+                    <option value="">- Select allowance type -</option>
+                    <option value="pera" @selected(old('allowance_type') === 'pera')>PERA</option>
+                    <option value="hazard_pay" @selected(old('allowance_type') === 'hazard_pay')>Hazard Pay</option>
+                    <option value="subsistence_allowance" @selected(old('allowance_type') === 'subsistence_allowance')>Subsistence Allowance</option>
+                    <option value="laundry_allowance" @selected(old('allowance_type') === 'laundry_allowance')>Laundry Allowance</option>
+                    <option value="other" @selected(old('allowance_type') === 'other')>Other</option>
+                </select>
+            </div>
         </div>
         <div class="form-group">
-            <label for="c-allowance-type">Allowance Type</label>
-            <select name="allowance_type" id="c-allowance-type" class="form-input">
-                <option value="">- Select allowance type -</option>
-                <option value="pera" @selected(old('allowance_type') === 'pera')>PERA</option>
-                <option value="hazard_pay" @selected(old('allowance_type') === 'hazard_pay')>Hazard Pay</option>
-                <option value="subsistence_allowance" @selected(old('allowance_type') === 'subsistence_allowance')>Subsistence Allowance</option>
-                <option value="laundry_allowance" @selected(old('allowance_type') === 'laundry_allowance')>Laundry Allowance</option>
-                <option value="other" @selected(old('allowance_type') === 'other')>Other</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="c-desc">Description</label>
+            <label for="c-desc"><i class="fas fa-align-left"></i> Description</label>
             <textarea name="description" id="c-desc" class="form-input" rows="3">{{ old('description') }}</textarea>
         </div>
         <div class="form-group">
@@ -94,7 +99,7 @@
             </label>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Save</button>
+            <button type="submit" class="btn"><i class="fas fa-plus"></i> Save</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
@@ -102,32 +107,37 @@
 
 {{-- Edit Earning Modal --}}
 <dialog id="editEarningModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Earning Type</h3>
-            <span class="record-email" id="edit-earning-subtitle">Update earning</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Earning Type</h3>
+                <p class="modal-subtitle" id="edit-earning-subtitle">Update earning</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" id="editEarningForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
-        <div class="form-group">
-            <label for="e-type">Type / Name</label>
-            <input type="text" name="type" id="e-type" class="form-input" required>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="e-type"><i class="fas fa-tag"></i> Type / Name</label>
+                <input type="text" name="type" id="e-type" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="e-allowance-type"><i class="fas fa-layer-group"></i> Allowance Type</label>
+                <select name="allowance_type" id="e-allowance-type" class="form-input">
+                    <option value="">- Select allowance type -</option>
+                    <option value="pera">PERA</option>
+                    <option value="hazard_pay">Hazard Pay</option>
+                    <option value="subsistence_allowance">Subsistence Allowance</option>
+                    <option value="laundry_allowance">Laundry Allowance</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
         </div>
         <div class="form-group">
-            <label for="e-allowance-type">Allowance Type</label>
-            <select name="allowance_type" id="e-allowance-type" class="form-input">
-                <option value="">- Select allowance type -</option>
-                <option value="pera">PERA</option>
-                <option value="hazard_pay">Hazard Pay</option>
-                <option value="subsistence_allowance">Subsistence Allowance</option>
-                <option value="laundry_allowance">Laundry Allowance</option>
-                <option value="other">Other</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="e-desc">Description</label>
+            <label for="e-desc"><i class="fas fa-align-left"></i> Description</label>
             <textarea name="description" id="e-desc" class="form-input" rows="3"></textarea>
         </div>
         <div class="form-group">
@@ -137,7 +147,7 @@
             </label>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>

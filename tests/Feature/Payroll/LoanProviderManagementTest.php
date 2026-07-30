@@ -3,6 +3,10 @@
 namespace Tests\Feature\Payroll;
 
 use App\Models\Deduction;
+use App\Models\Loan;
+use App\Models\PayrollDetail;
+use App\Models\PayrollLoanDeduction;
+use App\Models\PayrollRun;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -153,5 +157,45 @@ class LoanProviderManagementTest extends TestCase
 
         $response->assertOk();
         $response->assertSee(route('payroll.contributions.index'), false);
+    }
+
+    public function test_show_page_surfaces_payroll_driven_deductions_in_loan_history(): void
+    {
+        $admin = $this->createPayrollManager();
+        $employee = $this->createEmployee();
+        $deduction = Deduction::create(['type' => 'UCPB', 'deduction_category' => 'loan', 'provider' => 'UCPB']);
+        $loan = Loan::create([
+            'employee_id' => $employee->id,
+            'deduction_id' => $deduction->id,
+            'balance' => 4249.50,
+            'monthly_payment' => 750.50,
+            'status' => 'active',
+        ]);
+        $run = PayrollRun::create([
+            'period' => 'July 2026',
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'status' => 'locked',
+            'locked_at' => now(),
+            'created_by' => $admin->id,
+        ]);
+        PayrollLoanDeduction::create([
+            'payroll_run_id' => $run->id,
+            'payroll_detail_id' => PayrollDetail::create([
+                'payroll_run_id' => $run->id,
+                'employee_id' => $employee->id,
+                'basic_salary' => 18620,
+            ])->id,
+            'loan_id' => $loan->id,
+            'amount' => 750.50,
+            'balance_before' => 5000,
+            'balance_after' => 4249.50,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('payroll.contributions.show', $deduction->id));
+
+        $response->assertOk();
+        $response->assertSee('Payroll Run', false);
+        $response->assertSee('July 2026', false);
     }
 }

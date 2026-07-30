@@ -84,7 +84,7 @@ class PayrollDeductionBreakdownTest extends TestCase
             'deduction_category' => 'loan',
             'provider' => 'CGCEMCO',
         ]);
-        Loan::create([
+        $loan = Loan::create([
             'employee_id' => $employee->id,
             'deduction_id' => $deduction->id,
             'balance' => 5000,
@@ -101,6 +101,7 @@ class PayrollDeductionBreakdownTest extends TestCase
         $this->assertEquals('loan', $line['category']);
         $this->assertEquals('CGCEMCO', $line['provider']);
         $this->assertEquals(750.50, $line['amount']);
+        $this->assertEquals($loan->id, $line['loan_id']);
         $this->assertEquals(750.50, $detail->loan_deduction);
     }
 

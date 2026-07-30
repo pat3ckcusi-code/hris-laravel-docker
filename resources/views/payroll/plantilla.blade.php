@@ -194,10 +194,13 @@
 @if($routePrefix === 'payroll')
 {{-- Promote Employee Modal --}}
 <dialog id="promoteModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Promote Employee</h3>
-            <span class="record-email" id="promote-subtitle">Move to a higher position</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-arrow-trend-up"></i></span>
+            <div>
+                <h3>Promote Employee</h3>
+                <p class="modal-subtitle" id="promote-subtitle">Move to a higher position</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -253,10 +256,13 @@
 
 {{-- Create Plantilla Modal --}}
 <dialog id="createPlantillaModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Add Plantilla Position</h3>
-            <span class="record-email">Define a new position</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-briefcase"></i></span>
+            <div>
+                <h3>Add Plantilla Position</h3>
+                <p class="modal-subtitle">Define a new position</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -328,10 +334,13 @@
 
 {{-- Edit Plantilla Modal --}}
 <dialog id="editPlantillaModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Plantilla Position</h3>
-            <span class="record-email" id="edit-plantilla-subtitle">Update position</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Plantilla Position</h3>
+                <p class="modal-subtitle" id="edit-plantilla-subtitle">Update position</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>

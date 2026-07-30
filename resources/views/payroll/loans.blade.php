@@ -158,7 +158,7 @@
                                     <a href="{{ route('payroll.contributions.show', $loan->deduction_id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">View Type</a>
                                 @endif
                                 <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm"
-                                    onclick="openEditLoan({{ $loan->deduction_id }}, {{ $loan->id }}, '{{ $loan->balance }}', '{{ $loan->monthly_payment }}', '{{ $loan->status }}')">Edit</button>
+                                    onclick='openEditLoan({{ $loan->deduction_id }}, {{ $loan->id }}, "{{ $loan->balance }}", "{{ $loan->monthly_payment }}", "{{ $loan->status }}", "{{ $loan->employee->name ?? "-" }}", "{{ $loan->deduction->type ?? "-" }}{{ $loan->deduction?->provider ? " (".$loan->deduction->provider.")" : "" }}")'>Edit</button>
                                 <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm"
                                     onclick='openLoanHistory("{{ $loan->employee->name ?? "-" }}", {{ $loan->billingHistory->map(fn ($h) => ["month" => $h->billing_month->format("F Y"), "balance" => number_format($h->balance, 2), "monthly_payment" => number_format($h->monthly_payment, 2)])->toJson() }})'>History</button>
                                 <button type="button" class="hris-btn hris-btn-danger hris-btn-sm"
@@ -178,20 +178,34 @@
         <form method="POST" id="edit-loan-form" class="payroll-form">
             @csrf @method('PUT')
             <input type="hidden" name="_redirect" value="{{ route('payroll.loans.index', request()->query()) }}">
-            <div class="modal-top-actions">
-                <h3>Edit Loan</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-loan-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue" id="edit-loan-avatar">?</span>
+                    <div>
+                        <h3>Edit Loan</h3>
+                        <p class="modal-subtitle" id="edit-loan-subtitle">&mdash;</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" onclick="document.getElementById('edit-loan-modal').close()" aria-label="Close">✕</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-loan-balance"><i class="fas fa-wallet"></i> Balance</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="balance" id="edit-loan-balance" class="form-input currency-input" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-loan-monthly"><i class="fas fa-calendar-check"></i> Monthly Payment</label>
+                    <div class="input-affix">
+                        <span class="input-affix-icon">₱</span>
+                        <input type="text" inputmode="decimal" name="monthly_payment" id="edit-loan-monthly" class="form-input currency-input" required>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
-                <label for="edit-loan-balance">Balance (₱)</label>
-                <input type="number" name="balance" id="edit-loan-balance" class="form-input" min="0" step="0.01" required>
-            </div>
-            <div class="form-group">
-                <label for="edit-loan-monthly">Monthly Payment (₱)</label>
-                <input type="number" name="monthly_payment" id="edit-loan-monthly" class="form-input" min="0" step="0.01" required>
-            </div>
-            <div class="form-group">
-                <label for="edit-loan-status">Status</label>
+                <label for="edit-loan-status"><i class="fas fa-toggle-on"></i> Status</label>
                 <select name="status" id="edit-loan-status" class="form-input" required>
                     <option value="active">Active</option>
                     <option value="paid">Paid</option>
@@ -200,7 +214,7 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-loan-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Update</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-floppy-disk"></i> Update</button>
             </div>
         </form>
     </dialog>
@@ -213,9 +227,15 @@
 
     {{-- Loan billing History modal (read-only, shared by every loan row) --}}
     <dialog id="loan-history-modal" class="employee-modal">
-        <div class="modal-top-actions">
-            <h3 id="loan-history-title">Billing History</h3>
-            <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('loan-history-modal').close()">✕</button>
+        <div class="modal-icon-header">
+            <div class="modal-icon-heading">
+                <span class="modal-icon-badge is-blue"><i class="fas fa-clock-rotate-left"></i></span>
+                <div>
+                    <h3 id="loan-history-title">Billing History</h3>
+                    <p class="modal-subtitle">Monthly balance and payment record</p>
+                </div>
+            </div>
+            <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('loan-history-modal').close()">✕</button>
         </div>
         <div class="hris-table-wrapper">
             <table class="hris-table">
@@ -235,12 +255,15 @@
             @csrf
             <input type="hidden" name="deduction_category" value="loan">
             <input type="hidden" name="_redirect" value="{{ route('payroll.loans.index') }}">
-            <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-                <div>
-                    <h3 style="margin:0"><i class="fas fa-hand-holding-dollar" style="color:#1e40af;margin-right:8px"></i>Add Loan Provider</h3>
-                    <span class="record-email">Register a lender or agency you can assign employee loans to</span>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue"><i class="fas fa-hand-holding-dollar"></i></span>
+                    <div>
+                        <h3>Add Loan Provider</h3>
+                        <p class="modal-subtitle">Register a lender or agency you can assign employee loans to</p>
+                    </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('add-provider-modal').close()">✕</button>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('add-provider-modal').close()">✕</button>
             </div>
             <div class="form-row" style="margin-top:12px">
                 <div class="form-group">
@@ -269,25 +292,33 @@
             @csrf @method('PUT')
             <input type="hidden" name="deduction_category" value="loan">
             <input type="hidden" name="_redirect" value="{{ route('payroll.loans.index') }}">
-            <div class="modal-top-actions">
-                <h3>Edit Loan Provider</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-provider-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge is-blue"><i class="fas fa-hand-holding-dollar"></i></span>
+                    <div>
+                        <h3>Edit Loan Provider</h3>
+                        <p class="modal-subtitle">Update this lender or agency's details</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('edit-provider-modal').close()">✕</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="ep-type"><i class="fas fa-tag"></i> Type / Name</label>
+                    <input type="text" name="type" id="ep-type" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="ep-provider"><i class="fas fa-building"></i> Provider / Bank</label>
+                    <input type="text" name="provider" id="ep-provider" class="form-input">
+                </div>
             </div>
             <div class="form-group">
-                <label for="ep-type">Type / Name</label>
-                <input type="text" name="type" id="ep-type" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label for="ep-provider">Provider / Bank</label>
-                <input type="text" name="provider" id="ep-provider" class="form-input">
-            </div>
-            <div class="form-group">
-                <label for="ep-desc">Description</label>
+                <label for="ep-desc"><i class="fas fa-align-left"></i> Description</label>
                 <textarea name="description" id="ep-desc" class="form-input" rows="3"></textarea>
             </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-provider-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Update</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-floppy-disk"></i> Update</button>
             </div>
         </form>
     </dialog>
@@ -295,12 +326,53 @@
 
 @section('page_scripts_after')
 <script>
-function openEditLoan(deductionId, id, balance, monthlyPayment, status) {
+// Peso-value inputs (.currency-input) display comma-grouped, 2-decimal
+// values (e.g. "40,604.00") while not focused, and their raw editable
+// number while focused - since <input type="number"> can't contain commas
+// at all, these are plain text inputs with the formatting handled here.
+function formatCurrencyInput(input) {
+    var raw = String(input.value).replace(/,/g, '').trim();
+    if (raw === '' || isNaN(raw)) { return; }
+    input.value = parseFloat(raw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function unformatCurrencyInput(input) {
+    input.value = String(input.value).replace(/,/g, '');
+}
+document.querySelectorAll('.currency-input').forEach(function (input) {
+    if (input.value !== '') { formatCurrencyInput(input); }
+});
+document.addEventListener('focusin', function (e) {
+    if (e.target.classList && e.target.classList.contains('currency-input')) { unformatCurrencyInput(e.target); }
+});
+document.addEventListener('focusout', function (e) {
+    if (e.target.classList && e.target.classList.contains('currency-input')) { formatCurrencyInput(e.target); }
+});
+// Capture phase so commas are stripped before the form is serialized.
+document.addEventListener('submit', function (e) {
+    if (!e.target.querySelectorAll) { return; }
+    e.target.querySelectorAll('.currency-input').forEach(unformatCurrencyInput);
+}, true);
+
+function initialsOf(name) {
+    if (!name || name === '-') { return '?'; }
+    var parts = name.trim().split(/\s+/);
+    var first = parts[0] ? parts[0][0] : '';
+    var last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase() || '?';
+}
+
+function openEditLoan(deductionId, id, balance, monthlyPayment, status, employeeName, providerLabel) {
     document.getElementById('edit-loan-form').action =
         '{{ url("payroll-manager/contributions") }}/' + deductionId + '/loans/' + id;
-    document.getElementById('edit-loan-balance').value = balance;
-    document.getElementById('edit-loan-monthly').value = monthlyPayment;
+    var balanceInput = document.getElementById('edit-loan-balance');
+    var monthlyInput = document.getElementById('edit-loan-monthly');
+    balanceInput.value = balance;
+    formatCurrencyInput(balanceInput);
+    monthlyInput.value = monthlyPayment;
+    formatCurrencyInput(monthlyInput);
     document.getElementById('edit-loan-status').value = status;
+    document.getElementById('edit-loan-avatar').textContent = initialsOf(employeeName);
+    document.getElementById('edit-loan-subtitle').textContent = employeeName + ' — ' + providerLabel;
     document.getElementById('edit-loan-modal').showModal();
 }
 

@@ -73,58 +73,67 @@
 
 @section('modals')
 <dialog id="createSettingModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Add Setting</h3>
-            <span class="record-email">Create a new payroll configuration entry</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-sliders"></i></span>
+            <div>
+                <h3>Add Setting</h3>
+                <p class="modal-subtitle">Create a new payroll configuration entry</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" action="{{ route('payroll.settings.store') }}" class="payroll-form" style="margin-top:12px">
         @csrf
         <div class="form-group">
-            <label for="c-key">Key</label>
+            <label for="c-key"><i class="fas fa-key"></i> Key</label>
             <input type="text" name="key" id="c-key" value="{{ old('key') }}" class="form-input" required placeholder="e.g. salary_matrix_version">
         </div>
         <div class="form-group">
-            <label for="c-value">Value</label>
+            <label for="c-value"><i class="fas fa-align-left"></i> Value</label>
             <textarea name="value" id="c-value" class="form-input" rows="4">{{ old('value') }}</textarea>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Save</button>
+            <button type="submit" class="btn"><i class="fas fa-plus"></i> Save</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
 </dialog>
 
 <dialog id="editSettingModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Setting</h3>
-            <span class="record-email" id="edit-setting-subtitle">Update setting</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Setting</h3>
+                <p class="modal-subtitle" id="edit-setting-subtitle">Update setting</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" id="editSettingForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
         <div class="form-group">
-            <label>Key</label>
+            <label><i class="fas fa-key"></i> Key</label>
             <input type="text" id="e-key-display" class="form-input" disabled>
         </div>
         <div class="form-group">
-            <label for="e-value">Value</label>
+            <label for="e-value"><i class="fas fa-align-left"></i> Value</label>
             <textarea name="value" id="e-value" class="form-input" rows="4"></textarea>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
 </dialog>
 
 <dialog id="showSettingModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div><h3 style="margin:0">Setting Details</h3></div>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-circle-info"></i></span>
+            <div><h3>Setting Details</h3></div>
+        </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <div id="showSettingBody" style="margin-top:12px"></div>

@@ -143,13 +143,13 @@ class LoanController extends Controller
 
         if ($assignedCount === 0) {
             $message = $skippedCount > 0
-                ? "No new employees added — all {$skippedCount} selected employee(s) already have a loan under this provider."
+                ? "No new employees added - all {$skippedCount} selected employee(s) already have a loan under this provider."
                 : 'No eligible employees were selected.';
 
             return redirect()->route('payroll.contributions.show', $deductionId)->with('error', $message);
         }
 
-        $message = "Added {$assignedCount} employee(s) to this provider's roster — their Employee Agency Number, Name, and Department will be pre-filled the next time you download the billing template.";
+        $message = "Added {$assignedCount} employee(s) to this provider's roster - their Employee Agency Number, Name, and Department will be pre-filled the next time you download the billing template.";
         if ($skippedCount > 0) {
             $message .= " {$skippedCount} already had a loan under this provider and were skipped.";
         }
@@ -214,7 +214,7 @@ class LoanController extends Controller
             $message .= ' Employee Agency Number not found: '.implode(', ', $result['unmatched']).'.';
         }
         if (! empty($result['mismatchedNames'])) {
-            $message .= ' Name mismatch — please double-check: '.implode('; ', $result['mismatchedNames']).'.';
+            $message .= ' Name mismatch - please double-check: '.implode('; ', $result['mismatchedNames']).'.';
         }
 
         return redirect()->route('payroll.contributions.show', $deductionId)

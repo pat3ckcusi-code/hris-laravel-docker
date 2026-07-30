@@ -25,7 +25,7 @@ class EmployeeDeductionController extends Controller
 
         if ($deduction->isAutoComputed()) {
             return redirect()->route('payroll.contributions.show', $deductionId)
-                ->with('error', 'This deduction uses a standing rate now — assign employee types instead of individual employees.');
+                ->with('error', 'This deduction uses a standing rate now - assign employee types instead of individual employees.');
         }
 
         $request->validate([
@@ -65,7 +65,7 @@ class EmployeeDeductionController extends Controller
 
         if ($assignedCount === 0) {
             $message = $skippedCount > 0
-                ? "No new assignments made — all {$skippedCount} selected employee(s) already had this deduction."
+                ? "No new assignments made - all {$skippedCount} selected employee(s) already had this deduction."
                 : 'No eligible employees were selected.';
 
             return redirect()->route('payroll.contributions.show', $deductionId)->with('error', $message);
@@ -102,7 +102,7 @@ class EmployeeDeductionController extends Controller
 
         if ($deduction->isAutoComputed()) {
             return redirect()->route('payroll.contributions.show', $deductionId)
-                ->with('error', 'This deduction uses a standing rate now — assign employee types instead of individual employees.');
+                ->with('error', 'This deduction uses a standing rate now - assign employee types instead of individual employees.');
         }
 
         $request->validate([
@@ -140,7 +140,7 @@ class EmployeeDeductionController extends Controller
 
         if ($assignedCount === 0) {
             $message = $skippedCount > 0
-                ? "No new assignments made — all {$skippedCount} employee(s) of the selected type(s) already had this deduction."
+                ? "No new assignments made - all {$skippedCount} employee(s) of the selected type(s) already had this deduction."
                 : 'No active employees found for the selected type(s).';
 
             return redirect()->route('payroll.contributions.show', $deductionId)->with('error', $message);

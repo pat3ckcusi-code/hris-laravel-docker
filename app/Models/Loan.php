@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $employee
  * @property-read Deduction|null $deduction
  * @property-read Collection<int, LoanBillingHistory> $billingHistory
+ * @property-read Collection<int, PayrollLoanDeduction> $payrollDeductions
  *
  * @mixin Builder
  */
@@ -56,5 +57,10 @@ class Loan extends Model
     public function billingHistory()
     {
         return $this->hasMany(LoanBillingHistory::class)->orderByDesc('billing_month');
+    }
+
+    public function payrollDeductions()
+    {
+        return $this->hasMany(PayrollLoanDeduction::class)->orderByDesc('created_at');
     }
 }

@@ -81,9 +81,15 @@
     <dialog id="assign-modal" class="employee-modal modal-lg">
         <form method="POST" action="{{ route('payroll.earnings.assignments.store', $earning->id) }}" class="payroll-form">
             @csrf
-            <div class="modal-top-actions">
-                <h3>Assign Employee(s)</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-user-plus"></i></span>
+                    <div>
+                        <h3>Assign Employee(s)</h3>
+                        <p class="modal-subtitle">Add {{ $earning->type }} as a recurring earning for selected employees</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('assign-modal').close()">✕</button>
             </div>
 
             @error('employee_ids')
@@ -92,37 +98,52 @@
 
             <div class="form-group">
                 <label>Employees</label>
-                <div class="form-row" style="gap:12px;align-items:center;flex-wrap:wrap;">
-                    <select id="assign-emp-type-filter" class="form-input" style="max-width:220px" onchange="filterAssignEmployees()">
+
+                <div class="roster-toolbar">
+                    <div class="input-affix roster-search">
+                        <i class="fas fa-magnifying-glass input-affix-icon"></i>
+                        <input type="text" id="assign-emp-search" class="form-input" placeholder="Search name or Employee Agency Number…" oninput="filterAssignEmployees()">
+                    </div>
+                    <select id="assign-emp-type-filter" class="form-input roster-type-filter" onchange="filterAssignEmployees()">
                         <option value="">All types</option>
                         @foreach($employeeTypes as $type)
                             <option value="{{ $type }}">{{ $type }}</option>
                         @endforeach
                         <option value="Unspecified">Unspecified</option>
                     </select>
-                    <input type="text" id="assign-emp-search" class="form-input" style="max-width:240px" placeholder="Search name or EmpNo…" oninput="filterAssignEmployees()">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
-                    </label>
-                    <span id="assign-selected-count" style="font-size:.8rem;color:#64748b">0 selected</span>
                 </div>
 
-                <div id="assign-emp-list" style="max-height:280px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;margin-top:8px;padding:6px 10px">
+                <div class="roster-toolbar roster-toolbar-secondary">
+                    <label class="checkbox-label roster-select-all">
+                        <input type="checkbox" id="assign-select-all" onchange="toggleAssignSelectAll(this.checked)"> Select all visible
+                    </label>
+                    <span id="assign-selected-count" class="roster-count-badge">0 selected</span>
+                </div>
+
+                <div id="assign-emp-list" class="roster-emp-list">
                     @forelse($employees as $emp)
-                        @php $alreadyAssigned = in_array($emp->id, $assignedEmployeeIds); @endphp
-                        <div class="assign-emp-row"
+                        @php
+                            $alreadyAssigned = in_array($emp->id, $assignedEmployeeIds);
+                            $empInitials = mb_strtoupper(mb_substr($emp->first_name ?: $emp->name, 0, 1).mb_substr($emp->last_name ?: '', 0, 1));
+                        @endphp
+                        <label class="assign-emp-row roster-emp-row {{ $alreadyAssigned ? 'is-disabled' : '' }}"
                              data-name="{{ strtolower($emp->name.' '.$emp->EmpNo) }}"
-                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}"
-                             style="padding:4px 0">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
-                                       class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
-                                       {{ $alreadyAssigned ? 'disabled' : '' }}>
-                                {{ $emp->name }}
-                                @if($emp->EmpNo)<span style="color:#94a3b8">({{ $emp->EmpNo }})</span>@endif
-                                @if($alreadyAssigned)<span class="status-chip" style="margin-left:6px">Already assigned</span>@endif
-                            </label>
-                        </div>
+                             data-type="{{ $emp->employee_type ?: 'Unspecified' }}">
+                            <input type="checkbox" name="employee_ids[]" value="{{ $emp->id }}"
+                                   class="assign-emp-checkbox" onchange="updateAssignSelectedState()"
+                                   {{ $alreadyAssigned ? 'disabled' : '' }}>
+                            <span class="avatar-sm">{{ $empInitials ?: '?' }}</span>
+                            <span class="roster-emp-info">
+                                <span class="roster-emp-name">{{ $emp->name }}</span>
+                                <span class="roster-emp-meta">
+                                    @if($emp->EmpNo)<span>{{ $emp->EmpNo }}</span>@endif
+                                    @if($emp->employee_type)<span>{{ $emp->employee_type }}</span>@endif
+                                </span>
+                            </span>
+                            @if($alreadyAssigned)
+                                <span class="status-chip roster-already-chip">Already assigned</span>
+                            @endif
+                        </label>
                     @empty
                         <p class="empty-state">No employees found.</p>
                     @endforelse
@@ -131,7 +152,7 @@
             </div>
 
             <div class="form-group">
-                <label>Amount Type</label>
+                <label><i class="fas fa-calculator"></i> Amount Type</label>
                 <div class="form-row">
                     <label class="checkbox-label">
                         <input type="radio" name="amount_type" value="fixed" checked onchange="toggleAmountType('fixed', '')"> Fixed (₱)
@@ -143,12 +164,12 @@
             </div>
 
             <div class="form-group" id="amount-group">
-                <label for="amount">Amount (₱)</label>
+                <label for="amount"><i class="fas fa-wallet"></i> Amount (₱)</label>
                 <input type="number" name="amount" id="amount" class="form-input" min="0" step="0.01" placeholder="e.g. 2000.00">
             </div>
 
             <div class="form-group" id="percentage-group" style="display:none">
-                <label for="percentage">Percentage (%)</label>
+                <label for="percentage"><i class="fas fa-percent"></i> Percentage (%)</label>
                 <input type="number" name="percentage" id="percentage" class="form-input" min="0" max="100" step="0.01" placeholder="e.g. 25">
             </div>
 
@@ -160,7 +181,7 @@
 
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('assign-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Save</button>
+                <button type="submit" id="roster-submit-btn" class="btn btn-sm" disabled><i class="fas fa-user-plus"></i> Add Selected</button>
             </div>
         </form>
     </dialog>
@@ -170,13 +191,19 @@
         <form method="POST" id="edit-form" class="payroll-form">
             @csrf
             @method('PUT')
-            <div class="modal-top-actions">
-                <h3>Edit Assignment</h3>
-                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-modal').close()">✕</button>
+            <div class="modal-icon-header">
+                <div class="modal-icon-heading">
+                    <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+                    <div>
+                        <h3>Edit Assignment</h3>
+                        <p class="modal-subtitle">Update this employee's {{ $earning->type }} earning</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close" onclick="document.getElementById('edit-modal').close()">✕</button>
             </div>
 
             <div class="form-group">
-                <label>Amount Type</label>
+                <label><i class="fas fa-calculator"></i> Amount Type</label>
                 <div class="form-row">
                     <label class="checkbox-label">
                         <input type="radio" name="amount_type" value="fixed" id="edit-type-fixed" onchange="toggleAmountType('fixed', 'edit-')"> Fixed (₱)
@@ -188,12 +215,12 @@
             </div>
 
             <div class="form-group" id="edit-amount-group">
-                <label for="edit-amount">Amount (₱)</label>
+                <label for="edit-amount"><i class="fas fa-wallet"></i> Amount (₱)</label>
                 <input type="number" name="amount" id="edit-amount" class="form-input" min="0" step="0.01">
             </div>
 
             <div class="form-group" id="edit-percentage-group" style="display:none">
-                <label for="edit-percentage">Percentage (%)</label>
+                <label for="edit-percentage"><i class="fas fa-percent"></i> Percentage (%)</label>
                 <input type="number" name="percentage" id="edit-percentage" class="form-input" min="0" max="100" step="0.01">
             </div>
 
@@ -205,7 +232,7 @@
 
             <div class="form-actions">
                 <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('edit-modal').close()">Cancel</button>
-                <button type="submit" class="btn btn-sm">Update</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-floppy-disk"></i> Update</button>
             </div>
         </form>
     </dialog>
@@ -257,6 +284,14 @@ function updateAssignSelectedState() {
     const selectAllCb = document.getElementById('assign-select-all');
     if (selectAllCb) {
         selectAllCb.checked = visibleCheckboxes.length > 0 && checkedCount === visibleCheckboxes.length;
+    }
+
+    const rosterSubmitBtn = document.getElementById('roster-submit-btn');
+    if (rosterSubmitBtn) {
+        rosterSubmitBtn.disabled = checkedCount === 0;
+        rosterSubmitBtn.innerHTML = checkedCount > 0
+            ? '<i class="fas fa-user-plus"></i> Add ' + checkedCount + ' Selected'
+            : '<i class="fas fa-user-plus"></i> Add Selected';
     }
 }
 

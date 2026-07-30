@@ -132,10 +132,13 @@
 
 @section('modals')
 <dialog id="createDeductionModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0"><i class="fas fa-receipt" style="color:#075985;margin-right:8px"></i>Add Deduction Type</h3>
-            <span class="record-email">Define a new "Other Recurring Deduction" type</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-receipt"></i></span>
+            <div>
+                <h3>Add Deduction Type</h3>
+                <p class="modal-subtitle">Define a new "Other Recurring Deduction" type</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -170,21 +173,30 @@
 </dialog>
 
 <dialog id="editDeductionModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Deduction Type</h3>
-            <span class="record-email" id="edit-deduction-subtitle">Update deduction</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Deduction Type</h3>
+                <p class="modal-subtitle" id="edit-deduction-subtitle">Update deduction</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
     <form method="POST" id="editDeductionForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
-        <div class="form-group">
-            <label for="e-type">Type / Name</label>
-            <input type="text" name="type" id="e-type" class="form-input" required>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="e-type"><i class="fas fa-tag"></i> Type / Name</label>
+                <input type="text" name="type" id="e-type" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="e-provider"><i class="fas fa-building"></i> Provider / Bank</label>
+                <input type="text" name="provider" id="e-provider" class="form-input" placeholder="Optional — e.g. vendor or provider name">
+            </div>
         </div>
         <div class="form-group">
-            <label for="e-category">Category</label>
+            <label for="e-category"><i class="fas fa-layer-group"></i> Category</label>
             <select name="deduction_category" id="e-category" class="form-input">
                 <option value="">- Select category -</option>
                 <option value="mandatory" id="e-category-mandatory-option" hidden>Mandatory Government Deduction (system)</option>
@@ -193,19 +205,15 @@
             <small id="e-category-locked-note" style="display:none;color:#64748b">This is a system mandatory deduction — its category can't be changed. Edit its rate from the deduction's own page instead.</small>
         </div>
         <div class="form-group">
-            <label for="e-provider">Provider / Bank</label>
-            <input type="text" name="provider" id="e-provider" class="form-input" placeholder="Optional — e.g. vendor or provider name">
-        </div>
-        <div class="form-group">
-            <label for="e-desc">Description</label>
+            <label for="e-desc"><i class="fas fa-align-left"></i> Description</label>
             <textarea name="description" id="e-desc" class="form-input" rows="3"></textarea>
         </div>
         <div class="form-group">
-            <label for="e-formula">Formula / Notes</label>
+            <label for="e-formula"><i class="fas fa-note-sticky"></i> Formula / Notes</label>
             <input type="text" name="formula" id="e-formula" class="form-input">
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>

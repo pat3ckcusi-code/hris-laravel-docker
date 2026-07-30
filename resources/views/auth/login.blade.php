@@ -173,7 +173,7 @@
                         toast: true,
                         position: 'top',
                         icon: 'info',
-                        title: 'Getting things ready — the install will start automatically.',
+                        title: 'Getting things ready - the install will start automatically.',
                         showConfirmButton: false,
                         timer: 3000,
                         timerProgressBar: true,

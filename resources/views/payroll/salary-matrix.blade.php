@@ -81,10 +81,13 @@
 @section('modals')
 {{-- Edit single rate --}}
 <dialog id="createMatrixModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit One Rate</h3>
-            <span class="record-email">Correct or add a single grade/step amount</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-table-cells"></i></span>
+            <div>
+                <h3>Edit One Rate</h3>
+                <p class="modal-subtitle">Correct or add a single grade/step amount</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -93,30 +96,30 @@
         @csrf
         <div class="form-row">
             <div class="form-group">
-                <label for="c-sg">Salary Grade</label>
+                <label for="c-sg"><i class="fas fa-layer-group"></i> Salary Grade</label>
                 <input type="number" name="sg" id="c-sg" min="1" max="33" value="{{ old('sg') }}" class="form-input" required>
             </div>
             <div class="form-group">
-                <label for="c-step">Step</label>
+                <label for="c-step"><i class="fas fa-stairs"></i> Step</label>
                 <input type="number" name="step" id="c-step" min="1" max="8" value="{{ old('step') }}" class="form-input" required>
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label for="c-effective">Effective Date</label>
+                <label for="c-effective"><i class="fas fa-calendar-check"></i> Effective Date</label>
                 <input type="date" name="effective_date" id="c-effective" value="{{ old('effective_date', $selected) }}" class="form-input" required>
             </div>
             <div class="form-group">
-                <label for="c-amount">Amount (₱)</label>
+                <label for="c-amount"><i class="fas fa-wallet"></i> Amount (₱)</label>
                 <input type="text" inputmode="decimal" name="amount" id="c-amount" value="{{ old('amount') }}" class="form-input currency-input" required>
             </div>
         </div>
         <div class="form-group">
-            <label for="c-ordinance">Ordinance / Memo Reference <small>(optional)</small></label>
+            <label for="c-ordinance"><i class="fas fa-file-signature"></i> Ordinance / Memo Reference <small>(optional)</small></label>
             <input type="text" name="ordinance_reference" id="c-ordinance" value="{{ old('ordinance_reference') }}" class="form-input" placeholder="e.g. EO No. 64, s. 2024">
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Save</button>
+            <button type="submit" class="btn"><i class="fas fa-plus"></i> Save</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
@@ -124,10 +127,13 @@
 
 {{-- Edit Matrix Entry Modal --}}
 <dialog id="editMatrixModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Salary Matrix Entry</h3>
-            <span class="record-email" id="edit-matrix-subtitle">Update amount</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit Salary Matrix Entry</h3>
+                <p class="modal-subtitle" id="edit-matrix-subtitle">Update amount</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -135,11 +141,11 @@
     <form method="POST" id="editMatrixForm" class="payroll-form" style="margin-top:12px">
         @csrf @method('PUT')
         <div class="form-group">
-            <label for="e-amount">Amount (₱)</label>
+            <label for="e-amount"><i class="fas fa-wallet"></i> Amount (₱)</label>
             <input type="text" inputmode="decimal" name="amount" id="e-amount" class="form-input currency-input" required>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn">Update</button>
+            <button type="submit" class="btn"><i class="fas fa-floppy-disk"></i> Update</button>
             <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
         </div>
     </form>
@@ -147,10 +153,13 @@
 
 {{-- New Rate Tranche (bulk) --}}
 <dialog id="newTrancheModal" class="employee-modal modal-lg">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Publish New Rate Tranche</h3>
-            <span class="record-email">Enter the effective date and any changed amounts - pre-filled from the current table</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-file-circle-plus"></i></span>
+            <div>
+                <h3>Publish New Rate Tranche</h3>
+                <p class="modal-subtitle">Enter the effective date and any changed amounts - pre-filled from the current table</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -208,10 +217,13 @@
 {{-- Edit Tranche (move the currently-selected version's date/reference) --}}
 @if($selected)
 <dialog id="editTrancheModal" class="employee-modal" style="min-height:440px">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit Tranche</h3>
-            <span class="record-email">Move every entry in the {{ $selected }} tranche to a different date</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-calendar-pen"></i></span>
+            <div>
+                <h3>Edit Tranche</h3>
+                <p class="modal-subtitle">Move every entry in the {{ $selected }} tranche to a different date</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>

@@ -92,10 +92,13 @@
 
 @section('modals')
 <dialog id="createRunModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0"><i class="fas fa-money-bill-wave" style="color:var(--accent);margin-right:8px"></i>New Payroll Run</h3>
-            <span class="record-email">Start a new payroll cycle</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-money-bill-wave"></i></span>
+            <div>
+                <h3>New Payroll Run</h3>
+                <p class="modal-subtitle">Start a new payroll cycle</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>

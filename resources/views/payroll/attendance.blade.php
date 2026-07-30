@@ -94,10 +94,13 @@
 @section('modals')
 {{-- Create DTR Modal --}}
 <dialog id="createDtrModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Add DTR Entry</h3>
-            <span class="record-email">Record a new attendance entry</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-calendar-plus"></i></span>
+            <div>
+                <h3>Add DTR Entry</h3>
+                <p class="modal-subtitle">Record a new attendance entry</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -166,10 +169,13 @@
 
 {{-- Edit DTR Modal --}}
 <dialog id="editDtrModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">Edit DTR Entry</h3>
-            <span class="record-email" id="edit-dtr-subtitle">Update attendance record</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-pen"></i></span>
+            <div>
+                <h3>Edit DTR Entry</h3>
+                <p class="modal-subtitle" id="edit-dtr-subtitle">Update attendance record</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>
@@ -225,10 +231,13 @@
 
 {{-- Show DTR Modal --}}
 <dialog id="showDtrModal" class="employee-modal">
-    <div class="modal-top-actions" style="justify-content:space-between;align-items:center">
-        <div>
-            <h3 style="margin:0">DTR Details</h3>
-            <span class="record-email">Viewing attendance record</span>
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-circle-info"></i></span>
+            <div>
+                <h3>DTR Details</h3>
+                <p class="modal-subtitle">Viewing attendance record</p>
+            </div>
         </div>
         <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
     </div>

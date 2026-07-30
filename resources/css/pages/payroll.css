@@ -92,9 +92,16 @@
     color: #166534;
 }
 
+/* Distinct from "active" (still being deducted) - "paid" is a settled,
+   closed loan, so it reads as complete rather than currently-ongoing. */
 .status-chip.status-paid {
-    background: #dcfce7;
-    color: #166534;
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.status-chip.status-suspended {
+    background: #fef3c7;
+    color: #92400e;
 }
 
 /* ── Forms ──────────────────────────────────────── */
@@ -1058,6 +1065,16 @@ textarea.form-input {
     width: min(960px, calc(100vw - 24px));
 }
 
+/* .payroll-form's own max-width: 640px (below) otherwise squeezes every
+   .modal-lg dialog's content into a 640px column, leaving a large blank
+   gap on the right of the wider dialog box. #newTrancheModal previously
+   worked around this with its own inline max-width:100% - generalize
+   that fix here so any current/future modal-lg + payroll-form combo
+   (Add to Roster, Assign Employee(s), etc.) fills the dialog by default. */
+.employee-modal.modal-lg .payroll-form {
+    max-width: 100%;
+}
+
 /* New Rate Tranche's 9-column (SG + Step 1-8) grid needs more room than
    .modal-lg gives every other bulk modal - at 960px with the shared
    .hris-table's default 1rem/1.25rem cell padding, only ~6 of the 9 columns
@@ -1071,4 +1088,215 @@ textarea.form-input {
 #newTrancheModal .hris-table th,
 #newTrancheModal .hris-table td {
     padding: 0.5rem 0.6rem;
+}
+
+/* =========================================================================
+   Generic rich modal header - an icon/avatar badge + title + subtitle,
+   used across every create/edit/assign modal in the payroll module so
+   each one opens with immediate context instead of a bare title. Default
+   badge color is the app accent (orange); add .is-blue for modals in the
+   Loans area to match that page's existing blue identity (see the
+   .modal-icon-badge.is-blue rule further down, near the Loans/Deductions
+   modal-specific rules it groups with).
+   ========================================================================= */
+.modal-icon-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.modal-icon-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.modal-icon-badge {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fff7ed, #ffedd5);
+    border: 1px solid #fed7aa;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.modal-icon-heading h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: var(--ink);
+}
+
+.modal-icon-heading .modal-subtitle {
+    margin: 2px 0 0;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.roster-info-note {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+}
+
+.roster-info-note i {
+    color: var(--accent);
+    margin-top: 2px;
+    font-size: 0.85rem;
+}
+
+.roster-info-note p {
+    margin: 0;
+    font-size: 0.82rem;
+    color: #7c2d12;
+    line-height: 1.45;
+}
+
+.roster-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.roster-toolbar-secondary {
+    justify-content: space-between;
+    margin: 10px 0 8px;
+}
+
+.roster-search {
+    flex: 1 1 220px;
+}
+
+.roster-type-filter {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 160px;
+}
+
+.roster-select-all {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.roster-count-badge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.roster-emp-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 4px;
+    background: #f8fafc;
+}
+
+/* Specificity note: each row is a <label> inside .form-group, and
+   .form-group label { display: block; font-weight: 600; margin-bottom: 6px; }
+   (a class+element selector) outranks a bare .roster-emp-row class selector.
+   Qualify with the .roster-emp-list ancestor so this reliably wins without
+   resorting to !important. */
+.roster-emp-list .roster-emp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 0;
+    font-weight: 400;
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.roster-emp-row + .roster-emp-row {
+    margin-top: 2px;
+}
+
+.roster-emp-row:hover {
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.roster-emp-row:has(input:checked) {
+    background: #fff7ed;
+    box-shadow: inset 0 0 0 1px #fed7aa;
+}
+
+.roster-emp-row input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.roster-emp-row .roster-emp-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.roster-emp-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.roster-emp-meta {
+    display: flex;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.roster-emp-row.is-disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.roster-emp-row.is-disabled:hover {
+    background: transparent;
+    box-shadow: none;
+}
+
+.roster-already-chip {
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    white-space: nowrap;
+}
+
+/* Blue variant of .modal-icon-badge (generic header, defined above) - used
+   by every Loans-area modal (Edit Loan x2, Assign Loan) to match the blue
+   already established by the Loan Providers section icon on that page. */
+.modal-icon-badge.is-blue {
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    border-color: #bfdbfe;
+    color: #1e40af;
 }

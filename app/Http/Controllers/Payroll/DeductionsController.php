@@ -56,7 +56,7 @@ class DeductionsController extends Controller
 
     public function show(Request $request, int $id): View
     {
-        $deduction = Deduction::with('employeeDeductions.employee', 'loans.employee', 'loans.billingHistory')->findOrFail($id);
+        $deduction = Deduction::with('employeeDeductions.employee', 'loans.employee', 'loans.billingHistory', 'loans.payrollDeductions.payrollRun')->findOrFail($id);
 
         $employees = User::active()->orderBy('name')->get(['id', 'name', 'EmpNo', 'employee_type']);
 
@@ -156,7 +156,7 @@ class DeductionsController extends Controller
     {
         $deduction = Deduction::findOrFail($id);
 
-        abort_if($deduction->isWithholdingTax(), 422, 'Withholding tax is no longer configured here — see the Withholding Tax Table.');
+        abort_if($deduction->isWithholdingTax(), 422, 'Withholding tax is no longer configured here - see the Withholding Tax Table.');
         abort_if(! $deduction->supportsRateConfiguration(), 422, 'This deduction type has no rate configuration.');
 
         // The 4 system mandatory rows must always be auto-computed - only an
@@ -173,7 +173,7 @@ class DeductionsController extends Controller
             $deduction->update(['computation_type' => null, 'mandatory_config' => null]);
 
             return redirect()->route('payroll.contributions.show', $deduction->id)
-                ->with('status', 'Switched back to Individually Assigned — existing per-employee assignments resume taking effect, and any standing rate is cleared.');
+                ->with('status', 'Switched back to Individually Assigned - existing per-employee assignments resume taking effect, and any standing rate is cleared.');
         }
 
         $config = match ($computationType) {
@@ -250,7 +250,7 @@ class DeductionsController extends Controller
     {
         $deduction = Deduction::findOrFail($id);
 
-        abort_if($deduction->isWithholdingTax(), 422, 'Withholding tax is no longer configured here — see the Withholding Tax Table.');
+        abort_if($deduction->isWithholdingTax(), 422, 'Withholding tax is no longer configured here - see the Withholding Tax Table.');
         abort_if(! $deduction->isAutoComputed(), 422, 'Employee type eligibility only applies to mandatory or standing-rate deduction types.');
 
         $request->validate([
@@ -291,9 +291,9 @@ class DeductionsController extends Controller
         if ($deduction->is_active) {
             $message = "{$deduction->type} is now active.";
         } elseif ($deduction->mandatory_key !== null) {
-            $message = "{$deduction->type} is now inactive — it will not be withheld from any employee's pay on any future payroll run.";
+            $message = "{$deduction->type} is now inactive - it will not be withheld from any employee's pay on any future payroll run.";
         } else {
-            $message = "{$deduction->type} is now inactive — no new employees can be assigned to it, but existing assignments keep being deducted.";
+            $message = "{$deduction->type} is now inactive - no new employees can be assigned to it, but existing assignments keep being deducted.";
         }
 
         return redirect($request->input('_redirect', route('payroll.contributions.index')))->with('status', $message);

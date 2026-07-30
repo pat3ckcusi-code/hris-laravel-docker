@@ -111,7 +111,7 @@
                                                 <span class="text-muted">Adjustment —</span>
                                             @endif
                                             <strong>{{ $segment['date_range'] }}</strong>
-                                            ({{ $segment['days'] }} {{ Str::plural('day', $segment['days']) }}@if(isset($segment['working_days'])), {{ $segment['working_days'] }} working @endif):
+                                            ({{ $segment['days'] }} {{ Str::plural('day', $segment['days']) }}):
                                             {{ $segment['effective_date'] }}
                                             @if($segment['ordinance_reference'])
                                                 <span class="text-muted">({{ $segment['ordinance_reference'] }})</span>
