@@ -60,7 +60,9 @@ class HRManagerTest extends TestCase
 
     public function test_chart_data_workforce_per_department_breaks_down_by_employee_type(): void
     {
-        $hr = $this->createHRManager();
+        // employee_type nulled out so the acting HR manager (a "real employee" under the
+        // new realEmployee()-based scoping) doesn't skew the typed-employee breakdown below.
+        $hr = $this->createHRManager(['employee_type' => null]);
 
         $dept = Department::first();
         $this->createEmployee(['Dept_id' => $dept->Dept_id, 'employee_type' => 'Permanent']);

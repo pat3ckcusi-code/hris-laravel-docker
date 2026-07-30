@@ -30,7 +30,7 @@ trait CreatesTestUsers
             'last_name'     => fake()->lastName(),
             'first_name'    => fake()->firstName(),
             'middle_name'   => fake()->lastName(),
-            'email'         => fake()->unique()->safeEmail(),
+            'email'         => 'testuser_' . static::$empCounter . '@hris-test.local',
             'password'      => Hash::make('TestPass123!'),
             'EmpNo'         => $empNo,
             'UserName'      => 'testuser_' . static::$empCounter,

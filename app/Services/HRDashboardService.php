@@ -11,7 +11,6 @@ use App\Models\PayrollRun;
 use App\Models\Pds;
 use App\Models\User;
 use App\Support\HrisConstants;
-use App\Support\RoleNormalizer;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -54,7 +53,7 @@ class HRDashboardService
         $hiredYears = array_map(fn ($m) => $currentYear - $m, $milestoneYears);
 
         $awardRecipientsCount = (int) User::query()
-            ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee'])
+            ->realEmployee()
             ->whereNotNull('date_hired')
             ->whereIn(DB::raw('YEAR(date_hired)'), $hiredYears)
             ->count();
@@ -204,8 +203,7 @@ class HRDashboardService
     /** @return Builder<User> */
     private function employeeQuery(?int $departmentId, ?string $employeeType = null): Builder
     {
-        $query = User::query()
-            ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee']);
+        $query = User::query()->realEmployee();
 
         if ($departmentId !== null) {
             $query->where('Dept_id', $departmentId);
@@ -227,7 +225,12 @@ class HRDashboardService
             ->selectRaw('COUNT(users.id) as total')
             ->leftJoin('users', function ($join) use ($employeeType): void {
                 $join->on('users.Dept_id', '=', 'departments.Dept_id')
-                    ->whereRaw(RoleNormalizer::rawExpression('users.access_level')." = 'employee'");
+                    ->where(function ($statusQuery): void {
+                        $statusQuery->where('users.Status', User::STATUS_ACTIVE)
+                            ->orWhereNull('users.Status')
+                            ->orWhere('users.Status', '');
+                    })
+                    ->where('users.email', 'not like', '%@example.com');
 
                 if ($employeeType !== null) {
                     $join->where('users.employee_type', $employeeType);
@@ -247,9 +250,9 @@ class HRDashboardService
         // "Total Employees" card. Surface them under an explicit 'Unassigned' bucket.
         if ($departmentId === null) {
             $unassignedQuery = User::query()
+                ->realEmployee()
                 ->selectRaw("TRIM(COALESCE(employee_type, '')) as employee_type")
                 ->selectRaw('COUNT(*) as total')
-                ->whereRaw(RoleNormalizer::rawExpression().' = ?', ['employee'])
                 ->where(function ($w): void {
                     $w->whereNull('Dept_id')->orWhereNotIn('Dept_id', Department::query()->select('Dept_id'));
                 });
