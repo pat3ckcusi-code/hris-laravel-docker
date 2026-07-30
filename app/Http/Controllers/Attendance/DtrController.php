@@ -338,6 +338,34 @@ class DtrController extends Controller
                 });
         }
 
+        // Build travel-order date map: 'Y-m-d' => travel_order_num, for every day
+        // covered by an *approved* Travel Order, clamped to the period. Unlike
+        // Office Order's nullable effective_date, start_date/end_date are always
+        // non-null, so no null-fallback branch is needed - a plain overlap test.
+        $travelOrderDateMap = [];
+        if ($employee->EmpNo) {
+            $rangeStart = Carbon::parse($from);
+            $rangeEnd = Carbon::parse($to);
+
+            DB::table('travel_orders')
+                ->join('travel_order_employees', 'travel_orders.id', '=', 'travel_order_employees.travel_order_id')
+                ->where('travel_order_employees.emp_no', $employee->EmpNo)
+                ->where('travel_orders.status', 'Approved')
+                ->where('travel_orders.start_date', '<=', $to)
+                ->where('travel_orders.end_date', '>=', $from)
+                ->select('travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
+                ->get()
+                ->each(function ($order) use (&$travelOrderDateMap, $rangeStart, $rangeEnd): void {
+                    $cursor = Carbon::parse($order->start_date)->startOfDay();
+                    $until = Carbon::parse($order->end_date)->startOfDay();
+                    $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
+                    $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
+                    for (; $cursor->lte($until); $cursor->addDay()) {
+                        $travelOrderDateMap[$cursor->format('Y-m-d')] = $order->travel_order_num;
+                    }
+                });
+        }
+
         // Dates already covered by a DTR row.
         $dtrDates = $dtrRows->map(fn (Dtr $d) => Carbon::parse($d->date)->format('Y-m-d'))->flip()->toArray();
 
@@ -376,14 +404,25 @@ class DtrController extends Controller
             ], fn ($v) => $v !== null && $v !== '')) : 4;
             $showOo = $isOoDay && $ooPunchCount < 4;
 
-            // Excuse, suspension, and locator apply only when leave, ETA, and OO do
+            // Travel Order: same priority tier as Office Order, sitting right
+            // after it - both represent "away on official business" and Travel
+            // Order structurally mirrors Office Order elsewhere in this codebase.
+            $isToDay = ! $leaveCode && ! $isEtaDay && ! $isOoDay && isset($travelOrderDateMap[$dateStr]);
+            $toNum = $isToDay ? $travelOrderDateMap[$dateStr] : null;
+            $toPunchCount = $isToDay ? count(array_filter([
+                $dtr->time_in_am, $dtr->time_out_am,
+                $dtr->time_in_pm, $dtr->time_out_pm,
+            ], fn ($v) => $v !== null && $v !== '')) : 4;
+            $showTo = $isToDay && $toPunchCount < 4;
+
+            // Excuse, suspension, and locator apply only when leave, ETA, OO, and TO do
             // not take priority. A suspension with no excluded slots (the
             // capped-workEnd-only tier) has nothing to badge/decorate here - it
             // falls through to the plain branch below, which already uses the
             // capped $rowSchedule.
-            $excuse = (! $leaveCode && ! $isEtaDay && ! $isOoDay) ? ($excuseMap[$dateStr] ?? null) : null;
-            $suspension = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse && ! empty($suspensionSlots)) ? $suspensionRow : null;
-            $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $excuse && ! $suspension) ? ($locatorDateMap[$dateStr] ?? null) : null;
+            $excuse = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay) ? ($excuseMap[$dateStr] ?? null) : null;
+            $suspension = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! empty($suspensionSlots)) ? $suspensionRow : null;
+            $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! $suspension) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
             // Missing AM In / PM Out with nothing else explaining the gap - impute the
             // full half-day block from the shift template, mirroring the Monitoring
@@ -419,6 +458,12 @@ class DtrController extends Controller
                 $tAmOut = $dtr->time_out_am ?: 'Office Order';
                 $tPmIn = $dtr->time_in_pm ?: 'Office Order';
                 $tPmOut = $dtr->time_out_pm ?: 'Office Order';
+                $lateMin = $utMin = 0;
+            } elseif ($showTo) {
+                $tAmIn = $dtr->time_in_am ?: 'Travel Order';
+                $tAmOut = $dtr->time_out_am ?: 'Travel Order';
+                $tPmIn = $dtr->time_in_pm ?: 'Travel Order';
+                $tPmOut = $dtr->time_out_pm ?: 'Travel Order';
                 $lateMin = $utMin = 0;
             } elseif ($excuse) {
                 $coversAmIn = $excuse->excuse_am_in || $excuse->is_full_day;
@@ -536,15 +581,17 @@ class DtrController extends Controller
                     ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">On Official Travel</span>'
                     : ($showOo
                         ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">Office Order</span>'
-                        : ($excuse
-                            ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
-                            : ($suspension
-                                ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>'
-                                : ($loc
-                                    ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
-                                    : ($dtr->is_absent
-                                        ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                        : $this->punchStatusBadge($dtr->status)))))));
+                        : ($showTo
+                            ? '<span class="hris-badge" style="background:#cffafe;color:#155e75;">Travel Order</span>'
+                            : ($excuse
+                                ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
+                                : ($suspension
+                                    ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>'
+                                    : ($loc
+                                        ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
+                                        : ($dtr->is_absent
+                                            ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                            : $this->punchStatusBadge($dtr->status))))))));
 
             if (! empty($dtr->unmatched_logs)) {
                 $unmatchedTitle = e(implode(', ', array_map(fn ($t) => substr((string) $t, 0, 5), $dtr->unmatched_logs)));
@@ -668,9 +715,39 @@ class DtrController extends Controller
             ]);
         }
 
-        // Add excuse-only rows: excused days with no biometric/leave/ETA/OO record.
-        foreach ($excuseMap as $dateStr => $excuse) {
+        // Add TO-only rows: travel-order days with no biometric record, no leave,
+        // no ETA, and no OO (OO outranks Travel Order in the priority waterfall).
+        foreach ($travelOrderDateMap as $dateStr => $toNum) {
             if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr])) {
+                continue;
+            }
+            $data->push([
+                'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                'time_in_am' => 'Travel Order',
+                'time_out_am' => 'Travel Order',
+                'time_in_pm' => 'Travel Order',
+                'time_out_pm' => 'Travel Order',
+                'time_in_ot' => '-',
+                'time_out_ot' => '-',
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'hours_worked' => '-',
+                'overtime_minutes' => 0,
+                'is_late' => false,
+                'is_undertime' => false,
+                'is_overtime' => false,
+                'is_am_in_late' => false,
+                'is_pm_in_late' => false,
+                'is_pm_out_undertime' => false,
+                'source_badge' => '',
+                'status_badge' => '<span class="hris-badge" style="background:#cffafe;color:#155e75;">Travel Order</span>',
+                'office_order_badge' => '',
+            ]);
+        }
+
+        // Add excuse-only rows: excused days with no biometric/leave/ETA/OO/TO record.
+        foreach ($excuseMap as $dateStr => $excuse) {
+            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
                 continue;
             }
             $excuseCfg = DtrExcuse::typeConfig($excuse->excuse_type);
@@ -700,9 +777,9 @@ class DtrController extends Controller
             ]);
         }
 
-        // Add locator-only rows: approved locator days with no biometric/leave/ETA/OO record.
+        // Add locator-only rows: approved locator days with no biometric/leave/ETA/OO/TO record.
         foreach ($locatorDateMap as $dateStr => $loc) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
                 continue;
             }
             $data->push([

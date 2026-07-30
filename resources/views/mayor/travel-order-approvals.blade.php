@@ -131,6 +131,14 @@
             color: #991b1b;
             font-size: 0.875rem;
         }
+
+        /* Departs In cell styling — matches the DH/AO Filed Travel Orders table */
+        .td-departs { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+        .td-departs-urgent  { color: #991b1b; }
+        .td-departs-warning { color: #92400e; }
+        .td-departs-neutral { color: #6b7280; font-weight: 500; }
+        .td-departs-muted   { color: #94a3b8; font-style: italic; font-weight: 500; }
+        .td-departs-none    { color: #cbd5e1; }
     </style>
 @endsection
 
@@ -192,8 +200,9 @@
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Travel Order ID</th>
+                    <th>Destination</th>
                     <th>Date</th>
+                    <th>Departs In</th>
                     <th>Employee Count</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -203,8 +212,13 @@
                 @foreach($travelOrders as $idx => $to)
                     <tr>
                         <td>{{ $travelOrders->firstItem() + $idx }}</td>
-                        <td>{{ $to->travel_order_num }}</td>
+                        <td class="td-ellipsis">{{ $to->destination }}</td>
                         <td>{{ \Carbon\Carbon::parse($to->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($to->end_date)->format('M d, Y') }}</td>
+                        <td>
+                            <span class="td-departs td-departs-{{ $to->departs_cls }}">
+                                @if($to->departs_icon)<i class="fas fa-triangle-exclamation"></i> @endif{{ $to->departs_text }}
+                            </span>
+                        </td>
                         <td>{{ $to->employee_count }}</td>
                         <td><x-hris.status-badge :status="$to->status" /></td>
                         <td>

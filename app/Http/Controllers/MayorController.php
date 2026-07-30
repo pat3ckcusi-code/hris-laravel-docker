@@ -427,6 +427,7 @@ class MayorController extends Controller
             ->select(
                 'travel_orders.id',
                 'travel_orders.travel_order_num',
+                'travel_orders.destination',
                 'travel_orders.start_date',
                 'travel_orders.end_date',
                 'travel_orders.status',
@@ -440,8 +441,27 @@ class MayorController extends Controller
             $query->where('travel_orders.status', $statusFilter);
         }
 
-        $travelOrders = $query->orderByDesc('travel_orders.created_at')->paginate(10)
+        // Pending is the Mayor's actionable decision queue, so the soonest-departing order
+        // surfaces first; Approved/Rejected/All stay ordered by most-recently-filed since
+        // those are history browsing rather than a decision queue.
+        if ($statusFilter === 'Pending') {
+            $query->orderBy('travel_orders.start_date', 'asc');
+        } else {
+            $query->orderByDesc('travel_orders.created_at');
+        }
+
+        $travelOrders = $query->paginate(10)
             ->appends(['status' => $statusFilter, 'month' => $month, 'year' => $year]);
+
+        $today = Carbon::today();
+        $travelOrders = $travelOrders->through(function ($to) use ($today) {
+            $info = $this->departsInInfo($to->status, $to->start_date, $today);
+            $to->departs_cls = $info['cls'];
+            $to->departs_text = $info['text'];
+            $to->departs_icon = $info['icon'];
+
+            return $to;
+        });
 
         return view('mayor.travel-order-approvals', [
             'travelOrders' => $travelOrders,
@@ -450,6 +470,36 @@ class MayorController extends Controller
             'month' => $month,
             'year' => $year,
         ]);
+    }
+
+    /**
+     * Classify how urgent a Pending travel order's departure is, for the "Departs In"
+     * column on the Travel Order Approvals table. Non-Pending rows get a neutral dash.
+     */
+    private function departsInInfo(string $status, $startDate, Carbon $today): array
+    {
+        $days = (int) round((Carbon::parse($startDate)->startOfDay()->timestamp - $today->timestamp) / 86400);
+
+        if ($status !== 'Pending') {
+            return ['cls' => 'none', 'text' => '–', 'icon' => false];
+        }
+        if ($days < 0) {
+            return ['cls' => 'muted', 'text' => 'Departed', 'icon' => false];
+        }
+        if ($days === 0) {
+            return ['cls' => 'urgent', 'text' => 'Today', 'icon' => true];
+        }
+        if ($days === 1) {
+            return ['cls' => 'urgent', 'text' => 'Tomorrow', 'icon' => true];
+        }
+        if ($days <= 3) {
+            return ['cls' => 'urgent', 'text' => $days.' days', 'icon' => true];
+        }
+        if ($days <= 7) {
+            return ['cls' => 'warning', 'text' => $days.' days', 'icon' => true];
+        }
+
+        return ['cls' => 'neutral', 'text' => $days.' days', 'icon' => false];
     }
 
     /**

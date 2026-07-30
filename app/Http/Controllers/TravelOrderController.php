@@ -61,7 +61,23 @@ class TravelOrderController extends Controller
             ->orderByDesc('travel_orders.created_at')
             ->get();
 
-        $data = $orders->map(function ($o) {
+        // Department shown per order = the first filed employee's department, mirroring
+        // loadOrderWithEmployees()'s deptOffice derivation used by show()/printExcel(). Resolved
+        // in two batched queries here (not per-row) since an order list can be much longer.
+        $orderIds = $orders->pluck('id');
+        $firstDeptIdByOrder = DB::table('travel_order_employees')
+            ->join('users', 'users.EmpNo', '=', 'travel_order_employees.emp_no')
+            ->whereIn('travel_order_employees.travel_order_id', $orderIds)
+            ->orderBy('travel_order_employees.id')
+            ->select('travel_order_employees.travel_order_id', 'users.Dept_id')
+            ->get()
+            ->unique('travel_order_id')
+            ->pluck('Dept_id', 'travel_order_id');
+
+        $deptNamesById = Department::whereIn('Dept_id', $firstDeptIdByOrder->unique()->filter()->values())
+            ->pluck('Dept_name', 'Dept_id');
+
+        $data = $orders->map(function ($o) use ($firstDeptIdByOrder, $deptNamesById) {
             // fetch employee list for this order
             $emps = DB::table('travel_order_employees')
                 ->where('travel_order_id', $o->id)
@@ -72,10 +88,13 @@ class TravelOrderController extends Controller
                     return $u ? ($u->last_name.', '.$u->first_name) : $eno;
                 })->values();
 
+            $deptId = $firstDeptIdByOrder->get($o->id);
+
             return [
                 'id' => $o->id,
                 'travel_order_num' => $o->travel_order_num,
                 'destination' => $o->destination,
+                'department' => $deptId ? $deptNamesById->get($deptId) : null,
                 'departure' => optional($o)->start_date,
                 'return' => optional($o)->end_date,
                 'employees' => $emps,

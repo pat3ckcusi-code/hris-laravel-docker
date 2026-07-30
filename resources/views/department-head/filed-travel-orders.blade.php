@@ -80,6 +80,16 @@
     /* KPI tiles double as quick status filters */
     button.kpi-card { text-align: left; width: 100%; font: inherit; }
     .kpi-card.active { border-color: var(--accent, #ea580c); box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08); }
+
+    /* Travel Dates + Departs In cell styling */
+    .td-daterange-main { font-weight: 600; color: #0f172a; font-size: 0.875rem; }
+    .td-daterange-sub { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+    .td-departs { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+    .td-departs-urgent  { color: #991b1b; }
+    .td-departs-warning { color: #92400e; }
+    .td-departs-neutral { color: #6b7280; font-weight: 500; }
+    .td-departs-muted   { color: #94a3b8; font-style: italic; font-weight: 500; }
+    .td-departs-none    { color: #cbd5e1; }
 </style>
 @endsection
 
@@ -94,7 +104,7 @@
     @endphp
     @foreach($toTiles as $tile)
         <button type="button"
-                class="kpi-card {{ $tile['accent'] }} {{ $tile['key'] === 'All' ? 'active' : '' }}"
+                class="kpi-card {{ $tile['accent'] }} {{ $tile['key'] === 'Pending' ? 'active' : '' }}"
                 data-status-filter="{{ $tile['key'] }}"
                 onclick="filterTravelOrdersByStatus('{{ $tile['key'] }}')">
             <div class="kpi-head">
@@ -131,17 +141,18 @@
             <tr>
                 <th>#</th>
                 <th>TO Number</th>
+                <th>Department</th>
                 <th>Destination</th>
-                <th>Departure</th>
-                <th>Return</th>
+                <th>Travel Dates</th>
+                <th>Departs In</th>
                 <th>Employees</th>
                 <th>Status</th>
-                <th>Created At</th>
+                <th>Filed</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="9" class="text-center text-muted">Loading...</td></tr>
+            <tr><td colspan="10" class="text-center text-muted">Loading...</td></tr>
         </tbody>
     </table>
 </x-hris.table-layout>
@@ -166,12 +177,13 @@
 @section('page_scripts')
 <script>
 let _toAllRows = [];
-let _toStatusFilter = 'All';
+let _toStatusFilter = 'Pending';
 let _toMonth = new Date().getMonth() + 1;
 let _toYear = new Date().getFullYear();
 var _currentTravelOrderData = null;
 
 const TO_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const TO_MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 document.addEventListener('DOMContentLoaded', function() {
     updateTravelOrderMonthLabel();
@@ -181,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => {
             const tbody = document.querySelector('#travelOrdersTable tbody');
             if (!res.success) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Failed to load data</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Failed to load data</td></tr>';
                 return;
             }
             _toAllRows = res.data || [];
@@ -190,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(() => {
             document.querySelector('#travelOrdersTable tbody').innerHTML =
-                '<tr><td colspan="9" class="text-center text-danger">Failed to load data</td></tr>';
+                '<tr><td colspan="10" class="text-center text-danger">Failed to load data</td></tr>';
         });
 
     document.getElementById('travelOrderSearch').addEventListener('input', renderTravelOrdersTable);
@@ -252,6 +264,113 @@ function badgeFor(status) {
     return `<span class="hris-badge ${cls}">${label}</span>`;
 }
 
+// --- Date/urgency helpers -------------------------------------------------
+// parseDateParts/partsToEpochDay never go through `new Date(dateStr)` for diffing:
+// that path parses as UTC midnight then reads back local getters, which shifts
+// the day by one in negative-UTC-offset timezones. All day-diff math below is
+// done purely on integer Y/M/D via Date.UTC, matching the safe pattern
+// rowMonthYear() already uses for month/year extraction.
+function parseDateParts(dateStr) {
+    if (!dateStr) return null;
+    const parts = String(dateStr).split(/[- ]/);
+    if (parts.length < 3) return null;
+    const year = parseInt(parts[0], 10), month = parseInt(parts[1], 10), day = parseInt(parts[2], 10);
+    if (!year || !month || !day) return null;
+    return { year, month, day };
+}
+
+function partsToEpochDay(parts) {
+    return Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000;
+}
+
+function daysUntil(dateStr) {
+    const target = parseDateParts(dateStr);
+    if (!target) return null;
+    const now = new Date();
+    const today = { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+    return Math.round(partsToEpochDay(target) - partsToEpochDay(today));
+}
+
+function daysBetweenDates(startStr, endStr) {
+    const a = parseDateParts(startStr), b = parseDateParts(endStr);
+    if (!a || !b) return null;
+    return Math.round(partsToEpochDay(b) - partsToEpochDay(a));
+}
+
+function formatDateRange(departure, returnDate) {
+    const a = parseDateParts(departure), b = parseDateParts(returnDate);
+    if (!a && !b) return { rangeLabel: '-', durationLabel: '' };
+    if (!a) return { rangeLabel: formatDate(returnDate), durationLabel: '' };
+    if (!b) return { rangeLabel: formatDate(departure), durationLabel: '' };
+
+    let rangeLabel;
+    if (a.year === b.year && a.month === b.month && a.day === b.day) {
+        rangeLabel = `${TO_MONTH_SHORT[a.month - 1]} ${a.day}, ${a.year}`;
+    } else if (a.year === b.year && a.month === b.month) {
+        rangeLabel = `${TO_MONTH_SHORT[a.month - 1]} ${a.day}–${b.day}, ${a.year}`;
+    } else if (a.year === b.year) {
+        rangeLabel = `${TO_MONTH_SHORT[a.month - 1]} ${a.day} – ${TO_MONTH_SHORT[b.month - 1]} ${b.day}, ${a.year}`;
+    } else {
+        rangeLabel = `${TO_MONTH_SHORT[a.month - 1]} ${a.day}, ${a.year} – ${TO_MONTH_SHORT[b.month - 1]} ${b.day}, ${b.year}`;
+    }
+
+    const diff = daysBetweenDates(departure, returnDate);
+    const durationLabel = (diff === null || diff < 0) ? '' : ((diff + 1) === 1 ? '1 day' : (diff + 1) + ' days');
+    return { rangeLabel, durationLabel };
+}
+
+function departsInInfo(row) {
+    if ((row.status || '').toLowerCase() !== 'pending') return { text: '–', cls: 'none', icon: false };
+    const days = daysUntil(row.departure);
+    if (days === null) return { text: '–', cls: 'none', icon: false };
+    if (days < 0) return { text: 'Departed', cls: 'muted', icon: false };
+    if (days === 0) return { text: 'Today', cls: 'urgent', icon: true };
+    if (days === 1) return { text: 'Tomorrow', cls: 'urgent', icon: true };
+    if (days <= 3) return { text: days + ' days', cls: 'urgent', icon: true };
+    if (days <= 7) return { text: days + ' days', cls: 'warning', icon: true };
+    return { text: days + ' days', cls: 'neutral', icon: false };
+}
+
+function formatRelativeFiled(dateStr) {
+    if (!dateStr) return { text: '-', title: '' };
+    const diff = daysUntil(dateStr);
+    if (diff === null) return { text: '-', title: '' };
+    const agoDays = Math.max(0, -diff);
+    let text;
+    if (agoDays === 0) text = 'Filed today';
+    else if (agoDays === 1) text = 'Filed yesterday';
+    else if (agoDays < 7) text = `Filed ${agoDays} days ago`;
+    else if (agoDays < 30) { const w = Math.floor(agoDays / 7); text = `Filed ${w} week${w === 1 ? '' : 's'} ago`; }
+    else if (agoDays < 365) { const m = Math.floor(agoDays / 30); text = `Filed ${m} month${m === 1 ? '' : 's'} ago`; }
+    else { const y = Math.floor(agoDays / 365); text = `Filed ${y} year${y === 1 ? '' : 's'} ago`; }
+    return { text, title: formatDate(dateStr) };
+}
+
+function employeesCellHtml(row) {
+    const emps = row.employees || [];
+    const label = emps.length === 1 ? '1 employee' : (emps.length + ' employees');
+    const tooltip = (emps.length > 0 ? emps.join('\n') : 'No employees listed').replace(/"/g, '&quot;');
+    return `<div class="td-ellipsis" title="${tooltip}"><i class="fa-solid fa-users" style="color:#94a3b8;margin-right:4px;"></i>${label}</div>`;
+}
+
+function sortTravelOrderRows(rows) {
+    return rows.slice().sort((a, b) => {
+        const pa = parseDateParts(a.departure), pb = parseDateParts(b.departure);
+        const ta = pa ? partsToEpochDay(pa) : Infinity, tb = pb ? partsToEpochDay(pb) : Infinity;
+        if (ta !== tb) return ta - tb;
+        const na = String(a.travel_order_num || ''), nb = String(b.travel_order_num || '');
+        if (na !== nb) return na < nb ? -1 : 1;
+        return (a.id || 0) - (b.id || 0);
+    });
+}
+
+function updateTravelOrderTableHeader() {
+    const subtitleEl = document.querySelector('.hris-table-subtitle');
+    if (!subtitleEl) return;
+    const monthLabel = TO_MONTH_NAMES[_toMonth - 1] + ' ' + _toYear;
+    subtitleEl.textContent = `${_toStatusFilter} — ${monthLabel}`;
+}
+
 function updateTravelOrderTileCounts() {
     const counts = { Pending: 0, Approved: 0, Rejected: 0, All: 0 };
     const statusKeys = ['Pending', 'Approved', 'Rejected'];
@@ -276,6 +395,8 @@ function filterTravelOrdersByStatus(status) {
 }
 
 function renderTravelOrdersTable() {
+    updateTravelOrderTableHeader();
+
     const tbody = document.querySelector('#travelOrdersTable tbody');
     const term = (document.getElementById('travelOrderSearch').value || '').trim().toLowerCase();
 
@@ -286,11 +407,12 @@ function renderTravelOrdersTable() {
         if (!term) return true;
         if ((row.travel_order_num || '').toLowerCase().includes(term)) return true;
         if ((row.destination || '').toLowerCase().includes(term)) return true;
+        if ((row.department || '').toLowerCase().includes(term)) return true;
         return (row.employees || []).some(n => String(n).toLowerCase().includes(term));
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9">
+        tbody.innerHTML = `<tr><td colspan="10">
             <div class="hris-empty-state">
                 <div class="hris-empty-state-icon"><i class="fa fa-inbox"></i></div>
                 <div class="hris-empty-state-title">No travel orders found</div>
@@ -300,11 +422,12 @@ function renderTravelOrdersTable() {
         return;
     }
 
-    tbody.innerHTML = filtered.map((row, idx) => {
-        const names = (row.employees || []).map(n => `<div class="td-ellipsis" title="${String(n).replace(/"/g,'&quot;')}">${n}</div>`);
-        const show = names.slice(0, 3).join('');
-        const moreCount = (row.employees || []).length - 3;
-        const more = moreCount > 0 ? `<div class="text-muted" style="font-size:0.85em">+${moreCount} more</div>` : '';
+    const sorted = sortTravelOrderRows(filtered);
+
+    tbody.innerHTML = sorted.map((row, idx) => {
+        const dateRange = formatDateRange(row.departure, row.return);
+        const departsIn = departsInInfo(row);
+        const filedInfo = formatRelativeFiled(row.created_at);
         const isPending = (row.status || '').toLowerCase() === 'pending';
         const editBtn = isPending
             ? `<button class="hris-btn hris-btn-warning hris-btn-sm" type="button" onclick="window.location='/travel-orders/' + ${row.id} + '/edit'"><i class="fas fa-edit"></i> Edit</button>`
@@ -313,12 +436,16 @@ function renderTravelOrdersTable() {
             <tr>
                 <td>${idx + 1}</td>
                 <td class="td-ellipsis">${row.travel_order_num}</td>
+                <td class="td-ellipsis">${row.department || '-'}</td>
                 <td class="td-ellipsis">${row.destination}</td>
-                <td>${formatDate(row.departure)}</td>
-                <td>${formatDate(row.return)}</td>
-                <td class="employees-cell">${show}${more}</td>
+                <td>
+                    <div class="td-daterange-main">${dateRange.rangeLabel}</div>
+                    ${dateRange.durationLabel ? `<div class="td-daterange-sub">${dateRange.durationLabel}</div>` : ''}
+                </td>
+                <td><span class="td-departs td-departs-${departsIn.cls}">${departsIn.icon ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${escapeHtml(departsIn.text)}</span></td>
+                <td>${employeesCellHtml(row)}</td>
                 <td>${badgeFor(row.status)}</td>
-                <td>${formatDate(row.created_at)}</td>
+                <td class="td-ellipsis" title="${filedInfo.title.replace(/"/g,'&quot;')}">${filedInfo.text}</td>
                 <td>
                     <div class="action-btns">
                         <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openTravelOrderModal(${row.id})"><i class="fa fa-eye"></i> View</button>
