@@ -235,6 +235,12 @@ class DtrController extends Controller
             ->get()
             ->keyBy(fn ($a) => $a->date->toDateString());
 
+        // Warm the per-request ShiftAssignment-history memo once, so every
+        // forUserOnDate()/isWorkday() call below (both the existing DTR-row
+        // loop and the uncovered-day pass) reuses it instead of re-querying
+        // ShiftAssignment per date.
+        WorkSchedule::preloadShiftAssignments([$employee->id]);
+
         // Build leave map: date string → leave code (approved, non-cancelled).
         $leaveMap = LeaveDate::query()
             ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
@@ -845,6 +851,153 @@ class DtrController extends Controller
                     'office_order_badge' => '',
                 ]);
             }
+        }
+
+        // Add a row for every remaining date in the period not already
+        // covered by one of the sources above (no DTR row, and no
+        // leave/ETA/OO/TO/excuse/locator/rest-day/field-work record) - these
+        // were previously silently dropped from $data entirely; now every
+        // date in the period gets exactly one row (Rest Day / Work Suspended
+        // / Absent / not-yet-due placeholder) so the table renders as a
+        // complete calendar.
+        $coveredDates = $dtrDates;
+        foreach ($leaveMap->keys() as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach (array_keys($etaDateSet) as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach (array_keys($officeOrderDateMap) as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach (array_keys($travelOrderDateMap) as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach ($excuseMap->keys() as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach (array_keys($locatorDateMap) as $d) {
+            $coveredDates[$d] = true;
+        }
+        foreach ($shiftAssignments as $d => $assignment) {
+            if ($assignment->shift_id === null && $assignment->type !== 'standard') {
+                $coveredDates[$d] = true; // rest/field-work rows, already handled above
+            }
+        }
+
+        $periodEnd = Carbon::parse($to);
+        for ($cursor = Carbon::parse($from); $cursor->lte($periodEnd); $cursor->addDay()) {
+            $dateStr = $cursor->format('Y-m-d');
+            if (isset($coveredDates[$dateStr])) {
+                continue;
+            }
+
+            // Ordinary weekends/off-days (no override, no ShiftAssignment
+            // day-of-week match) still get a row - collapsing "explicit rest
+            // override" and "implicit non-workday" into the same "Rest Day"
+            // label mirrors how ResolvedScheduleService::buildMonth() already
+            // displays both cases identically elsewhere in this app.
+            if (! WorkSchedule::isWorkday($employee, $cursor, $shiftAssignments)) {
+                $data->push([
+                    'date' => $cursor->format('M d, Y (D)'),
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
+                    'time_in_ot' => '-', 'time_out_ot' => '-',
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>',
+                    'office_order_badge' => '',
+                ]);
+
+                continue;
+            }
+
+            $dateSchedule = WorkSchedule::forUserOnDate($employee, $cursor, $shiftAssignments);
+
+            $uncoveredSuspension = $suspensionMap[$dateStr] ?? null;
+            $uncoveredSuspensionSlots = [];
+            if ($uncoveredSuspension !== null && ! $employee->isFrontlineExempt()) {
+                [$dateSchedule, $uncoveredSuspensionSlots] = $dateSchedule->applySuspension($uncoveredSuspension->suspension_time);
+            }
+
+            if (count($uncoveredSuspensionSlots) === 4) {
+                // Full-day suspension with no Dtr row at all for this date -
+                // there are no punches to impute from, so just badge it.
+                $data->push([
+                    'date' => $cursor->format('M d, Y (D)'),
+                    'time_in_am' => 'SUSPENDED',
+                    'time_out_am' => 'SUSPENDED',
+                    'time_in_pm' => 'SUSPENDED',
+                    'time_out_pm' => 'SUSPENDED',
+                    'time_in_ot' => '-',
+                    'time_out_ot' => '-',
+                    'late_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'hours_worked' => '-',
+                    'overtime_minutes' => 0,
+                    'is_late' => false,
+                    'is_undertime' => false,
+                    'is_overtime' => false,
+                    'is_am_in_late' => false,
+                    'is_pm_in_late' => false,
+                    'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>',
+                    'office_order_badge' => '',
+                ]);
+
+                continue;
+            }
+
+            // Otherwise: no suspension, or only a partial one (afternoon-only /
+            // capped-workEnd-only) - $dateSchedule's workEnd already reflects
+            // any cap, so the gate below fires as soon as THAT reduced shift
+            // has ended, not the unadjusted one.
+            $uncoveredShiftEnded = Carbon::now()->gte($dateSchedule->referenceDateTime($dateStr, $dateSchedule->workEnd));
+            if (! $uncoveredShiftEnded) {
+                // Same-day/future date whose shift hasn't finished yet - not
+                // missing yet, so no "Absent" claim, but the date still gets
+                // a row so the month renders as a complete calendar.
+                $data->push([
+                    'date' => $cursor->format('M d, Y (D)'),
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
+                    'time_in_ot' => '-', 'time_out_ot' => '-',
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'status_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'office_order_badge' => '',
+                ]);
+
+                continue;
+            }
+
+            $data->push([
+                'date' => $cursor->format('M d, Y (D)'),
+                'time_in_am' => 'Missing',
+                'time_out_am' => $dateSchedule->noBreak ? '-' : 'Missing',
+                'time_in_pm' => $dateSchedule->noBreak ? '-' : 'Missing',
+                'time_out_pm' => 'Missing',
+                'time_in_ot' => '-',
+                'time_out_ot' => '-',
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'hours_worked' => '-',
+                'overtime_minutes' => 0,
+                'is_late' => false,
+                'is_undertime' => false,
+                'is_overtime' => false,
+                'is_am_in_late' => false,
+                'is_pm_in_late' => false,
+                'is_pm_out_undertime' => false,
+                'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                'status_badge' => '<span class="hris-badge badge-rejected">Absent</span>',
+                'office_order_badge' => '',
+            ]);
         }
 
         $data = $data->sortBy('date')->values();

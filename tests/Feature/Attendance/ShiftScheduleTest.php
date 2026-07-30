@@ -19,6 +19,7 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftManagementGrant;
 use App\Models\User;
+use App\Models\WorkSuspension;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
 use App\Services\PersonnelLogImportService;
@@ -443,7 +444,7 @@ class ShiftScheduleTest extends TestCase
         $this->assertCount(2, $groups['2026-06-01']);
     }
 
-    /** @return array{0: \App\Models\User, 1: \App\Models\Shift} an employee on an open-ended 24h crossing shift from $from */
+    /** @return array{0: User, 1: Shift} an employee on an open-ended 24h crossing shift from $from */
     private function employeeOnTwentyFourHourShift(string $from): array
     {
         $shift = $this->twentyFourHourShiftModel();
@@ -1434,6 +1435,109 @@ class ShiftScheduleTest extends TestCase
         $this->assertSame(240, $row['undertime_minutes']); // 13:00 -> 17:00 shift end
         $this->assertTrue($row['is_undertime']);
         $this->assertTrue($row['is_pm_out_undertime']);
+    }
+
+    public function test_daily_time_records_shows_absent_row_for_uncovered_workday_with_no_punches(): void
+    {
+        // 2026-06-15 is a Monday (scheduled workday under the default Mon-Fri
+        // global schedule); freeze "now" well past its shift end so the
+        // uncovered-day pass's shiftEnded gate fires.
+        $this->travelTo(Carbon::parse('2026-06-16 09:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Nopunches']);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row, 'A scheduled workday with zero punches must still appear in the DTR list.');
+        $this->assertSame('Missing', $row['time_in_am']);
+        $this->assertSame('Missing', $row['time_out_pm']);
+        $this->assertStringContainsString('Absent', $row['status_badge']);
+    }
+
+    public function test_daily_time_records_shows_placeholder_row_for_uncovered_workday_whose_shift_has_not_ended_yet(): void
+    {
+        // Same scheduled workday as above, but "now" is still mid-shift on
+        // that very date - it must not be flagged Absent before it's over,
+        // but the date still gets a row so the month renders completely.
+        $this->travelTo(Carbon::parse('2026-06-15 10:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Inprogress']);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row, 'Every date in the period must render a row, even a workday still in progress.');
+        $this->assertSame('-', $row['time_in_am']);
+        $this->assertStringNotContainsString('Absent', $row['status_badge']);
+        $this->assertStringNotContainsString('Missing', $row['status_badge']);
+    }
+
+    public function test_daily_time_records_shows_rest_day_row_for_ordinary_weekend(): void
+    {
+        // 2026-06-13 is a Saturday under the default Mon-Fri global schedule
+        // with no overrides - a non-workday, but the month should still
+        // render a row for it instead of omitting the date entirely.
+        $this->travelTo(Carbon::parse('2026-06-16 09:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Weekenddate']);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-13')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row, 'An ordinary weekend date must still render a row.');
+        $this->assertStringContainsString('Rest Day', $row['status_badge']);
+    }
+
+    public function test_daily_time_records_shows_work_suspended_row_for_full_day_suspension_with_no_punches(): void
+    {
+        $this->travelTo(Carbon::parse('2026-06-16 09:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Suspendedday']);
+        WorkSuspension::create([
+            'suspension_date' => '2026-06-15',
+            'suspension_time' => null, // null = full-day suspension
+            'reason' => 'Typhoon',
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row, 'A full-day work suspension with zero punches must still appear in the DTR list.');
+        $this->assertSame('SUSPENDED', $row['time_in_am']);
+        $this->assertStringContainsString('Work Suspended', $row['status_badge']);
     }
 
     // ── Department Head / Administrative Officer: grant-gated, dept-scoped access ──
