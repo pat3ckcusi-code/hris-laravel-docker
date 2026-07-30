@@ -63,7 +63,7 @@ return [
 
     'providers' => [
         'users' => [
-            'driver' => 'eloquent',
+            'driver' => 'eloquent-expiring-remember',
             'model' => env('AUTH_MODEL', User::class),
         ],
 
@@ -72,6 +72,25 @@ return [
         //     'table' => 'users',
         // ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Remember-Me Token Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | Laravel's remember_token has no built-in server-side expiration - once
+    | issued it remains valid forever until explicitly rotated (logout,
+    | password reset). This value is the number of days a remember-me token
+    | stays valid server-side, enforced by the "eloquent-expiring-remember"
+    | provider driver above (App\Auth\ExpiringRememberTokenUserProvider,
+    | registered in AppServiceProvider). A token with no recorded issue
+    | timestamp (remember_token_created_at is null - e.g. every row that
+    | predates this feature) is treated as already expired, not
+    | grandfathered in.
+    |
+    */
+
+    'remember_token_expiration_days' => env('AUTH_REMEMBER_TOKEN_EXPIRATION_DAYS', 12),
 
     /*
     |--------------------------------------------------------------------------

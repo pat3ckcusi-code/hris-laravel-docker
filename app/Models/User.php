@@ -29,6 +29,7 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
  * @property string $password
  * @property bool $force_password_change
  * @property string|null $remember_token
+ * @property Carbon|null $remember_token_created_at
  * @property string|null $EmpNo
  * @property string|null $atm_no
  * @property string|null $UserName
@@ -238,7 +239,27 @@ class User extends Authenticatable
             'dtr_exempt' => 'boolean',
             'is_frontline' => 'boolean',
             'job_order_auto_deactivated_at' => 'datetime',
+            'remember_token_created_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Keep remember_token_created_at in sync with remember_token so
+     * App\Auth\ExpiringRememberTokenUserProvider can enforce server-side
+     * expiration - the framework itself has no such tracking. Catches every
+     * writer of remember_token (login-with-remember, logout's token cycling,
+     * ResetPasswordController's forceFill, and the expiring provider's own
+     * cleanup) since they all funnel through Model::save().
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $user) {
+            if ($user->isDirty('remember_token')) {
+                $user->remember_token_created_at = $user->remember_token === null
+                    ? null
+                    : now();
+            }
+        });
     }
 
     /**

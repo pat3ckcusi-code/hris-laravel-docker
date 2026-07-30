@@ -2,13 +2,16 @@
 
 namespace App\Providers;
 
+use App\Auth\ExpiringRememberTokenUserProvider;
 use App\Events\HolidayCreated;
 use App\Listeners\CancelLeavesOnHoliday;
 use App\Models\Setting;
 use App\Models\User;
 use App\Observers\UserObserver;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
@@ -30,6 +33,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Auth::provider('eloquent-expiring-remember', function ($app, array $config) {
+            return new ExpiringRememberTokenUserProvider($app['hash'], $config['model']);
+        });
+
+        // Defense-in-depth: align the browser-side "remember me" cookie's max-age
+        // with the server-side token lifetime above, instead of leaving it at
+        // Laravel's 400-day default (SessionGuard::$rememberDuration) while the
+        // server-side token itself expires in a fraction of that. Must resolve
+        // the guard eagerly here (not via a Login event listener) because
+        // SessionGuard::login() queues the recaller cookie before firing that
+        // event - too late to affect the very first login of a request.
+        $guard = Auth::guard('web');
+        if ($guard instanceof SessionGuard) {
+            $guard->setRememberDuration((int) config('auth.remember_token_expiration_days') * 60 * 24);
+        }
+
         User::observe(UserObserver::class);
 
         Event::listen(HolidayCreated::class, CancelLeavesOnHoliday::class);
