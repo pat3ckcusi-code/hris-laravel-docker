@@ -3,6 +3,14 @@
     'subtitle' => $deduction->deduction_category === 'loan' ? 'Loan provider details.' : 'Deduction type details and employee assignments.',
 ])
 
+@section('page_head')
+{{-- Flatpickr core + monthSelect plugin, for the Upload Billing modal's Billing Month field --}}
+<link rel="stylesheet" href="{{ asset('vendor/flatpickr/flatpickr.min.css') }}">
+<link rel="stylesheet" href="{{ asset('vendor/flatpickr/plugins/monthSelect/style.css') }}">
+<script src="{{ asset('vendor/flatpickr/flatpickr.min.js') }}"></script>
+<script src="{{ asset('vendor/flatpickr/plugins/monthSelect/index.js') }}"></script>
+@endsection
+
 @section('top_actions')
     <div class="header-actions">
         @if($deduction->isWithholdingTax())
@@ -675,7 +683,8 @@
             </div>
             <div class="form-group">
                 <label for="billing-month"><i class="fas fa-calendar-days"></i> Billing Month</label>
-                <input type="month" name="billing_month" id="billing-month" class="form-input" required value="{{ now()->format('Y-m') }}">
+                <input type="text" name="billing_month" id="billing-month" class="form-input"
+                       placeholder="Select month…" required readonly value="{{ now()->format('Y-m') }}">
             </div>
             <div class="form-group">
                 <label for="billing-file"><i class="fas fa-file-csv"></i> Billing File (xlsx, xls, or csv)</label>
@@ -978,6 +987,22 @@
         var templateBaseUrl = '{{ route("payroll.contributions.loans.billing-template", $deduction->id) }}';
         billingMonthInput.addEventListener('change', function () {
             downloadTemplateLink.href = templateBaseUrl + '?month=' + this.value;
+        });
+    }
+    if (billingMonthInput && typeof flatpickr !== 'undefined') {
+        // static:true: the default (non-static) mode appends the calendar to
+        // document.body/appendTo and positions it with JS math based on
+        // getBoundingClientRect() of the page - which is wrong once the input
+        // is inside a <dialog> promoted to the browser's top layer (that
+        // layer isn't part of the normal document flow the math assumes), so
+        // the popup lands off in the wrong spot. static mode instead inserts
+        // the calendar as a plain sibling of the input and lets CSS position
+        // it directly underneath, sidestepping that math entirely.
+        flatpickr(billingMonthInput, {
+            plugins: [new monthSelectPlugin({ shorthand: false, dateFormat: 'Y-m', altFormat: 'F Y' })],
+            defaultDate: new Date(),
+            disableMobile: true,
+            static: true,
         });
     }
 })();
