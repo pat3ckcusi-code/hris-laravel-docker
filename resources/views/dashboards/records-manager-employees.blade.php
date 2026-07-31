@@ -79,11 +79,6 @@
             </label>
 
             <label>
-                ATM No.
-                <input type="text" name="atm_no" value="{{ old('atm_no') }}">
-            </label>
-
-            <label>
                 Designation
                 <input type="text" name="designation" value="{{ old('designation') }}" data-uppercase-input>
             </label>
@@ -271,7 +266,6 @@
                                     data-middle-name="{{ $employee->middle_name }}"
                                     data-email="{{ $employee->email }}"
                                     data-emp-no="{{ $employee->EmpNo }}"
-                                    data-atm-no="{{ $employee->atm_no }}"
                                     data-designation="{{ $employee->designation }}"
                                     data-dept-id="{{ $employee->Dept_id }}"
                                     data-date-hired="{{ optional($employee->date_hired)->format('Y-m-d') }}"
@@ -352,11 +346,6 @@
             <label>
                 Agency Employee No.
                 <input type="text" name="EmpNo" id="updateEmpNo" value="{{ old('EmpNo') }}" data-uppercase-input>
-            </label>
-
-            <label>
-                ATM No.
-                <input type="text" name="atm_no" id="updateAtmNo" value="{{ old('atm_no') }}">
             </label>
 
             <label>
@@ -521,7 +510,6 @@
             const updateMiddleName = document.getElementById('updateMiddleName');
             const updateEmail = document.getElementById('updateEmail');
             const updateEmpNo = document.getElementById('updateEmpNo');
-            const updateAtmNo = document.getElementById('updateAtmNo');
             const updateDesignation = document.getElementById('updateDesignation');
             const updateDeptId = document.getElementById('updateDeptId');
             const updateDateHired = document.getElementById('updateDateHired');
@@ -597,7 +585,6 @@
                     if (updateMiddleName) updateMiddleName.value = button.dataset.middleName || '';
                     if (updateEmail) updateEmail.value = button.dataset.email || '';
                     if (updateEmpNo) updateEmpNo.value = button.dataset.empNo || '';
-                    if (updateAtmNo) updateAtmNo.value = button.dataset.atmNo || '';
                     if (updateDesignation) updateDesignation.value = button.dataset.designation || '';
                     if (updateDateHired) updateDateHired.value = button.dataset.dateHired || '';
                     if (updateDeptId) updateDeptId.value = button.dataset.deptId || '';

@@ -37,8 +37,6 @@
         <tr>
             <td class="label">Position:</td>
             <td>{{ $position ?? '-' }}</td>
-            <td class="label">ATM No.:</td>
-            <td>{{ $employee->atm_no ?? '-' }}</td>
         </tr>
         <tr>
             <td class="label">Department:</td>

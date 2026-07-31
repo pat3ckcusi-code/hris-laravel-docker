@@ -31,7 +31,6 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
  * @property string|null $remember_token
  * @property Carbon|null $remember_token_created_at
  * @property string|null $EmpNo
- * @property string|null $atm_no
  * @property string|null $UserName
  * @property string|null $AcctName
  * @property string|null $designation
@@ -106,7 +105,6 @@ class User extends Authenticatable
         'name_extension',
         'email',
         'password',
-        'atm_no',
         'leave_balance',
         'date_hired',
         'employee_type',
