@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             UsersTableSeeder::class,
             ResetLeaveTablesSeeder::class,
             SalaryMatrix2026Seeder::class,
+            SalaryMatrixSecondTrancheSeeder::class,
         ]);
     }
 }
