@@ -7,6 +7,7 @@ use App\Models\Deduction;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollRun;
 use App\Services\PayrollComputationService;
+use App\Services\PayrollFormExportService;
 use App\Support\HrisConstants;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -187,11 +188,51 @@ class PayrollRunController extends Controller
         return back()->with('status', 'Payroll run has been locked.');
     }
 
-    public function export(int $id)
+    public function export(Request $request, int $id, PayrollFormExportService $exportService)
     {
-        $run = PayrollRun::with('details.employee')->findOrFail($id);
+        $run = PayrollRun::with('details.employee.department')->findOrFail($id);
 
-        // Placeholder: export logic (CSV/Excel)
-        return back()->with('status', 'Export feature coming soon.');
+        // Same query param/convention as show()'s own department filter, so exporting
+        // while filtered on the run page scopes the export to just that department.
+        $departmentId = (string) $request->query('department', '');
+        $departmentId = $departmentId !== '' ? $departmentId : null;
+
+        $details = "Payroll form exported for period: {$run->period}";
+        if ($departmentId !== null) {
+            $details .= " (department ID: {$departmentId})";
+        }
+
+        PayrollAuditLog::create([
+            'action' => 'payroll_run_exported',
+            'user_id' => $request->user()->id,
+            'payroll_run_id' => $run->id,
+            'details' => $details,
+            'actioned_at' => now(),
+        ]);
+
+        return $exportService->export($run, $departmentId);
+    }
+
+    public function exportCustom(Request $request, int $id, PayrollFormExportService $exportService)
+    {
+        $run = PayrollRun::with('details.employee.department')->findOrFail($id);
+
+        $validated = $request->validate([
+            'departments' => 'required|array|min:1',
+            'departments.*' => 'string',
+            'department_names' => 'nullable|array',
+            'department_names.*' => 'nullable|string|max:255',
+        ]);
+
+        PayrollAuditLog::create([
+            'action' => 'payroll_run_exported',
+            'user_id' => $request->user()->id,
+            'payroll_run_id' => $run->id,
+            'details' => 'Payroll form exported for period: '.$run->period
+                .' (custom selection: '.count($validated['departments']).' department(s))',
+            'actioned_at' => now(),
+        ]);
+
+        return $exportService->exportSelected($run, $validated['departments'], $validated['department_names'] ?? []);
     }
 }

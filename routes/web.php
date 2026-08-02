@@ -761,6 +761,7 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
     Route::post('/runs/{id}/compute', [PayrollRunController::class, 'compute'])->name('runs.compute');
     Route::post('/runs/{id}/lock', [PayrollRunController::class, 'lock'])->name('runs.lock');
     Route::get('/runs/{id}/export', [PayrollRunController::class, 'export'])->name('runs.export');
+    Route::post('/runs/{id}/export/custom', [PayrollRunController::class, 'exportCustom'])->name('runs.export.custom');
 
     // Resource routes
     Route::resource('attendance', PayrollAttendanceController::class)->names([
@@ -896,15 +897,8 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'audit-logs.update',
         'destroy' => 'audit-logs.destroy',
     ]);
-    Route::resource('settings', PayrollSettingsController::class)->names([
-        'index' => 'settings.index',
-        'create' => 'settings.create',
-        'store' => 'settings.store',
-        'show' => 'settings.show',
-        'edit' => 'settings.edit',
-        'update' => 'settings.update',
-        'destroy' => 'settings.destroy',
-    ]);
+    Route::get('settings', [PayrollSettingsController::class, 'index'])->name('settings.index');
+    Route::put('settings', [PayrollSettingsController::class, 'update'])->name('settings.update');
 });
 
 Route::fallback(function () {

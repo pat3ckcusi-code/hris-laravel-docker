@@ -15,7 +15,8 @@
                 <button type="button" class="btn btn-sm btn-danger" id="lock-btn" onclick="confirmLock()"><i class="fas fa-lock"></i> Lock</button>
             </form>
         @endif
-        <a href="{{ route('payroll.runs.export', $run->id) }}" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export</a>
+        <a href="{{ route('payroll.runs.export', $run->id) }}{{ $selectedDepartment !== '' ? '?department='.$selectedDepartment : '' }}" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export</a>
+        <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('customExportModal').showModal()"><i class="fas fa-list-check"></i> Custom Export</button>
         <a href="{{ route('payroll.runs.index') }}" class="btn btn-sm btn-outline">Back</a>
     </div>
 @endsection
@@ -157,8 +158,62 @@
     </section>
 @endsection
 
+@section('modals')
+<dialog id="customExportModal" class="employee-modal">
+    <div class="modal-icon-header">
+        <div class="modal-icon-heading">
+            <span class="modal-icon-badge"><i class="fas fa-list-check"></i></span>
+            <div>
+                <h3>Custom Export</h3>
+                <p class="modal-subtitle">Pick departments to include, and optionally change how each one prints on the form</p>
+            </div>
+        </div>
+        <form method="dialog"><button type="submit" class="modal-close" aria-label="Close">x</button></form>
+    </div>
+
+    <form method="POST" action="{{ route('payroll.runs.export.custom', $run->id) }}" class="payroll-form" style="margin-top:12px">
+        @csrf
+        <div class="form-group">
+            <label for="custom-export-search"><i class="fas fa-search"></i> Search departments</label>
+            <input type="text" id="custom-export-search" class="form-input" placeholder="Type to filter&hellip;" oninput="filterCustomExportDepartments(this.value)">
+        </div>
+
+        <div style="max-height:340px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-top:8px">
+            @foreach($departments as $dept)
+                <div class="custom-export-row" data-search="{{ strtolower($dept->Dept_name) }}" style="padding:6px 0;border-bottom:1px solid #f1f5f9">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" name="departments[]" value="{{ $dept->Dept_id }}" onchange="toggleCustomExportName(this)">
+                        <span>{{ $dept->Dept_name }}</span>
+                    </label>
+                    <div class="custom-export-name-field" style="display:none;margin-top:6px;padding-left:24px">
+                        <input type="text" name="department_names[{{ $dept->Dept_id }}]" class="form-input" value="{{ $dept->Dept_name }}" placeholder="Name to print on the form">
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <div class="form-actions" style="margin-top:14px">
+            <button type="submit" class="btn"><i class="fas fa-download"></i> Export Selected</button>
+            <button type="button" class="btn btn-outline" onclick="this.closest('dialog').close()">Cancel</button>
+        </div>
+    </form>
+</dialog>
+@endsection
+
 @section('page_scripts_after')
 <script>
+function toggleCustomExportName(checkbox) {
+    const nameField = checkbox.closest('.custom-export-row').querySelector('.custom-export-name-field');
+    nameField.style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function filterCustomExportDepartments(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.custom-export-row').forEach(function (row) {
+        row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+    });
+}
+
 function confirmCompute() {
     const message = 'This (re)calculates pay for every active employee this period from current DTR, leave, and salary data. Any previously computed figures for this run will be overwritten.';
 
