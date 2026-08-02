@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\OfficeOrderWordExportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -57,7 +56,7 @@ class OfficeOrderController extends Controller
                     $u = User::where('EmpNo', $eno)->first();
 
                     return $u ? ($u->last_name.', '.$u->first_name) : $eno;
-                })->values();
+                })->sort()->values();
 
             return [
                 'id' => $o->id,
@@ -138,14 +137,17 @@ class OfficeOrderController extends Controller
         return app(OfficeOrderWordExportService::class)->download($order, $this->recipients($order), $this->issuer($order));
     }
 
-    // Recipients ("To") for an office order, as full-name + designation pairs.
+    // Recipients ("To") for an office order, as full-name + designation pairs, ordered by last name.
     private function recipients($order)
     {
         $empNos = DB::table('office_order_employees')->where('office_order_id', $order->id)->pluck('emp_no')->toArray();
 
-        return User::whereIn('EmpNo', $empNos)->get()->map(function ($u) {
-            return ['name' => trim($u->first_name.' '.$u->last_name), 'designation' => $u->designation ?? ''];
-        })->values();
+        return User::whereIn('EmpNo', $empNos)
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get()->map(function ($u) {
+                return ['name' => trim($u->first_name.' '.$u->last_name), 'designation' => $u->designation ?? ''];
+            })->values();
     }
 
     // "From" for an office order: the head of the recipients' department,
@@ -183,6 +185,7 @@ class OfficeOrderController extends Controller
         $validated = $request->validate([
             'employee_ids' => 'required|array|min:1',
             'employee_ids.*' => 'exists:users,id',
+            'office_order_num' => 'required|string|max:255',
             'issued_date' => 'required|date',
             'effective_date' => 'nullable|date|after_or_equal:issued_date',
             'subject' => 'required|string|max:255',
@@ -195,15 +198,7 @@ class OfficeOrderController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        // Auto-assign office order number in "YYYY - NNN" format, sequenced per issuing year.
-        $year = Carbon::parse($validated['issued_date'])->year;
-        $prefix = $year.' - ';
-        $latest = DB::table('office_orders')
-            ->where('office_order_num', 'like', $prefix.'%')
-            ->orderByDesc('office_order_num')
-            ->value('office_order_num');
-        $next = $latest ? ((int) substr($latest, strlen($prefix))) + 1 : 1;
-        $officeOrderNum = $prefix.str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+        $officeOrderNum = $validated['office_order_num'];
 
         $officeOrderId = DB::table('office_orders')->insertGetId([
             'office_order_num' => $officeOrderNum,
@@ -249,12 +244,13 @@ class OfficeOrderController extends Controller
         ]);
     }
 
-    // Update an existing office order (recipients + memo fields). The order number is preserved.
+    // Update an existing office order (recipients + memo fields, including the order number).
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
             'employee_ids' => 'required|array|min:1',
             'employee_ids.*' => 'exists:users,id',
+            'office_order_num' => 'required|string|max:255',
             'issued_date' => 'required|date',
             'effective_date' => 'nullable|date|after_or_equal:issued_date',
             'subject' => 'required|string|max:255',
@@ -273,6 +269,7 @@ class OfficeOrderController extends Controller
         }
 
         DB::table('office_orders')->where('id', $id)->update([
+            'office_order_num' => $validated['office_order_num'],
             'subject' => $validated['subject'],
             'issued_date' => $validated['issued_date'],
             'effective_date' => $validated['effective_date'] ?? null,

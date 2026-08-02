@@ -34,6 +34,8 @@ class TravelOrderController extends Controller
 
         $employees = User::whereIn('Dept_id', $deptIds)
             ->select('id', 'EmpNo', 'name', 'last_name', 'first_name', 'designation')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
             ->get();
 
         return response()->json(['employees' => $employees]);

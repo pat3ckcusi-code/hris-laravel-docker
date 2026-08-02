@@ -29,7 +29,7 @@
                 <i class="fas fa-file-signature"></i> {{ $isEdit ? 'Edit Office Order' : 'New Office Order' }}
             </h3>
             <div class="text-muted" style="font-size:0.85rem; margin-top:2px;">
-                {{ $isEdit ? 'Office Order No. ' . $order->office_order_num . ' — number is preserved' : 'Number is auto-assigned (format: YYYY - NNN)' }}
+                {{ $isEdit ? 'Editing Office Order No. ' . $order->office_order_num : 'Enter your department\'s own Office Order Number below.' }}
             </div>
         </div>
         @if ($isEdit)
@@ -73,7 +73,11 @@
             </div>
 
             <div class="oo-section-title">Content</div>
-            <div class="field-grid">
+            <div class="field-grid two">
+                <label>
+                    Office Order Number
+                    <input type="text" class="form-input" id="office_order_num" name="office_order_num" required placeholder="e.g. 2026 - 073" value="{{ $isEdit ? $order->office_order_num : '' }}">
+                </label>
                 <label>
                     Subject
                     <input type="text" class="form-input" id="subject" name="subject" required placeholder="Enter subject (e.g. As Stated)" value="{{ $isEdit ? $order->subject : '' }}">
