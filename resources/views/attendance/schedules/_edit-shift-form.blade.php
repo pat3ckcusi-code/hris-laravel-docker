@@ -29,12 +29,12 @@
         @method('PUT')
         <input type="hidden" name="form_type" value="edit">
         <select name="shift_id" class="sched-shift-select">
-            <option value="" @selected($row->shift_id === null)>Standard Day</option>
+            <option value="" @selected($row->shift_id === null) data-no-break="0">Standard Day</option>
             @unless($rowShiftInList)
-                <option value="{{ $row->shift_id }}" selected>{{ $row->shift->name }} (inactive)</option>
+                <option value="{{ $row->shift_id }}" selected data-no-break="{{ $row->shift->no_break ? 1 : 0 }}">{{ $row->shift->name }} (inactive)</option>
             @endunless
             @foreach ($shifts as $s)
-                <option value="{{ $s->id }}" @selected($row->shift_id === $s->id)>{{ $s->name }}</option>
+                <option value="{{ $s->id }}" @selected($row->shift_id === $s->id) data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
             @endforeach
         </select>
         <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>

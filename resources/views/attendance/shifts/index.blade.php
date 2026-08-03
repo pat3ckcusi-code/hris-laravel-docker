@@ -35,9 +35,11 @@
 <div class="shift-form-card">
     <h3 style="margin:0 0 .75rem;font-size:.9rem;font-weight:600;color:#0f172a;">New Shift Template</h3>
     <p style="margin:0 0 .75rem;font-size:.78rem;color:#64748b;">
-        A template is just clock times - Work Days and No Break (2-punch) are set per employee on the
-        <a href="{{ route('attendance.schedules') }}">Shift Assignment</a> screen, so the same template can be
-        scheduled differently for different employees.
+        A template is just clock times, plus a default No Break (2-punch) setting used only to pre-fill the
+        checkbox when you pick this template on the <a href="{{ route('attendance.schedules') }}">Shift
+        Assignment</a> / Shift Schedule screens - Work Days, and the No Break actually used, are still set per
+        employee there, so the same template can be scheduled differently (with or without a break, on different
+        days) for different employees.
     </p>
     <form method="POST" action="{{ route('attendance.shifts.store') }}" id="create-shift-form">
         @csrf
@@ -47,6 +49,12 @@
             <div class="shift-field"><label>Break Out</label><input type="time" name="break_out" value="12:00" required></div>
             <div class="shift-field"><label>Break In</label><input type="time" name="break_in" value="13:00" required></div>
             <div class="shift-field"><label>Time Out</label><input type="time" name="time_out" value="17:00" required></div>
+            <div class="shift-field" style="align-self:center;">
+                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" name="no_break" value="1" id="create-no-break" style="width:auto;">
+                    <span>No Break (2-punch) default</span>
+                </label>
+            </div>
             <div class="shift-field" style="align-self:center;">
                 <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
                     <input type="checkbox" name="is_global" value="1" id="create-is-global" style="width:auto;" checked onchange="toggleCreateDeptPicker(this)">
@@ -84,6 +92,7 @@
                     <th>Break Out</th>
                     <th>Break In</th>
                     <th>Time Out</th>
+                    <th>No Break</th>
                     <th>Type</th>
                     <th class="shift-scope-cell">Scope</th>
                     <th>Employees</th>
@@ -99,6 +108,11 @@
                         <td><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
                         <td><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
                         <td><input form="{{ $fid }}" type="time" name="time_out" value="{{ substr($shift->time_out,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
+                        <td style="text-align:center;">
+                            <input form="{{ $fid }}" type="checkbox" name="no_break" value="1"
+                                {{ $shift->no_break ? 'checked' : '' }} {{ $canManage ? '' : 'disabled' }}
+                                style="width:auto;cursor:pointer;">
+                        </td>
                         <td>
                             @if ($shift->crosses_midnight)
                                 <span class="shift-badge-night">Night</span>
@@ -158,7 +172,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
+                    <tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:1.5rem;">No shift templates yet. Add one above.</td></tr>
                 @endforelse
             </tbody>
         </table>

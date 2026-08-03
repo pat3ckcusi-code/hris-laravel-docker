@@ -509,9 +509,9 @@
         <div class="ss-bulk-field">
             <label for="bulk_shift_id">Shift</label>
             <select name="shift_id" id="bulk_shift_id" required>
-                <option value="">Select shift…</option>
+                <option value="" data-no-break="0">Select shift…</option>
                 @foreach($shifts as $shift)
-                    <option value="{{ $shift->id }}">{{ $shift->name }}</option>
+                    <option value="{{ $shift->id }}" data-no-break="{{ $shift->no_break ? 1 : 0 }}">{{ $shift->name }}</option>
                 @endforeach
             </select>
         </div>
@@ -635,9 +635,9 @@
                     <label class="ss-rotation-field">
                         Shift
                         <select name="shift_id" id="rot_shift_id" required>
-                            <option value="">Select shift…</option>
+                            <option value="" data-no-break="0">Select shift…</option>
                             @foreach($shifts as $shift)
-                                <option value="{{ $shift->id }}">{{ $shift->name }}</option>
+                                <option value="{{ $shift->id }}" data-no-break="{{ $shift->no_break ? 1 : 0 }}">{{ $shift->name }}</option>
                             @endforeach
                         </select>
                     </label>
@@ -650,7 +650,7 @@
                         <input type="number" name="off_days" id="rot_off_days" min="0" value="0" required>
                     </label>
                     <label class="ss-rotation-field ss-rotation-checkbox">
-                        <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
+                        <input type="checkbox" name="no_break" value="1" id="rot_no_break"> No Break (2-punch)
                     </label>
                     <label class="ss-rotation-field">
                         From
@@ -908,6 +908,24 @@ function wireRotationPreview(containerId, onDaysId, offDaysId, startId, endId) {
 
 wireRotationPreview('rotation-preview', 'rot_on_days', 'rot_off_days', 'rot_start_date', 'rot_end_date');
 wireRotationPreview('bulk-rotation-preview', 'bulk_on_days', 'bulk_off_days', 'bulk_start_date', 'bulk_end_date');
+
+/* ── Shift no_break default pre-fill ────────────────────────────
+   Mirrors the selected shift template's own no_break default onto this
+   form's no_break checkbox - a client-side convenience only; the checkbox's
+   own state at submit time is what's actually sent (server-side validation/
+   write in ShiftScheduleController is unchanged). Bound via 'change' only,
+   so it never fires on initial page render. */
+function bindShiftNoBreakPrefill(selectId, checkboxId) {
+    var select = document.getElementById(selectId);
+    var checkbox = document.getElementById(checkboxId);
+    if (!select || !checkbox) return;
+    select.addEventListener('change', function () {
+        var opt = select.options[select.selectedIndex];
+        checkbox.checked = !!opt && opt.dataset.noBreak === '1';
+    });
+}
+bindShiftNoBreakPrefill('bulk_shift_id', 'bulk_no_break');
+bindShiftNoBreakPrefill('rot_shift_id', 'rot_no_break');
 
 /* ── Bulk rotation selection ──────────────────────────────────── */
 var bulkRotationForm = document.getElementById('bulk-rotation-form');

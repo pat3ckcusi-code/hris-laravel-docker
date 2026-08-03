@@ -169,9 +169,9 @@
     <div>
         <label for="assign_shift_id">Bulk assign shift</label>
         <select name="assign_shift_id" id="assign_shift_id" class="sched-shift-select">
-            <option value="">Standard Day (default)</option>
+            <option value="" data-no-break="0">Standard Day (default)</option>
             @foreach ($shifts as $s)
-                <option value="{{ $s->id }}">{{ $s->name }}</option>
+                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
             @endforeach
         </select>
     </div>
@@ -437,9 +437,9 @@
                                         @method('PUT')
                                         <input type="hidden" name="form_type" value="add">
                                         <select name="shift_id" class="sched-shift-select">
-                                            <option value="">Standard Day</option>
+                                            <option value="" data-no-break="0">Standard Day</option>
                                             @foreach ($shifts as $s)
-                                                <option value="{{ $s->id }}">{{ $s->name }}</option>
+                                                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
                                             @endforeach
                                         </select>
                                         <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>
@@ -553,6 +553,23 @@ function bindAdvancedSplit(detailsEl) {
 }
 
 document.querySelectorAll('.sched-advanced-split').forEach(bindAdvancedSplit);
+
+// Pre-fills each shift-picker form's own no_break checkbox from the
+// just-selected template's default (Shift::no_break) - a client-side
+// convenience only. The checkbox's own state at submit time is what's
+// actually sent; server-side validation/persistence in
+// EmployeeScheduleController is unchanged. Bound via 'change' only, never
+// invoked on initial render, so an Edit row's own pre-checked value (from
+// ShiftAssignment::no_break) is never clobbered on page load.
+document.querySelectorAll('.sched-shift-select').forEach(function (select) {
+    select.addEventListener('change', function () {
+        var form = select.closest('form');
+        var noBreakCb = form && form.querySelector('input[name="no_break"]');
+        if (!noBreakCb) return;
+        var opt = select.options[select.selectedIndex];
+        noBreakCb.checked = !!opt && opt.dataset.noBreak === '1';
+    });
+});
 
 // Confirm before toggling exemption - explain the consequence in plain language.
 document.querySelectorAll('.sched-exempt-form').forEach(function (form) {

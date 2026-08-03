@@ -18,10 +18,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * department, including ones created later) or scoped to the specific
  * departments attached via the departments() pivot.
  *
- * Work Days and No Break (2-punch) are NOT template properties - they're
- * decided per employee/period on the shift_assignments row (see
- * App\Models\ShiftAssignment), so the same template's clock times can be
- * scheduled differently for different employees.
+ * Work Days is NOT a template property - it's decided per employee/period
+ * on the shift_assignments row (see App\Models\ShiftAssignment). No Break
+ * (2-punch) has a template-level default (no_break) used only to pre-fill
+ * the per-employee checkbox on the Shift Assignment / Shift Schedule
+ * screens when this template is selected - the actual value used for DTR
+ * resolution always comes from the shift_assignments/employee_shift_schedules
+ * row, not this column, so the same template's clock times can still be
+ * scheduled with or without a break differently per employee.
  *
  * @property int $id
  * @property string $name
@@ -32,6 +36,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $crosses_midnight
  * @property bool $is_active
  * @property bool $is_global
+ * @property bool $no_break
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -48,6 +53,7 @@ class Shift extends Model
         'crosses_midnight',
         'is_active',
         'is_global',
+        'no_break',
     ];
 
     protected function casts(): array
@@ -56,6 +62,7 @@ class Shift extends Model
             'crosses_midnight' => 'boolean',
             'is_active' => 'boolean',
             'is_global' => 'boolean',
+            'no_break' => 'boolean',
         ];
     }
 

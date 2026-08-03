@@ -132,8 +132,11 @@ class ShiftController extends Controller
      * the break slots is a per-assignment decision (ShiftAssignment::no_break),
      * not a template one, so break_out/break_in are unconditionally required
      * here regardless of how any assignment ends up using this template.
+     * The template's own no_break flag validated below is a UI default only
+     * (pre-fills the per-employee checkbox when this template is picked) -
+     * it never controls whether break_out/break_in are required or used.
      *
-     * @return array{name: string, time_in: string, break_out: string, break_in: string, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool}
+     * @return array{name: string, time_in: string, break_out: string, break_in: string, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool, no_break: bool}
      */
     private function validateShift(Request $request): array
     {
@@ -144,6 +147,7 @@ class ShiftController extends Controller
             'break_in' => ['required', 'date_format:H:i'],
             'time_out' => ['required', 'date_format:H:i'],
             'is_global' => ['nullable', 'boolean'],
+            'no_break' => ['nullable', 'boolean'],
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
         ]);
@@ -157,6 +161,7 @@ class ShiftController extends Controller
             'crosses_midnight' => Shift::isCrossMidnight($v['time_in'], $v['time_out']),
             'is_active' => true,
             'is_global' => $request->boolean('is_global'),
+            'no_break' => $request->boolean('no_break'),
         ];
     }
 
