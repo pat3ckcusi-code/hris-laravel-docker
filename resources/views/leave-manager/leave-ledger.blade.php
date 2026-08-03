@@ -98,7 +98,6 @@
                             <th class="text-right">Debit SL</th>
                             <th class="text-right">VL Balance</th>
                             <th class="text-right">SL Balance</th>
-                            <th>Days Present</th>
                             <th>WOP Days</th>
                             <th>Remarks</th>
                             <th>Posted By</th>
@@ -140,6 +139,9 @@
                 <button type="button" id="monthly-run-btn" class="hris-btn hris-btn-primary" style="padding:0.45rem 1.1rem;">
                     <i class="fas fa-play fa-fw"></i> Run Monthly Credits
                 </button>
+                <button type="button" id="monthly-force-recompute-btn" class="hris-btn hris-btn-secondary" style="padding:0.45rem 1.1rem;">
+                    <i class="fas fa-rotate fa-fw"></i> Force Recompute Month
+                </button>
             </div>
 
             <div id="monthly-run-result" style="display:none;padding:0.55rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.86rem;"></div>
@@ -153,7 +155,6 @@
                             <th>Department</th>
                             <th>Year</th>
                             <th>Month</th>
-                            <th class="text-right">Days Present</th>
                             <th class="text-right">WOP Days</th>
                             <th class="text-right">Computed VL</th>
                             <th class="text-right">Computed SL</th>
@@ -246,7 +247,6 @@ $(function () {
             { data: 'debit_sl',         className: 'text-right', render: function (v) { return parseFloat(v) > 0 ? '<span style="color:#dc2626;">−'+v+'</span>' : '<span style="color:#cbd5e1;">'+v+'</span>'; }},
             { data: 'vl_balance_after', className: 'text-right', render: function (v) { return '<strong>'+v+'</strong>'; }},
             { data: 'sl_balance_after', className: 'text-right', render: function (v) { return '<strong>'+v+'</strong>'; }},
-            { data: 'days_present' },
             { data: 'abs_wop_days' },
             { data: 'remarks', defaultContent: '-' },
             { data: 'posted_by' },
@@ -366,14 +366,16 @@ $(function () {
             { data: 'department' },
             { data: 'year' },
             { data: 'month' },
-            { data: 'days_present', className: 'text-right' },
             { data: 'abs_wop_days', className: 'text-right' },
             { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
             { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
             { data: 'processed_at' },
             { data: null, orderable: false, render: function (row) {
-                if (!row.stale) { return '<span style="color:#16a34a;">OK</span>'; }
-                return '<span style="color:#b45309;font-weight:600;">&#9888; Stale</span> ' +
+                var statusHtml = row.stale
+                    ? '<span style="color:#b45309;font-weight:600;">&#9888; Stale</span>'
+                    : '<span style="color:#16a34a;">OK</span>';
+                if (row.processed_at === '-') { return statusHtml; }
+                return statusHtml + ' ' +
                     '<button type="button" class="hris-btn hris-btn-secondary monthly-recompute-btn" ' +
                     'data-user-id="' + row.user_id + '" data-year="' + row.year + '" data-month="' + row.month_number + '" ' +
                     'style="padding:0.2rem 0.6rem;font-size:0.78rem;margin-left:0.4rem;">Recompute</button>';
@@ -462,6 +464,59 @@ $(function () {
             })
             .catch(function () {
                 showRunResult('Network error while processing monthly credits.', true);
+            })
+            .finally(function () {
+                $btn.prop('disabled', false).html(originalHtml);
+            });
+    });
+
+    // ── Force-recompute every already-processed employee for the selected month ──
+    $('#monthly-force-recompute-btn').on('click', function () {
+        var year = $('#monthly-year').val();
+        var month = $('#monthly-month').val();
+
+        if (!month) {
+            showRunResult('Select a specific month before recomputing (not "All months").', true);
+            return;
+        }
+
+        if (!window.confirm(
+            'This will recompute every already-processed employee for the selected month, even ones ' +
+            'not flagged Stale, and post a correction entry for anyone whose figure changes (e.g. after ' +
+            'a calculation fix). Employees with no change get no ledger entry. Continue?'
+        )) {
+            return;
+        }
+
+        var $btn = $(this).prop('disabled', true);
+        var originalHtml = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Recomputing…');
+        $('#monthly-run-result').hide();
+
+        fetch('{{ route('leave-manager.force-recompute-month') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ year: parseInt(year), month: parseInt(month) }),
+        })
+            .then(function (res) {
+                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            })
+            .then(function (result) {
+                if (!result.ok) {
+                    showRunResult(result.data.message || 'Failed to force-recompute monthly credits.', true);
+                    return;
+                }
+                var d = result.data;
+                showRunResult('Recomputed: ' + d.recomputed + ', Changed: ' + d.changed + ', Failed: ' + d.failed, d.failed > 0);
+                loadMonthly();
+            })
+            .catch(function () {
+                showRunResult('Network error while force-recomputing monthly credits.', true);
             })
             .finally(function () {
                 $btn.prop('disabled', false).html(originalHtml);

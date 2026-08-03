@@ -21,12 +21,20 @@ class LwopAggregationService
 {
     /**
      * Compute days_present and abs_wop_days for a user's month, per the CSC Omnibus
-     * Rules on Leave: a flat 30-day month, reduced by non-illness LWOP days and true
-     * AWOL days (no attendance and nothing on file to cover it). LWOP arising from a
-     * Sick Leave request counts as actual service and does not reduce days present.
-     * If the employee was hired partway through the month, the 30-day baseline itself
-     * is scaled down to their actual service window before either is subtracted —
-     * "actual service since appointment" per CSC.
+     * Rules on Leave: a flat 30-day month, reduced by non-illness LWOP days from actual
+     * filed/approved leave requests only. LWOP arising from a Sick Leave request counts
+     * as actual service and does not reduce days present. If the employee was hired
+     * partway through the month, the 30-day baseline itself is scaled down to their
+     * actual service window before LWOP is subtracted — "actual service since
+     * appointment" per CSC.
+     *
+     * AWOL (no attendance and nothing on file to cover it) is computed and returned
+     * separately as awol_days, purely for reporting (e.g. the monthly credit run's
+     * remarks, and the AWOL Monitor screen via computeCurrentAwolStreak()) — it does
+     * NOT reduce days_present/abs_wop_days or monthly leave credit. Only a deliberate,
+     * on-record filed LWOP request does; an algorithmically-detected AWOL is not a
+     * safe basis for automatically docking credit (e.g. a punch-import gap for an
+     * employee with an unmapped EmpNo would look identical to genuine AWOL).
      *
      * Each LWOP request's lwop_days (a whole-request aggregate) is prorated by the
      * fraction of its date range that overlaps this month, since leave_dates.is_lwop
@@ -91,13 +99,13 @@ class LwopAggregationService
             }
         }
 
+        // Reported for visibility only (see docblock above) -- not folded into
+        // days_present/abs_wop_days, so it never reduces monthly leave credit.
         $awolDays = $this->classifyWorkdays($user, $serviceStart, $monthEnd)->filter()->count();
 
-        $totalUnpaidAbsence = $nonIllnessLwop + $awolDays;
-
         return [
-            'days_present' => round(max(0, $monthBaseline - $totalUnpaidAbsence), 3),
-            'abs_wop_days' => round($totalUnpaidAbsence, 3),
+            'days_present' => round(max(0, $monthBaseline - $nonIllnessLwop), 3),
+            'abs_wop_days' => round($nonIllnessLwop, 3),
             'awol_days' => round($awolDays, 3),
         ];
     }
@@ -115,6 +123,13 @@ class LwopAggregationService
      */
     public function classifyWorkdays(User $user, Carbon $rangeStart, Carbon $rangeEnd): Collection
     {
+        // DTR-exempt employees never punch a biometric device, so "no Dtr row" carries
+        // no signal for them -- mirrors AttendanceMonitoringExportService's identical
+        // dtr_exempt guard around its own per-day classification loop.
+        if ($user->dtr_exempt) {
+            return collect();
+        }
+
         $user->loadMissing('shift');
 
         $rangeStartStr = $rangeStart->toDateString();

@@ -709,6 +709,98 @@ class LeaveManagerTest extends TestCase
     }
 
     // ──────────────────────────────────────────────
+    // 8b. Bulk Force Recompute (non-stale, already-processed months)
+    // ──────────────────────────────────────────────
+
+    public function test_force_recompute_month_corrects_non_stale_employee_when_stored_value_is_wrong(): void
+    {
+        // employee_type=casual keeps the Leave Manager account itself out of
+        // LEAVE_ELIGIBLE_TYPES so this test can assert exact counts for the one
+        // deliberately-created eligible employee.
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        // Full attendance, zero LWOP/AWOL -- the deterministic 1.25 full-month credit.
+        $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        // Simulate a stored figure computed by a formula that has since changed --
+        // isMonthlyCreditStale() only reacts to edited leave requests, so this row
+        // stays "OK" and would never surface a per-row Recompute button.
+        MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)
+            ->update(['computed_vl' => 1.000, 'computed_sl' => 1.000]);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['recomputed' => 1, 'changed' => 1, 'failed' => 0]);
+
+        $attendance = MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)->first();
+        $this->assertEquals(1.25, (float) $attendance->computed_vl);
+        $this->assertEquals(1.25, (float) $attendance->computed_sl);
+
+        $correction = LeaveLedger::where('user_id', $emp->id)->where('transaction_type', 'CREDIT_CORRECTION')->first();
+        $this->assertNotNull($correction);
+        $this->assertEquals(0.25, (float) $correction->credit_vl);
+        $this->assertEquals(0.25, (float) $correction->credit_sl);
+    }
+
+    public function test_force_recompute_month_no_change_writes_no_ledger_entry(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $ledgerCountBefore = LeaveLedger::where('user_id', $emp->id)->count();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['recomputed' => 1, 'changed' => 0, 'failed' => 0]);
+        $this->assertSame(
+            $ledgerCountBefore,
+            LeaveLedger::where('user_id', $emp->id)->count(),
+            'A no-op force recompute must not write a ledger entry.'
+        );
+    }
+
+    public function test_force_recompute_month_rejects_current_month(): void
+    {
+        $lm = $this->createLeaveManager();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month'), [
+            'year' => now()->year,
+            'month' => now()->month,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_non_leave_manager_cannot_force_recompute_month(): void
+    {
+        $emp = $this->createEmployee();
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($emp)->postJson(route('leave-manager.force-recompute-month'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    // ──────────────────────────────────────────────
     // 9. AWOL Monitor
     // ──────────────────────────────────────────────
 

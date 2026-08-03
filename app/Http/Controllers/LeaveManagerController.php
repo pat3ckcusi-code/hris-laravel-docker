@@ -1272,11 +1272,108 @@ class LeaveManagerController extends Controller
 
         $user = User::findOrFail($userId);
 
+        return response()->json($this->recomputeAttendanceMonth($user, $attendance));
+    }
+
+    /**
+     * Force-recompute every already-processed employee-month for a given year/month, even
+     * when nothing in their leave data changed since (e.g. after a credit formula/logic
+     * change) — the per-row Recompute button above only surfaces when isMonthlyCreditStale()
+     * detects a leave-data edit, so it can't reach this case. Reuses the same delta-only
+     * correction path, never the full re-credit `--force` flag on credit:process-monthly
+     * uses, since that would double-credit an already-processed employee.
+     */
+    public function forceRecomputeMonth(Request $request): JsonResponse
+    {
+        $request->validate([
+            'year' => ['required', 'integer', 'min:2020'],
+            'month' => ['required', 'integer', 'between:1,12'],
+        ]);
+
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        $lastCreditableMonth = Carbon::now()->subMonthNoOverflow();
+        $requested = Carbon::create($year, $month, 1);
+
+        if ($requested->greaterThan($lastCreditableMonth->copy()->startOfMonth())) {
+            return response()->json([
+                'message' => 'Cannot recompute a future or the current (incomplete) month.',
+            ], 422);
+        }
+
+        $attendances = MonthlyAttendance::with('user')
+            ->where('year', $year)
+            ->where('month', $month)
+            ->whereNotNull('processed_at')
+            ->get();
+
+        $recomputed = 0;
+        $changed = 0;
+        $failed = 0;
+
+        foreach ($attendances as $attendance) {
+            if (! $attendance->user) {
+                $failed++;
+
+                continue;
+            }
+
+            try {
+                $result = DB::transaction(fn () => $this->recomputeAttendanceMonth($attendance->user, $attendance));
+                $recomputed++;
+                if ($result['changed']) {
+                    $changed++;
+                }
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('Force recompute monthly credit failed for user', [
+                    'user_id' => $attendance->user_id,
+                    'year' => $year,
+                    'month' => $month,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        HRAuditTrail::create([
+            'actor_user_id' => Auth::id(),
+            'module' => 'leave',
+            'action' => 'bulk_monthly_credit_recompute',
+            'target_type' => 'App\\Models\\MonthlyAttendance',
+            'target_id' => null,
+            'details' => [
+                'year' => $year,
+                'month' => $month,
+                'recomputed' => $recomputed,
+                'changed' => $changed,
+                'failed' => $failed,
+                'triggered_by' => Auth::id(),
+            ],
+        ]);
+
+        return response()->json([
+            'recomputed' => $recomputed,
+            'changed' => $changed,
+            'failed' => $failed,
+        ]);
+    }
+
+    /**
+     * Recompute one employee's already-processed month and post only the delta as a
+     * CREDIT_CORRECTION ledger entry — shared by the single-employee endpoint above and
+     * the bulk force-recompute endpoint below, so both apply identical, double-credit-safe
+     * logic regardless of what triggered the recompute.
+     *
+     * @return array{changed: bool, delta_vl: float, delta_sl: float, new_vl: float, new_sl: float}
+     */
+    private function recomputeAttendanceMonth(User $user, MonthlyAttendance $attendance): array
+    {
         $oldVl = (float) $attendance->computed_vl;
         $oldSl = (float) $attendance->computed_sl;
         $originalProcessedAt = $attendance->processed_at;
 
-        $aggregate = app(LwopAggregationService::class)->computeForMonth($user, $year, $month);
+        $aggregate = app(LwopAggregationService::class)->computeForMonth($user, $attendance->year, $attendance->month);
         $attendance->days_present = $aggregate['days_present'];
         $attendance->abs_wop_days = $aggregate['abs_wop_days'];
 
@@ -1292,8 +1389,8 @@ class LeaveManagerController extends Controller
 
         if ($hasChange) {
             app(LeaveLedgerService::class)->writeLedgerEntry([
-                'user_id' => $userId,
-                'transaction_date' => Carbon::create($year, $month, 1)->endOfMonth()->toDateString(),
+                'user_id' => $user->id,
+                'transaction_date' => Carbon::create($attendance->year, $attendance->month, 1)->endOfMonth()->toDateString(),
                 'transaction_type' => 'CREDIT_CORRECTION',
                 'leave_type' => 'VL+SL',
                 'days_present' => $attendance->days_present,
@@ -1304,7 +1401,7 @@ class LeaveManagerController extends Controller
                 'debit_sl' => $deltaSl < 0 ? abs($deltaSl) : 0,
                 'is_system' => true,
                 'created_by' => Auth::id(),
-                'remarks' => "Correction: leave data changed after original processing on {$originalProcessedAt->format('Y-m-d H:i')}.",
+                'remarks' => 'Correction: recomputed on '.now()->format('Y-m-d H:i')." (originally processed {$originalProcessedAt->format('Y-m-d H:i')}).",
             ]);
         }
 
@@ -1321,9 +1418,9 @@ class LeaveManagerController extends Controller
             'target_type' => 'App\\Models\\MonthlyAttendance',
             'target_id' => $attendance->id,
             'details' => [
-                'user_id' => $userId,
-                'year' => $year,
-                'month' => $month,
+                'user_id' => $user->id,
+                'year' => $attendance->year,
+                'month' => $attendance->month,
                 'old_vl' => $oldVl,
                 'old_sl' => $oldSl,
                 'new_vl' => $newVl,
@@ -1334,13 +1431,13 @@ class LeaveManagerController extends Controller
             ],
         ]);
 
-        return response()->json([
+        return [
             'changed' => $hasChange,
             'delta_vl' => $deltaVl,
             'delta_sl' => $deltaSl,
             'new_vl' => $newVl,
             'new_sl' => $newSl,
-        ]);
+        ];
     }
 
     public function apiLedgerHistory(Request $request): JsonResponse

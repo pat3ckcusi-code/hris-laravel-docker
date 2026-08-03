@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\ComputationTableLwp;
+use App\Models\ComputationTableWop;
 use App\Models\MonthlyAttendance;
 use App\Models\User;
 
@@ -21,15 +21,20 @@ class LeaveCreditComputationService
     {
         $remarks = null;
 
-        // Both VL and SL earn identically off Table II (computation_table_lwp), keyed by
-        // days_present — which the caller already nets down by non-illness LWOP days.
-        // abs_wop_days only distinguishes the transaction label below, it doesn't select a
-        // different formula (SL is not zeroed during a month with LWOP).
-        $daysPresent = (int) round($attendance->days_present);
-        $daysPresent = max(0, min(30, $daysPresent));
+        // Both VL and SL earn identically off computation_table_wop, keyed by abs_wop_days
+        // (rounded to the table's half-day granularity) — SL is not zeroed during a month
+        // with LWOP, it just tracks the same schedule as VL. Deliberately keyed on
+        // abs_wop_days alone, not days_present: a mid-month hire's shortened baseline
+        // (LwopAggregationService::computeForMonth() prorates days_present for a partial
+        // month) does not reduce credit here — only actual unauthorized absence
+        // (non-illness LWOP + AWOL) does. The table's rows stop at 29.50 (no 30.00 row) so
+        // a full month of WOP deliberately misses the lookup and falls through to 0 credit
+        // below, rather than being clamped into matching 29.50's rate.
+        $absWop = round(((float) $attendance->abs_wop_days) * 2) / 2;
+        $absWop = max(0.0, min(30.0, $absWop));
 
-        $row = ComputationTableLwp::find($daysPresent);
-        $credit = $row ? (float) $row->credit_earned : 0.0;
+        $row = ComputationTableWop::find($absWop);
+        $credit = $row ? (float) $row->vl_earned : 0.0;
 
         $vlEarned = $credit;
         $slEarned = $credit;

@@ -297,6 +297,19 @@ class LwopAggregationServiceTest extends TestCase
         $this->assertTrue($classified->get('2026-04-01'));
     }
 
+    public function test_dtr_exempt_employee_is_never_awol(): void
+    {
+        // Same shape as the previous test (no Dtr row, no coverage) but dtr_exempt --
+        // must not be flagged, since they never punch a biometric device at all.
+        $emp = $this->createEmployee(['dtr_exempt' => true]);
+
+        $classified = app(LwopAggregationService::class)->classifyWorkdays(
+            $emp, Carbon::parse('2026-04-01'), Carbon::parse('2026-04-01')
+        );
+
+        $this->assertTrue($classified->isEmpty());
+    }
+
     public function test_attended_day_is_not_awol(): void
     {
         $emp = $this->createEmployee();
@@ -452,7 +465,7 @@ class LwopAggregationServiceTest extends TestCase
         $this->assertFalse($classified->has('2026-04-05'), 'Sunday stays excluded even for a Mon-Sat shift.');
     }
 
-    public function test_awol_and_lwop_both_reduce_days_present_in_the_same_month(): void
+    public function test_awol_is_tracked_separately_and_does_not_reduce_days_present_or_credit(): void
     {
         $emp = $this->createEmployee();
         $this->createLeaveBalance($emp);
@@ -481,9 +494,11 @@ class LwopAggregationServiceTest extends TestCase
 
         $aggregate = app(LwopAggregationService::class)->computeForMonth($emp, 2026, 4);
 
-        // 30 baseline - 5 LWOP - 1 AWOL = 24.
-        $this->assertSame(24.0, $aggregate['days_present']);
-        $this->assertSame(6.0, $aggregate['abs_wop_days']);
+        // 30 baseline - 5 filed LWOP = 25. The 1 AWOL day is reported separately
+        // (awol_days) but does not reduce days_present/abs_wop_days -- only a
+        // deliberate, on-record filed LWOP request does.
+        $this->assertSame(25.0, $aggregate['days_present']);
+        $this->assertSame(5.0, $aggregate['abs_wop_days']);
         $this->assertSame(1.0, $aggregate['awol_days']);
     }
 
