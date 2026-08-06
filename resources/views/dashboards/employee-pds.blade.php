@@ -342,6 +342,9 @@
 
         <section class="pds-section pds-pane" aria-labelledby="pds-work-experience" data-section="pds-work-experience">
             <h3 id="pds-work-experience">V. Work Experience</h3>
+            <div style="margin-bottom:8px;">
+                <button type="button" class="btn btn-secondary pds-add-work-btn">Add Work Row</button>
+            </div>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -788,6 +791,57 @@
             // --- Training table reference (declared early so helpers can use it) ---
             const trainingTable = form.querySelector('section[data-section="pds-learning-dev"] table tbody');
 
+            // --- Work Experience table reference (declared early so helpers can use it) ---
+            const workTable = form.querySelector('section[data-section="pds-work-experience"] table tbody');
+
+            // Hoisted so both the initial-load wiring below and the dynamic add-row
+            // logic further down can register/react to "Present" checkboxes.
+            let presentCheckboxes = [];
+            const handlePresentChange = (e) => {
+                const target = e.target;
+                const tr = target.closest('tr');
+                if (!tr) return;
+                const toInput = tr.querySelector('.work-to');
+                if (!toInput) return;
+                const fp = toInput._flatpickr;
+
+                if (target.checked) {
+                    // If this is being checked, uncheck any other present toggles
+                    presentCheckboxes.forEach(cb => {
+                        if (cb !== target && cb.checked) {
+                            cb.checked = false;
+                            const otherTr = cb.closest('tr');
+                            const otherTo = otherTr && otherTr.querySelector('.work-to');
+                            const otherFp = otherTo && otherTo._flatpickr;
+                            if (otherFp) {
+                                otherFp.input.disabled = false;
+                                if (otherFp.altInput) otherFp.altInput.disabled = false;
+                            } else if (otherTo) {
+                                otherTo.disabled = false;
+                            }
+                        }
+                    });
+
+                    // clear and disable this row's To field
+                    if (fp) {
+                        fp.clear();
+                        if (fp.altInput) fp.altInput.disabled = true;
+                        fp.input.disabled = true;
+                    } else {
+                        toInput.disabled = true;
+                        toInput.value = '';
+                    }
+                } else {
+                    // re-enable the To field when unchecked
+                    if (fp) {
+                        fp.input.disabled = false;
+                        if (fp.altInput) fp.altInput.disabled = false;
+                    } else {
+                        toInput.disabled = false;
+                    }
+                }
+            };
+
             // Helper to get a date value (ISO Y-m-d) from an input, preferring flatpickr input
             const getInputDateValue = function (input) {
                 if (!input) return '';
@@ -841,52 +895,7 @@
                 initializeFlatpickrOn(document);
 
                 // Wire up "Present" checkboxes for work rows to disable/clear the To field
-                const presentCheckboxes = Array.from(form.querySelectorAll('.work-to-present'));
-
-                const handlePresentChange = (e) => {
-                    const target = e.target;
-                    const tr = target.closest('tr');
-                    if (!tr) return;
-                    const toInput = tr.querySelector('.work-to');
-                    if (!toInput) return;
-                    const fp = toInput._flatpickr;
-
-                    if (target.checked) {
-                        // If this is being checked, uncheck any other present toggles
-                        presentCheckboxes.forEach(cb => {
-                            if (cb !== target && cb.checked) {
-                                cb.checked = false;
-                                const otherTr = cb.closest('tr');
-                                const otherTo = otherTr && otherTr.querySelector('.work-to');
-                                const otherFp = otherTo && otherTo._flatpickr;
-                                if (otherFp) {
-                                    otherFp.input.disabled = false;
-                                    if (otherFp.altInput) otherFp.altInput.disabled = false;
-                                } else if (otherTo) {
-                                    otherTo.disabled = false;
-                                }
-                            }
-                        });
-
-                        // clear and disable this row's To field
-                        if (fp) {
-                            fp.clear();
-                            if (fp.altInput) fp.altInput.disabled = true;
-                            fp.input.disabled = true;
-                        } else {
-                            toInput.disabled = true;
-                            toInput.value = '';
-                        }
-                    } else {
-                        // re-enable the To field when unchecked
-                        if (fp) {
-                            fp.input.disabled = false;
-                            if (fp.altInput) fp.altInput.disabled = false;
-                        } else {
-                            toInput.disabled = false;
-                        }
-                    }
-                };
+                presentCheckboxes = Array.from(form.querySelectorAll('.work-to-present'));
 
                 // Normalize on load: if multiple are checked, keep the first and uncheck the rest
                 const initiallyChecked = Array.from(form.querySelectorAll('.work-to-present')).filter(cb => cb.checked);
@@ -1305,6 +1314,147 @@
 
             // NOTE: Removed sorting on input change to avoid interrupting typing.
             // Sorting will now run only after a successful save for the L&D section or before export.
+
+            // Work Experience dynamic rows (Add/Remove Work rows)
+            const addWorkBtn = form.querySelector('.pds-add-work-btn');
+
+            const getMaxWorkIndex = function () {
+                const inputs = form.querySelectorAll('input[name^="work["]');
+                let max = -1;
+                inputs.forEach(function (inp) {
+                    const m = inp.name.match(/^work\[(\d+)\]/);
+                    if (m) {
+                        const idx = parseInt(m[1], 10);
+                        if (idx > max) max = idx;
+                    }
+                });
+                return max;
+            };
+
+            const makeWorkRow = function (index, removable = true) {
+                const tr = document.createElement('tr');
+
+                const cols = [
+                    `<input type="date" name="work[${index}][from]" class="work-from">`,
+                    `<input type="date" name="work[${index}][to]" class="work-to">
+                     <label class="toggle-switch" style="margin-left:8px;">
+                         <input type="checkbox" name="work[${index}][to_present]" value="1" class="work-to-present" aria-label="Present">
+                         <span class="toggle-slider" aria-hidden="true"></span>
+                         <span class="toggle-label">Present</span>
+                     </label>`,
+                    `<input type="text" name="work[${index}][position]">`,
+                    `<input type="text" name="work[${index}][agency]">`,
+                    `<input type="text" name="work[${index}][monthly_salary]" data-no-uppercase>`,
+                    `<input type="text" name="work[${index}][sg]" placeholder="00-0" pattern="\\d{2}-\\d" title="Format: 00-0" maxlength="4" inputmode="numeric" data-no-uppercase>`,
+                    `<input type="text" name="work[${index}][status]">`,
+                    `<div style="display:flex;gap:6px;align-items:center;">
+                         <select name="work[${index}][is_government]">
+                             <option value=""></option>
+                             <option value="Y">Y</option>
+                             <option value="N">N</option>
+                         </select>
+                         ${removable ? '<button type="button" class="btn btn-secondary pds-remove-work-btn">Remove</button>' : ''}
+                     </div>`
+                ];
+
+                cols.forEach(function (c) {
+                    const td = document.createElement('td');
+                    td.innerHTML = c;
+                    tr.appendChild(td);
+                });
+
+                // attach uppercase behavior to newly created inputs if not excluded
+                tr.querySelectorAll('input[type="text"]').forEach(function (inp) {
+                    if (!inp.hasAttribute('data-no-uppercase')) attachUpper(inp);
+                });
+
+                // enforce "00-0" format on the new row's Salary Grade field
+                const sgInput = tr.querySelector('input[name$="[sg]"]');
+                if (sgInput) enforceSalaryGradeFormat(sgInput);
+
+                // wire up the new row's "Present" checkbox into the shared mutual-exclusivity handler
+                const presentCb = tr.querySelector('.work-to-present');
+                if (presentCb) {
+                    presentCheckboxes.push(presentCb);
+                    presentCb.addEventListener('change', handlePresentChange);
+                }
+
+                return tr;
+            };
+
+            if (addWorkBtn) {
+                addWorkBtn.addEventListener('click', function () {
+                    const nextIdx = getMaxWorkIndex() + 1;
+                    const newRow = makeWorkRow(nextIdx, true);
+                    workTable.appendChild(newRow);
+
+                    // initialize flatpickr on new row's date inputs
+                    initializeFlatpickrOn(newRow);
+                });
+            }
+
+            // Delegate remove buttons for work experience
+            workTable.addEventListener('click', function (e) {
+                const btn = e.target.closest('.pds-remove-work-btn');
+                if (!btn) return;
+                const tr = btn.closest('tr');
+                if (tr) {
+                    tr.remove();
+                }
+            });
+
+            // Recreate any saved work rows that don't exist in DOM
+            (function populateSavedWorkRows() {
+                const workSaved = pdsData['pds-work-experience'] || {};
+                const rows = {};
+
+                Object.keys(workSaved).forEach(function (k) {
+                    const m = k.match(/^work\[(\d+)\]\[(.+)\]$/);
+                    if (!m) return;
+                    const idx = m[1];
+                    const field = m[2];
+                    rows[idx] = rows[idx] || {};
+                    rows[idx][field] = workSaved[k];
+                });
+
+                // existing indexes in DOM
+                const existing = new Set();
+                form.querySelectorAll('input[name^="work["]').forEach(function (inp) {
+                    const mm = inp.name.match(/^work\[(\d+)\]/);
+                    if (mm) existing.add(mm[1]);
+                });
+
+                Object.keys(rows).forEach(function (idx) {
+                    if (existing.has(idx)) return;
+                    const newRow = makeWorkRow(idx, true);
+                    workTable.appendChild(newRow);
+
+                    // initialize flatpickr on newly appended row
+                    initializeFlatpickrOn(newRow);
+
+                    Object.keys(rows[idx]).forEach(function (field) {
+                        const selector = `[name="work[${idx}][${field}]"]`;
+                        const input = workTable.querySelector(selector);
+                        if (!input) return;
+
+                        if (input.type === 'checkbox') {
+                            const val = rows[idx][field];
+                            input.checked = val === '1' || val === 1 || val === true || val === 'true';
+                            if (input.checked) {
+                                handlePresentChange({ target: input });
+                            }
+                        } else if (input._flatpickr) {
+                            try {
+                                input._flatpickr.setDate(rows[idx][field] || '', true, 'Y-m-d');
+                            } catch (e) {
+                                input.value = rows[idx][field] ?? '';
+                            }
+                        } else {
+                            input.value = rows[idx][field] ?? '';
+                        }
+                    });
+                });
+            })();
 
             const setActiveSection = function (targetId) {
                 const nextIndex = panes.findIndex(function (pane) {
