@@ -461,11 +461,17 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
     Route::post('/leave-manager/leave-ledger/run-monthly-credits', [LeaveManagerController::class, 'runMonthlyCredits'])
         ->name('leave-manager.run-monthly-credits');
 
+    Route::post('/leave-manager/leave-ledger/run-monthly-credits/preview', [LeaveManagerController::class, 'runMonthlyCreditsPreview'])
+        ->name('leave-manager.run-monthly-credits.preview');
+
     Route::post('/leave-manager/leave-ledger/recompute-employee-month', [LeaveManagerController::class, 'recomputeEmployeeMonth'])
         ->name('leave-manager.recompute-employee-month');
 
     Route::post('/leave-manager/leave-ledger/force-recompute-month', [LeaveManagerController::class, 'forceRecomputeMonth'])
         ->name('leave-manager.force-recompute-month');
+
+    Route::post('/leave-manager/leave-ledger/force-recompute-month/preview', [LeaveManagerController::class, 'forceRecomputeMonthPreview'])
+        ->name('leave-manager.force-recompute-month.preview');
 
     Route::get('/leave-manager/leave-card/download', [LeaveManagerController::class, 'downloadLeaveCard'])
         ->name('leave-manager.leave-card.download');

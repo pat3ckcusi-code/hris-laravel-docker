@@ -6,25 +6,26 @@
 @section('content')
 
 <section class="card">
-    <header>
-        <h2>Leave Ledger</h2>
+    <header class="ll-page-header">
+        <div class="ll-page-header-icon"><i class="fas fa-book-open"></i></div>
+        <div>
+            <h2>Leave Ledger</h2>
+            <p class="ll-page-subtitle">Audit trail of leave credits and deductions per employee</p>
+        </div>
     </header>
 
     <div class="card-body">
 
         {{-- Tabs --}}
-        <div class="ledger-tabs" style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:1.5rem;">
-            <button type="button" class="ledger-tab-btn active" data-tab="tab-history"
-                style="padding:0.55rem 1.25rem;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#3b82f6;border-bottom:2px solid #3b82f6;margin-bottom:-2px;">
-                Ledger History
+        <div class="ll-tabs" role="tablist">
+            <button type="button" class="ledger-tab-btn active" data-tab="tab-history">
+                <i class="fas fa-clock-rotate-left"></i> Ledger History
             </button>
-            <button type="button" class="ledger-tab-btn" data-tab="tab-monthly"
-                style="padding:0.55rem 1.25rem;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;">
-                Monthly Credits
+            <button type="button" class="ledger-tab-btn" data-tab="tab-monthly">
+                <i class="fas fa-calendar-check"></i> Monthly Credits
             </button>
-            <button type="button" class="ledger-tab-btn" data-tab="tab-awol"
-                style="padding:0.55rem 1.25rem;border:none;background:none;cursor:pointer;font-size:0.9rem;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;">
-                AWOL Monitor
+            <button type="button" class="ledger-tab-btn" data-tab="tab-awol">
+                <i class="fas fa-triangle-exclamation"></i> AWOL Monitor
             </button>
         </div>
 
@@ -46,151 +47,238 @@
             {{-- Hidden field stores resolved user_id; all JS reads from here --}}
             <input type="hidden" id="ledger-employee">
 
-            <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;margin-bottom:1rem;">
-                <div style="position:relative;">
-                    <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Employee</label>
-                    <input type="text" id="ledger-emp-input" placeholder="Type name or EmpNo…" autocomplete="off"
-                        style="min-width:280px;padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
-                    <div id="ledger-emp-suggestions"
-                        style="display:none;position:absolute;top:100%;left:0;min-width:320px;max-height:220px;overflow-y:auto;
-                               background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);
-                               z-index:9999;margin-top:2px;"></div>
+            <div class="ll-filter-bar">
+                <div class="ll-field ll-field--grow">
+                    <label for="ledger-emp-input">Employee</label>
+                    <div class="ll-input-icon-wrap">
+                        <i class="fas fa-magnifying-glass"></i>
+                        <input type="text" id="ledger-emp-input" class="ll-input" placeholder="Type name or EmpNo…" autocomplete="off">
+                        <div id="ledger-emp-suggestions" class="ll-suggestions"></div>
+                    </div>
                 </div>
-                <div>
-                    <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Year</label>
-                    <select id="ledger-year" style="padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
+                <div class="ll-field">
+                    <label for="ledger-year">Year</label>
+                    <select id="ledger-year" class="ll-select">
                         <option value="">All years</option>
                         @foreach($years as $y)
                             <option value="{{ $y }}" @selected($y == $currentYear)>{{ $y }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Month</label>
-                    <select id="ledger-month" style="padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
+                <div class="ll-field">
+                    <label for="ledger-month">Month</label>
+                    <select id="ledger-month" class="ll-select">
                         <option value="">All months</option>
                         @foreach(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as $mi => $mn)
                             <option value="{{ $mi + 1 }}" @selected($mi + 1 == now()->month)>{{ $mn }}</option>
                         @endforeach
                     </select>
                 </div>
-                <button type="button" id="ledger-load-btn" class="hris-btn hris-btn-primary" style="padding:0.45rem 1.1rem;">Load</button>
-                <button type="button" id="ledger-download-btn" class="hris-btn hris-btn-secondary" disabled
-                    style="padding:0.45rem 1.1rem;" title="Select employee and month to enable">
-                    <i class="fas fa-file-excel fa-fw"></i> Download Leave Card
-                </button>
+                <div class="ll-filter-actions">
+                    <button type="button" id="ledger-load-btn" class="hris-btn-primary">
+                        <i class="fas fa-magnifying-glass fa-fw"></i> Load
+                    </button>
+                    <button type="button" id="ledger-download-btn" class="hris-btn-secondary" disabled title="Select employee and month to enable">
+                        <i class="fas fa-file-excel fa-fw"></i> Download Leave Card
+                    </button>
+                </div>
             </div>
 
-            <div id="ledger-balance-summary" style="display:none;padding:0.6rem 1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;margin-bottom:1rem;font-size:0.88rem;color:#0369a1;">
-                Current balance - <strong>VL: <span id="summary-vl">-</span></strong> &nbsp;|&nbsp; <strong>SL: <span id="summary-sl">-</span></strong>
+            <div id="ledger-balance-summary" style="display:none;">
+                <div class="ll-balance-summary">
+                    <div class="ll-stat-card ll-stat-card--vl">
+                        <div class="ll-stat-icon"><i class="fas fa-umbrella-beach"></i></div>
+                        <div>
+                            <div class="ll-stat-label">Vacation Leave Balance</div>
+                            <div class="ll-stat-value"><span id="summary-vl">-</span></div>
+                        </div>
+                    </div>
+                    <div class="ll-stat-card ll-stat-card--sl">
+                        <div class="ll-stat-icon"><i class="fas fa-briefcase-medical"></i></div>
+                        <div>
+                            <div class="ll-stat-label">Sick Leave Balance</div>
+                            <div class="ll-stat-value"><span id="summary-sl">-</span></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="table-responsive">
-                <table id="ledger-history-table" class="hris-table" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>Period Date</th>
-                            <th>Type</th>
-                            <th>Leave Type</th>
-                            <th class="text-right">Credit VL</th>
-                            <th class="text-right">Credit SL</th>
-                            <th class="text-right">Debit VL</th>
-                            <th class="text-right">Debit SL</th>
-                            <th class="text-right">VL Balance</th>
-                            <th class="text-right">SL Balance</th>
-                            <th>WOP Days</th>
-                            <th>Remarks</th>
-                            <th>Posted By</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <div class="hris-table-card">
+                <div class="hris-table-wrapper">
+                    <table id="ledger-history-table" class="hris-table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Period Date</th>
+                                <th>Type</th>
+                                <th>Leave Type</th>
+                                <th class="text-right">Credit VL</th>
+                                <th class="text-right">Credit SL</th>
+                                <th class="text-right">Debit VL</th>
+                                <th class="text-right">Debit SL</th>
+                                <th class="text-right">VL Balance</th>
+                                <th class="text-right">SL Balance</th>
+                                <th>WOP Days</th>
+                                <th>Remarks</th>
+                                <th>Posted By</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
         {{-- ── Tab 2: Monthly Credits ── --}}
         <div id="tab-monthly" class="ledger-tab-panel" style="display:none;">
             @unless($lastMonthProcessed)
-            <div id="monthly-credit-reminder" style="padding:0.6rem 1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;margin-bottom:1rem;font-size:0.86rem;color:#92400e;">
+            <div id="monthly-credit-reminder" class="lm-alert-banner">
                 <i class="fas fa-triangle-exclamation fa-fw"></i>
-                {{ $lastMonthLabel }} leave credits have not been processed yet. Select it below and click Run Monthly Credits.
+                <span>{{ $lastMonthLabel }} leave credits have not been processed yet. Select it below and click <strong>Run Monthly Credits</strong>.</span>
             </div>
             @endunless
 
-            <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;margin-bottom:1rem;">
-                <div>
-                    <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Year</label>
-                    <select id="monthly-year" style="padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
+            <div class="ll-filter-bar">
+                <div class="ll-field">
+                    <label for="monthly-year">Year</label>
+                    <select id="monthly-year" class="ll-select">
                         @foreach($years as $y)
                             <option value="{{ $y }}" @selected($y == $currentYear)>{{ $y }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="muted" style="display:block;font-size:0.78rem;margin-bottom:3px;">Month</label>
-                    <select id="monthly-month" style="padding:0.45rem 0.7rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.88rem;">
+                <div class="ll-field">
+                    <label for="monthly-month">Month</label>
+                    <select id="monthly-month" class="ll-select">
                         <option value="">All months</option>
                         @foreach(['January','February','March','April','May','June','July','August','September','October','November','December'] as $mi => $mn)
                             <option value="{{ $mi + 1 }}" @selected($mi + 1 == $lastMonthMonth)>{{ $mn }}</option>
                         @endforeach
                     </select>
                 </div>
-                <button type="button" id="monthly-load-btn" class="hris-btn hris-btn-secondary" style="padding:0.45rem 1.1rem;">Load</button>
-                <button type="button" id="monthly-run-btn" class="hris-btn hris-btn-primary" style="padding:0.45rem 1.1rem;">
-                    <i class="fas fa-play fa-fw"></i> Run Monthly Credits
-                </button>
-                <button type="button" id="monthly-force-recompute-btn" class="hris-btn hris-btn-secondary" style="padding:0.45rem 1.1rem;">
-                    <i class="fas fa-rotate fa-fw"></i> Force Recompute Month
-                </button>
+                <div class="ll-filter-actions">
+                    <button type="button" id="monthly-load-btn" class="hris-btn-secondary">
+                        <i class="fas fa-magnifying-glass fa-fw"></i> Load
+                    </button>
+                    <button type="button" id="monthly-run-btn" class="hris-btn-primary">
+                        <i class="fas fa-play fa-fw"></i> Run Monthly Credits
+                    </button>
+                    <button type="button" id="monthly-force-recompute-btn" class="hris-btn-secondary">
+                        <i class="fas fa-rotate fa-fw"></i> Force Recompute Month
+                    </button>
+                </div>
             </div>
 
-            <div id="monthly-run-result" style="display:none;padding:0.55rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.86rem;"></div>
+            <div id="monthly-run-result" class="ll-result-banner" style="display:none;"></div>
 
-            <div class="table-responsive">
-                <table id="monthly-credits-table" class="hris-table" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>EmpNo</th>
-                            <th>Employee</th>
-                            <th>Department</th>
-                            <th>Year</th>
-                            <th>Month</th>
-                            <th class="text-right">WOP Days</th>
-                            <th class="text-right">Computed VL</th>
-                            <th class="text-right">Computed SL</th>
-                            <th>Processed At</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <div id="monthly-preview-panel" class="ll-preview-panel" style="display:none;">
+                <div class="ll-preview-header">
+                    <div>
+                        <strong id="monthly-preview-title" class="ll-preview-title"></strong>
+                        <div id="monthly-preview-summary" class="ll-preview-summary"></div>
+                    </div>
+                    <div class="ll-preview-actions">
+                        <button type="button" id="monthly-preview-cancel-btn" class="hris-btn-secondary">Cancel</button>
+                        <button type="button" id="monthly-preview-apply-btn" class="hris-btn-primary">
+                            <i class="fas fa-check fa-fw"></i> Apply
+                        </button>
+                    </div>
+                </div>
+                <div class="ll-preview-scroll">
+                    {{-- Each preview table sits in its own wrapper div, and that div is what
+                         gets shown/hidden -- toggling the raw <table> alone leaves the
+                         DataTables-generated search box / pagination bar (siblings of the
+                         table inside .dataTables_wrapper, not descendants of it) visible even
+                         when the table itself is hidden. --}}
+                    <div id="monthly-run-preview-wrap" style="display:none;">
+                        <table id="monthly-run-preview-table" class="hris-table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>EmpNo</th>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th class="text-right">WOP Days</th>
+                                    <th class="text-right">Computed VL</th>
+                                    <th class="text-right">Computed SL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div id="monthly-force-preview-wrap" style="display:none;">
+                        <table id="monthly-force-preview-table" class="hris-table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>EmpNo</th>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th class="text-right">Old VL</th>
+                                    <th class="text-right">Old SL</th>
+                                    <th class="text-right">New VL</th>
+                                    <th class="text-right">New SL</th>
+                                    <th class="text-right">&Delta; VL</th>
+                                    <th class="text-right">&Delta; SL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hris-table-card">
+                <div class="hris-table-wrapper">
+                    <table id="monthly-credits-table" class="hris-table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>EmpNo</th>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th>Year</th>
+                                <th>Month</th>
+                                <th class="text-right">WOP Days</th>
+                                <th class="text-right">Computed VL</th>
+                                <th class="text-right">Computed SL</th>
+                                <th>Processed At</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
         {{-- ── Tab 3: AWOL Monitor ── --}}
         <div id="tab-awol" class="ledger-tab-panel" style="display:none;">
-            <p class="muted" style="font-size:0.82rem;margin-bottom:0.75rem;">
-                Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it - no leave,
-                excuse, locator, or ETA). Per CSC rules, 30 continuous working days of AWOL is grounds for separation without
-                prior notice; under 30 days, a Return-to-Work Order should be served first. Only employees with a current streak
-                of 5+ workdays are shown.
-            </p>
+            <div class="lm-alert-banner lm-alert-banner--info">
+                <i class="fas fa-circle-info fa-fw"></i>
+                <span>
+                    Employees currently accumulating unauthorized absence (no attendance, and nothing on file to cover it - no leave,
+                    excuse, locator, or ETA). Per CSC rules, 30 continuous working days of AWOL is grounds for separation without
+                    prior notice; under 30 days, a Return-to-Work Order should be served first. Only employees with a current streak
+                    of 5+ workdays are shown.
+                </span>
+            </div>
 
-            <div class="table-responsive">
-                <table id="awol-monitor-table" class="hris-table" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>EmpNo</th>
-                            <th>Employee</th>
-                            <th>Department</th>
-                            <th class="text-right">Current Streak</th>
-                            <th>Streak Started On</th>
-                            <th class="text-right">Episodes This Semester</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <div class="hris-table-card">
+                <div class="hris-table-wrapper">
+                    <table id="awol-monitor-table" class="hris-table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>EmpNo</th>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th class="text-right">Current Streak</th>
+                                <th>Streak Started On</th>
+                                <th class="text-right">Episodes This Semester</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -205,48 +293,51 @@ $(function () {
     // ── Tab switching ──────────────────────────────────────────────────────────
     $('.ledger-tab-btn').on('click', function () {
         var target = $(this).data('tab');
-        $('.ledger-tab-btn').each(function () {
-            var active = $(this).data('tab') === target;
-            $(this).css({
-                color:              active ? '#3b82f6' : '#64748b',
-                'border-bottom-color': active ? '#3b82f6' : 'transparent',
-                'font-weight':      active ? '600' : '500',
-            });
-        });
+        $('.ledger-tab-btn').removeClass('active');
+        $(this).addClass('active');
         $('.ledger-tab-panel').hide();
         $('#' + target).show();
     });
 
     // ── Ledger History table ───────────────────────────────────────────────────
+    var LEDGER_TYPE_BADGES = {
+        CREDIT_EARNED:      { cls: 'credit',     label: 'Credit Earned' },
+        CREDIT_EARNED_WOP:  { cls: 'credit',     label: 'Credit (WOP)' },
+        CREDIT_CORRECTION:  { cls: 'correction', label: 'Correction' },
+        LEAVE_USED:         { cls: 'debit',      label: 'Leave Used' },
+        LEAVE_CANCELLED:    { cls: 'cancelled',  label: 'Cancelled' },
+        MANUAL_ADJUSTMENT:  { cls: 'adjustment', label: 'Manual Adj.' },
+        OPENING_BALANCE:    { cls: 'opening',    label: 'Opening Bal.' },
+        MONETIZED:          { cls: 'neutral',    label: 'Monetized' },
+        TERMINAL_LEAVE:     { cls: 'neutral',    label: 'Terminal Leave' },
+        TRANSFER_IN:        { cls: 'credit',     label: 'Transfer In' },
+        TRANSFER_OUT:       { cls: 'debit',      label: 'Transfer Out' },
+        COMMUTED:           { cls: 'neutral',    label: 'Commuted' },
+        LWOP_DEDUCTION:     { cls: 'debit',      label: 'LWOP Deduction' },
+    };
+
+    function amtCell(v, sign) {
+        if (parseFloat(v) > 0) {
+            return '<span class="ll-amt ll-amt--' + (sign === '+' ? 'pos' : 'neg') + '">' + sign + v + '</span>';
+        }
+        return '<span class="ll-amt ll-amt--zero">' + v + '</span>';
+    }
+
     var historyTable = $('#ledger-history-table').DataTable({
         data: [],
         columns: [
             { data: 'date' },
             { data: 'type', render: function (v) {
-                var map = {
-                    CREDIT_EARNED: '<span style="color:#16a34a;font-weight:600;">Credit Earned</span>',
-                    CREDIT_EARNED_WOP: '<span style="color:#16a34a;font-weight:600;">Credit (WOP)</span>',
-                    CREDIT_CORRECTION: '<span style="color:#ea580c;font-weight:600;">Correction</span>',
-                    LEAVE_USED: '<span style="color:#dc2626;font-weight:600;">Leave Used</span>',
-                    LEAVE_CANCELLED: '<span style="color:#d97706;font-weight:600;">Cancelled</span>',
-                    MANUAL_ADJUSTMENT: '<span style="color:#7c3aed;font-weight:600;">Manual Adj.</span>',
-                    OPENING_BALANCE: '<span style="color:#0284c7;font-weight:600;">Opening Bal.</span>',
-                    MONETIZED: '<span style="color:#0891b2;">Monetized</span>',
-                    TERMINAL_LEAVE: '<span style="color:#475569;">Terminal Leave</span>',
-                    TRANSFER_IN: '<span style="color:#16a34a;">Transfer In</span>',
-                    TRANSFER_OUT: '<span style="color:#dc2626;">Transfer Out</span>',
-                    COMMUTED: '<span style="color:#475569;">Commuted</span>',
-                    LWOP_DEDUCTION: '<span style="color:#dc2626;">LWOP Deduction</span>',
-                };
-                return map[v] || v;
+                var b = LEDGER_TYPE_BADGES[v] || { cls: 'neutral', label: v };
+                return '<span class="ll-badge ll-badge--' + b.cls + '">' + b.label + '</span>';
             }},
             { data: 'leave_type' },
-            { data: 'credit_vl',        className: 'text-right', render: function (v) { return parseFloat(v) > 0 ? '<span style="color:#16a34a;">+'+v+'</span>' : '<span style="color:#cbd5e1;">'+v+'</span>'; }},
-            { data: 'credit_sl',        className: 'text-right', render: function (v) { return parseFloat(v) > 0 ? '<span style="color:#16a34a;">+'+v+'</span>' : '<span style="color:#cbd5e1;">'+v+'</span>'; }},
-            { data: 'debit_vl',         className: 'text-right', render: function (v) { return parseFloat(v) > 0 ? '<span style="color:#dc2626;">−'+v+'</span>' : '<span style="color:#cbd5e1;">'+v+'</span>'; }},
-            { data: 'debit_sl',         className: 'text-right', render: function (v) { return parseFloat(v) > 0 ? '<span style="color:#dc2626;">−'+v+'</span>' : '<span style="color:#cbd5e1;">'+v+'</span>'; }},
-            { data: 'vl_balance_after', className: 'text-right', render: function (v) { return '<strong>'+v+'</strong>'; }},
-            { data: 'sl_balance_after', className: 'text-right', render: function (v) { return '<strong>'+v+'</strong>'; }},
+            { data: 'credit_vl',        className: 'text-right', render: function (v) { return amtCell(v, '+'); }},
+            { data: 'credit_sl',        className: 'text-right', render: function (v) { return amtCell(v, '+'); }},
+            { data: 'debit_vl',         className: 'text-right', render: function (v) { return amtCell(v, '−'); }},
+            { data: 'debit_sl',         className: 'text-right', render: function (v) { return amtCell(v, '−'); }},
+            { data: 'vl_balance_after', className: 'text-right', render: function (v) { return '<span class="ll-balance-cell">'+v+'</span>'; }},
+            { data: 'sl_balance_after', className: 'text-right', render: function (v) { return '<span class="ll-balance-cell">'+v+'</span>'; }},
             { data: 'abs_wop_days' },
             { data: 'remarks', defaultContent: '-' },
             { data: 'posted_by' },
@@ -273,10 +364,7 @@ $(function () {
         if (!items.length) { $box.hide(); return; }
         items.forEach(function (e) {
             var label = e.name + (e.empno ? ' (' + e.empno + ')' : '') + (e.dept ? ' - ' + e.dept : '');
-            $('<div>').text(label)
-                .css({ padding: '0.45rem 0.75rem', cursor: 'pointer', fontSize: '0.86rem', borderBottom: '1px solid #f1f5f9' })
-                .on('mouseenter', function () { $(this).css('background', '#f0f9ff'); })
-                .on('mouseleave', function () { $(this).css('background', ''); })
+            $('<div class="ll-suggestion-item">').text(label)
                 .on('mousedown', function (ev) {
                     ev.preventDefault();
                     selectEmployee(e);
@@ -367,16 +455,16 @@ $(function () {
             { data: 'year' },
             { data: 'month' },
             { data: 'abs_wop_days', className: 'text-right' },
-            { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
-            { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span style="color:#16a34a;font-weight:600;">'+v+'</span>' : '-'; }},
+            { data: 'computed_vl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span class="ll-amt ll-amt--pos">'+v+'</span>' : '-'; }},
+            { data: 'computed_sl',  className: 'text-right', render: function (v) { return v !== '-' ? '<span class="ll-amt ll-amt--pos">'+v+'</span>' : '-'; }},
             { data: 'processed_at' },
             { data: null, orderable: false, render: function (row) {
                 var statusHtml = row.stale
-                    ? '<span style="color:#b45309;font-weight:600;">&#9888; Stale</span>'
-                    : '<span style="color:#16a34a;">OK</span>';
+                    ? '<span class="ll-badge ll-badge--stale"><i class="fas fa-triangle-exclamation"></i> Stale</span>'
+                    : '<span class="ll-badge ll-badge--ok"><i class="fas fa-check"></i> OK</span>';
                 if (row.processed_at === '-') { return statusHtml; }
                 return statusHtml + ' ' +
-                    '<button type="button" class="hris-btn hris-btn-secondary monthly-recompute-btn" ' +
+                    '<button type="button" class="hris-btn-secondary monthly-recompute-btn" ' +
                     'data-user-id="' + row.user_id + '" data-year="' + row.year + '" data-month="' + row.month_number + '" ' +
                     'style="padding:0.2rem 0.6rem;font-size:0.78rem;margin-left:0.4rem;">Recompute</button>';
             }},
@@ -409,13 +497,82 @@ $(function () {
 
     function showRunResult(message, isError) {
         $('#monthly-run-result')
-            .css({
-                display: 'block',
-                background: isError ? '#fef2f2' : '#f0fdf4',
-                border: '1px solid ' + (isError ? '#fecaca' : '#bbf7d0'),
-                color: isError ? '#b91c1c' : '#15803d',
-            })
+            .removeClass('ll-result-banner--success ll-result-banner--error')
+            .addClass(isError ? 'll-result-banner--error' : 'll-result-banner--success')
+            .show()
             .text(message);
+    }
+
+    // ── Preview tables for Run Monthly Credits / Force Recompute Month ──────────
+    var runPreviewTable = $('#monthly-run-preview-table').DataTable({
+        data: [],
+        columns: [
+            { data: 'emp_no' },
+            { data: 'name' },
+            { data: 'department' },
+            { data: 'abs_wop_days', className: 'text-right', defaultContent: '-' },
+            { data: 'computed_vl',  className: 'text-right', defaultContent: '-' },
+            { data: 'computed_sl',  className: 'text-right', defaultContent: '-' },
+            { data: null, render: function (row) {
+                if (row.status === 'error') { return '<span class="ll-badge ll-badge--debit"><i class="fas fa-circle-exclamation"></i> Error: ' + row.message + '</span>'; }
+                return '<span class="ll-badge ll-badge--credit"><i class="fas fa-circle-check"></i> ' + (row.transaction_type === 'CREDIT_EARNED_WOP' ? 'Credit (WOP)' : 'Credit Earned') + '</span>';
+            }},
+        ],
+        order: [[1, 'asc']],
+        pageLength: 25,
+        dom: '<"dt-top-bar"ip>rt<"dt-bottom-bar"lip>',
+        language: { emptyTable: 'Nothing to preview.' },
+    });
+
+    var forcePreviewTable = $('#monthly-force-preview-table').DataTable({
+        data: [],
+        columns: [
+            { data: 'emp_no' },
+            { data: 'name' },
+            { data: 'department' },
+            { data: 'old_vl', className: 'text-right' },
+            { data: 'old_sl', className: 'text-right' },
+            { data: 'new_vl', className: 'text-right' },
+            { data: 'new_sl', className: 'text-right' },
+            { data: 'delta_vl', className: 'text-right', render: function (v, t, row) {
+                return row.changed ? '<span class="ll-amt ll-amt--delta">'+v+'</span>' : '<span class="ll-amt ll-amt--zero">'+v+'</span>';
+            }},
+            { data: 'delta_sl', className: 'text-right', render: function (v, t, row) {
+                return row.changed ? '<span class="ll-amt ll-amt--delta">'+v+'</span>' : '<span class="ll-amt ll-amt--zero">'+v+'</span>';
+            }},
+            { data: 'changed', render: {
+                display: function (v) { return v ? '<span class="ll-badge ll-badge--warning"><i class="fas fa-rotate"></i> Will change</span>' : '<span class="ll-badge ll-badge--ok">No change</span>'; },
+                sort: function (v) { return v ? 1 : 0; },
+            }},
+        ],
+        order: [[9, 'desc'], [1, 'asc']],
+        pageLength: 25,
+        dom: '<"dt-top-bar"ip>rt<"dt-bottom-bar"lip>',
+        language: { emptyTable: 'Nothing to preview.' },
+    });
+
+    var previewMode = null, previewYear = null, previewMonth = null;
+
+    function resetPreviewPanel() {
+        previewMode = null;
+        $('#monthly-preview-panel').hide();
+        $('#monthly-run-preview-wrap, #monthly-force-preview-wrap').hide();
+        runPreviewTable.clear().draw();
+        forcePreviewTable.clear().draw();
+        $('#monthly-run-btn, #monthly-force-recompute-btn, #monthly-load-btn').prop('disabled', false);
+    }
+
+    function showPreviewPanel(mode, title, summaryText) {
+        previewMode = mode;
+        $('#monthly-preview-title').text(title);
+        $('#monthly-preview-summary').text(summaryText);
+        $('#monthly-run-preview-wrap').toggle(mode === 'run');
+        $('#monthly-force-preview-wrap').toggle(mode === 'force');
+        $('#monthly-preview-panel').show();
+        $('#monthly-run-btn, #monthly-force-recompute-btn, #monthly-load-btn').prop('disabled', true);
+        // The active table was initialized while its wrapper was display:none, so DataTables
+        // never got a real width to size columns against -- recalculate now that it's visible.
+        (mode === 'run' ? runPreviewTable : forcePreviewTable).columns.adjust().draw(false);
     }
 
     $('#monthly-run-btn').on('click', function () {
@@ -427,19 +584,12 @@ $(function () {
             return;
         }
 
-        if (!window.confirm(
-            'This will post real leave credits for every eligible employee for the selected month. ' +
-            'Already-processed employees are skipped, so it is safe to re-run. Continue?'
-        )) {
-            return;
-        }
-
         var $btn = $(this).prop('disabled', true);
         var originalHtml = $btn.html();
-        $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Running…');
+        $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Loading preview…');
         $('#monthly-run-result').hide();
 
-        fetch('{{ route('leave-manager.run-monthly-credits') }}', {
+        fetch('{{ route('leave-manager.run-monthly-credits.preview') }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -453,20 +603,22 @@ $(function () {
                 return res.json().then(function (data) { return { ok: res.ok, data: data }; });
             })
             .then(function (result) {
+                $btn.prop('disabled', false).html(originalHtml);
                 if (!result.ok) {
-                    showRunResult(result.data.message || 'Failed to process monthly credits.', true);
+                    showRunResult(result.data.message || 'Failed to build preview.', true);
                     return;
                 }
-                var d = result.data;
-                showRunResult('Processed: ' + d.processed + ', Skipped: ' + d.skipped + ', Failed: ' + d.failed, d.failed > 0);
-                $('#monthly-credit-reminder').hide();
-                loadMonthly();
+                previewYear = year;
+                previewMonth = month;
+                var s = result.data.summary;
+                runPreviewTable.clear().rows.add(result.data.rows).draw();
+                showPreviewPanel('run',
+                    'Preview - Run Monthly Credits for ' + $('#monthly-month option:selected').text() + ' ' + year,
+                    'Would process: ' + s.would_process + ' · Already processed (skipped): ' + s.would_skip + ' · Would fail: ' + s.would_fail);
             })
             .catch(function () {
-                showRunResult('Network error while processing monthly credits.', true);
-            })
-            .finally(function () {
                 $btn.prop('disabled', false).html(originalHtml);
+                showRunResult('Network error while building preview.', true);
             });
     });
 
@@ -474,54 +626,145 @@ $(function () {
     $('#monthly-force-recompute-btn').on('click', function () {
         var year = $('#monthly-year').val();
         var month = $('#monthly-month').val();
+        var $triggerBtn = $(this);
 
         if (!month) {
             showRunResult('Select a specific month before recomputing (not "All months").', true);
             return;
         }
 
-        if (!window.confirm(
-            'This will recompute every already-processed employee for the selected month, even ones ' +
-            'not flagged Stale, and post a correction entry for anyone whose figure changes (e.g. after ' +
-            'a calculation fix). Employees with no change get no ledger entry. Continue?'
-        )) {
-            return;
-        }
+        Swal.fire({
+            icon: 'question',
+            title: 'Force recompute this month?',
+            html: 'This scans <strong>every already-processed employee</strong> for the selected month, even ones ' +
+                  'not flagged Stale, and builds a preview of correction entries for anyone whose figure changes ' +
+                  '(e.g. after a calculation fix).<br><br>Nothing is posted yet — you\'ll review the preview and ' +
+                  'confirm again before anything is applied.',
+            showCancelButton: true,
+            confirmButtonText: 'Build Preview',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#ea580c',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true,
+            focusCancel: true,
+        }).then(function (confirmResult) {
+            if (!confirmResult.isConfirmed) return;
 
-        var $btn = $(this).prop('disabled', true);
-        var originalHtml = $btn.html();
-        $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Recomputing…');
-        $('#monthly-run-result').hide();
+            var $btn = $triggerBtn.prop('disabled', true);
+            var originalHtml = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Loading preview…');
+            $('#monthly-run-result').hide();
 
-        fetch('{{ route('leave-manager.force-recompute-month') }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': CSRF_TOKEN,
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: JSON.stringify({ year: parseInt(year), month: parseInt(month) }),
-        })
-            .then(function (res) {
-                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            fetch('{{ route('leave-manager.force-recompute-month.preview') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ year: parseInt(year), month: parseInt(month) }),
             })
-            .then(function (result) {
-                if (!result.ok) {
-                    showRunResult(result.data.message || 'Failed to force-recompute monthly credits.', true);
-                    return;
-                }
-                var d = result.data;
-                showRunResult('Recomputed: ' + d.recomputed + ', Changed: ' + d.changed + ', Failed: ' + d.failed, d.failed > 0);
-                loadMonthly();
-            })
-            .catch(function () {
-                showRunResult('Network error while force-recomputing monthly credits.', true);
-            })
-            .finally(function () {
-                $btn.prop('disabled', false).html(originalHtml);
-            });
+                .then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                })
+                .then(function (result) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    if (!result.ok) {
+                        showRunResult(result.data.message || 'Failed to build preview.', true);
+                        return;
+                    }
+                    previewYear = year;
+                    previewMonth = month;
+                    var s = result.data.summary;
+                    forcePreviewTable.clear().rows.add(result.data.rows).draw();
+                    showPreviewPanel('force',
+                        'Preview - Force Recompute for ' + $('#monthly-month option:selected').text() + ' ' + year,
+                        'Will change: ' + s.would_change + ' · No change: ' + s.would_noop + ' · Would fail: ' + s.would_fail);
+                })
+                .catch(function () {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    showRunResult('Network error while building preview.', true);
+                });
+        });
     });
+
+    // ── Apply / Cancel the currently open preview ────────────────────────────────
+    $('#monthly-preview-apply-btn').on('click', function () {
+        if (!previewMode) return;
+        var mode = previewMode;
+        var $triggerBtn = $(this);
+
+        var confirmHtml = mode === 'run'
+            ? 'This posts real leave credits to the ledger for every employee shown in the preview above.'
+            : 'This posts correction entries for every changed employee shown above. Employees marked ' +
+              '<strong>"No change"</strong> just get their processed date refreshed, with no ledger entry.';
+
+        Swal.fire({
+            icon: 'warning',
+            title: mode === 'run' ? 'Post these leave credits?' : 'Post correction entries?',
+            html: confirmHtml,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fas fa-check fa-fw"></i> Apply',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#ea580c',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true,
+            focusCancel: true,
+        }).then(function (confirmResult) {
+            if (!confirmResult.isConfirmed) return;
+
+            var routeUrl = mode === 'run'
+                ? '{{ route('leave-manager.run-monthly-credits') }}'
+                : '{{ route('leave-manager.force-recompute-month') }}';
+
+            var $btn = $triggerBtn.prop('disabled', true);
+            var originalHtml = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin fa-fw"></i> Applying…');
+            $('#monthly-preview-cancel-btn').prop('disabled', true);
+
+            fetch(routeUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ year: parseInt(previewYear), month: parseInt(previewMonth) }),
+            })
+                .then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        showRunResult(result.data.message || 'Failed to apply.', true);
+                        return;
+                    }
+                    var d = result.data;
+                    if (mode === 'run') {
+                        showRunResult('Processed: ' + d.processed + ', Skipped: ' + d.skipped + ', Failed: ' + d.failed, d.failed > 0);
+                        $('#monthly-credit-reminder').hide();
+                    } else {
+                        showRunResult('Recomputed: ' + d.recomputed + ', Changed: ' + d.changed + ', Failed: ' + d.failed, d.failed > 0);
+                    }
+                    resetPreviewPanel();
+                    loadMonthly();
+                    if (d.failed === 0) {
+                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Applied', showConfirmButton: false, timer: 1600 });
+                    }
+                })
+                .catch(function () {
+                    showRunResult('Network error while applying.', true);
+                })
+                .finally(function () {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    $('#monthly-preview-cancel-btn').prop('disabled', false);
+                });
+        });
+    });
+
+    $('#monthly-preview-cancel-btn').on('click', resetPreviewPanel);
 
     // ── Recompute a single stale employee-month ────────────────────────────────
     $('#monthly-credits-table tbody').on('click', '.monthly-recompute-btn', function () {
@@ -530,47 +773,69 @@ $(function () {
         var year = $btn.data('year');
         var month = $btn.data('month');
 
-        if (!window.confirm(
-            'Recompute this employee\'s credit for this month? Only the difference from the ' +
-            'previously-posted amount will be added to the ledger, not the full amount again.'
-        )) {
-            return;
-        }
+        Swal.fire({
+            icon: 'question',
+            title: 'Recompute this employee-month?',
+            text: 'Only the difference from the previously-posted amount will be added to the ledger, not the full amount again.',
+            showCancelButton: true,
+            confirmButtonText: 'Recompute',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#ea580c',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true,
+            focusCancel: true,
+        }).then(function (confirmResult) {
+            if (!confirmResult.isConfirmed) return;
 
-        $btn.prop('disabled', true).text('Working…');
+            $btn.prop('disabled', true).text('Working…');
 
-        fetch('{{ route('leave-manager.recompute-employee-month') }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': CSRF_TOKEN,
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: JSON.stringify({ user_id: userId, year: year, month: month }),
-        })
-            .then(function (res) {
-                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            fetch('{{ route('leave-manager.recompute-employee-month') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ user_id: userId, year: year, month: month }),
             })
-            .then(function (result) {
-                if (!result.ok) {
-                    window.alert(result.data.message || 'Recompute failed.');
+                .then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        Swal.fire({ icon: 'error', title: 'Recompute failed', text: result.data.message || 'Something went wrong.' });
+                        $btn.prop('disabled', false).text('Recompute');
+                        return;
+                    }
+                    var d = result.data;
+                    if (d.changed) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Corrected',
+                            html: 'VL change: <strong>' + d.delta_vl + '</strong><br>SL change: <strong>' + d.delta_sl + '</strong>',
+                            confirmButtonColor: '#ea580c',
+                        });
+                    } else {
+                        Swal.fire({ icon: 'info', title: 'No change needed', text: 'Figures were already correct.', confirmButtonColor: '#ea580c' });
+                    }
+                    loadMonthly();
+                })
+                .catch(function () {
+                    Swal.fire({ icon: 'error', title: 'Network error', text: 'Network error while recomputing.' });
                     $btn.prop('disabled', false).text('Recompute');
-                    return;
-                }
-                var d = result.data;
-                window.alert(d.changed
-                    ? 'Corrected. VL change: ' + d.delta_vl + ', SL change: ' + d.delta_sl
-                    : 'No change needed - figures were already correct.');
-                loadMonthly();
-            })
-            .catch(function () {
-                window.alert('Network error while recomputing.');
-                $btn.prop('disabled', false).text('Recompute');
-            });
+                });
+        });
     });
 
     // ── AWOL Monitor table ──────────────────────────────────────────────────────
+    var AWOL_BADGES = {
+        watch:    { cls: 'watch',    label: 'Watch' },
+        warning:  { cls: 'warning',  label: 'Warning' },
+        urgent:   { cls: 'urgent',   label: 'Urgent' },
+        critical: { cls: 'critical', label: 'Critical' },
+    };
+
     var awolTable = $('#awol-monitor-table').DataTable({
         data: [],
         columns: [
@@ -581,13 +846,8 @@ $(function () {
             { data: 'streak_started_on', defaultContent: '-' },
             { data: 'episodes_this_semester', className: 'text-right' },
             { data: 'status', render: function (v) {
-                var map = {
-                    watch: '<span style="color:#64748b;font-weight:600;">Watch</span>',
-                    warning: '<span style="color:#d97706;font-weight:600;">Warning</span>',
-                    urgent: '<span style="color:#ea580c;font-weight:600;">Urgent</span>',
-                    critical: '<span style="color:#dc2626;font-weight:700;">Critical</span>',
-                };
-                return map[v] || v;
+                var b = AWOL_BADGES[v] || { cls: 'neutral', label: v };
+                return '<span class="ll-badge ll-badge--' + b.cls + '">' + b.label + '</span>';
             }},
         ],
         order: [[3, 'desc']],

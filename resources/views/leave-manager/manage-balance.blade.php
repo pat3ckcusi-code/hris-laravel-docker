@@ -6,63 +6,123 @@
 @section('content')
 
     <section class="card">
-        <header>
-            <h2>Manage Leave Balance</h2>
+        <header class="ll-page-header">
+            <div class="ll-page-header-icon"><i class="fas fa-wallet"></i></div>
+            <div>
+                <h2>Manage Leave Balance</h2>
+                <p class="ll-page-subtitle">Adjust and review employees' leave balances</p>
+            </div>
         </header>
 
         <div class="card-body">
-            <div class="leave-balance-toolbar">
-                <p class="muted">This page lets leave managers view and adjust employee leave balances.</p>
 
-                <div class="leave-balance-controls">
-                    <input id="leave-balance-search" class="leave-balance-search" placeholder="Search employees, dept or EmpNo">
-                    <select id="leave-balance-type-filter" class="hris-filter-select">
+            @php
+                $totalEmployees = $balances->count();
+                $zeroVl = $balances->filter(fn ($b) => (float) ($b->VL ?? 0) <= 0)->count();
+                $zeroSl = $balances->filter(fn ($b) => (float) ($b->SL ?? 0) <= 0)->count();
+            @endphp
+
+            <div class="ll-balance-summary">
+                <div class="ll-stat-card ll-stat-card--total">
+                    <div class="ll-stat-icon"><i class="fas fa-users"></i></div>
+                    <div>
+                        <div class="ll-stat-label">Employees</div>
+                        <div class="ll-stat-value">{{ $totalEmployees }}</div>
+                    </div>
+                </div>
+                <div class="ll-stat-card ll-stat-card--vl">
+                    <div class="ll-stat-icon"><i class="fas fa-umbrella-beach"></i></div>
+                    <div>
+                        <div class="ll-stat-label">Zero VL Balance</div>
+                        <div class="ll-stat-value">{{ $zeroVl }}</div>
+                    </div>
+                </div>
+                <div class="ll-stat-card ll-stat-card--sl">
+                    <div class="ll-stat-icon"><i class="fas fa-briefcase-medical"></i></div>
+                    <div>
+                        <div class="ll-stat-label">Zero SL Balance</div>
+                        <div class="ll-stat-value">{{ $zeroSl }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ll-filter-bar">
+                <div class="ll-field ll-field--grow">
+                    <label for="leave-balance-search">Search</label>
+                    <div class="ll-input-icon-wrap">
+                        <i class="fas fa-magnifying-glass"></i>
+                        <input id="leave-balance-search" class="ll-input" placeholder="Search employees, department, or EmpNo…">
+                    </div>
+                </div>
+                <div class="ll-field">
+                    <label for="leave-balance-type-filter">Employee Type</label>
+                    <select id="leave-balance-type-filter" class="ll-select">
                         <option value="">All Employee Types</option>
                         @foreach($employeeTypes as $employeeType)
                             <option value="{{ strtolower($employeeType) }}">{{ $employeeType }}</option>
                         @endforeach
                     </select>
-                    <button id="export-csv" class="hris-btn hris-btn-secondary" type="button">Export CSV</button>
+                </div>
+                <div class="ll-filter-actions">
+                    <button id="export-csv" class="hris-btn-secondary" type="button">
+                        <i class="fas fa-file-csv fa-fw"></i> Export CSV
+                    </button>
                 </div>
             </div>
 
-            <div class="table-responsive">
-            <table id="leave-balance-table" class="leave-table hris-table">
-                <thead>
-                    <tr>
-                        <th>Employee Number</th>
-                        <th>Employee Name</th>
-                        <th>Department</th>
-                        <th>VL</th>
-                        <th>SL</th>
-                        <th>WLNS</th>
-                        <th>SPL</th>
-                        <th>CTO</th>
-                        <th>SPRNT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($balances as $balance)
-                        <tr data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
-                            <td>{{ $balance->user?->EmpNo ?? '-' }}</td>
-                            <td>
-                                @if($balance->user)
-                                    {{ trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')) }}
-                                @else
-                                    -
-                                @endif
-                            </td>
-                            <td>{{ $balance->user ? ($departments[$balance->user->Dept_id] ?? '') : '' }}</td>
-                            <td class="editable" data-field="VL" data-id="{{ $balance->id }}">{{ $balance->VL ?? '' }}</td>
-                            <td class="editable" data-field="SL" data-id="{{ $balance->id }}">{{ $balance->SL ?? '' }}</td>
-                            <td class="editable" data-field="WLNS" data-id="{{ $balance->id }}">{{ $balance->WLNS ?? '' }}</td>
-                            <td class="editable" data-field="SPL" data-id="{{ $balance->id }}">{{ $balance->SPL ?? '' }}</td>
-                            <td class="editable" data-field="CTO" data-id="{{ $balance->id }}">{{ $balance->CTO ?? '' }}</td>
-                            <td class="editable" data-field="SP" data-id="{{ $balance->id }}">{{ $balance->SP ?? '' }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+            <p class="ll-edit-hint"><i class="fas fa-circle-info fa-fw"></i> Click any balance cell to edit it inline. Press Enter to save, Esc to cancel.</p>
+
+            <div class="hris-table-card">
+                <div class="hris-table-wrapper">
+                    <table id="leave-balance-table" class="hris-table ll-balance-table">
+                        <thead>
+                            <tr>
+                                <th>Employee Number</th>
+                                <th>Employee Name</th>
+                                <th>Department</th>
+                                <th class="text-center">VL</th>
+                                <th class="text-center">SL</th>
+                                <th class="text-center">WLNS</th>
+                                <th class="text-center">SPL</th>
+                                <th class="text-center">CTO</th>
+                                <th class="text-center">SPRNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($balances as $balance)
+                                <tr data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
+                                    <td><span class="ll-empno">{{ $balance->user?->EmpNo ?? '-' }}</span></td>
+                                    <td>
+                                        @if($balance->user)
+                                            <span class="ll-emp-name">{{ trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')) }}</span>
+                                        @else
+                                            -
+                                        @endif
+                                    </td>
+                                    <td class="muted">{{ $balance->user ? ($departments[$balance->user->Dept_id] ?? '') : '' }}</td>
+                                    <td class="editable text-center" data-field="VL" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->VL ?? 0) <= 0])>{{ $balance->VL ?? '' }}</span>
+                                    </td>
+                                    <td class="editable text-center" data-field="SL" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->SL ?? 0) <= 0])>{{ $balance->SL ?? '' }}</span>
+                                    </td>
+                                    <td class="editable text-center" data-field="WLNS" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->WLNS ?? 0) <= 0])>{{ $balance->WLNS ?? '' }}</span>
+                                    </td>
+                                    <td class="editable text-center" data-field="SPL" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->SPL ?? 0) <= 0])>{{ $balance->SPL ?? '' }}</span>
+                                    </td>
+                                    <td class="editable text-center" data-field="CTO" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->CTO ?? 0) <= 0])>{{ $balance->CTO ?? '' }}</span>
+                                    </td>
+                                    <td class="editable text-center" data-field="SP" data-id="{{ $balance->id }}">
+                                        <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->SP ?? 0) <= 0])>{{ $balance->SP ?? '' }}</span>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </section>
@@ -132,6 +192,15 @@
             URL.revokeObjectURL(url);
         });
 
+        // Re-wraps a balance value in its "chip" span, tinting it red when the balance is zero
+        // or negative -- keeps the low-balance affordance accurate after every inline edit,
+        // not just on initial page load.
+        function makeChip(value) {
+            var num = parseFloat(value);
+            var isZero = !isNaN(num) ? num <= 0 : (value === '' || value === '0');
+            return $('<span class="ll-balance-chip' + (isZero ? ' ll-balance-chip--zero' : '') + '">').text(value);
+        }
+
         // Inline editing: click to replace cell with input
         $('#leave-balance-table').on('click', 'td.editable', function () {
             var td = $(this);
@@ -141,11 +210,11 @@
             var field = td.data('field');
             var id = td.data('id');
 
-            var input = $('<input type="text" class="inline-edit" />').val(original).css({width: '100%', padding: '6px'});
+            var input = $('<input type="text" class="inline-edit ll-inline-edit-input" />').val(original);
             td.empty().append(input);
             input.focus().select();
 
-            function cancel() { td.empty().text(original); }
+            function cancel() { td.empty().append(makeChip(original)); }
 
             function save() {
                 var val = input.val().trim();
@@ -157,43 +226,26 @@
                     data: { field: field, value: val, _token: '{{ csrf_token() }}' },
                     success: function (res) {
                         var newVal = (res && res.balance && (res.balance[field] !== undefined)) ? res.balance[field] : val;
-                        td.empty().text(newVal);
-                        // prefer SweetAlert2 toast if available
-                        if (typeof Swal !== 'undefined' && typeof Swal.fire === 'function') {
-                            Swal.fire({
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: false,
-                                timer: 1400,
-                                icon: 'success',
-                                title: 'Saved'
-                            });
-                        } else {
-                            var badge = $('<span class="saved-badge">Saved</span>');
-                            td.append(badge);
-                            td.addClass('flash-success');
-                            setTimeout(function () { badge.fadeOut(200, function () { $(this).remove(); }); }, 1200);
-                            setTimeout(function () { td.removeClass('flash-success'); }, 1400);
-                        }
+                        td.empty().append(makeChip(newVal));
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 1400,
+                            icon: 'success',
+                            title: 'Saved'
+                        });
                     },
                     error: function (xhr) {
                         var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Update failed';
-                        if (typeof Swal !== 'undefined' && typeof Swal.fire === 'function') {
-                            Swal.fire({
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: true,
-                                icon: 'error',
-                                title: 'Update failed',
-                                text: msg
-                            });
-                        } else {
-                            var badge = $('<span class="error-badge">Error</span>');
-                            td.append(badge);
-                            td.addClass('flash-error');
-                            setTimeout(function () { badge.fadeOut(200, function () { $(this).remove(); }); }, 1800);
-                            setTimeout(function () { td.removeClass('flash-error'); }, 1800);
-                        }
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: true,
+                            icon: 'error',
+                            title: 'Update failed',
+                            text: msg
+                        });
                         cancel();
                         console.error(msg);
                     }

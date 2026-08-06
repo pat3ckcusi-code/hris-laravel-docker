@@ -1243,6 +1243,61 @@ class LeaveManagerController extends Controller
     }
 
     /**
+     * Preview what runMonthlyCredits() would post, without writing anything to the
+     * database — lets the Leave Manager review the full per-employee list before
+     * committing via the Apply step, which just calls runMonthlyCredits() unchanged.
+     */
+    public function runMonthlyCreditsPreview(Request $request): JsonResponse
+    {
+        $request->validate([
+            'year' => ['required', 'integer', 'min:2020'],
+            'month' => ['required', 'integer', 'between:1,12'],
+        ]);
+
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        $lastCreditableMonth = Carbon::now()->subMonthNoOverflow();
+        $requested = Carbon::create($year, $month, 1);
+
+        if ($requested->greaterThan($lastCreditableMonth->copy()->startOfMonth())) {
+            return response()->json([
+                'message' => 'Cannot process a future or the current (incomplete) month.',
+            ], 422);
+        }
+
+        $preview = app(ProcessMonthlyLeaveCredits::class)->previewBatch($year, $month);
+
+        $userIds = collect($preview['rows'])->pluck('user_id')->unique()->values();
+        $users = User::whereIn('id', $userIds)->get()->keyBy('id');
+        $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
+
+        $rows = collect($preview['rows'])->map(function ($row) use ($users, $departments) {
+            $user = $users->get($row['user_id']);
+
+            $mapped = [
+                'emp_no' => $user?->EmpNo ?? '-',
+                'name' => $user ? trim(($user->last_name ?? '').', '.($user->first_name ?? '')) : '-',
+                'department' => $user ? ($departments[$user->Dept_id] ?? '-') : '-',
+                'status' => $row['status'],
+            ];
+
+            if ($row['status'] === 'would_process') {
+                $mapped['abs_wop_days'] = number_format((float) $row['abs_wop_days'], 3);
+                $mapped['computed_vl'] = number_format($row['vl_earned'], 3);
+                $mapped['computed_sl'] = number_format($row['sl_earned'], 3);
+                $mapped['transaction_type'] = $row['transaction_type'];
+            } else {
+                $mapped['message'] = $row['message'];
+            }
+
+            return $mapped;
+        })->values();
+
+        return response()->json(['summary' => $preview['summary'], 'rows' => $rows]);
+    }
+
+    /**
      * Correct an already-processed month whose leave data changed afterward. Posts only
      * the delta between the newly-computed and previously-recorded VL/SL (never the full
      * recomputed amount) so the employee's balance isn't double-credited.
@@ -1302,11 +1357,7 @@ class LeaveManagerController extends Controller
             ], 422);
         }
 
-        $attendances = MonthlyAttendance::with('user')
-            ->where('year', $year)
-            ->where('month', $month)
-            ->whereNotNull('processed_at')
-            ->get();
+        $attendances = $this->processedAttendancesQuery($year, $month)->get();
 
         $recomputed = 0;
         $changed = 0;
@@ -1320,7 +1371,7 @@ class LeaveManagerController extends Controller
             }
 
             try {
-                $result = DB::transaction(fn () => $this->recomputeAttendanceMonth($attendance->user, $attendance));
+                $result = $this->recomputeAttendanceMonth($attendance->user, $attendance);
                 $recomputed++;
                 if ($result['changed']) {
                     $changed++;
@@ -1360,18 +1411,173 @@ class LeaveManagerController extends Controller
     }
 
     /**
+     * Preview what forceRecomputeMonth() would post, without writing anything — every
+     * in-scope employee is listed (changed and unchanged both), since the whole point is
+     * showing which is which. The Apply step just calls forceRecomputeMonth() unchanged.
+     */
+    public function forceRecomputeMonthPreview(Request $request): JsonResponse
+    {
+        $request->validate([
+            'year' => ['required', 'integer', 'min:2020'],
+            'month' => ['required', 'integer', 'between:1,12'],
+        ]);
+
+        $year = (int) $request->input('year');
+        $month = (int) $request->input('month');
+
+        $lastCreditableMonth = Carbon::now()->subMonthNoOverflow();
+        $requested = Carbon::create($year, $month, 1);
+
+        if ($requested->greaterThan($lastCreditableMonth->copy()->startOfMonth())) {
+            return response()->json([
+                'message' => 'Cannot recompute a future or the current (incomplete) month.',
+            ], 422);
+        }
+
+        $attendances = $this->processedAttendancesQuery($year, $month)->get();
+        $departments = Department::pluck('Dept_name', 'Dept_id')->toArray();
+
+        $wouldChange = 0;
+        $wouldNoop = 0;
+        $wouldFail = 0;
+        $rows = [];
+
+        foreach ($attendances as $attendance) {
+            if (! $attendance->user) {
+                $wouldFail++;
+
+                continue;
+            }
+
+            try {
+                $delta = $this->computeRecomputeDelta($attendance->user, $attendance);
+            } catch (\Throwable $e) {
+                $wouldFail++;
+                Log::error('Force recompute preview failed for user', [
+                    'user_id' => $attendance->user_id,
+                    'year' => $year,
+                    'month' => $month,
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            $delta['changed'] ? $wouldChange++ : $wouldNoop++;
+
+            $rows[] = [
+                'emp_no' => $attendance->user->EmpNo ?? '-',
+                'name' => trim(($attendance->user->last_name ?? '').', '.($attendance->user->first_name ?? '')),
+                'department' => $departments[$attendance->user->Dept_id] ?? '-',
+                'old_vl' => number_format($delta['old_vl'], 3),
+                'old_sl' => number_format($delta['old_sl'], 3),
+                'new_vl' => number_format($delta['new_vl'], 3),
+                'new_sl' => number_format($delta['new_sl'], 3),
+                'delta_vl' => number_format($delta['delta_vl'], 3),
+                'delta_sl' => number_format($delta['delta_sl'], 3),
+                'changed' => $delta['changed'],
+            ];
+        }
+
+        return response()->json([
+            'summary' => ['would_change' => $wouldChange, 'would_noop' => $wouldNoop, 'would_fail' => $wouldFail],
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
      * Recompute one employee's already-processed month and post only the delta as a
      * CREDIT_CORRECTION ledger entry — shared by the single-employee endpoint above and
      * the bulk force-recompute endpoint below, so both apply identical, double-credit-safe
-     * logic regardless of what triggered the recompute.
+     * logic regardless of what triggered the recompute. Wrapped in its own transaction so
+     * the ledger write, real balance adjustment, attendance save, and audit log are atomic
+     * regardless of whether the caller already wraps this in a transaction of its own.
      *
      * @return array{changed: bool, delta_vl: float, delta_sl: float, new_vl: float, new_sl: float}
      */
     private function recomputeAttendanceMonth(User $user, MonthlyAttendance $attendance): array
     {
+        return DB::transaction(function () use ($user, $attendance) {
+            $originalProcessedAt = $attendance->processed_at;
+            $delta = $this->computeRecomputeDelta($user, $attendance);
+
+            if ($delta['changed']) {
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $user->id,
+                    'transaction_date' => Carbon::create($attendance->year, $attendance->month, 1)->endOfMonth()->toDateString(),
+                    'transaction_type' => 'CREDIT_CORRECTION',
+                    'leave_type' => 'VL+SL',
+                    'days_present' => $delta['days_present'],
+                    'abs_wop_days' => $delta['abs_wop_days'] > 0 ? $delta['abs_wop_days'] : null,
+                    'credit_vl' => $delta['delta_vl'] > 0 ? $delta['delta_vl'] : 0,
+                    'credit_sl' => $delta['delta_sl'] > 0 ? $delta['delta_sl'] : 0,
+                    'debit_vl' => $delta['delta_vl'] < 0 ? abs($delta['delta_vl']) : 0,
+                    'debit_sl' => $delta['delta_sl'] < 0 ? abs($delta['delta_sl']) : 0,
+                    'is_system' => true,
+                    'created_by' => Auth::id(),
+                    'remarks' => 'Correction: recomputed on '.now()->format('Y-m-d H:i')." (originally processed {$originalProcessedAt->format('Y-m-d H:i')}).",
+                ]);
+
+                // Apply the same delta to the real balance the employee files leave
+                // against -- writeLedgerEntry() above only records the transaction.
+                // The delta can be negative (a correction that reduces credit must
+                // reduce the balance too), same sign convention as credit_vl/debit_vl above.
+                $balance = LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first();
+                if ($balance) {
+                    $balance->VL = round((float) $balance->VL + $delta['delta_vl'], 3);
+                    $balance->SL = round((float) $balance->SL + $delta['delta_sl'], 3);
+                    $balance->save();
+                }
+            }
+
+            $attendance->computed_vl = $delta['new_vl'];
+            $attendance->computed_sl = $delta['new_sl'];
+            $attendance->processed_at = now();
+            $attendance->processed_by = Auth::id();
+            $attendance->save();
+
+            HRAuditTrail::create([
+                'actor_user_id' => Auth::id(),
+                'module' => 'leave',
+                'action' => 'monthly_credit_correction',
+                'target_type' => 'App\\Models\\MonthlyAttendance',
+                'target_id' => $attendance->id,
+                'details' => [
+                    'user_id' => $user->id,
+                    'year' => $attendance->year,
+                    'month' => $attendance->month,
+                    'old_vl' => $delta['old_vl'],
+                    'old_sl' => $delta['old_sl'],
+                    'new_vl' => $delta['new_vl'],
+                    'new_sl' => $delta['new_sl'],
+                    'delta_vl' => $delta['delta_vl'],
+                    'delta_sl' => $delta['delta_sl'],
+                    'triggered_by' => Auth::id(),
+                ],
+            ]);
+
+            return [
+                'changed' => $delta['changed'],
+                'delta_vl' => $delta['delta_vl'],
+                'delta_sl' => $delta['delta_sl'],
+                'new_vl' => $delta['new_vl'],
+                'new_sl' => $delta['new_sl'],
+            ];
+        });
+    }
+
+    /**
+     * Pure computation of an already-processed employee-month's would-be recompute delta --
+     * no DB writes. Shared by recomputeAttendanceMonth() (which persists the result) and
+     * forceRecomputeMonthPreview() (which just reads it), so preview and apply are
+     * guaranteed to agree, provided nothing in the underlying data changes in between.
+     *
+     * @return array{old_vl: float, old_sl: float, new_vl: float, new_sl: float, delta_vl: float, delta_sl: float, changed: bool, days_present: float, abs_wop_days: float}
+     */
+    private function computeRecomputeDelta(User $user, MonthlyAttendance $attendance): array
+    {
         $oldVl = (float) $attendance->computed_vl;
         $oldSl = (float) $attendance->computed_sl;
-        $originalProcessedAt = $attendance->processed_at;
 
         $aggregate = app(LwopAggregationService::class)->computeForMonth($user, $attendance->year, $attendance->month);
         $attendance->days_present = $aggregate['days_present'];
@@ -1385,59 +1591,26 @@ class LeaveManagerController extends Controller
         $deltaSl = round($newSl - $oldSl, 3);
 
         $epsilon = 0.0005;
-        $hasChange = abs($deltaVl) > $epsilon || abs($deltaSl) > $epsilon;
-
-        if ($hasChange) {
-            app(LeaveLedgerService::class)->writeLedgerEntry([
-                'user_id' => $user->id,
-                'transaction_date' => Carbon::create($attendance->year, $attendance->month, 1)->endOfMonth()->toDateString(),
-                'transaction_type' => 'CREDIT_CORRECTION',
-                'leave_type' => 'VL+SL',
-                'days_present' => $attendance->days_present,
-                'abs_wop_days' => $attendance->abs_wop_days > 0 ? $attendance->abs_wop_days : null,
-                'credit_vl' => $deltaVl > 0 ? $deltaVl : 0,
-                'credit_sl' => $deltaSl > 0 ? $deltaSl : 0,
-                'debit_vl' => $deltaVl < 0 ? abs($deltaVl) : 0,
-                'debit_sl' => $deltaSl < 0 ? abs($deltaSl) : 0,
-                'is_system' => true,
-                'created_by' => Auth::id(),
-                'remarks' => 'Correction: recomputed on '.now()->format('Y-m-d H:i')." (originally processed {$originalProcessedAt->format('Y-m-d H:i')}).",
-            ]);
-        }
-
-        $attendance->computed_vl = $newVl;
-        $attendance->computed_sl = $newSl;
-        $attendance->processed_at = now();
-        $attendance->processed_by = Auth::id();
-        $attendance->save();
-
-        HRAuditTrail::create([
-            'actor_user_id' => Auth::id(),
-            'module' => 'leave',
-            'action' => 'monthly_credit_correction',
-            'target_type' => 'App\\Models\\MonthlyAttendance',
-            'target_id' => $attendance->id,
-            'details' => [
-                'user_id' => $user->id,
-                'year' => $attendance->year,
-                'month' => $attendance->month,
-                'old_vl' => $oldVl,
-                'old_sl' => $oldSl,
-                'new_vl' => $newVl,
-                'new_sl' => $newSl,
-                'delta_vl' => $deltaVl,
-                'delta_sl' => $deltaSl,
-                'triggered_by' => Auth::id(),
-            ],
-        ]);
 
         return [
-            'changed' => $hasChange,
-            'delta_vl' => $deltaVl,
-            'delta_sl' => $deltaSl,
+            'old_vl' => $oldVl,
+            'old_sl' => $oldSl,
             'new_vl' => $newVl,
             'new_sl' => $newSl,
+            'delta_vl' => $deltaVl,
+            'delta_sl' => $deltaSl,
+            'changed' => abs($deltaVl) > $epsilon || abs($deltaSl) > $epsilon,
+            'days_present' => $attendance->days_present,
+            'abs_wop_days' => $attendance->abs_wop_days,
         ];
+    }
+
+    private function processedAttendancesQuery(int $year, int $month)
+    {
+        return MonthlyAttendance::with('user')
+            ->where('year', $year)
+            ->where('month', $month)
+            ->whereNotNull('processed_at');
     }
 
     public function apiLedgerHistory(Request $request): JsonResponse

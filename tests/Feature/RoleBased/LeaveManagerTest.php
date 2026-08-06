@@ -423,9 +423,10 @@ class LeaveManagerTest extends TestCase
         // for the one deliberately-created eligible employee.
         $lm = $this->createLeaveManager(['employee_type' => 'casual']);
         $emp = $this->createEmployee();
-        $this->createLeaveBalance($emp);
+        $balance = $this->createLeaveBalance($emp);
 
         $lastMonth = now()->subMonthNoOverflow();
+        $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
 
         $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits'), [
             'year' => $lastMonth->year,
@@ -450,6 +451,10 @@ class LeaveManagerTest extends TestCase
             'module' => 'leave',
             'action' => 'monthly_credit_run',
         ]);
+
+        $balance->refresh();
+        $this->assertEquals(16.25, (float) $balance->VL, 'The real leave_balances row must be credited, not just the ledger.');
+        $this->assertEquals(16.25, (float) $balance->SL);
     }
 
     public function test_run_monthly_credits_second_call_skips_without_duplicating(): void
@@ -534,6 +539,74 @@ class LeaveManagerTest extends TestCase
             $attendance?->processed_at,
             'A failed ledger write must not leave processed_at committed, so the employee stays eligible for retry.'
         );
+    }
+
+    public function test_run_monthly_credits_preview_writes_nothing_to_the_database(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits.preview'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['summary' => ['would_process' => 1, 'would_skip' => 0, 'would_fail' => 0]]);
+        $response->assertJsonFragment(['emp_no' => $emp->EmpNo, 'computed_vl' => '1.250', 'computed_sl' => '1.250']);
+
+        $this->assertDatabaseMissing('monthly_attendance', [
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+        $this->assertSame(0, LeaveLedger::where('user_id', $emp->id)->count(), 'Preview must not write any ledger entry.');
+    }
+
+    public function test_run_monthly_credits_preview_excludes_already_processed_employees_from_rows(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits.preview'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['summary' => ['would_process' => 0, 'would_skip' => 1, 'would_fail' => 0]]);
+        $this->assertEmpty($response->json('rows'), 'Already-processed employees are counted but not listed as preview rows.');
+    }
+
+    public function test_run_monthly_credits_preview_rejects_current_month(): void
+    {
+        $lm = $this->createLeaveManager();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.run-monthly-credits.preview'), [
+            'year' => now()->year,
+            'month' => now()->month,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_non_leave_manager_cannot_preview_run_monthly_credits(): void
+    {
+        $emp = $this->createEmployee();
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($emp)->postJson(route('leave-manager.run-monthly-credits.preview'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(403);
     }
 
     // ──────────────────────────────────────────────
@@ -719,19 +792,26 @@ class LeaveManagerTest extends TestCase
         // deliberately-created eligible employee.
         $lm = $this->createLeaveManager(['employee_type' => 'casual']);
         $emp = $this->createEmployee();
-        $this->createLeaveBalance($emp);
+        $balance = $this->createLeaveBalance($emp);
 
         $lastMonth = now()->subMonthNoOverflow();
         // Full attendance, zero LWOP/AWOL -- the deterministic 1.25 full-month credit.
         $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
-        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
 
-        // Simulate a stored figure computed by a formula that has since changed --
-        // isMonthlyCreditStale() only reacts to edited leave requests, so this row
-        // stays "OK" and would never surface a per-row Recompute button.
-        MonthlyAttendance::where('user_id', $emp->id)
-            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)
-            ->update(['computed_vl' => 1.000, 'computed_sl' => 1.000]);
+        // Simulate a row processed under a stale formula (e.g. before this session's
+        // fixes) that was never applied to leave_balances at all -- the exact historical
+        // bug state -- by seeding MonthlyAttendance directly instead of going through
+        // processBatch() (which now correctly credits the balance itself).
+        MonthlyAttendance::create([
+            'user_id' => $emp->id,
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+            'days_present' => 24,
+            'abs_wop_days' => 0,
+            'computed_vl' => 1.000,
+            'computed_sl' => 1.000,
+            'processed_at' => now()->subDay(),
+        ]);
 
         $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month'), [
             'year' => $lastMonth->year,
@@ -749,18 +829,27 @@ class LeaveManagerTest extends TestCase
         $this->assertNotNull($correction);
         $this->assertEquals(0.25, (float) $correction->credit_vl);
         $this->assertEquals(0.25, (float) $correction->credit_sl);
+
+        // Only the delta (0.25) is applied on top of the pre-existing balance -- the real
+        // leave_balances row must actually move, not just the ledger.
+        $balance->refresh();
+        $this->assertEquals(15.25, (float) $balance->VL);
+        $this->assertEquals(15.25, (float) $balance->SL);
     }
 
     public function test_force_recompute_month_no_change_writes_no_ledger_entry(): void
     {
         $lm = $this->createLeaveManager(['employee_type' => 'casual']);
         $emp = $this->createEmployee();
-        $this->createLeaveBalance($emp);
+        $balance = $this->createLeaveBalance($emp);
 
         $lastMonth = now()->subMonthNoOverflow();
         app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
 
         $ledgerCountBefore = LeaveLedger::where('user_id', $emp->id)->count();
+        $balance->refresh();
+        $vlAfterInitialRun = (float) $balance->VL;
+        $slAfterInitialRun = (float) $balance->SL;
 
         $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month'), [
             'year' => $lastMonth->year,
@@ -768,6 +857,11 @@ class LeaveManagerTest extends TestCase
         ]);
 
         $response->assertStatus(200)->assertJson(['recomputed' => 1, 'changed' => 0, 'failed' => 0]);
+
+        $balance->refresh();
+        $this->assertEquals($vlAfterInitialRun, (float) $balance->VL, 'A no-op force recompute must not touch the real balance again.');
+        $this->assertEquals($slAfterInitialRun, (float) $balance->SL);
+
         $this->assertSame(
             $ledgerCountBefore,
             LeaveLedger::where('user_id', $emp->id)->count(),
@@ -793,6 +887,87 @@ class LeaveManagerTest extends TestCase
         $lastMonth = now()->subMonthNoOverflow();
 
         $response = $this->actingAs($emp)->postJson(route('leave-manager.force-recompute-month'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_force_recompute_month_preview_writes_nothing_to_the_database(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        $this->seedFullAttendance($emp->id, $lastMonth->year, $lastMonth->month);
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        // Simulate a stale stored value, same setup as the real force-recompute test above.
+        MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)
+            ->update(['computed_vl' => 1.000, 'computed_sl' => 1.000]);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month.preview'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['summary' => ['would_change' => 1, 'would_noop' => 0, 'would_fail' => 0]]);
+        $response->assertJsonFragment([
+            'emp_no' => $emp->EmpNo,
+            'old_vl' => '1.000', 'old_sl' => '1.000',
+            'new_vl' => '1.250', 'new_sl' => '1.250',
+            'changed' => true,
+        ]);
+
+        $attendance = MonthlyAttendance::where('user_id', $emp->id)
+            ->where('year', $lastMonth->year)->where('month', $lastMonth->month)->first();
+        $this->assertEquals(1.000, (float) $attendance->computed_vl, 'Preview must not write the recomputed value.');
+        $this->assertSame(
+            0,
+            LeaveLedger::where('user_id', $emp->id)->where('transaction_type', 'CREDIT_CORRECTION')->count(),
+            'Preview must not post a correction ledger entry.'
+        );
+    }
+
+    public function test_force_recompute_month_preview_includes_unchanged_rows_too(): void
+    {
+        $lm = $this->createLeaveManager(['employee_type' => 'casual']);
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp);
+
+        $lastMonth = now()->subMonthNoOverflow();
+        app(ProcessMonthlyLeaveCredits::class)->processBatch($lastMonth->year, $lastMonth->month, $emp->id, false);
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month.preview'), [
+            'year' => $lastMonth->year,
+            'month' => $lastMonth->month,
+        ]);
+
+        $response->assertStatus(200)->assertJson(['summary' => ['would_change' => 0, 'would_noop' => 1, 'would_fail' => 0]]);
+        $response->assertJsonFragment(['emp_no' => $emp->EmpNo, 'changed' => false]);
+    }
+
+    public function test_force_recompute_month_preview_rejects_current_month(): void
+    {
+        $lm = $this->createLeaveManager();
+
+        $response = $this->actingAs($lm)->postJson(route('leave-manager.force-recompute-month.preview'), [
+            'year' => now()->year,
+            'month' => now()->month,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_non_leave_manager_cannot_preview_force_recompute_month(): void
+    {
+        $emp = $this->createEmployee();
+        $lastMonth = now()->subMonthNoOverflow();
+
+        $response = $this->actingAs($emp)->postJson(route('leave-manager.force-recompute-month.preview'), [
             'year' => $lastMonth->year,
             'month' => $lastMonth->month,
         ]);
