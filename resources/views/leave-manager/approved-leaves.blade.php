@@ -5,34 +5,38 @@
 
 @section('content')
 <section class="card">
-    <header>
-        <h2>Approved Leaves</h2>
+    <header class="ll-page-header">
+        <div class="ll-page-header-icon"><i class="fas fa-calendar-check"></i></div>
+        <div>
+            <h2>Approved Leaves</h2>
+            <p class="ll-page-subtitle">All currently approved leave requests</p>
+        </div>
     </header>
 
     <div class="card-body">
-        <p class="muted">Leave requests that are fully approved and on record. Use the filters below to narrow by month, leave type, or employee.</p>
+        <p class="ll-edit-hint"><i class="fas fa-circle-info fa-fw"></i> Use the filters below to narrow by month, leave type, or employee.</p>
 
-        <div class="filter-bar">
-            <div class="filter-field">
-                <label for="filter-month" class="small mb-1">Month</label>
-                @php
-                    $monthOptions = [];
-                    for ($i = 0; $i < 12; $i++) {
-                        $m     = date('Y-m', strtotime("-{$i} months"));
-                        $label = date('F Y', strtotime($m . '-01'));
-                        $monthOptions[$m] = $label;
-                    }
-                @endphp
-                <select id="filter-month" class="form-control form-control-sm">
+        <div class="ll-filter-bar">
+            @php
+                $monthOptions = [];
+                for ($i = 0; $i < 12; $i++) {
+                    $m     = date('Y-m', strtotime("-{$i} months"));
+                    $label = date('F Y', strtotime($m . '-01'));
+                    $monthOptions[$m] = $label;
+                }
+            @endphp
+            <div class="ll-field">
+                <label for="filter-month">Month</label>
+                <select id="filter-month" class="ll-select">
                     @foreach($monthOptions as $val => $lbl)
                         <option value="{{ $val }}" @if($val === $currentMonth) selected @endif>{{ $lbl }}</option>
                     @endforeach
                 </select>
             </div>
 
-            <div class="filter-field">
-                <label for="filter-type" class="small mb-1">Leave Type</label>
-                <select id="filter-type" class="form-control form-control-sm" style="min-width:140px">
+            <div class="ll-field">
+                <label for="filter-type">Leave Type</label>
+                <select id="filter-type" class="ll-select">
                     <option value="">All types</option>
                     @foreach(['Vacation Leave','Sick Leave','Wellness Leave','Special Privilege Leave','CTO','Solo Parent Leave'] as $lt)
                         <option value="{{ $lt }}" @if(request('type') === $lt) selected @endif>{{ $lt }}</option>
@@ -40,12 +44,13 @@
                 </select>
             </div>
 
-            <div class="filter-field" style="flex:1">
-                <div class="filter-emp-row">
-                    <label for="alEmployeeSearch" class="filter-label-emp mb-0">Employee</label>
-                    <input type="text" id="alEmployeeSearch" class="form-control form-control-lg filter-input-emp" placeholder="Type name or EmpNo to search" autocomplete="off">
+            <div class="ll-field ll-field--grow">
+                <label for="alEmployeeSearch">Employee</label>
+                <div class="ll-input-icon-wrap">
+                    <i class="fas fa-magnifying-glass"></i>
+                    <input type="text" id="alEmployeeSearch" class="ll-input" placeholder="Type name or EmpNo to search" autocomplete="off">
                     <input type="hidden" id="alEmployee" value="">
-                    <div id="alEmployee_suggestions" class="list-group" style="position:absolute;z-index:1050;top:100%;left:0;right:0;display:none;max-height:240px;overflow:auto"></div>
+                    <div id="alEmployee_suggestions" class="ll-suggestions"></div>
                 </div>
             </div>
         </div>
@@ -60,75 +65,75 @@
         </div>
         @endif
 
-        <div class="table-responsive">
-            <table id="approved-leaves-table" class="hris-table" style="width:100%">
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Department</th>
-                        <th>Leave Type</th>
-                        <th>Period</th>
-                        <th>Days</th>
-                        <th>Filed On</th>
-                        <th>Cancellation</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($leaves as $leave)
-                        @php
-                            $empName  = $leave->user
-                                ? trim(($leave->user->last_name ?? '') . ', ' . ($leave->user->first_name ?? ''))
-                                : '-';
-                            $deptName = ($leave->user && isset($departments[$leave->user->Dept_id]))
-                                ? $departments[$leave->user->Dept_id]
-                                : '-';
-                            $period   = ($leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '-')
-                                      . ' – '
-                                      . ($leave->end_date   ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y')   : '-');
-                            // Whole-row status takes priority; a partial (per-date) cancellation
-                            // has no whole-row status of its own, so fall back to whichever
-                            // stage its pending dates are at.
-                            $cancellationDisplay = $leave->cancellation_status ?? $leave->pendingCancellationDates->first()?->cancellation_status;
-                        @endphp
-                        <tr
-                            data-id="{{ $leave->id }}"
-                            data-employee="{{ $empName }}"
-                            data-leave-type="{{ strtoupper($leave->leave_type ?? '') }}"
-                            data-period="{{ $period }}"
-                            data-days="{{ $leave->total_days ?? '-' }}"
-                            data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}"
-                            data-reason="{{ e($leave->reason ?? '') }}"
-                            data-cancellation="{{ e($cancellationDisplay ?? '') }}"
-                        >
-                            <td>{{ $empName }}</td>
-                            <td>{{ $deptName }}</td>
-                            <td class="text-center">{{ strtoupper($leave->leave_type ?? '') }}</td>
-                            <td class="text-center" style="white-space:nowrap">{{ $period }}</td>
-                            <td class="text-center">{{ $leave->total_days ?? '-' }}</td>
-                            <td class="text-center">
-                                {{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}
-                            </td>
-                            <td class="text-center">
-                                @if($leave->reschedule_status === 'Rescheduled')
-                                    <span style="font-size:0.82rem;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 8px;border-radius:4px;font-weight:600">Rescheduled</span>
-                                @elseif($leave->reschedule_status === 'Pending Reschedule')
-                                    <span style="font-size:0.82rem;color:#92400e;font-weight:600">Reschedule Pending</span>
-                                @elseif($cancellationDisplay)
-                                    <span style="font-size:0.82rem;color:#b45309;font-weight:600">{{ $cancellationDisplay }}</span>
-                                @else
-                                    <span style="color:#94a3b8;font-size:0.82rem">-</span>
-                                @endif
-                            </td>
-                            <td class="text-center">
-                                <button type="button" class="hris-btn hris-btn-sm hris-btn-secondary view-leave-btn">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                            </td>
+        <div class="hris-table-card">
+            <div class="hris-table-wrapper">
+                <table id="approved-leaves-table" class="hris-table ll-approved-table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th>Leave Type</th>
+                            <th>Period</th>
+                            <th class="text-center">Days</th>
+                            <th>Filed On</th>
+                            <th>Cancellation</th>
+                            <th class="text-center">Actions</th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach($leaves as $leave)
+                            @php
+                                $empName  = $leave->user
+                                    ? trim(($leave->user->last_name ?? '') . ', ' . ($leave->user->first_name ?? ''))
+                                    : '-';
+                                $deptName = ($leave->user && isset($departments[$leave->user->Dept_id]))
+                                    ? $departments[$leave->user->Dept_id]
+                                    : '-';
+                                $period   = ($leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '-')
+                                          . ' – '
+                                          . ($leave->end_date   ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y')   : '-');
+                                // Whole-row status takes priority; a partial (per-date) cancellation
+                                // has no whole-row status of its own, so fall back to whichever
+                                // stage its pending dates are at.
+                                $cancellationDisplay = $leave->cancellation_status ?? $leave->pendingCancellationDates->first()?->cancellation_status;
+                            @endphp
+                            <tr
+                                data-id="{{ $leave->id }}"
+                                data-employee="{{ $empName }}"
+                                data-leave-type="{{ strtoupper($leave->leave_type ?? '') }}"
+                                data-period="{{ $period }}"
+                                data-days="{{ $leave->total_days ?? '-' }}"
+                                data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}"
+                                data-reason="{{ e($leave->reason ?? '') }}"
+                                data-cancellation="{{ e($cancellationDisplay ?? '') }}"
+                            >
+                                <td><span class="ll-emp-name">{{ $empName }}</span></td>
+                                <td class="muted">{{ $deptName }}</td>
+                                <td><span class="ll-badge ll-badge--neutral">{{ strtoupper($leave->leave_type ?? '') }}</span></td>
+                                <td>{{ $period }}</td>
+                                <td class="text-center"><span class="ll-balance-chip">{{ $leave->total_days ?? '-' }}</span></td>
+                                <td>{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}</td>
+                                <td>
+                                    @if($leave->reschedule_status === 'Rescheduled')
+                                        <span class="ll-badge ll-badge--neutral">Rescheduled</span>
+                                    @elseif($leave->reschedule_status === 'Pending Reschedule')
+                                        <span class="ll-badge ll-badge--warning">Reschedule Pending</span>
+                                    @elseif($cancellationDisplay)
+                                        <span class="ll-badge ll-badge--warning">{{ $cancellationDisplay }}</span>
+                                    @else
+                                        <span class="muted">-</span>
+                                    @endif
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="hris-btn-secondary hris-btn-sm view-leave-btn">
+                                        <i class="fas fa-eye fa-fw"></i> View
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
 
             @if($leaves->total() > 0)
             <div class="paginate-bar paginate-bar--bottom">
@@ -154,10 +159,6 @@ $(function () {
         order:        [[5, 'desc']],
         columnDefs: [
             { orderable: false, targets: [6, 7] },
-            { width: '7%',  targets: 4 },
-            { width: '10%', targets: 5 },
-            { width: '12%', targets: 6 },
-            { width: '8%',  targets: 7 },
         ],
         dom: 'rt',
         language: { emptyTable: 'No approved leave records found for this period.' },
@@ -174,11 +175,6 @@ $(function () {
         var filed   = row.data('filed');
         var reason  = row.data('reason') || '-';
         var cancel  = row.data('cancellation') || '-';
-
-        if (typeof Swal === 'undefined') {
-            alert('Leave #' + id + '\nEmployee: ' + emp + '\nType: ' + type + '\nPeriod: ' + period + '\nDays: ' + days);
-            return;
-        }
 
         Swal.fire({
             title: 'Leave Request #' + id,
@@ -229,10 +225,9 @@ $(function () {
                 if (!rows || !rows.length) { $box.hide(); return; }
                 rows.forEach(function (r) {
                     var label = (r.FullName || r.EmpNo) + (r.Position ? ' - ' + r.Position : '') + ' (' + r.EmpNo + ')';
-                    var $it = $('<a href="#" class="list-group-item list-group-item-action">' + label + '</a>');
+                    var $it = $('<div class="ll-suggestion-item">').text(label);
                     $it.data('empno', r.EmpNo).data('label', label);
-                    $it.on('click', function (e) {
-                        e.preventDefault();
+                    $it.on('click', function () {
                         $('#alEmployee').val($(this).data('empno'));
                         $('#alEmployeeSearch').val($(this).data('label'));
                         $box.hide();
@@ -246,7 +241,7 @@ $(function () {
     });
 
     $('#alEmployeeSearch').on('keydown', function (e) {
-        var $box = $('#alEmployee_suggestions'), $items = $box.children('.list-group-item');
+        var $box = $('#alEmployee_suggestions'), $items = $box.children('.ll-suggestion-item');
         if (!$items.length) return;
         if      (e.key === 'ArrowDown')  { e.preventDefault(); alIdx = Math.min(alIdx + 1, $items.length - 1); $items.removeClass('active').eq(alIdx).addClass('active')[0].scrollIntoView({ block: 'nearest' }); }
         else if (e.key === 'ArrowUp')    { e.preventDefault(); alIdx = Math.max(alIdx - 1, 0); $items.removeClass('active').eq(alIdx).addClass('active')[0].scrollIntoView({ block: 'nearest' }); }

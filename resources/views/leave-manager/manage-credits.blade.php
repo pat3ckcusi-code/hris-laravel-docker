@@ -6,17 +6,27 @@
 @section('content')
 
 <section class="card">
-    <header>
-        <h2>Manage Leave Credits</h2>
+    <header class="ll-page-header">
+        <div class="ll-page-header-icon"><i class="fas fa-coins"></i></div>
+        <div>
+            <h2>Manage Leave Credits</h2>
+            <p class="ll-page-subtitle">Apply attendance-based VL/SL deductions for selected employees</p>
+        </div>
     </header>
 
     <div class="card-body">
-        <div class="leave-credits-toolbar">
-            <p class="muted">Apply leave credits for selected employees or by department.</p>
 
-            <div>
-                <input id="leave-credits-search" class="leave-credits-search" placeholder="Search employees, dept or EmpNo">
-                <select id="leave-credits-type-filter" class="hris-filter-select">
+        <div class="ll-filter-bar">
+            <div class="ll-field ll-field--grow">
+                <label for="leave-credits-search">Search</label>
+                <div class="ll-input-icon-wrap">
+                    <i class="fas fa-magnifying-glass"></i>
+                    <input id="leave-credits-search" class="ll-input" placeholder="Search employees or department…">
+                </div>
+            </div>
+            <div class="ll-field">
+                <label for="leave-credits-type-filter">Employee Type</label>
+                <select id="leave-credits-type-filter" class="ll-select">
                     <option value="">All Employee Types</option>
                     @foreach($employeeTypes as $employeeType)
                         <option value="{{ strtolower($employeeType) }}">{{ $employeeType }}</option>
@@ -25,53 +35,65 @@
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table class="credits-table table-bordered table-hover hris-table" id="leaveCreditsTable">
-                <thead class="bg-light text-center">
-                    <tr>
-                        <th style="min-width:240px">Employee Name</th>
-                        <th class="col-small text-center">VL</th>
-                        <th class="col-small text-center">SL</th>
-                        <th class="col-tiny text-center">Tardiness (min)</th>
-                        <th class="col-tiny text-center">Undertime (min)</th>
-                        <th class="col-tiny text-center">Deduction (days)</th>
-                        <th class="col-deduct text-center">Deduct From</th>
-                        <th class="col-action text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($balances as $balance)
-                        <tr data-id="{{ $balance->id }}" data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
-                            <td data-label="Employee Name" class="employee-name">
-                                @if($balance->user)
-                                    @php $empName = trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')); @endphp
-                                    <span class="emp-name-text">{{ $empName }}</span>
-                                    @if(!empty($departments[$balance->user->Dept_id] ?? ''))
-                                        <div class="dept-italic">- {{ strtoupper($departments[$balance->user->Dept_id]) }}</div>
-                                    @endif
-                                @else
-                                    -
-                                @endif
-                            </td>
-                            <td data-label="VL" class="text-center current-vl">{{ $balance->VL !== null ? number_format((float)$balance->VL, 3) : '-' }}</td>
-                            <td data-label="SL" class="text-center current-sl">{{ $balance->SL !== null ? number_format((float)$balance->SL, 3) : '-' }}</td>
-                            <td data-label="Tardiness (min)" class="col-tiny text-center"><input type="number" min="0" class="form-control input-small tardiness" step="1"></td>
-                            <td data-label="Undertime (min)" class="col-tiny text-center"><input type="number" min="0" class="form-control input-small undertime" step="1"></td>
-                            <td data-label="Deduction (days)" class="col-tiny text-center deduction-days">-</td>
-                            <td data-label="Deduct From" class="col-deduct text-center">
-                                <select class="form-control deduct-from">
-                                    <option value="VL">VL</option>
-                                    <option value="SL">SL</option>
-                                    <option value="NONE">None</option>
-                                </select>
-                            </td>
-                            <td data-label="Action" class="col-action text-center"><button type="button" class="hris-btn hris-btn-sm hris-btn-primary apply-row">Apply</button></td>
+        <p class="ll-edit-hint"><i class="fas fa-circle-info fa-fw"></i> Enter tardiness/undertime minutes to compute the deduction automatically, choose where to deduct from, then click Apply.</p>
+
+        <div class="hris-table-card">
+            <div class="hris-table-wrapper">
+                <table class="hris-table ll-credits-table" id="leaveCreditsTable">
+                    <thead>
+                        <tr>
+                            <th>Employee Name</th>
+                            <th class="text-center">VL</th>
+                            <th class="text-center">SL</th>
+                            <th class="text-center">Tardiness (min)</th>
+                            <th class="text-center">Undertime (min)</th>
+                            <th class="text-center">Deduction (days)</th>
+                            <th class="text-center">Deduct From</th>
+                            <th class="text-center">Action</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="8" class="muted">No records found.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @forelse($balances as $balance)
+                            <tr data-id="{{ $balance->id }}" data-type="{{ strtolower($balance->user?->employee_type ?? '') }}">
+                                <td>
+                                    @if($balance->user)
+                                        @php $empName = trim(($balance->user->last_name ?? '') . ', ' . ($balance->user->first_name ?? '')); @endphp
+                                        <span class="ll-emp-name">{{ $empName }}</span>
+                                        @if(!empty($departments[$balance->user->Dept_id] ?? ''))
+                                            <span class="ll-dept-sub">{{ strtoupper($departments[$balance->user->Dept_id]) }}</span>
+                                        @endif
+                                    @else
+                                        -
+                                    @endif
+                                </td>
+                                <td data-label="VL" class="text-center">
+                                    <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->VL ?? 0) <= 0])>{{ $balance->VL !== null ? number_format((float) $balance->VL, 3) : '-' }}</span>
+                                </td>
+                                <td data-label="SL" class="text-center">
+                                    <span @class(['ll-balance-chip', 'll-balance-chip--zero' => (float) ($balance->SL ?? 0) <= 0])>{{ $balance->SL !== null ? number_format((float) $balance->SL, 3) : '-' }}</span>
+                                </td>
+                                <td class="text-center"><input type="number" min="0" step="1" class="ll-input ll-input--sm tardiness"></td>
+                                <td class="text-center"><input type="number" min="0" step="1" class="ll-input ll-input--sm undertime"></td>
+                                <td class="text-center"><span class="deduction-days ll-deduction-chip">-</span></td>
+                                <td class="text-center">
+                                    <select class="ll-select ll-select--sm deduct-from">
+                                        <option value="VL">VL</option>
+                                        <option value="SL">SL</option>
+                                        <option value="NONE">None</option>
+                                    </select>
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="hris-btn-primary hris-btn-sm apply-row">
+                                        <i class="fas fa-check fa-fw"></i> Apply
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="8" class="muted">No records found.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </section>
@@ -118,13 +140,15 @@
             var tard = parseFloat(tr.find('.tardiness').val()) || 0;
             var undert = parseFloat(tr.find('.undertime').val()) || 0;
             var total = Math.max(0, tard + undert);
+            var $chip = tr.find('.deduction-days');
+
             if (total === 0) {
-                tr.find('.deduction-days').text('-');
+                $chip.text('-').removeClass('ll-deduction-chip--active');
                 return 0;
             }
             var days = total / 480;
             var text = parseFloat(days.toFixed(3)).toString();
-            tr.find('.deduction-days').text(text);
+            $chip.text(text).addClass('ll-deduction-chip--active');
             return days;
         }
 
@@ -155,14 +179,15 @@
                         if (payload.deduct_from && payload.deduct_from !== 'NONE') {
                             var field = payload.deduct_from;
                             var raw = res.balance[field];
-                            var map = { 'VL': 'VL', 'SL': 'SL' };
-                            var label = map[field] || field;
-                            var td = tr.find('td[data-label="' + label + '"]');
+                            var td = tr.find('td[data-label="' + field + '"]');
                             if (td.length) {
                                 var display = (raw !== null && raw !== undefined)
                                     ? parseFloat(raw).toFixed(3)
                                     : '-';
-                                td.text(display);
+                                var isZero = !(raw !== null && raw !== undefined && parseFloat(raw) > 0);
+                                td.empty().append(
+                                    $('<span class="ll-balance-chip' + (isZero ? ' ll-balance-chip--zero' : '') + '">').text(display)
+                                );
                             }
                         }
 
@@ -178,8 +203,8 @@
 
                         table.row(tr[0]).invalidate().draw(false);
                         var btn = tr.find('.apply-row');
-                        btn.prop('disabled', true).text('Applied');
-                        setTimeout(function () { btn.prop('disabled', false).text('Apply'); }, 1400);
+                        btn.prop('disabled', true).html('<i class="fas fa-check fa-fw"></i> Applied');
+                        setTimeout(function () { btn.prop('disabled', false).html('<i class="fas fa-check fa-fw"></i> Apply'); }, 1400);
                     }
                 },
                 error: function (xhr) {

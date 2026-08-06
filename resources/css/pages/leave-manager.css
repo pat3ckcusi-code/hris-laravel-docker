@@ -202,14 +202,6 @@
     box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);
 }
 
-.filter-emp-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    position: relative;
-    width: 100%;
-}
-
 /* ── Filter bar ─────────────────────────────────── */
 
 .filter-bar {
@@ -250,132 +242,77 @@
     font-size: 0.97rem;
 }
 
-.filter-label-emp {
-    font-size: 1.18rem;
-    font-weight: 600;
-    color: #1f2937;
-    margin-bottom: 7px;
-}
-
-.filter-input-emp {
-    font-size: 1.13rem !important;
-    padding: 0.55rem 0.85rem !important;
-    border-radius: 7px !important;
-    border: 1.5px solid #b6c2d1 !important;
-    background: #fff !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
 /* ── Manage Leave Credits ───────────────────────── */
 
-.leave-credits-toolbar {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-}
-
-.leave-credits-search {
-    border: 1px solid #e6e9ee;
-    padding: 8px 10px;
-    border-radius: 10px;
-    min-width: 220px;
-    background: #fff;
-}
-
-/* Credits table overrides */
-.credits-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    border: 1px solid #e6e9ee;
-    border-radius: 8px;
-    background: #ffffff;
-    table-layout: fixed;
-}
-
-.credits-table thead th {
-    text-align: center;
-    padding: 10px 12px;
-    background: #f1f5f9;
-    color: #334155;
-    font-weight: 700;
-    border-right: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
-    font-size: 13px;
-}
-
-.credits-table tbody td {
-    padding: 8px 10px;
-    border-right: 1px solid #f3f4f6;
-    vertical-align: middle;
-    font-size: 13px;
-    white-space: normal;
-    word-break: break-word;
-}
-
-.credits-table tbody tr:nth-child(even) { background: #fbfbfb; }
-.credits-table tbody tr:hover { background: #f8fafc; }
-.credits-table th:first-child, .credits-table td:first-child { text-align: left; }
-.credits-table th:last-child, .credits-table td:last-child { border-right: none; }
-
-.input-small { width: 90px; padding: 6px; border: 1px solid #e6e9ee; border-radius: 6px; }
 .form-control { padding: 6px 8px; border: 1px solid #e6e9ee; border-radius: 6px; }
-.deduct-from { width: 100%; max-width: 140px; }
-
-/* Narrow columns */
-.credits-table th {
-    white-space: normal;
-    word-wrap: break-word;
-    text-align: center;
-}
-.credits-table th.col-small { width: 80px; padding: 6px; }
-.credits-table td.current-vl,
-.credits-table td.current-sl {
-    width: 80px; padding: 6px; text-align: center; white-space: nowrap;
-}
-
-.credits-table th.col-tiny { width: 96px; max-width: 120px; padding: 6px; }
-.credits-table td.col-tiny { width: 96px; max-width: 120px; padding: 6px; text-align: center; }
-.credits-table th.col-deduct { width: 92px; max-width: 110px; }
-.credits-table td.col-deduct { width: 92px; max-width: 110px; }
-.credits-table th.col-action { width: 86px; max-width: 100px; }
-.credits-table td.col-action { width: 86px; max-width: 100px; }
-.credits-table th.col-emp { width: 110px; max-width: 140px; padding: 8px; text-align: left; }
-.credits-table td.emp-number { width: 110px; max-width: 140px; padding: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-
-.dept-small { display: block; font-size: 0.78rem; color: #6b7280; margin-top: 4px; }
-.employee-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.employee-name .emp-name-text { font-weight: 600; display: inline-block; vertical-align: middle; }
-.dept-inline { font-size: 0.82rem; color: #6b7280; margin-left: 8px; display: inline-block; vertical-align: middle; white-space: nowrap; }
-.dept-italic { display: block; font-size: 0.78rem; color: #6b7280; margin-top: 4px; font-style: italic; text-transform: uppercase; }
-
-@media (max-width: 1024px) {
-    .input-small { width: 78px; }
-}
 
 @media (max-width: 880px) {
-    .credits-table thead { display: none; }
-    .credits-table tbody tr {
-        display: block; margin-bottom: 14px; border: 1px solid #e6e9ee;
-        border-radius: 10px; padding: 12px; background: #ffffff;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-    }
-    .credits-table tbody td {
-        display: block; padding: 8px 0; border-right: none; border-bottom: 1px solid #f3f4f6;
-    }
-    .credits-table tbody td:last-child { border-bottom: none; }
-    .credits-table tbody td::before {
-        content: attr(data-label); display: block; color: #374151; font-weight: 700; margin-bottom: 6px;
-    }
-    .form-control, .input-small { width: 100% !important; box-sizing: border-box; }
-    .col-action .btn { width: 100%; display: block; }
-    .deduction-days, .current-vl, .current-sl { text-align: right; }
-    .employee-name { white-space: normal; }
-    .dept-italic { display: block; margin-top: 6px; font-style: italic; text-transform: uppercase; font-size: 0.75rem; color: #6b7280; }
-    .leave-credits-toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .form-control { width: 100% !important; box-sizing: border-box; }
+}
+
+/* ── Manage Leave Credits page ─────────────────────────── */
+
+.ll-credits-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.ll-credits-table th {
+    white-space: normal;
+    word-wrap: break-word;
+    padding: 0.75rem 0.6rem;
+    line-height: 1.3;
+}
+
+.ll-credits-table td {
+    word-wrap: break-word;
+    padding: 0.6rem;
+}
+
+.ll-credits-table th:nth-child(1), .ll-credits-table td:nth-child(1) { width: 26%; text-align: left; }
+.ll-credits-table th:nth-child(2), .ll-credits-table td:nth-child(2) { width: 9%; }
+.ll-credits-table th:nth-child(3), .ll-credits-table td:nth-child(3) { width: 9%; }
+.ll-credits-table th:nth-child(4), .ll-credits-table td:nth-child(4) { width: 13%; }
+.ll-credits-table th:nth-child(5), .ll-credits-table td:nth-child(5) { width: 13%; }
+.ll-credits-table th:nth-child(6), .ll-credits-table td:nth-child(6) { width: 11%; }
+.ll-credits-table th:nth-child(7), .ll-credits-table td:nth-child(7) { width: 11%; }
+.ll-credits-table th:nth-child(8), .ll-credits-table td:nth-child(8) { width: 8%; }
+
+.ll-dept-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ll-input--sm,
+.ll-select--sm {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.82rem;
+}
+.ll-input--sm { text-align: center; }
+
+.ll-deduction-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    padding: 0.32rem 0.6rem;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: 0.86rem;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.ll-deduction-chip--active {
+    background: #fff7ed;
+    color: #c2410c;
+    border-color: #fdba74;
 }
 
 /* =========================================================================
@@ -542,7 +479,7 @@
 }
 
 .ll-suggestion-item:last-child { border-bottom: none; }
-.ll-suggestion-item:hover { background: #fff7ed; }
+.ll-suggestion-item:hover, .ll-suggestion-item.active { background: #fff7ed; }
 
 .ll-filter-actions {
     display: flex;
@@ -915,3 +852,33 @@ button.ll-stat-card:focus-visible {
     background: #e2e8f0;
     border-color: #cbd5e1;
 }
+
+/* =========================================================================
+   Approved Leaves page
+   ========================================================================= */
+
+.ll-approved-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.ll-approved-table th {
+    white-space: normal;
+    word-wrap: break-word;
+    padding: 0.75rem 0.6rem;
+    line-height: 1.3;
+}
+
+.ll-approved-table td {
+    word-wrap: break-word;
+    padding: 0.6rem;
+}
+
+.ll-approved-table th:nth-child(1), .ll-approved-table td:nth-child(1) { width: 18%; } /* Employee */
+.ll-approved-table th:nth-child(2), .ll-approved-table td:nth-child(2) { width: 14%; } /* Department */
+.ll-approved-table th:nth-child(3), .ll-approved-table td:nth-child(3) { width: 12%; } /* Leave Type */
+.ll-approved-table th:nth-child(4), .ll-approved-table td:nth-child(4) { width: 16%; } /* Period */
+.ll-approved-table th:nth-child(5), .ll-approved-table td:nth-child(5) { width: 6%; }  /* Days */
+.ll-approved-table th:nth-child(6), .ll-approved-table td:nth-child(6) { width: 10%; } /* Filed On */
+.ll-approved-table th:nth-child(7), .ll-approved-table td:nth-child(7) { width: 14%; } /* Cancellation */
+.ll-approved-table th:nth-child(8), .ll-approved-table td:nth-child(8) { width: 10%; } /* Actions */
