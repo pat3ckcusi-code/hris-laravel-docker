@@ -40,17 +40,20 @@ class PersonnelLogImportService
         // Build two EmpNo → User lookup layers so O(1) match works even when the
         // biometric system uses non-padded personnelid ('2009') but HRIS stores the
         // EmpNo zero-padded ('02009'), or vice-versa.
-        $userQuery = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '');
-        if ($deptId !== null) {
-            $userQuery->where('Dept_id', $deptId);
-        }
-        $users = $userQuery->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
+        //
+        // Deliberately NOT filtered by $deptId: the biometric API call below always
+        // returns the whole company's punches for the date range regardless of
+        // $deptId, so narrowing the candidate map here would silently drop (never
+        // persist) every other department's punches for that pull instead of just
+        // narrowing which department's DTRs get recomputed/reported. $deptId is
+        // applied later, only to which resolved users count as "affected" for this
+        // run.
+        $users = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '')
+            ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
 
         if ($users->isEmpty()) {
-            $scope = $deptId ? "department #{$deptId}" : 'any department';
-
             return ['imported' => 0, 'skipped' => 0, 'messages' => [],
-                'error' => "No HRIS users with EmpNo found for {$scope}. Set EmpNo on employee records before importing."];
+                'error' => 'No HRIS users with EmpNo found. Set EmpNo on employee records before importing.'];
         }
 
         $exactMap = $users->keyBy('EmpNo');          // primary: exact string match
@@ -174,7 +177,13 @@ class PersonnelLogImportService
 
                     if ($log->wasRecentlyCreated) {
                         $imported++;
-                        $affectedUsers[$resolvedUser->id] = $resolvedUser;
+
+                        // $deptId only scopes which users get their DTR recomputed and
+                        // named in this run's messages - it never gates persistence
+                        // (the punch above is already saved for every department).
+                        if ($deptId === null || $resolvedUser->Dept_id === $deptId) {
+                            $affectedUsers[$resolvedUser->id] = $resolvedUser;
+                        }
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Failed to insert attendance log', [
