@@ -127,6 +127,75 @@ class LeaveRequest extends Model
     }
 
     /**
+     * A compact, gap-aware rendering of this leave's actual dates, e.g. "Aug 17, 19 & 21, 2026"
+     * for non-consecutive individually-picked dates, or "Aug 17–21, 2026" for a genuinely
+     * contiguous range (a plain start_date-end_date span misrepresents the former as the
+     * latter, since individually-picked dates can have gaps start_date/end_date don't show).
+     */
+    public function formattedPeriod(): string
+    {
+        $dates = $this->relationLoaded('leaveDates')
+            ? $this->leaveDates->where('is_cancelled', false)
+            : $this->leaveDates()->where('is_cancelled', false)->get();
+
+        if ($dates->isEmpty()) {
+            if (! $this->start_date) {
+                return '-';
+            }
+            $start = Carbon::parse($this->start_date);
+            $end = $this->end_date ? Carbon::parse($this->end_date) : null;
+
+            return ($end && ! $end->isSameDay($start))
+                ? $start->format('M d, Y').' to '.$end->format('M d, Y')
+                : $start->format('M d, Y');
+        }
+
+        $sorted = $dates->pluck('leave_date')
+            ->map(fn ($d) => Carbon::parse($d))
+            ->sort()
+            ->values();
+
+        // Collapse into consecutive-calendar-day runs.
+        $runs = [];
+        $runStart = $runEnd = $sorted->first();
+        foreach ($sorted->slice(1) as $date) {
+            if ($date->isSameDay($runEnd->copy()->addDay())) {
+                $runEnd = $date;
+            } else {
+                $runs[] = [$runStart, $runEnd];
+                $runStart = $runEnd = $date;
+            }
+        }
+        $runs[] = [$runStart, $runEnd];
+
+        $finalYear = $runs[count($runs) - 1][1]->year;
+        $lastMonth = null;
+        $parts = [];
+        foreach ($runs as [$runStart, $runEnd]) {
+            if ($runStart->isSameDay($runEnd)) {
+                $part = ($runStart->month !== $lastMonth ? $runStart->format('M ') : '').$runStart->format('j');
+                $lastMonth = $runStart->month;
+            } elseif ($runStart->month === $runEnd->month) {
+                $part = ($runStart->month !== $lastMonth ? $runStart->format('M ') : '').$runStart->format('j').'–'.$runEnd->format('j');
+                $lastMonth = $runStart->month;
+            } else {
+                $part = $runStart->format('M j').'–'.$runEnd->format('M j');
+                $lastMonth = $runEnd->month;
+            }
+            if ($runEnd->year !== $finalYear) {
+                $part .= ', '.$runEnd->year;
+            }
+            $parts[] = $part;
+        }
+
+        $joined = count($parts) > 1
+            ? implode(', ', array_slice($parts, 0, -1)).' & '.end($parts)
+            : $parts[0];
+
+        return $joined.', '.$finalYear;
+    }
+
+    /**
      * Dates with an active per-date cancellation request (see requestPartialCancellation).
      * Distinct from the whole-row cancellation_status column on this model, which stays
      * null for a partial cancellation - the employee's leave list needs this relation to

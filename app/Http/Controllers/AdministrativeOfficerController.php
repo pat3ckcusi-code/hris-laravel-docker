@@ -155,7 +155,7 @@ class AdministrativeOfficerController extends Controller
             $year = (int) date('Y');
         }
 
-        $query = LeaveRequest::with('user')
+        $query = LeaveRequest::with(['user', 'leaveDates'])
             ->whereIn('user_id', $employeeIds)
             ->where('status', 'pending')
             ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
@@ -190,7 +190,7 @@ class AdministrativeOfficerController extends Controller
                 'employee' => $r->user->name ?? '-',
                 'leave_type' => $r->leave_type,
                 'reason' => $reason,
-                'period' => ($r->start_date ? Carbon::parse($r->start_date)->format('M d, Y') : '-').' to '.($r->end_date ? Carbon::parse($r->end_date)->format('M d, Y') : '-'),
+                'period' => $r->formattedPeriod(),
                 'total_days' => $r->total_days ?? '-',
                 'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
                 'status' => $r->status,
@@ -499,7 +499,7 @@ class AdministrativeOfficerController extends Controller
             $year = (int) date('Y');
         }
 
-        $query = LeaveRequest::with(['user', 'user.leaveBalance'])
+        $query = LeaveRequest::with(['user', 'user.leaveBalance', 'leaveDates'])
             ->whereIn('user_id', $employeeIds)
             ->where('status', 'approved')
             ->whereHas('user', fn ($u) => $u->whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) != 'department head'"))
@@ -528,7 +528,7 @@ class AdministrativeOfficerController extends Controller
             'id' => $r->id,
             'employee' => $r->user->name ?? '-',
             'leave_type' => $r->leave_type,
-            'period' => Carbon::parse($r->start_date)->format('M d, Y').' to '.Carbon::parse($r->end_date)->format('M d, Y'),
+            'period' => $r->formattedPeriod(),
             'total_days' => $r->total_days ?? '-',
             'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
             'vl' => optional($r->user->leaveBalance)->VL ?? '0',

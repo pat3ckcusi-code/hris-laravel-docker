@@ -89,9 +89,7 @@
                                 $deptName = ($leave->user && isset($departments[$leave->user->Dept_id]))
                                     ? $departments[$leave->user->Dept_id]
                                     : '-';
-                                $period   = ($leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '-')
-                                          . ' – '
-                                          . ($leave->end_date   ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y')   : '-');
+                                $period   = $leave->formattedPeriod();
                                 // Whole-row status takes priority; a partial (per-date) cancellation
                                 // has no whole-row status of its own, so fall back to whichever
                                 // stage its pending dates are at.

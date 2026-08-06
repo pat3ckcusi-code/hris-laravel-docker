@@ -77,7 +77,7 @@ class LeaveManagerController extends Controller
      */
     public function approvedLeaves(Request $request)
     {
-        $query = LeaveRequest::with(['user', 'pendingCancellationDates'])
+        $query = LeaveRequest::with(['user', 'pendingCancellationDates', 'leaveDates'])
             ->where('status', 'approved');
 
         $month = $request->query('month', date('Y-m'));
@@ -124,6 +124,7 @@ class LeaveManagerController extends Controller
                     ? Carbon::parse($item->start_date)->format('M d, Y') : '-',
                 'end_date' => $item->end_date
                     ? Carbon::parse($item->end_date)->format('M d, Y') : '-',
+                'period' => $item->formattedPeriod(),
                 'total_days' => $item->total_days ?? '-',
                 'date_filed' => $item->date_filed
                     ? Carbon::parse($item->date_filed)->format('M d, Y') : '-',

@@ -44,7 +44,7 @@
     <table style="width:100%;border-collapse:collapse">
         <tr><td style="padding:8px;border:1px solid #ddd"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #ddd">{{ optional($lv->user)->name ?? '-' }}</td></tr>
         <tr><td style="padding:8px;border:1px solid #ddd"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #ddd">{{ $lv->leave_type }}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Period</strong></td><td style="padding:8px;border:1px solid #ddd">{{ optional($lv->start_date) ? \Carbon\Carbon::parse($lv->start_date)->format('M d, Y') : '-' }} to {{ optional($lv->end_date) ? \Carbon\Carbon::parse($lv->end_date)->format('M d, Y') : '-' }}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd"><strong>Period</strong></td><td style="padding:8px;border:1px solid #ddd">{{ $lv->formattedPeriod() }}</td></tr>
         <tr><td style="padding:8px;border:1px solid #ddd"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #ddd">{{ $lv->total_days ?? '-' }}</td></tr>
         <tr><td style="padding:8px;border:1px solid #ddd"><strong>Approved At</strong></td><td style="padding:8px;border:1px solid #ddd">{{ $lv->updated_at ? $lv->updated_at->format('M d, Y') : '-' }}</td></tr>
         <tr><td style="padding:8px;border:1px solid #ddd"><strong>Reason</strong></td><td style="padding:8px;border:1px solid #ddd">{{ $lv->reason ?? '-' }}</td></tr>

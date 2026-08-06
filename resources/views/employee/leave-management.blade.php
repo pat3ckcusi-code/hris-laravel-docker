@@ -1016,8 +1016,6 @@
                     <tbody>
                         @forelse($leaveRequests as $leave)
                             @php
-                                $s = $leave->start_date ? \Carbon\Carbon::parse($leave->start_date)->format('M d, Y') : '';
-                                $e = $leave->end_date ? \Carbon\Carbon::parse($leave->end_date)->format('M d, Y') : '';
                                 $availableDates = $leave->leaveDates->map(fn ($ld) => [
                                     'id' => $ld->id,
                                     'date' => (string) $ld->leave_date,
@@ -1028,7 +1026,7 @@
                             <tr id="leave-row-{{ $leave->id }}"
                                 data-employee="{{ $leave->user->name ?? '-' }}"
                                 data-type="{{ $leave->leave_type }}"
-                                data-period="{{ $s }}@if($e) to {{ $e }}@endif"
+                                data-period="{{ $leave->formattedPeriod() }}"
                                 data-total="{{ $leave->total_days ?? '-' }}"
                                 data-filed="{{ $leave->created_at ? $leave->created_at->format('M d, Y') : '-' }}"
                                 data-reason="{{ $leave->reason ?? '' }}"
@@ -1038,7 +1036,7 @@
                                 @if($leave->status === 'cancelled') style="opacity:.7;text-decoration:line-through" @endif>
                                 <td>{{ $leave->leave_type }}</td>
                                 <td>
-                                    {{ $s }}@if($e) to {{ $e }}@endif
+                                    {{ $leave->formattedPeriod() }}
                                     @if($leave->rescheduled_from_id && $leave->originalDatesReplaced->isNotEmpty())
                                         <span style="display:block;font-size:0.72rem;color:#64748b;">
                                             &#8635; was {{ $leave->originalDatesReplaced->map(fn ($d) => \Carbon\Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', ') }}
