@@ -429,6 +429,10 @@ Route::middleware(['auth', 'role:leave-manager'])->group(function () {
     Route::patch('/leave-manager/manage-balance/{balance}', [LeaveManagerController::class, 'updateBalance'])
         ->name('leave-manager.update-balance');
 
+    // Toggle an employee's Solo Parent designation (RA 8972)
+    Route::patch('/leave-manager/manage-balance/{user}/solo-parent', [LeaveManagerController::class, 'toggleSoloParent'])
+        ->name('leave-manager.toggle-solo-parent');
+
     Route::get('/leave-manager/manage-credits', [LeaveManagerController::class, 'manageCredits'])
         ->name('leave-manager.manage-credits');
 

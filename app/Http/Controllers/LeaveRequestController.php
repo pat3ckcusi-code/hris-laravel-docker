@@ -398,6 +398,12 @@ class LeaveRequestController extends Controller
                 return redirect()->back()->withErrors(['leave_types' => $balanceError])->withInput();
             }
 
+            // Block filing Solo Parent Leave unless the Leave Manager has activated this
+            // employee's Solo Parent designation.
+            if ($designationError = $this->checkSoloParentDesignation($selectedTypes, $user)) {
+                return redirect()->back()->withErrors(['leave_types' => $designationError])->withInput();
+            }
+
             // Block filing if requested days exceed available credits for restricted types
             if ($creditError = $this->checkInsufficientCredits($dates, $allocations, $selectedTypes, $lb)) {
                 return redirect()->back()->withErrors(['leave_types' => $creditError])->withInput();
@@ -763,6 +769,12 @@ class LeaveRequestController extends Controller
             $lb = Auth::user()->leaveBalance;
             if ($balanceError = $this->checkZeroBalanceTypes($parts, $lb)) {
                 return redirect()->back()->withErrors(['leave_type' => $balanceError])->withInput();
+            }
+
+            // Block filing Solo Parent Leave unless the Leave Manager has activated this
+            // employee's Solo Parent designation.
+            if ($designationError = $this->checkSoloParentDesignation($parts, Auth::user())) {
+                return redirect()->back()->withErrors(['leave_type' => $designationError])->withInput();
             }
 
             // Block filing if requested days exceed available credits (legacy path uses calendar-day count)
@@ -1533,6 +1545,21 @@ class LeaveRequestController extends Controller
      * Returns an error message if any of the supplied leave types are
      * balance-restricted and the employee's current balance is zero.
      */
+    /**
+     * Solo Parent Leave additionally requires the employee currently be designated a
+     * Solo Parent by the Leave Manager (see LeaveManagerController::toggleSoloParent()) -
+     * a standing eligibility gate, independent of and checked alongside the SP balance
+     * check in checkZeroBalanceTypes() below.
+     */
+    private function checkSoloParentDesignation(array $leaveTypes, User $user): ?string
+    {
+        if (in_array('Solo Parent Leave', $leaveTypes, true) && ! $user->is_solo_parent) {
+            return 'You are not currently designated as a Solo Parent. Contact the Leave Manager to have your status activated.';
+        }
+
+        return null;
+    }
+
     private function checkZeroBalanceTypes(array $leaveTypes, $leaveBalance): ?string
     {
         $restricted = [

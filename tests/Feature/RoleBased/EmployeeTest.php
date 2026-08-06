@@ -643,6 +643,54 @@ class EmployeeTest extends TestCase
         $response->assertRedirect();
     }
 
+    public function test_employee_cannot_file_solo_parent_leave_when_not_designated(): void
+    {
+        $user = $this->createEmployee(['is_solo_parent' => false]);
+        $this->createLeaveBalance($user, ['SP' => 5.000]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_type' => 'Solo Parent Leave',
+            'start_date' => now()->addWeek()->startOfWeek()->toDateString(),
+            'end_date' => now()->addWeek()->startOfWeek()->toDateString(),
+            'reason' => 'Solo parent leave test',
+            'dates' => [now()->addWeek()->startOfWeek()->toDateString()],
+        ]);
+
+        $response->assertSessionHasErrors('leave_type');
+    }
+
+    public function test_employee_cannot_file_solo_parent_leave_via_leave_dates_when_not_designated(): void
+    {
+        $user = $this->createEmployee(['is_solo_parent' => false]);
+        $this->createLeaveBalance($user, ['SP' => 5.000]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_types' => ['Solo Parent Leave'],
+            'leave_dates' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Solo parent leave test',
+        ]);
+
+        $response->assertSessionHasErrors('leave_types');
+    }
+
+    public function test_employee_can_file_solo_parent_leave_when_designated(): void
+    {
+        $user = $this->createEmployee(['is_solo_parent' => true]);
+        $this->createLeaveBalance($user, ['SP' => 5.000]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_types' => ['Solo Parent Leave'],
+            'leave_dates' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Solo parent leave test',
+        ]);
+
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertDatabaseHas('leave_requests', [
+            'user_id' => $user->id,
+            'leave_type' => 'Solo Parent Leave',
+        ]);
+    }
+
     public function test_job_order_employee_cannot_file_leave(): void
     {
         $user = $this->createEmployee(['employee_type' => 'Job Orders']);

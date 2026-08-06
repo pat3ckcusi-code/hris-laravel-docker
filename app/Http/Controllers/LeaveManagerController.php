@@ -38,6 +38,7 @@ class LeaveManagerController extends Controller
     {
         $balances = LeaveBalance::with('user')
             ->join('users', 'leave_balances.user_id', '=', 'users.id')
+            ->whereHas('user', fn ($q) => $q->active())
             ->orderBy('users.EmpNo')
             ->select('leave_balances.*')
             ->get();
@@ -58,6 +59,7 @@ class LeaveManagerController extends Controller
     {
         $balances = LeaveBalance::with('user')
             ->join('users', 'leave_balances.user_id', '=', 'users.id')
+            ->whereHas('user', fn ($q) => $q->active())
             ->orderBy('users.EmpNo')
             ->select('leave_balances.*')
             ->get();
@@ -1774,5 +1776,34 @@ class LeaveManagerController extends Controller
         })->filter()->sortByDesc('streak_sort')->values();
 
         return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Toggle an employee's RA 8972 Solo Parent designation. "Active" gates eligibility
+     * to file Solo Parent Leave (see LeaveRequestController::checkSoloParentDesignation())
+     * - independent of and checked in addition to the employee's SP leave balance.
+     */
+    public function toggleSoloParent(Request $request, User $user): JsonResponse
+    {
+        $active = ! $user->is_solo_parent;
+        $user->update(['is_solo_parent' => $active]);
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => Auth::id(),
+                'module' => 'leave',
+                'action' => 'solo_parent_status_toggled',
+                'target_type' => 'user',
+                'target_id' => $user->id,
+                'details' => [
+                    'employee_name' => trim(($user->last_name ?? '').', '.($user->first_name ?? '')),
+                    'is_solo_parent' => $active,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to write HRAuditTrail on solo parent toggle', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+        }
+
+        return response()->json(['is_solo_parent' => $active]);
     }
 }

@@ -83,6 +83,56 @@ class LeaveManagerTest extends TestCase
             "Concurrent balance adjustments: {$rate}% ({$successes}/50)");
     }
 
+    public function test_leave_manager_can_toggle_solo_parent_on(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+
+        $response = $this->actingAs($lm)
+            ->patch(route('leave-manager.toggle-solo-parent', $emp));
+
+        $response->assertOk();
+        $response->assertJson(['is_solo_parent' => true]);
+        $this->assertTrue($emp->fresh()->is_solo_parent);
+    }
+
+    public function test_toggling_solo_parent_twice_unmarks_it(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+
+        $this->actingAs($lm)->patch(route('leave-manager.toggle-solo-parent', $emp));
+        $this->assertTrue($emp->fresh()->is_solo_parent);
+
+        $this->actingAs($lm)->patch(route('leave-manager.toggle-solo-parent', $emp));
+        $this->assertFalse($emp->fresh()->is_solo_parent);
+    }
+
+    public function test_solo_parent_toggle_writes_audit_trail(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+
+        $this->actingAs($lm)->patch(route('leave-manager.toggle-solo-parent', $emp));
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'leave',
+            'action' => 'solo_parent_status_toggled',
+            'target_type' => 'user',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_non_leave_manager_cannot_toggle_solo_parent(): void
+    {
+        $employee = $this->createEmployee();
+        $target = $this->createEmployee();
+
+        $this->actingAs($employee)
+            ->patch(route('leave-manager.toggle-solo-parent', $target))
+            ->assertStatus(403);
+    }
+
     // ──────────────────────────────────────────────
     // 2. Manage Leave Credits
     // ──────────────────────────────────────────────

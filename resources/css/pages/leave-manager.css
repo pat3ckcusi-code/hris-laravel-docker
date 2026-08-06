@@ -586,6 +586,7 @@
 
 .ll-stat-card--vl .ll-stat-icon { background: linear-gradient(135deg, #0ea5e9, #38bdf8); }
 .ll-stat-card--sl .ll-stat-icon { background: linear-gradient(135deg, #16a34a, #4ade80); }
+.ll-stat-card--sp .ll-stat-icon { background: linear-gradient(135deg, #9333ea, #c084fc); }
 
 .ll-stat-label {
     font-size: 0.72rem;
@@ -721,19 +722,6 @@
 
 .ll-stat-card--total .ll-stat-icon { background: linear-gradient(135deg, #6366f1, #818cf8); }
 
-.ll-empno {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.2rem 0.5rem;
-    border-radius: 6px;
-    background: #f1f5f9;
-    color: #334155;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-}
-
 .ll-emp-name { font-weight: 600; color: #0f172a; }
 
 .ll-edit-hint {
@@ -745,6 +733,37 @@
     margin: 0 0 0.85rem;
 }
 .ll-edit-hint i { color: #ea580c; }
+
+/* Fixed layout + per-column widths so all 10 columns wrap their text and fit the
+   card width instead of forcing the wrapper into horizontal scroll. table-layout:fixed
+   makes the browser honor these widths instead of sizing columns to their widest
+   (nowrap) content. */
+.ll-balance-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.ll-balance-table th {
+    white-space: normal;
+    word-wrap: break-word;
+    padding: 0.75rem 0.6rem;
+    line-height: 1.3;
+}
+
+.ll-balance-table td {
+    word-wrap: break-word;
+    padding: 0.6rem;
+}
+
+.ll-balance-table th:nth-child(1), .ll-balance-table td:nth-child(1) { width: 25%; } /* Employee Name */
+.ll-balance-table th:nth-child(2), .ll-balance-table td:nth-child(2) { width: 16%; } /* Department */
+.ll-balance-table th:nth-child(3), .ll-balance-table td:nth-child(3) { width: 7%; }  /* VL */
+.ll-balance-table th:nth-child(4), .ll-balance-table td:nth-child(4) { width: 7%; }  /* SL */
+.ll-balance-table th:nth-child(5), .ll-balance-table td:nth-child(5) { width: 8%; }  /* WLNS */
+.ll-balance-table th:nth-child(6), .ll-balance-table td:nth-child(6) { width: 7%; }  /* SPL */
+.ll-balance-table th:nth-child(7), .ll-balance-table td:nth-child(7) { width: 7%; }  /* CTO */
+.ll-balance-table th:nth-child(8), .ll-balance-table td:nth-child(8) { width: 9%; }  /* SPRNT */
+.ll-balance-table th:nth-child(9), .ll-balance-table td:nth-child(9) { width: 14%; } /* Solo Parent */
 
 /* Balance chips -- give the inline-editable cells an obvious "click me" affordance */
 .ll-balance-table td.editable {
@@ -788,4 +807,111 @@
     text-align: center;
     outline: none;
     box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+}
+
+/* ── Clickable stat cards (Nearly Exhaust VL / SL) ──────── */
+
+button.ll-stat-card {
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+button.ll-stat-card:hover {
+    border-color: #fdba74;
+    box-shadow: 0 6px 16px rgba(234, 88, 12, 0.15);
+    transform: translateY(-1px);
+}
+
+button.ll-stat-card:focus-visible {
+    outline: 2px solid #ea580c;
+    outline-offset: 2px;
+}
+
+/* ── Nearly Exhaust VL / SL modals ─────────────────────── */
+
+.ll-modal-box { max-width: 640px; }
+
+.ll-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0.25rem 0 1.1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.ll-modal-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    font-size: 1.05rem;
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.ll-modal-icon--sp {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.ll-modal-subtitle {
+    margin: 0.2rem 0 0;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.ll-balance-chip--low {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* ── Solo Parent designation toggle ─────────────────────── */
+
+.ll-toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.32rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    font-family: inherit;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.ll-toggle-pill:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.ll-toggle-pill--active {
+    background: #f3e8ff;
+    color: #6b21a8;
+    border-color: #d8b4fe;
+}
+.ll-toggle-pill--active:hover:not(:disabled) {
+    background: #e9d5ff;
+    border-color: #c084fc;
+}
+
+.ll-toggle-pill--inactive {
+    background: #f1f5f9;
+    color: #64748b;
+    border-color: #e2e8f0;
+}
+.ll-toggle-pill--inactive:hover:not(:disabled) {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
 }

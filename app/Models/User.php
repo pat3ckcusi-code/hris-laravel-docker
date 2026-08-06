@@ -116,6 +116,7 @@ class User extends Authenticatable
         'shift_id',
         'dtr_exempt',
         'is_frontline',
+        'is_solo_parent',
     ];
 
     /**
@@ -236,6 +237,7 @@ class User extends Authenticatable
             'hours_per_day' => 'float',
             'dtr_exempt' => 'boolean',
             'is_frontline' => 'boolean',
+            'is_solo_parent' => 'boolean',
             'job_order_auto_deactivated_at' => 'datetime',
             'remember_token_created_at' => 'datetime',
         ];
