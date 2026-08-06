@@ -14,6 +14,7 @@ use App\Models\SalaryMatrix;
 use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Support\LeaveTypeResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -848,48 +849,57 @@ class LeaveRequestService
 
         $column = null;
         $label = strtolower($leave->leave_type ?? '');
-        if (str_contains($label, 'vacation') || str_contains($label, 'vl') || str_contains($label, 'mandatory') || str_contains($label, 'forced') || str_contains($label, 'others')) {
-            // "Others" (e.g. Mourning Leave) is deducted from Vacation Leave credits, same as Vacation Leave itself
-            $column = 'VL';
-        } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
-            $column = 'SL';
-        } elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) {
-            $column = 'WLNS';
-        } elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) {
-            $column = 'SP';
-        } elseif (str_contains($label, 'special') || str_contains($label, 'privilege') || str_contains($label, 'spl')) {
-            $column = 'SPL';
-        } elseif (str_contains($label, 'cto')) {
-            $column = 'CTO';
-        }
 
-        if (! $column) {
-            $parts = array_map('trim', explode(',', $leave->leave_type));
-            foreach ($parts as $p) {
-                $pl = strtolower($p);
-                if (str_contains($pl, 'vacation') || str_contains($pl, 'vl') || str_contains($pl, 'mandatory') || str_contains($pl, 'forced') || str_contains($pl, 'others')) {
-                    $column = 'VL';
-                    break;
-                }
-                if (str_contains($pl, 'sick') || str_contains($pl, 'sl')) {
-                    $column = 'SL';
-                    break;
-                }
-                if (str_contains($pl, 'wellness') || str_contains($pl, 'wlns')) {
-                    $column = 'WLNS';
-                    break;
-                }
-                if (str_contains($pl, 'solo') || str_contains($pl, 'solo parent')) {
-                    $column = 'SP';
-                    break;
-                }
-                if (str_contains($pl, 'special') || str_contains($pl, 'privilege') || str_contains($pl, 'spl')) {
-                    $column = 'SPL';
-                    break;
-                }
-                if (str_contains($pl, 'cto')) {
-                    $column = 'CTO';
-                    break;
+        // Maternity / Special Leave (Gynecological) / Study-Examination / Rehabilitation Privilege
+        // must never deduct from any balance. Skip the substring keyword scan entirely for them —
+        // "Special Leave (Gynecological)" contains "special" and "Rehabilitation Privilege" contains
+        // "privilege", both of which would otherwise falsely collide with the SPL keywords below.
+        $isNonDeductibleType = in_array($label, array_map('strtolower', LeaveTypeResolver::NON_DEDUCTIBLE_TYPES), true);
+
+        if (! $isNonDeductibleType) {
+            if (str_contains($label, 'vacation') || str_contains($label, 'vl') || str_contains($label, 'mandatory') || str_contains($label, 'forced') || str_contains($label, 'others')) {
+                // "Others" (e.g. Mourning Leave) is deducted from Vacation Leave credits, same as Vacation Leave itself
+                $column = 'VL';
+            } elseif (str_contains($label, 'sick') || str_contains($label, 'sl')) {
+                $column = 'SL';
+            } elseif (str_contains($label, 'wellness') || str_contains($label, 'wlns')) {
+                $column = 'WLNS';
+            } elseif (str_contains($label, 'solo') || str_contains($label, 'solo parent')) {
+                $column = 'SP';
+            } elseif (str_contains($label, 'special') || str_contains($label, 'privilege') || str_contains($label, 'spl')) {
+                $column = 'SPL';
+            } elseif (str_contains($label, 'cto')) {
+                $column = 'CTO';
+            }
+
+            if (! $column) {
+                $parts = array_map('trim', explode(',', $leave->leave_type));
+                foreach ($parts as $p) {
+                    $pl = strtolower($p);
+                    if (str_contains($pl, 'vacation') || str_contains($pl, 'vl') || str_contains($pl, 'mandatory') || str_contains($pl, 'forced') || str_contains($pl, 'others')) {
+                        $column = 'VL';
+                        break;
+                    }
+                    if (str_contains($pl, 'sick') || str_contains($pl, 'sl')) {
+                        $column = 'SL';
+                        break;
+                    }
+                    if (str_contains($pl, 'wellness') || str_contains($pl, 'wlns')) {
+                        $column = 'WLNS';
+                        break;
+                    }
+                    if (str_contains($pl, 'solo') || str_contains($pl, 'solo parent')) {
+                        $column = 'SP';
+                        break;
+                    }
+                    if (str_contains($pl, 'special') || str_contains($pl, 'privilege') || str_contains($pl, 'spl')) {
+                        $column = 'SPL';
+                        break;
+                    }
+                    if (str_contains($pl, 'cto')) {
+                        $column = 'CTO';
+                        break;
+                    }
                 }
             }
         }
@@ -907,6 +917,24 @@ class LeaveRequestService
         }
 
         if (! $column) {
+            if ($isNonDeductibleType) {
+                // Record the approval for HR reporting/history even though it never touches leave_balances.
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $leave->user_id,
+                    'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                    'period_end_date' => $leave->end_date,
+                    'transaction_type' => 'LEAVE_USED',
+                    'leave_type' => $leave->leave_type,
+                    'debit_vl' => 0,
+                    'debit_sl' => 0,
+                    'credit_vl' => 0,
+                    'credit_sl' => 0,
+                    'reference_id' => $leave->id,
+                    'reference_type' => 'leave_request',
+                    'created_by' => auth()->id(),
+                    'is_system' => false,
+                ]);
+            }
             $leave->status = 'approved';
             $leave->save();
             $this->notifyLeaveApproval($leave, $leaveBalance);
@@ -1212,11 +1240,13 @@ class LeaveRequestService
             'spl' => 21,
             'solo parent leave' => 23,
             'study leave' => 25,
+            'study / examination leave' => 25,
             '10-day vawc leave' => 27,
             'vawc leave' => 27,
             'vawc' => 27,
             'rehabilitation privilege' => 29,
             'special leave benefits for women' => 31,
+            'special leave (gynecological)' => 31, // RA 9710 / CSC MC No. 25, s. 2010 — same official leave as the row above
             'special emergency (calamity) leave' => 33,
             'calamity leave' => 33,
             'adoption leave' => 35,

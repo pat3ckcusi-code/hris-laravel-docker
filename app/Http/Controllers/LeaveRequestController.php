@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
 use App\Services\LeaveRequestService;
+use App\Support\LeaveTypeResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -167,11 +168,14 @@ class LeaveRequestController extends Controller
                     ->withInput();
             }
 
-            // Build weekday list
+            // Non-deductible types (Maternity, Special Leave (Gynecological), Study/Examination,
+            // Rehabilitation Privilege) count every calendar day, including weekends; the rest
+            // of $rangeTypes (currently only VAWC Leave) keeps counting working days only.
+            $includeWeekends = in_array($type, LeaveTypeResolver::NON_DEDUCTIBLE_TYPES, true);
             $dates = [];
             $cursor = $start->copy();
             while ($cursor->lte($end)) {
-                if (! $cursor->isWeekend()) {
+                if ($includeWeekends || ! $cursor->isWeekend()) {
                     $dates[] = $cursor->toDateString();
                 }
                 $cursor->addDay();

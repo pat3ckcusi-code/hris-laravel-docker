@@ -316,7 +316,7 @@
                             <input type="date" id="rangeEnd" name="range_end" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
-                    <p class="mt-3 text-sm text-slate-600">Estimated working days (Mon–Fri): <span id="rangeDaysCount" class="font-semibold text-blue-700">-</span></p>
+                    <p class="mt-3 text-sm text-slate-600"><span id="rangeDaysLabel">Estimated working days (Mon–Fri)</span>: <span id="rangeDaysCount" class="font-semibold text-blue-700">-</span></p>
                     <input type="hidden" name="extended_leave_mode" id="extendedLeaveModeInput" value="0">
                 </div>
 
@@ -827,6 +827,18 @@
                         'Maternity Leave', 'VAWC Leave', 'Special Leave (Gynecological)',
                         'Rehabilitation Privilege', 'Study / Examination Leave',
                     ];
+                    // Mirrors LeaveTypeResolver::NON_DEDUCTIBLE_TYPES (app/Support/LeaveTypeResolver.php) —
+                    // these count every calendar day including weekends; VAWC Leave, the only other
+                    // RANGE_TYPES member, keeps counting working days only.
+                    const CALENDAR_DAY_TYPES = [
+                        'Maternity Leave', 'Special Leave (Gynecological)',
+                        'Study / Examination Leave', 'Rehabilitation Privilege',
+                    ];
+
+                    function checkedRangeType() {
+                        const checked = Array.from(leaveTypeCheckboxes).find(c => c.checked && RANGE_TYPES.includes(c.value));
+                        return checked ? checked.value : null;
+                    }
 
                     function updateLeaveTypeMode() {
                         const checkedVals = Array.from(leaveTypeCheckboxes).filter(c => c.checked).map(c => c.value);
@@ -843,6 +855,14 @@
                             if (rangeSec) rangeSec.style.display = 'none';
                             if (extInput) extInput.value = '0';
                         }
+                        const rangeDaysLabel = document.getElementById('rangeDaysLabel');
+                        if (rangeDaysLabel) {
+                            const type = checkedRangeType();
+                            rangeDaysLabel.textContent = (type && CALENDAR_DAY_TYPES.includes(type))
+                                ? 'Estimated total days'
+                                : 'Estimated working days (Mon–Fri)';
+                        }
+                        if (typeof computeRangeDays === 'function') computeRangeDays();
                     }
 
                     leaveTypeCheckboxes.forEach(cb => {
@@ -895,9 +915,11 @@
                         let s = new Date(rangeStart.value); s.setHours(0,0,0,0);
                         let e = new Date(rangeEnd.value); e.setHours(0,0,0,0);
                         if (e < s) { if (rangeDaysCount) rangeDaysCount.textContent = 'End date must be after start date'; return; }
+                        const type = checkedRangeType();
+                        const includeWeekends = type && CALENDAR_DAY_TYPES.includes(type);
                         let count = 0;
                         let cur = new Date(s);
-                        while (cur <= e) { if (cur.getDay() !== 0 && cur.getDay() !== 6) count++; cur.setDate(cur.getDate() + 1); }
+                        while (cur <= e) { if (includeWeekends || (cur.getDay() !== 0 && cur.getDay() !== 6)) count++; cur.setDate(cur.getDate() + 1); }
                         if (rangeDaysCount) rangeDaysCount.textContent = count + (count === 1 ? ' day' : ' days');
                     }
 

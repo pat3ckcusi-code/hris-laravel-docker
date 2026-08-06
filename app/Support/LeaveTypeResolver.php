@@ -19,12 +19,32 @@ class LeaveTypeResolver
     ];
 
     /**
+     * Leave types that count every calendar day but never deduct from any
+     * leave_balances column, regardless of a substring collision with the
+     * keywords above (e.g. "Special Leave (Gynecological)" contains
+     * "special", "Rehabilitation Privilege" contains "privilege" — both
+     * would otherwise falsely resolve to SPL).
+     */
+    public const NON_DEDUCTIBLE_TYPES = [
+        'Maternity Leave',
+        'Special Leave (Gynecological)',
+        'Study / Examination Leave',
+        'Rehabilitation Privilege',
+    ];
+
+    /**
      * Return the canonical leave code ('VL', 'SL', etc.) for a given label,
      * or null when the label does not match any known type.
      */
     public static function fromLabel(string $label): ?string
     {
         $lower = strtolower(trim($label));
+
+        foreach (self::NON_DEDUCTIBLE_TYPES as $type) {
+            if ($lower === strtolower($type)) {
+                return null;
+            }
+        }
 
         foreach (self::LABEL_MAP as $code => $keywords) {
             foreach ($keywords as $keyword) {

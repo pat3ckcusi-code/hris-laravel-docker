@@ -4,10 +4,13 @@ namespace Tests\Feature\RoleBased;
 
 use App\Models\Department;
 use App\Models\Eta;
+use App\Models\LeaveBalance;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
@@ -251,7 +254,7 @@ class DepartmentHeadTest extends TestCase
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
         file_put_contents($tmpPath, $response->streamedContent());
-        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        $sheet = IOFactory::load($tmpPath)->getSheet(0);
         unlink($tmpPath);
 
         $dhName = trim(collect([$dh->first_name, $dh->middle_name, $dh->last_name])->filter()->implode(' '));
@@ -287,7 +290,7 @@ class DepartmentHeadTest extends TestCase
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
         file_put_contents($tmpPath, $response->streamedContent());
-        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        $sheet = IOFactory::load($tmpPath)->getSheet(0);
         unlink($tmpPath);
 
         $expectedName = trim(collect([$dh->first_name, $dh->middle_name, $dh->last_name])->filter()->implode(' '));
@@ -328,7 +331,7 @@ class DepartmentHeadTest extends TestCase
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
         file_put_contents($tmpPath, $response->streamedContent());
-        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        $sheet = IOFactory::load($tmpPath)->getSheet(0);
         unlink($tmpPath);
 
         $otherDhName = trim(collect([$otherDh->first_name, $otherDh->middle_name, $otherDh->last_name])->filter()->implode(' '));
@@ -363,7 +366,7 @@ class DepartmentHeadTest extends TestCase
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'leave_xlsx_');
         file_put_contents($tmpPath, $response->streamedContent());
-        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpPath)->getSheet(0);
+        $sheet = IOFactory::load($tmpPath)->getSheet(0);
         unlink($tmpPath);
 
         $otherDhName = trim(collect([$otherDh->first_name, $otherDh->middle_name, $otherDh->last_name])->filter()->implode(' '));
@@ -942,5 +945,111 @@ class DepartmentHeadTest extends TestCase
         $response = $this->actingAs($dh)->postJson(route('department-head.leave.recommend-cancellation', $leave->id));
 
         $response->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────────
+    // Non-deductible calendar-day leave types (Maternity, Special Leave (Gynecological),
+    // Study/Examination, Rehabilitation Privilege) — see App\Support\LeaveTypeResolver::NON_DEDUCTIBLE_TYPES.
+    // "Special Leave (Gynecological)" and "Rehabilitation Privilege" previously collided with the
+    // "Special Privilege Leave" (SPL) keyword match in LeaveRequestService::approveLeave() because
+    // their labels contain the substrings "special" and "privilege" respectively.
+    // ──────────────────────────────────────────────
+
+    public function test_special_leave_gynecological_approval_never_deducts_and_counts_weekends(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($employee); // VL 15, SL 15, SPL 3 (default)
+
+        $start = now()->next(Carbon::FRIDAY);
+        $end = $start->copy()->addDays(3); // Fri, Sat, Sun, Mon — 4 calendar days, only 2 of them weekdays
+
+        $this->actingAs($employee)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Special Leave (Gynecological)'],
+            'range_start' => $start->toDateString(),
+            'range_end' => $end->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $employee->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+        $this->assertEquals(4, (int) $leave->total_days, 'Special Leave (Gynecological) must count every calendar day, including weekends.');
+        $this->assertEquals(4, (int) $leave->paid_days);
+        $this->assertEquals(0, (int) $leave->lwop_days);
+
+        $this->actingAs($dh)->post(route('department-head.leave.allow-printing', $leave->id));
+
+        $response = $this->actingAs($dh)->post(route('department-head.leave.approve', $leave->id));
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Leave approval failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $leave->refresh();
+        $this->assertEquals('approved', $leave->status);
+
+        $balance = LeaveBalance::where('user_id', $employee->id)->first();
+        $this->assertEquals(3.0, (float) $balance->SPL, 'Special Leave (Gynecological) must never deduct from SPL, even though its label contains the word "special".');
+        $this->assertEquals(15.0, (float) $balance->VL);
+        $this->assertEquals(15.0, (float) $balance->SL);
+
+        $this->assertDatabaseHas('leave_ledger', [
+            'user_id' => $employee->id,
+            'reference_id' => $leave->id,
+            'reference_type' => 'leave_request',
+            'transaction_type' => 'LEAVE_USED',
+            'leave_type' => 'Special Leave (Gynecological)',
+            'debit_vl' => 0,
+            'debit_sl' => 0,
+        ]);
+    }
+
+    public function test_rehabilitation_privilege_approval_never_deducts_and_counts_weekends(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($employee); // VL 15, SL 15, SPL 3 (default)
+
+        $start = now()->next(Carbon::FRIDAY);
+        $end = $start->copy()->addDays(3); // Fri, Sat, Sun, Mon — 4 calendar days, only 2 of them weekdays
+
+        $this->actingAs($employee)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => true,
+            'leave_types' => ['Rehabilitation Privilege'],
+            'range_start' => $start->toDateString(),
+            'range_end' => $end->toDateString(),
+            'reason' => 'Test filing',
+        ]);
+
+        $leave = LeaveRequest::where('user_id', $employee->id)->latest('id')->first();
+        $this->assertNotNull($leave);
+        $this->assertEquals(4, (int) $leave->total_days, 'Rehabilitation Privilege must count every calendar day, including weekends.');
+
+        $this->actingAs($dh)->post(route('department-head.leave.allow-printing', $leave->id));
+
+        $response = $this->actingAs($dh)->post(route('department-head.leave.approve', $leave->id));
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Leave approval failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $leave->refresh();
+        $this->assertEquals('approved', $leave->status);
+
+        $balance = LeaveBalance::where('user_id', $employee->id)->first();
+        $this->assertEquals(3.0, (float) $balance->SPL, 'Rehabilitation Privilege must never deduct from SPL, even though its label contains the word "privilege".');
+        $this->assertEquals(15.0, (float) $balance->VL);
+        $this->assertEquals(15.0, (float) $balance->SL);
+
+        $this->assertDatabaseHas('leave_ledger', [
+            'user_id' => $employee->id,
+            'reference_id' => $leave->id,
+            'reference_type' => 'leave_request',
+            'transaction_type' => 'LEAVE_USED',
+            'leave_type' => 'Rehabilitation Privilege',
+            'debit_vl' => 0,
+            'debit_sl' => 0,
+        ]);
     }
 }
