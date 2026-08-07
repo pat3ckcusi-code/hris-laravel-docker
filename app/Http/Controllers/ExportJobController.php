@@ -31,7 +31,7 @@ class ExportJobController extends Controller
         $this->authorizeExport($user, $data['type'], $data['params']);
 
         $job = ExportJob::createPending($user->id, $data['type'], $data['params']);
-        ProcessExportJob::dispatch($job);
+        ProcessExportJob::dispatch($job)->onQueue('exports');
 
         return response()->json([
             'job_id' => $job->id,

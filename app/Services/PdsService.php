@@ -70,6 +70,19 @@ class PdsService
     private function fillCscPdsTemplate(Spreadsheet $spreadsheet, User $user, array $pdsData): void
     {
         $sheet = $spreadsheet->getActiveSheet();
+
+        // Cloned pristine (before any data is written) so an overflowing
+        // section's continuation page reuses the exact same page format as
+        // the original - see writeWithContinuationOverflow(). Added to the
+        // workbook now (addSheet before any cell mutation, so merged-cell
+        // operations resolve against the workbook - same rule
+        // PayrollFormExportService's own clone-per-page pattern follows),
+        // removed again at the end of this method if never actually used.
+        $c1Continuation = clone $sheet;
+        $c1Continuation->setTitle("C1 (cont'd)");
+        $spreadsheet->addSheet($c1Continuation);
+        $c1ContinuationUsed = false;
+
         $family = $pdsData['pds-family-background'] ?? [];
         // Continue with PERSONAL INFO and other mappings
         $personal = $pdsData['pds-personal-info'] ?? [];
@@ -170,13 +183,34 @@ class PdsService
         $sheet->setCellValue('D57', $family['family[mother_first_name]'] ?? '');
         $sheet->setCellValue('D58', $family['family[mother_middle_name]'] ?? '');
 
-        // Children (first 12)
-        for ($i = 0, $rowIdx = 46; $i < 12 && $rowIdx <= 57; $i++, $rowIdx++) {
-            $childName = $family['children['.$i.'][name]'] ?? '';
-            $childBirth = ! empty($family['children['.$i.'][birth_date]']) ? date('d/m/Y', strtotime($family['children['.$i.'][birth_date]'])) : '';
-            $sheet->setCellValue("Q{$rowIdx}", $childName);
-            $sheet->setCellValue("Y{$rowIdx}", $childBirth);
+        // Children
+        $childRows = [];
+        foreach ($family as $k => $v) {
+            if (preg_match('/^children\[(\d+)\]\[(.+)\]$/', (string) $k, $m)) {
+                $childRows[(int) $m[1]][$m[2]] = $v;
+            }
         }
+        ksort($childRows);
+
+        $childEntries = [];
+        foreach ($childRows as $row) {
+            $childEntries[] = [
+                'Name of Child' => $row['name'] ?? '',
+                'Date of Birth' => ! empty($row['birth_date']) ? date('d/m/Y', strtotime($row['birth_date'])) : '',
+            ];
+        }
+
+        $c1ContinuationUsed = $this->writeWithContinuationOverflow(
+            $sheet,
+            $c1Continuation,
+            $childEntries,
+            46,
+            12,
+            function (Worksheet $s, int $row, array $e): void {
+                $s->setCellValue('Q'.$row, $e['Name of Child']);
+                $s->setCellValue('Y'.$row, $e['Date of Birth']);
+            }
+        );
         // EDUCATIONAL BACKGROUND
         $education = $pdsData['pds-education'] ?? [];
         $eduMap = [
@@ -342,6 +376,11 @@ class PdsService
             $sheetC2 = $spreadsheet->getActiveSheet();
         }
 
+        $c2Continuation = clone $sheetC2;
+        $c2Continuation->setTitle("C2 (cont'd)");
+        $spreadsheet->addSheet($c2Continuation);
+        $c2ContinuationUsed = false;
+
         $row = 1;
 
         // Section IV: Eligibility
@@ -372,26 +411,39 @@ class PdsService
             }
         }
 
-        $c = 0;
+        $eligibilityEntries = [];
         foreach ($rowsIV as $rowiv) {
-            $Letnum = 5 + $c;
-            if ($Letnum < 12) {
-                $sheetC2->setCellValue('A'.$Letnum, $rowiv['Career'] ?? ($rowiv['type'] ?? ''));
-                $sheetC2->setCellValue('F'.$Letnum, $rowiv['Rating'] ?? ($rowiv['rating'] ?? ''));
-                $sheetC2->setCellValue('I'.$Letnum, $rowiv['Place'] ?? ($rowiv['place'] ?? ''));
-                $sheetC2->setCellValue('L'.$Letnum, $rowiv['LiNum'] ?? ($rowiv['license_no'] ?? ''));
+            $examDateRaw = $rowiv['Date'] ?? ($rowiv['exam_date'] ?? '');
+            $examDate = (! empty($examDateRaw) && $examDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($examDateRaw)) : 'N/A';
 
-                $examDateRaw = $rowiv['Date'] ?? ($rowiv['exam_date'] ?? '');
-                $examDate = (! empty($examDateRaw) && $examDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($examDateRaw)) : 'N/A';
-                $sheetC2->setCellValue('G'.$Letnum, $examDate);
+            $liDateRaw = $rowiv['LiDate'] ?? ($rowiv['license_date'] ?? '');
+            $liDate = (! empty($liDateRaw) && $liDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($liDateRaw)) : 'N/A';
 
-                $liDateRaw = $rowiv['LiDate'] ?? ($rowiv['license_date'] ?? '');
-                $liDate = (! empty($liDateRaw) && $liDateRaw !== '0000-00-00') ? date('d/m/Y', strtotime($liDateRaw)) : 'N/A';
-                $sheetC2->setCellValue('M'.$Letnum, $liDate);
-
-                $c++;
-            }
+            $eligibilityEntries[] = [
+                'Eligibility / Career Service' => $rowiv['Career'] ?? ($rowiv['type'] ?? ''),
+                'Rating' => $rowiv['Rating'] ?? ($rowiv['rating'] ?? ''),
+                'Date of Examination' => $examDate,
+                'Place of Examination' => $rowiv['Place'] ?? ($rowiv['place'] ?? ''),
+                'License Number' => $rowiv['LiNum'] ?? ($rowiv['license_no'] ?? ''),
+                'License Valid Until' => $liDate,
+            ];
         }
+
+        $c2ContinuationUsed = $this->writeWithContinuationOverflow(
+            $sheetC2,
+            $c2Continuation,
+            $eligibilityEntries,
+            5,
+            7,
+            function (Worksheet $s, int $row, array $e): void {
+                $s->setCellValue('A'.$row, $e['Eligibility / Career Service']);
+                $s->setCellValue('F'.$row, $e['Rating']);
+                $s->setCellValue('G'.$row, $e['Date of Examination']);
+                $s->setCellValue('I'.$row, $e['Place of Examination']);
+                $s->setCellValue('L'.$row, $e['License Number']);
+                $s->setCellValue('M'.$row, $e['License Valid Until']);
+            }
+        ) || $c2ContinuationUsed;
 
         // Section V: Work Experience
         $rowsV = [];
@@ -479,32 +531,52 @@ class PdsService
 
         $sortedRows = array_merge($ongoingRows, $finishedRows);
 
-        $d = 0;
+        $workEntries = [];
         foreach ($sortedRows as $rowv) {
-            $NumExp = 18 + $d;
-            if ($NumExp < 46) {
-                $indateFromRaw = $rowv['from'] ?? ($rowv['IndateFrom'] ?? '');
-                $indateFrom = (! empty($indateFromRaw) && $indateFromRaw !== '0000-00-00') ? date('d/m/Y', strtotime($indateFromRaw)) : '';
+            $indateFromRaw = $rowv['from'] ?? ($rowv['IndateFrom'] ?? '');
+            $indateFrom = (! empty($indateFromRaw) && $indateFromRaw !== '0000-00-00') ? date('d/m/Y', strtotime($indateFromRaw)) : '';
 
-                $indateToRaw = $rowv['to'] ?? ($rowv['IndateTo'] ?? '');
-                $indateTo = (empty($indateToRaw) || $indateToRaw === '0000-00-00' || $indateToRaw === '0000-00-00 00:00:00') ? 'PRESENT' : date('d/m/Y', strtotime($indateToRaw));
+            $indateToRaw = $rowv['to'] ?? ($rowv['IndateTo'] ?? '');
+            $indateTo = (empty($indateToRaw) || $indateToRaw === '0000-00-00' || $indateToRaw === '0000-00-00 00:00:00') ? 'PRESENT' : date('d/m/Y', strtotime($indateToRaw));
 
-                $sheetC2->setCellValue('A'.$NumExp, $indateFrom);
-                $sheetC2->setCellValue('C'.$NumExp, $indateTo);
-                $sheetC2->setCellValue('D'.$NumExp, $rowv['position'] ?? ($rowv['Position'] ?? ''));
-                $sheetC2->setCellValue('G'.$NumExp, $rowv['agency'] ?? ($rowv['Dept'] ?? ($rowv['company'] ?? '')));
-                $sheetC2->setCellValue('J'.$NumExp, $rowv['monthly_salary'] ?? '');
-                $sheetC2->setCellValue('K'.$NumExp, $rowv['sg'] ?? '');
-                $sheetC2->setCellValue('L'.$NumExp, $rowv['status'] ?? ($rowv['Status'] ?? ''));
-                $sheetC2->setCellValue('M'.$NumExp, $rowv['is_government'] ?? ($rowv['GovService'] ?? ''));
-
-                $d++;
-            }
+            $workEntries[] = [
+                'From' => $indateFrom,
+                'To' => $indateTo,
+                'Position Title' => $rowv['position'] ?? ($rowv['Position'] ?? ''),
+                'Department/Agency/Office/Company' => $rowv['agency'] ?? ($rowv['Dept'] ?? ($rowv['company'] ?? '')),
+                'Monthly Salary' => $rowv['monthly_salary'] ?? '',
+                'Salary/Job/Pay Grade & Step' => $rowv['sg'] ?? '',
+                'Status of Appointment' => $rowv['status'] ?? ($rowv['Status'] ?? ''),
+                "Gov't Service" => $rowv['is_government'] ?? ($rowv['GovService'] ?? ''),
+            ];
         }
+
+        $c2ContinuationUsed = $this->writeWithContinuationOverflow(
+            $sheetC2,
+            $c2Continuation,
+            $workEntries,
+            18,
+            28,
+            function (Worksheet $s, int $row, array $e): void {
+                $s->setCellValue('A'.$row, $e['From']);
+                $s->setCellValue('C'.$row, $e['To']);
+                $s->setCellValue('D'.$row, $e['Position Title']);
+                $s->setCellValue('G'.$row, $e['Department/Agency/Office/Company']);
+                $s->setCellValue('J'.$row, $e['Monthly Salary']);
+                $s->setCellValue('K'.$row, $e['Salary/Job/Pay Grade & Step']);
+                $s->setCellValue('L'.$row, $e['Status of Appointment']);
+                $s->setCellValue('M'.$row, $e["Gov't Service"]);
+            }
+        ) || $c2ContinuationUsed;
 
         // Sheet C3: Learning & Development, Other Information
         $sheetC3 = $spreadsheet->getSheetByName('C3');
+        $c3ContinuationUsed = false;
         if ($sheetC3) {
+            $c3Continuation = clone $sheetC3;
+            $c3Continuation->setTitle("C3 (cont'd)");
+            $spreadsheet->addSheet($c3Continuation);
+
             // Learning & Development (VII)
             $learning = $pdsData['pds-learning-dev'] ?? [];
             $ldRows = [];
@@ -544,19 +616,34 @@ class PdsService
             }
 
             // Write voluntary rows starting at A7 (Section VI)
-            if (! empty($volRows)) {
-                $volStart = 6;
-                foreach ($volRows as $idx => $vr) {
-                    $r = $volStart + (int) $idx;
-                    $sheetC3->setCellValue('A'.$r, $vr['organization'] ?? ($vr['org'] ?? ''));
-                    $sheetC3->setCellValue('H'.$r, $vr['position'] ?? '');
-                    $volFrom = trim((string) ($vr['from'] ?? ''));
-                    $sheetC3->setCellValue('E'.$r, ($volFrom === '' || strtoupper($volFrom) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volFrom)));
-                    $volTo = trim((string) ($vr['to'] ?? ''));
-                    $sheetC3->setCellValue('F'.$r, ($volTo === '' || strtoupper($volTo) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volTo)));
-                    $sheetC3->setCellValue('G'.$r, $vr['hours'] ?? '');
-                }
+            ksort($volRows);
+            $voluntaryEntries = [];
+            foreach ($volRows as $vr) {
+                $volFrom = trim((string) ($vr['from'] ?? ''));
+                $volTo = trim((string) ($vr['to'] ?? ''));
+                $voluntaryEntries[] = [
+                    'Name of Organization' => $vr['organization'] ?? ($vr['org'] ?? ''),
+                    'Position/Nature of Work' => $vr['position'] ?? '',
+                    'From' => ($volFrom === '' || strtoupper($volFrom) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volFrom)),
+                    'To' => ($volTo === '' || strtoupper($volTo) === 'N/A') ? 'N/A' : date('d/m/Y', strtotime($volTo)),
+                    'Number of Hours' => $vr['hours'] ?? '',
+                ];
             }
+
+            $c3ContinuationUsed = $this->writeWithContinuationOverflow(
+                $sheetC3,
+                $c3Continuation,
+                $voluntaryEntries,
+                6,
+                7,
+                function (Worksheet $s, int $row, array $e): void {
+                    $s->setCellValue('A'.$row, $e['Name of Organization']);
+                    $s->setCellValue('H'.$row, $e['Position/Nature of Work']);
+                    $s->setCellValue('E'.$row, $e['From']);
+                    $s->setCellValue('F'.$row, $e['To']);
+                    $s->setCellValue('G'.$row, $e['Number of Hours']);
+                }
+            ) || $c3ContinuationUsed;
 
             // If learning is a nested numeric array like [0 => ['from'=>'..', 'to'=>'..'], ...]
             if (is_array($learning)) {
@@ -610,16 +697,33 @@ class PdsService
                     return $bTs <=> $aTs;
                 });
                 // Learning section starts at A18 in the template to avoid overlapping Voluntary Work
-                $startRow = 18;
-                foreach ($ldRows as $idx => $lr) {
-                    $rowNum = $startRow + (int) $idx;
-                    $sheetC3->setCellValue('A'.$rowNum, $lr['title'] ?? ($lr['program'] ?? ''));
-                    $sheetC3->setCellValue('E'.$rowNum, ! empty($lr['from']) ? date('d/m/Y', strtotime($lr['from'])) : '');
-                    $sheetC3->setCellValue('F'.$rowNum, ! empty($lr['to']) ? date('d/m/Y', strtotime($lr['to'])) : '');
-                    $sheetC3->setCellValue('G'.$rowNum, $lr['hours'] ?? '');
-                    $sheetC3->setCellValue('H'.$rowNum, $lr['type'] ?? '');
-                    $sheetC3->setCellValue('I'.$rowNum, $lr['sponsor'] ?? '');
+                $ldEntries = [];
+                foreach ($ldRows as $lr) {
+                    $ldEntries[] = [
+                        'Title of L&D Program' => $lr['title'] ?? ($lr['program'] ?? ''),
+                        'From' => ! empty($lr['from']) ? date('d/m/Y', strtotime($lr['from'])) : '',
+                        'To' => ! empty($lr['to']) ? date('d/m/Y', strtotime($lr['to'])) : '',
+                        'Number of Hours' => $lr['hours'] ?? '',
+                        'Type of L&D' => $lr['type'] ?? '',
+                        'Conducted / Sponsored By' => $lr['sponsor'] ?? '',
+                    ];
                 }
+
+                $c3ContinuationUsed = $this->writeWithContinuationOverflow(
+                    $sheetC3,
+                    $c3Continuation,
+                    $ldEntries,
+                    18,
+                    21,
+                    function (Worksheet $s, int $row, array $e): void {
+                        $s->setCellValue('A'.$row, $e['Title of L&D Program']);
+                        $s->setCellValue('E'.$row, $e['From']);
+                        $s->setCellValue('F'.$row, $e['To']);
+                        $s->setCellValue('G'.$row, $e['Number of Hours']);
+                        $s->setCellValue('H'.$row, $e['Type of L&D']);
+                        $s->setCellValue('I'.$row, $e['Conducted / Sponsored By']);
+                    }
+                ) || $c3ContinuationUsed;
             }
 
             // Other Information (VIII)
@@ -737,6 +841,116 @@ class PdsService
             $sheetC3->setCellValue('I50', $date_accomplished ? date('d/m/Y', strtotime($date_accomplished)) : '');
             $sheetC2->setCellValue('J47', $date_accomplished ? date('d/m/Y', strtotime($date_accomplished)) : '');
 
+        }
+
+        // Drop whichever continuation clones never actually received any
+        // overflow data, so a PDS with nothing to continue produces no extra
+        // sheets at all.
+        if (! $c1ContinuationUsed) {
+            $spreadsheet->removeSheetByIndex($spreadsheet->getIndex($c1Continuation));
+        }
+        if (! $c2ContinuationUsed) {
+            $spreadsheet->removeSheetByIndex($spreadsheet->getIndex($c2Continuation));
+        }
+        if (! $c3ContinuationUsed && isset($c3Continuation)) {
+            $spreadsheet->removeSheetByIndex($spreadsheet->getIndex($c3Continuation));
+        }
+    }
+
+    /**
+     * Write up to $capacity already-normalized entries into a section's static
+     * template rows via $staticRowWriter; anything beyond $capacity is routed
+     * to $continuationSheet instead - a full, pristine clone of the section's
+     * own page (see fillCscPdsTemplate()'s $c1Continuation/$c2Continuation/
+     * $c3Continuation) - at the exact same row numbers, since the clone
+     * already has identical formatting/merges/column widths to the original.
+     * Returns true iff anything was actually written to $continuationSheet,
+     * so callers can track whether that page's clone ended up used.
+     *
+     * @param  array<int, array<string, string>>  $entries  display-ready rows, keyed by whatever $staticRowWriter expects
+     * @param  callable(Worksheet, int, array<string, string>): void  $staticRowWriter
+     */
+    private function writeWithContinuationOverflow(
+        Worksheet $staticSheet,
+        Worksheet $continuationSheet,
+        array $entries,
+        int $startRow,
+        int $capacity,
+        callable $staticRowWriter
+    ): bool {
+        $entries = array_values($entries);
+        $staticCount = min(count($entries), $capacity);
+
+        for ($i = 0; $i < $staticCount; $i++) {
+            $staticRowWriter($staticSheet, $startRow + $i, $entries[$i]);
+        }
+
+        if (count($entries) <= $capacity) {
+            return false;
+        }
+
+        $overflow = array_slice($entries, $capacity);
+        $continuationCount = min(count($overflow), $capacity);
+
+        for ($i = 0; $i < $continuationCount; $i++) {
+            $staticRowWriter($continuationSheet, $startRow + $i, $overflow[$i]);
+        }
+
+        // Extremely rare: even a full continuation page's own row count isn't
+        // enough. Insert extra rows on the clone only (never the original
+        // static page), reusing the same insertNewRowBefore() technique
+        // Educational Background already uses elsewhere in this file, cloning
+        // the style/merges of the row immediately above each new row so the
+        // extension still matches the page's real formatting.
+        if (count($overflow) > $capacity) {
+            $extra = array_slice($overflow, $capacity);
+            $insertBeforeRow = $startRow + $capacity;
+            $continuationSheet->insertNewRowBefore($insertBeforeRow, count($extra));
+
+            for ($i = 0; $i < count($extra); $i++) {
+                $this->cloneRowStyle($continuationSheet, $insertBeforeRow - 1, $insertBeforeRow + $i);
+            }
+
+            foreach ($extra as $i => $entry) {
+                $staticRowWriter($continuationSheet, $insertBeforeRow + $i, $entry);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Clones one row's cell styles and merges (columns A-AC, comfortably
+     * covering every PDS section's real column usage) from $sourceRow onto
+     * $targetRow on the same sheet - used only by the rare
+     * insertNewRowBefore() fallback above, since newly inserted rows start
+     * out blank/unstyled and PhpSpreadsheet doesn't clone merges for them
+     * automatically (mirrors why Educational Background's own row-insertion
+     * code re-applies merges via safeMerge() after each insertion).
+     */
+    private function cloneRowStyle(Worksheet $sheet, int $sourceRow, int $targetRow): void
+    {
+        $lastColumnIndex = Coordinate::columnIndexFromString('AC');
+
+        for ($c = 1; $c <= $lastColumnIndex; $c++) {
+            $col = Coordinate::stringFromColumnIndex($c);
+            $sheet->getCell($col.$targetRow)->setXfIndex($sheet->getCell($col.$sourceRow)->getXfIndex());
+        }
+        $sheet->getRowDimension($targetRow)->setRowHeight($sheet->getRowDimension($sourceRow)->getRowHeight());
+
+        foreach ($sheet->getMergeCells() as $range) {
+            [$start, $end] = explode(':', $range) + [1 => $range];
+            [$startCol, $startRow] = $this->splitCell($start);
+            [$endCol, $endRow] = $this->splitCell($end);
+
+            if ($startRow !== $sourceRow || $endRow !== $sourceRow) {
+                continue;
+            }
+
+            $sheet->mergeCells(
+                Coordinate::stringFromColumnIndex($startCol).$targetRow.':'.
+                Coordinate::stringFromColumnIndex($endCol).$targetRow
+            );
         }
     }
 
