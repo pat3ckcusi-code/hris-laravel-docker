@@ -108,7 +108,7 @@
             ['label' => 'Request Documents','icon' => 'documents',  'route' => 'dashboard.employee.request-documents',       'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
 
             ['section' => 'Records'],
-            ['label' => 'Payslips',         'icon' => 'payslips',   'route' => 'dashboard.employee.payslips',   'active' => ['dashboard.employee.payslips']],
+            ['label' => 'Payslips',         'icon' => 'payslips',   'route' => 'dashboard.employee.payslips',   'active' => ['dashboard.employee.payslips'], 'permission' => 'hasPayslipAccess'],
             ['label' => 'My DTR',           'icon' => 'attendance', 'route' => 'attendance.dtr',                'active' => ['attendance.dtr', 'attendance.dtr.download']],
         ],
 
@@ -150,7 +150,7 @@
             ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
             ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
             ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
-            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips'], 'permission' => 'hasPayslipAccess'],
 
             ['section' => 'Department Management'],
             ['label' => 'Pending Requests',   'icon' => 'pending_requests',  'route' => 'admin-officer.pending-requests',   'active' => ['admin-officer.pending-requests'], 'badge' => 'pending_requests_dept_ao'],
@@ -214,7 +214,7 @@
             ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
             ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management'], 'permission' => 'canFileLeave'],
             ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
-            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips'], 'permission' => 'hasPayslipAccess'],
 
             ['section' => 'Leave Management'],
             ['label' => 'Manage Leave Balance',               'icon' => 'leave_balance',      'route' => 'leave-manager.manage-balance',                    'active' => ['leave-manager.manage-balance']],
@@ -280,7 +280,7 @@
             ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
             ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management'], 'permission' => 'canFileLeave'],
             ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
-            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
+            ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips'], 'permission' => 'hasPayslipAccess'],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],

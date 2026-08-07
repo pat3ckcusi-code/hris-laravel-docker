@@ -836,6 +836,22 @@ class EmployeeTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_payslips_link_hidden_for_job_order_employee(): void
+    {
+        $jobOrderUser = $this->createEmployee(['employee_type' => 'Job Orders']);
+        $permanentUser = $this->createEmployee(['employee_type' => 'Permanent']);
+
+        $payslipsUrl = route('dashboard.employee.payslips');
+
+        $jobOrderResponse = $this->actingAs($jobOrderUser)->get(route('dashboard'));
+        $jobOrderResponse->assertStatus(200);
+        $jobOrderResponse->assertDontSee($payslipsUrl, false);
+
+        $permanentResponse = $this->actingAs($permanentUser)->get(route('dashboard'));
+        $permanentResponse->assertStatus(200);
+        $permanentResponse->assertSee($payslipsUrl, false);
+    }
+
     public function test_payslip_stress_test_batch_access(): void
     {
         $successes = 0;

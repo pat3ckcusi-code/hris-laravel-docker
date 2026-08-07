@@ -138,6 +138,19 @@ class User extends Authenticatable
         return in_array($type, self::LEAVE_ELIGIBLE_TYPES, true);
     }
 
+    /**
+     * Payslips only exist for employees paid through the plantilla-based
+     * payroll pipeline (EmployeeAssignment). Job Orders staff are paid via
+     * JobOrderAppointment's rate_per_day instead, so no Payslip row is ever
+     * generated for them — the page would always render empty.
+     */
+    public function hasPayslipAccess(): bool
+    {
+        $type = strtolower(trim((string) ($this->employee_type ?? '')));
+
+        return $type !== 'job orders';
+    }
+
     public const STATUS_ACTIVE = 'Active';
 
     public const STATUS_INACTIVE = 'Inactive';
