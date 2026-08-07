@@ -1386,7 +1386,7 @@ function openCancellationRequestModal(id) {
         dates.forEach(function (d) {
             const label = document.createElement('label');
             label.style.cssText = 'display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer';
-            label.innerHTML = `<input type="checkbox" class="cancel-date-checkbox" value="${d.id}" checked> ${d.label} (${d.days} day${d.days == 1 ? '' : 's'})`;
+            label.innerHTML = `<input type="checkbox" class="cancel-date-checkbox" value="${d.id}"> ${d.label} (${d.days} day${d.days == 1 ? '' : 's'})`;
             checklistBody.appendChild(label);
         });
         checklistWrap.style.display = '';
