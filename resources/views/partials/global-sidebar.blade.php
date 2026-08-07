@@ -104,7 +104,7 @@
             ['label' => 'PDS',              'icon' => 'pds',        'route' => 'dashboard.employee.pds',        'active' => ['dashboard.employee.pds']],
             ['label' => 'ETA',              'icon' => 'eta',        'route' => 'dashboard.employee.eta',        'active' => ['dashboard.employee.eta']],
             ['label' => 'Locator',          'icon' => 'locator',    'route' => 'dashboard.employee.locator',    'active' => ['dashboard.employee.locator']],
-            ['label' => 'Leave Requests',   'icon' => 'leave',      'route' => 'employee.leave.management',     'active' => ['employee.leave.management']],
+            ['label' => 'Leave Requests',   'icon' => 'leave',      'route' => 'employee.leave.management',     'active' => ['employee.leave.management'], 'permission' => 'canFileLeave'],
             ['label' => 'Request Documents','icon' => 'documents',  'route' => 'dashboard.employee.request-documents',       'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
 
             ['section' => 'Records'],
@@ -212,7 +212,7 @@
             ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',               'active' => ['dashboard.employee.pds']],
             ['label' => 'ETA',               'icon' => 'eta',       'route' => 'dashboard.employee.eta',               'active' => ['dashboard.employee.eta']],
             ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
-            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management'], 'permission' => 'canFileLeave'],
             ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
             ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
 
@@ -278,7 +278,7 @@
             ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',               'active' => ['dashboard.employee.pds']],
             ['label' => 'ETA',               'icon' => 'eta',       'route' => 'dashboard.employee.eta',               'active' => ['dashboard.employee.eta']],
             ['label' => 'Locator',           'icon' => 'locator',   'route' => 'dashboard.employee.locator',           'active' => ['dashboard.employee.locator']],
-            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management',            'active' => ['employee.leave.management'], 'permission' => 'canFileLeave'],
             ['label' => 'Request Documents', 'icon' => 'documents', 'route' => 'dashboard.employee.request-documents', 'active' => ['document-requests.*', 'dashboard.employee.request-documents']],
             ['label' => 'Payslips',          'icon' => 'payslips',  'route' => 'dashboard.employee.payslips',          'active' => ['dashboard.employee.payslips']],
 
