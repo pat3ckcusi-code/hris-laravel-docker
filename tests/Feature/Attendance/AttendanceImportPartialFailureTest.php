@@ -64,4 +64,74 @@ class AttendanceImportPartialFailureTest extends TestCase
             'Expected the DTR-updated message for the employee whose punch was imported before the failure.'
         );
     }
+
+    /**
+     * Regardless of WHY a dtrs row fell behind (the pagination bug above, a
+     * crashed/restarted queue worker mid-job, some other future bug), the
+     * only way HR/Time Keeper has to fix it is re-running "Pull Biometric
+     * Punch Logs" for that date. That must actually work: recompute has to
+     * be keyed off "who has punches in the requested range," not "who got a
+     * brand-new punch this specific run" - otherwise AttendanceLog::
+     * firstOrCreate()'s idempotency means an already-persisted punch can
+     * never re-trigger the recompute that would fix its employee's stale row.
+     */
+    public function test_reimporting_an_already_persisted_punch_still_recomputes_a_stale_dtr_row(): void
+    {
+        $user = $this->createEmployee(['EmpNo' => '6003003']);
+
+        $api = $this->createMock(IntegrationApiService::class);
+        $api->method('getToken')->willReturn('fake-token');
+
+        // First run: only the AM-in punch exists. This creates a correct,
+        // but necessarily incomplete, dtrs row (no PM-out yet).
+        $api->method('fetchBulkLogs')->willReturn([
+            [['personnelid' => '6003003', 'logdate' => '2026-08-01', 'logtime' => '08:00', 'inout' => 'IN']],
+            200,
+        ]);
+
+        $service = new PersonnelLogImportService($api, new DtrPunchResolver, new ShiftPunchGrouper);
+        $service->importForDateRange('2026-08-01', '2026-08-01');
+
+        $this->assertDatabaseHas('dtrs', [
+            'employee_id' => $user->id,
+            'date' => '2026-08-01',
+            'time_in_am' => '08:00:00',
+            'time_out_pm' => null,
+        ]);
+
+        // Simulate the PM-out punch having been imported by some earlier run
+        // whose recompute step got dropped (the exact symptom this test
+        // guards against) - insert it directly into attendance_logs without
+        // going through the service, so the dtrs row stays stale exactly
+        // like it would have after a dropped recompute.
+        \App\Models\AttendanceLog::create([
+            'user_id' => $user->id,
+            'emp_no' => '6003003',
+            'logdate' => '2026-08-01',
+            'logtime' => '17:00:00',
+            'logtype' => 'SYSTEM',
+            'in_out' => 'OUT',
+        ]);
+
+        // Re-run the import for the same date. The API reports the same
+        // AM-in punch it already reported before (already persisted, so
+        // wasRecentlyCreated is false) - nothing new for THIS run to import.
+        $result = $service->importForDateRange('2026-08-01', '2026-08-01');
+
+        $this->assertSame(0, $result['imported'], 'Nothing new should be imported - the punch is already persisted.');
+
+        // Despite zero new imports, the stale row must still have been
+        // repaired using the PM-out punch that was already sitting in
+        // attendance_logs.
+        $this->assertDatabaseHas('dtrs', [
+            'employee_id' => $user->id,
+            'date' => '2026-08-01',
+            'time_in_am' => '08:00:00',
+            'time_out_pm' => '17:00:00',
+        ]);
+        $this->assertTrue(
+            collect($result['messages'])->contains(fn (string $m) => str_contains($m, 'Updated DTR for EmpNo 6003003')),
+            'Expected the DTR-updated message even though this run imported nothing new.'
+        );
+    }
 }

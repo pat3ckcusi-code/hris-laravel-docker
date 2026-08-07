@@ -46,8 +46,8 @@ class PersonnelLogImportService
         // $deptId, so narrowing the candidate map here would silently drop (never
         // persist) every other department's punches for that pull instead of just
         // narrowing which department's DTRs get recomputed/reported. $deptId is
-        // applied later, only to which resolved users count as "affected" for this
-        // run.
+        // applied later, only to which users get their DTR recomputed and named
+        // in this run's messages.
         $users = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '')
             ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
 
@@ -66,8 +66,6 @@ class PersonnelLogImportService
             }
         }
 
-        // Users who received new punches - only their DTR rows need recomputing.
-        $affectedUsers = [];
         // Track personnelids with no HRIS match so the audit log can name them.
         $unmatchedNames = [];   // personnelid → "FIRSTNAME LASTNAME"
 
@@ -79,10 +77,11 @@ class PersonnelLogImportService
         //
         // A failure on a LATER page must not skip the DTR recompute below for
         // punches already persisted from EARLIER pages - firstOrCreate() below
-        // is idempotent, so once a punch is saved, a retried import will always
-        // find it already there and never re-add that employee to $affectedUsers,
-        // permanently orphaning their DTR if we bail out here instead of falling
-        // through to the recompute step.
+        // is idempotent, so a retried import will always find an already-saved
+        // punch without ever re-inserting it, and the recompute step below is
+        // keyed off "who has punches in range" rather than "who got a punch
+        // THIS run" specifically so that doesn't matter either way (see the
+        // recompute step's own comment).
         $fatalError = null;
 
         do {
@@ -185,13 +184,6 @@ class PersonnelLogImportService
 
                     if ($log->wasRecentlyCreated) {
                         $imported++;
-
-                        // $deptId only scopes which users get their DTR recomputed and
-                        // named in this run's messages - it never gates persistence
-                        // (the punch above is already saved for every department).
-                        if ($deptId === null || $resolvedUser->Dept_id === $deptId) {
-                            $affectedUsers[$resolvedUser->id] = $resolvedUser;
-                        }
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Failed to insert attendance log', [
@@ -210,8 +202,28 @@ class PersonnelLogImportService
             $messages[] = "API returned no punch records for [{$from} to {$to}]. Verify the date range and that the biometric system has data for this period.";
         }
 
-        // Upsert DTR rows only for users who actually received new punches.
-        foreach ($affectedUsers as $user) {
+        // Recompute DTR for every user with ANY punch in the requested range -
+        // not only users whose punches were newly inserted by THIS run.
+        // $from/$to here is always a short, bounded, explicitly-requested
+        // range (the manual "Pull Biometric Punch Logs" UI and the daily
+        // auto-import both dispatch one job per single day), so this is
+        // cheap and safe, unlike recomputeFullRange()'s unbounded history
+        // scan. Scoping to newly-created punches only left no way to repair
+        // a DTR row that fell behind for some other reason (a prior partial
+        // import failure, a queue worker that crashed/restarted mid-job,
+        // a future bug) - AttendanceLog::firstOrCreate() being idempotent
+        // meant such a row could never self-heal, since re-running the
+        // import would always find the punch already saved and never
+        // re-trigger its recompute. Keying off "who has punches in range"
+        // instead makes "re-run the import" a real fix for a stale/missing
+        // DTR row regardless of cause.
+        $usersToRecompute = User::whereIn('id', function ($query) use ($from, $to): void {
+            $query->select('user_id')->from('attendance_logs')->whereBetween('logdate', [$from, $to]);
+        })
+            ->when($deptId !== null, fn ($q) => $q->where('Dept_id', $deptId))
+            ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
+
+        foreach ($usersToRecompute as $user) {
             $this->upsertDtrRecords($user, $from, $to);
             $messages[] = "Updated DTR for EmpNo {$user->EmpNo}";
         }
