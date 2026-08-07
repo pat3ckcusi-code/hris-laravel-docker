@@ -76,19 +76,27 @@ class PersonnelLogImportService
 
         // Bulk fetch: one API call per page for ALL employees instead of one call
         // per employee. Replaced 781 sequential calls with ≤ a handful of pages.
+        //
+        // A failure on a LATER page must not skip the DTR recompute below for
+        // punches already persisted from EARLIER pages - firstOrCreate() below
+        // is idempotent, so once a punch is saved, a retried import will always
+        // find it already there and never re-add that employee to $affectedUsers,
+        // permanently orphaning their DTR if we bail out here instead of falling
+        // through to the recompute step.
+        $fatalError = null;
+
         do {
             try {
                 [$logsData, $httpStatus] = $this->integrationApi->fetchBulkLogs($token, $from, $to, $start, $pageSize);
             } catch (\Throwable $e) {
-                return ['imported' => $imported, 'skipped' => $skipped, 'messages' => $messages,
-                    'error' => "Bulk API connection error at offset {$start}: {$e->getMessage()}"];
+                $fatalError = "Bulk API connection error at offset {$start}: {$e->getMessage()}";
+                break;
             }
 
             if ($httpStatus !== 200) {
-                $error = "Bulk API call failed (HTTP {$httpStatus}) at offset {$start}";
+                $fatalError = "Bulk API call failed (HTTP {$httpStatus}) at offset {$start}";
                 Log::error('Attendance bulk import failed', ['status' => $httpStatus, 'start' => $start]);
-
-                return ['imported' => $imported, 'skipped' => $skipped, 'messages' => $messages, 'error' => $error];
+                break;
             }
 
             foreach ($logsData as $item) {
@@ -214,6 +222,13 @@ class PersonnelLogImportService
             foreach ($unmatchedNames as $pid => $name) {
                 $messages[] = "  personnelid={$pid} ({$name})";
             }
+        }
+
+        // Recompute above already ran for whatever was imported before the
+        // failure; still report the run itself as failed so the caller/audit
+        // log surfaces the connection issue.
+        if ($fatalError !== null) {
+            return ['imported' => $imported, 'skipped' => $skipped, 'messages' => $messages, 'error' => $fatalError];
         }
 
         Log::info('Attendance bulk import complete', [
