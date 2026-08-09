@@ -457,12 +457,21 @@
     @if($deduction->deduction_category === 'loan')
         <section class="payroll-section">
             <h2><i class="fas fa-hand-holding-dollar"></i> Active Loans</h2>
-            @if($deduction->loans->count())
+
+            <form method="GET" action="{{ route('payroll.contributions.show', $deduction->id) }}" class="plantilla-filter-form" style="margin-bottom:14px">
+                <input type="text" name="search" value="{{ $loanSearch }}" placeholder="Search employee name or Employee Agency Number..." class="hris-search-input" style="min-width:260px">
+                <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm"><i class="fas fa-filter"></i> Filter</button>
+                @if($loanSearch !== '')
+                    <a href="{{ route('payroll.contributions.show', $deduction->id) }}" class="hris-btn hris-btn-secondary hris-btn-sm">Clear</a>
+                @endif
+            </form>
+
+            @if($loans->count())
                 <div class="hris-table-wrapper">
                 <table class="hris-table">
                     <thead><tr><th>Employee</th><th>Balance</th><th>Monthly</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody>
-                        @foreach($deduction->loans as $loan)
+                        @foreach($loans as $loan)
                             @php
                                 $loanHistory = $loan->billingHistory->map(fn ($h) => [
                                     'sort' => $h->billing_month,
@@ -496,8 +505,9 @@
                     </tbody>
                 </table>
                 </div>
+                <x-hris.table-pagination :paginator="$loans" />
             @else
-                <p class="empty-state">No active loans under this deduction.</p>
+                <p class="empty-state">{{ $loanSearch !== '' ? 'No loans match your search.' : 'No active loans under this deduction.' }}</p>
             @endif
         </section>
     @endif

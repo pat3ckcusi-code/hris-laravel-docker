@@ -201,20 +201,6 @@
                                placeholder="e.g. OIC City Budget Dept.">
                         @error('budget_officer_designation')<span class="hrm-error">{{ $message }}</span>@enderror
                     </div>
-                    <div class="form-group">
-                        <label for="payroll_preparer_name">Payslip "Prepared By" - Name</label>
-                        <input type="text" class="hrm-input" id="payroll_preparer_name" name="payroll_preparer_name"
-                               value="{{ old('payroll_preparer_name', $settings->payroll_preparer_name ?? '') }}"
-                               placeholder="e.g. Arpee Rodolfo S. Cuasay">
-                        @error('payroll_preparer_name')<span class="hrm-error">{{ $message }}</span>@enderror
-                    </div>
-                    <div class="form-group">
-                        <label for="payroll_preparer_designation">Payslip "Prepared By" - Designation</label>
-                        <input type="text" class="hrm-input" id="payroll_preparer_designation" name="payroll_preparer_designation"
-                               value="{{ old('payroll_preparer_designation', $settings->payroll_preparer_designation ?? '') }}"
-                               placeholder="e.g. Administrative Assistant IV">
-                        @error('payroll_preparer_designation')<span class="hrm-error">{{ $message }}</span>@enderror
-                    </div>
                 </div>
             </div>
 

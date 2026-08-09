@@ -210,8 +210,8 @@ Route::middleware('auth')->group(function () {
     // Employee Self-Service: Payslips (read-only, scoped to logged-in user)
     Route::get('/dashboard/employee/payslips', [EmployeePayslipController::class, 'index'])
         ->name('dashboard.employee.payslips');
-    Route::get('/dashboard/employee/payslips/{payslip}/download', [EmployeePayslipController::class, 'download'])
-        ->name('dashboard.employee.payslips.download');
+    Route::get('/dashboard/employee/payslips/{payslip}/download-excel', [EmployeePayslipController::class, 'downloadExcel'])
+        ->name('dashboard.employee.payslips.download-excel');
 
     // Attendance DTR - list view and Form 48 download (role-branching handled in controller)
     Route::get('/attendance/dtr', [DtrController::class, 'index'])
@@ -891,7 +891,7 @@ Route::middleware(['auth', 'role:payroll-manager'])->prefix('payroll-manager')->
         'update' => 'payslips.update',
         'destroy' => 'payslips.destroy',
     ]);
-    Route::get('payslips/{payslip}/download', [PayslipController::class, 'download'])->name('payslips.download');
+    Route::get('payslips/{payslip}/download-excel', [PayslipController::class, 'downloadExcel'])->name('payslips.download-excel');
     Route::resource('reports', PayrollReportsController::class)->names([
         'index' => 'reports.index',
         'create' => 'reports.create',

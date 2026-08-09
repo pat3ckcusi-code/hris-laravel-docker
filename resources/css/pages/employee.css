@@ -364,3 +364,38 @@ table.dataTable thead th { background: #f8fafc; }
     color: #334155;
     border: 1px solid #dbe3ed;
 }
+
+/* ── Payslips: latest payslip spotlight ─────────── */
+
+.payslip-spotlight-amount {
+    margin: 4px 0 0;
+    font-size: clamp(1.7rem, 3.6vw, 2.3rem);
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.1;
+}
+
+.payslip-spotlight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.payslip-spotlight-item {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.payslip-spotlight-item strong {
+    font-size: 1rem;
+    color: #0f172a;
+}
+
+.payslip-row-latest td {
+    background: #f8fafc;
+    border-left: 3px solid #0f172a;
+}

@@ -56,14 +56,38 @@ class DeductionsController extends Controller
 
     public function show(Request $request, int $id): View
     {
-        $deduction = Deduction::with('employeeDeductions.employee', 'loans.employee', 'loans.billingHistory', 'loans.payrollDeductions.payrollRun')->findOrFail($id);
+        $deduction = Deduction::with('employeeDeductions.employee')->findOrFail($id);
 
         $employees = User::active()->orderBy('name')->get(['id', 'name', 'EmpNo', 'employee_type']);
 
         $assignedEmployeeIds = $deduction->employeeDeductions->pluck('employee_id')->all();
-        $loanedEmployeeIds = $deduction->loans->pluck('employee_id')->all();
+        $loanedEmployeeIds = $deduction->loans()->pluck('employee_id')->all();
 
         $employeeTypes = HrisConstants::EMPLOYEE_TYPES;
+
+        // Active Loans table below: paginated, searchable, and ordered by employee name
+        // (join+orderBy on users.name rather than a relation-based sort, so both the
+        // search and the ordering can be expressed in one query).
+        $loanSearch = '';
+        $loans = collect();
+
+        if ($deduction->deduction_category === 'loan') {
+            $loanSearch = trim((string) $request->query('search', ''));
+
+            $loans = $deduction->loans()
+                ->join('users', 'users.id', '=', 'loans.employee_id')
+                ->select('loans.*')
+                ->with('employee', 'billingHistory', 'payrollDeductions.payrollRun')
+                ->when($loanSearch !== '', function ($q) use ($loanSearch) {
+                    $q->where(function ($sq) use ($loanSearch) {
+                        $sq->where('users.name', 'like', "%{$loanSearch}%")
+                            ->orWhere('users.EmpNo', 'like', "%{$loanSearch}%");
+                    });
+                })
+                ->orderBy('users.name')
+                ->paginate(20)
+                ->withQueryString();
+        }
 
         // The Withholding Tax Table lives directly on the BIR row's own show
         // page rather than a separate page - see "Replace computed BIR
@@ -102,7 +126,7 @@ class DeductionsController extends Controller
         }
 
         return view('payroll.deduction-show', compact(
-            'deduction', 'employees', 'assignedEmployeeIds', 'loanedEmployeeIds', 'employeeTypes',
+            'deduction', 'employees', 'assignedEmployeeIds', 'loanedEmployeeIds', 'employeeTypes', 'loans', 'loanSearch',
             'withholdingYears', 'withholdingSelectedYear', 'withholdingSearch', 'withholdingType', 'withholdingEmployees', 'withholdingEntries'
         ));
     }

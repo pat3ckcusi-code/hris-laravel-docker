@@ -80,6 +80,33 @@
             </div>
         </section>
 
+        <section class="payroll-section" style="margin-bottom:24px">
+            <h2>Payslip</h2>
+            <div class="grid">
+                <div class="form-group">
+                    <label for="payroll_signatory_payslip_prepared_by_name">Prepared By - Name</label>
+                    <input type="text" name="payroll_signatory_payslip_prepared_by_name" id="payroll_signatory_payslip_prepared_by_name" class="form-input"
+                           value="{{ old('payroll_signatory_payslip_prepared_by_name', $settings['payroll_signatory_payslip_prepared_by_name']->value ?? '') }}">
+                </div>
+                <div class="form-group">
+                    <label for="payroll_signatory_payslip_prepared_by_designation">Prepared By - Designation</label>
+                    <input type="text" name="payroll_signatory_payslip_prepared_by_designation" id="payroll_signatory_payslip_prepared_by_designation" class="form-input"
+                           value="{{ old('payroll_signatory_payslip_prepared_by_designation', $settings['payroll_signatory_payslip_prepared_by_designation']->value ?? '') }}">
+                </div>
+                <div class="form-group">
+                    <label>Certified By - Name</label>
+                    <p class="form-input" style="background:#f8fafc">{{ $hrManagerSettings->hr_manager_name ?? '—' }}</p>
+                </div>
+                <div class="form-group">
+                    <label>Certified By - Designation</label>
+                    <p class="form-input" style="background:#f8fafc">{{ $hrManagerSettings->hr_manager_designation ?? '—' }}</p>
+                </div>
+            </div>
+            <p class="text-muted" style="margin-top:8px">
+                "Certified By" is the shared HR Manager name/designation also used on Job Order Roster and Leave Request documents — edit it on HR Manager Settings.
+            </p>
+        </section>
+
         <div class="form-actions">
             <button type="button" class="btn" onclick="confirmSaveSignatories()"><i class="fas fa-floppy-disk"></i> Save</button>
         </div>

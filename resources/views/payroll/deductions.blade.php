@@ -94,7 +94,7 @@
                         <td>{{ $d->description ?? '-' }}</td>
                         <td>{{ $d->computation_type ? ucfirst($d->computation_type) : '-' }}</td>
                         <td>
-                            @if($d->deduction_category === 'other' && $d->computation_type)
+                            @if($d->isAutoComputed())
                                 <span class="status-chip" style="background:#ede9fe;color:#5b21b6" title="Auto-computed for every eligible employee type — no per-employee assignment needed">Auto (by type)</span>
                             @else
                                 <span class="item-badge">{{ $d->employee_deductions_count }}</span>

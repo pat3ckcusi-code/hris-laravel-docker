@@ -12,7 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
-class PayslipPdfTest extends TestCase
+class PayslipExportTest extends TestCase
 {
     use CreatesTestUsers, RefreshDatabase;
 
@@ -82,20 +82,23 @@ class PayslipPdfTest extends TestCase
         $this->assertGreaterThan(0, $payslip->net_pay);
     }
 
-    public function test_pdf_download_returns_pdf_response(): void
+    public function test_excel_download_returns_xlsx_response(): void
     {
         ['admin' => $admin, 'employee' => $employee, 'run' => $run] = $this->seedLockedRunWithDetail();
         $this->actingAs($admin)->post(route('payroll.payslips.store'), ['payroll_run_id' => $run->id]);
 
         $payslip = Payslip::where('employee_id', $employee->id)->where('payroll_run_id', $run->id)->firstOrFail();
 
-        $response = $this->actingAs($admin)->get(route('payroll.payslips.download', $payslip->id));
+        $response = $this->actingAs($admin)->get(route('payroll.payslips.download-excel', $payslip->id));
 
         $response->assertOk();
-        $this->assertStringContainsString('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $response->headers->get('Content-Type')
+        );
     }
 
-    public function test_employee_can_download_own_payslip_but_not_anothers(): void
+    public function test_employee_can_download_own_payslip_excel_but_not_anothers(): void
     {
         ['employee' => $employee, 'run' => $run] = $this->seedLockedRunWithDetail();
         $otherEmployee = $this->createEmployee();
@@ -109,11 +112,14 @@ class PayslipPdfTest extends TestCase
             'deduction_breakdown' => [],
         ]);
 
-        $response = $this->actingAs($employee)->get(route('dashboard.employee.payslips.download', $payslip->id));
+        $response = $this->actingAs($employee)->get(route('dashboard.employee.payslips.download-excel', $payslip->id));
         $response->assertOk();
-        $this->assertStringContainsString('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $response->headers->get('Content-Type')
+        );
 
-        $response = $this->actingAs($otherEmployee)->get(route('dashboard.employee.payslips.download', $payslip->id));
+        $response = $this->actingAs($otherEmployee)->get(route('dashboard.employee.payslips.download-excel', $payslip->id));
         $response->assertNotFound();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Payroll;
 
 use App\Http\Controllers\Controller;
 use App\Models\PayrollSetting;
+use App\Models\Setting;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -11,7 +12,8 @@ use Illuminate\Http\Request;
 class PayrollSettingsController extends Controller
 {
     // The only keys this page manages - read by
-    // PayrollFormExportService::applySignatoryOverrides() for the General Payroll export.
+    // PayrollFormExportService::applySignatoryOverrides() for the General Payroll export,
+    // and (the payslip_prepared_by_* pair) by PayslipExcelExportService for the Payslip export.
     private const SIGNATORY_KEYS = [
         'payroll_signatory_mayor_name',
         'payroll_signatory_mayor_designation',
@@ -21,13 +23,16 @@ class PayrollSettingsController extends Controller
         'payroll_signatory_treasurer_designation',
         'payroll_signatory_cash_clerk_names',
         'payroll_signatory_cash_clerk_designation',
+        'payroll_signatory_payslip_prepared_by_name',
+        'payroll_signatory_payslip_prepared_by_designation',
     ];
 
     public function index(): View
     {
         $settings = PayrollSetting::whereIn('key', self::SIGNATORY_KEYS)->get()->keyBy('key');
+        $hrManagerSettings = Setting::first();
 
-        return view('payroll.settings', compact('settings'));
+        return view('payroll.settings', compact('settings', 'hrManagerSettings'));
     }
 
     public function update(Request $request): RedirectResponse

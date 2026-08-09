@@ -6,11 +6,19 @@
 @section('top_actions')
     <div class="header-actions">
         @if(!$run->locked_at)
-            <form method="POST" action="{{ route('payroll.runs.compute', $run->id) }}" style="display:inline" id="compute-form">
+            <form method="POST" action="{{ route('payroll.runs.compute', $run->id) }}" style="display:inline" id="compute-form"
+                data-processing-submit
+                data-processing-title="Please wait"
+                data-processing-text="Computing payroll for this run. This may take a moment. Please don't close or refresh this page."
+                data-processing-button-text="Computing...">
                 @csrf
                 <button type="button" class="btn btn-sm" id="compute-btn" onclick="confirmCompute()"><i class="fas fa-calculator"></i> Compute</button>
             </form>
-            <form method="POST" action="{{ route('payroll.runs.lock', $run->id) }}" style="display:inline" id="lock-form">
+            <form method="POST" action="{{ route('payroll.runs.lock', $run->id) }}" style="display:inline" id="lock-form"
+                data-processing-submit
+                data-processing-title="Please wait"
+                data-processing-text="Locking this payroll run. This may take a moment — please don't close or refresh this page."
+                data-processing-button-text="Locking...">
                 @csrf
                 <button type="button" class="btn btn-sm btn-danger" id="lock-btn" onclick="confirmLock()"><i class="fas fa-lock"></i> Lock</button>
             </form>
@@ -236,7 +244,7 @@ function startComputing() {
     computeBtn.disabled = true;
     computeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Computing...';
     if (lockBtn) lockBtn.disabled = true;
-    document.getElementById('compute-form').submit();
+    document.getElementById('compute-form').requestSubmit();
 }
 
 function confirmLock() {
@@ -247,10 +255,19 @@ function confirmLock() {
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Yes, Lock',
-        }).then((result) => { if (result.isConfirmed) document.getElementById('lock-form').submit(); });
+        }).then((result) => { if (result.isConfirmed) startLocking(); });
     } else if (confirm('Lock this payroll run?')) {
-        document.getElementById('lock-form').submit();
+        startLocking();
     }
+}
+
+function startLocking() {
+    const computeBtn = document.getElementById('compute-btn');
+    const lockBtn = document.getElementById('lock-btn');
+    lockBtn.disabled = true;
+    lockBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Locking...';
+    if (computeBtn) computeBtn.disabled = true;
+    document.getElementById('lock-form').requestSubmit();
 }
 </script>
 @endsection
