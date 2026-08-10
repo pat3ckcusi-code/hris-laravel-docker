@@ -11,6 +11,7 @@ use App\Models\Holiday;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\Locator;
+use App\Models\Setting;
 use App\Models\UniformInspectionDetail;
 use App\Models\User;
 use App\Models\WorkSuspension;
@@ -25,6 +26,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceMonitoringExportService
@@ -906,7 +908,28 @@ class AttendanceMonitoringExportService
             // audit failure must not block the download
         }
 
+        $this->lockSheet($sheet);
+
         return [$spreadsheet, $filename];
+    }
+
+    /**
+     * Apply password-protected sheet protection, mirroring Form48ExportService.
+     * Every cell built by buildSpreadsheet() is locked by default (a fresh
+     * Spreadsheet's default cell style, not a template with pre-unlocked
+     * input cells), so no cell-level unlocking pass is needed.
+     */
+    private function lockSheet(Worksheet $sheet): void
+    {
+        $s = Setting::first();
+        $enabled = $s?->excel_protection_enabled ?? (bool) env('EXCEL_EXPORT_PROTECTION_ENABLED', true);
+        if (! $enabled) {
+            return;
+        }
+        $password = $s?->excel_sheet_password ?? env('EXCEL_EXPORT_SHEET_PASSWORD', '');
+        $sheet->getProtection()
+            ->setSheet(true)
+            ->setPassword((string) $password);
     }
 
     /**
