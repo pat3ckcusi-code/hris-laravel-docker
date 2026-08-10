@@ -274,6 +274,7 @@
 /* Color states */
 .ss-day-select.is-rest      { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
 .ss-day-select.is-field-work { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+.ss-day-select.is-wfh       { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
 .ss-day-select.is-standard  { background: #f1f5f9; color: #334155; border-color: #94a3b8; }
 .ss-day-select.is-assigned  { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
 
@@ -289,6 +290,7 @@
 }
 .ss-day-card.state-rest      .ss-state-dot { background: #ef4444; }
 .ss-day-card.state-field-work .ss-state-dot { background: #22c55e; }
+.ss-day-card.state-wfh       .ss-state-dot { background: #4338ca; }
 .ss-day-card.state-standard  .ss-state-dot { background: #64748b; }
 .ss-day-card.state-assigned   .ss-state-dot { background: #3b82f6; }
 
@@ -548,6 +550,47 @@
     </p>
 </details>
 
+{{-- Bulk single-day override bar ─────────────────────────────────── --}}
+<details class="ss-bulk-rotation-panel">
+    <summary class="ss-rotation-summary">Override a single day for selected employees (e.g. calamity / Work From Home)</summary>
+    <form id="single-day-form" method="POST" action="{{ route('attendance.shift-schedule.store-single-day') }}" class="ss-bulk-bar">
+        @csrf
+        <input type="hidden" name="dept_id" value="{{ $deptId }}">
+        <div class="ss-bulk-field">
+            <label for="sd_date">Date</label>
+            <input type="date" name="date" id="sd_date" value="{{ \Carbon\Carbon::today()->toDateString() }}" required>
+        </div>
+        <div class="ss-bulk-field">
+            <label for="sd_value">Set to</label>
+            <select name="value" id="sd_value" required>
+                <option value="default">Clear override (revert to default)</option>
+                <option value="standard">Standard Day</option>
+                <option value="rest">Rest Day / Off</option>
+                <option value="field_work">Field Work</option>
+                <option value="wfh" selected>Work From Home</option>
+                @foreach($shifts as $shift)
+                    <option value="{{ $shift->id }}" data-no-break="{{ $shift->no_break ? 1 : 0 }}">{{ $shift->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="ss-bulk-field ss-bulk-checkbox">
+            <label for="sd_no_break">
+                <input type="checkbox" name="no_break" value="1" id="sd_no_break"> No Break (2-punch)
+            </label>
+        </div>
+        <div class="ss-bulk-field ss-bulk-submit">
+            <button type="submit" class="hris-btn hris-btn-primary" id="single-day-submit" disabled>
+                Apply to selected (<span id="single-day-count">0</span>)
+            </button>
+        </div>
+    </form>
+    <p class="ss-rotation-hint">
+        Check employees in the list below, then apply. Only the chosen date is written for each selected
+        employee &mdash; every other day of their schedule is left untouched. DTR for that date is
+        recomputed automatically.
+    </p>
+</details>
+
 {{-- Main layout ──────────────────────────────────────────────── --}}
 <div class="ss-layout">
 
@@ -684,6 +727,7 @@
                                 <option value="standard">Standard Day</option>
                                 <option value="rest" @selected($iso >= 6)>Rest Day / Off</option>
                                 <option value="field_work">Field Work</option>
+                                <option value="wfh">Work From Home</option>
                                 @foreach($shifts as $shift)
                                     <option value="{{ $shift->id }}">{{ $shift->name }}</option>
                                 @endforeach
@@ -733,6 +777,9 @@
                             } elseif ($assignment->type === 'field_work') {
                                 $currentValue = 'field_work';
                                 $stateClass   = 'state-field-work';
+                            } elseif ($assignment->type === 'wfh') {
+                                $currentValue = 'wfh';
+                                $stateClass   = 'state-wfh';
                             } elseif ($assignment->type === 'standard') {
                                 $currentValue = 'standard';
                                 $stateClass   = 'state-standard';
@@ -754,13 +801,14 @@
                                 <div class="ss-day-num" style="display:block;">{{ $day->format('j') }}</div>
                             @endif
                             <select name="assignments[{{ $dateStr }}]"
-                                    class="ss-day-select {{ $currentValue === 'rest' ? 'is-rest' : ($currentValue === 'field_work' ? 'is-field-work' : ($currentValue === 'standard' ? 'is-standard' : ($currentValue !== 'default' ? 'is-assigned' : ''))) }}"
+                                    class="ss-day-select {{ $currentValue === 'rest' ? 'is-rest' : ($currentValue === 'field_work' ? 'is-field-work' : ($currentValue === 'wfh' ? 'is-wfh' : ($currentValue === 'standard' ? 'is-standard' : ($currentValue !== 'default' ? 'is-assigned' : '')))) }}"
                                     data-date="{{ $dateStr }}"
                                     onchange="onShiftChange(this)">
                                 <option value="default"     @selected($currentValue === 'default')>Default ({{ $resolvedDefaults[$dateStr]['label'] ?? 'Standard Day' }})</option>
                                 <option value="standard"    @selected($currentValue === 'standard')>Standard Day</option>
                                 <option value="rest"        @selected($currentValue === 'rest')>Rest Day / Off</option>
                                 <option value="field_work"  @selected($currentValue === 'field_work')>Field Work</option>
+                                <option value="wfh"         @selected($currentValue === 'wfh')>Work From Home</option>
                                 @foreach($shifts as $shift)
                                     <option value="{{ $shift->id }}" @selected($currentValue === (string)$shift->id)>{{ $shift->name }}</option>
                                 @endforeach
@@ -776,6 +824,7 @@
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#64748b;"></span> Standard Day (forced)</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#ef4444;"></span> Rest day / Off</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#22c55e;"></span> Field work</div>
+                    <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#4338ca;"></span> Work From Home</div>
                     <div class="ss-legend-item"><span class="ss-legend-dot" style="background:#3b82f6;border:2px solid #93c5fd;width:.6rem;height:.6rem;"></span> Today</div>
                 </div>
 
@@ -814,6 +863,7 @@ function onShiftChange(sel) {
     sel.className = 'ss-day-select' +
         (v === 'rest'       ? ' is-rest'       :
          v === 'field_work' ? ' is-field-work'  :
+         v === 'wfh'        ? ' is-wfh'         :
          v === 'standard'   ? ' is-standard'    :
          v !== 'default'    ? ' is-assigned'    : '');
 
@@ -823,6 +873,7 @@ function onShiftChange(sel) {
 
     if      (v === 'rest')       card.className += ' state-rest';
     else if (v === 'field_work') card.className += ' state-field-work';
+    else if (v === 'wfh')        card.className += ' state-wfh';
     else if (v === 'standard')   card.className += ' state-standard';
     else if (v !== 'default')    card.className += ' state-assigned';
 }
@@ -926,6 +977,7 @@ function bindShiftNoBreakPrefill(selectId, checkboxId) {
 }
 bindShiftNoBreakPrefill('bulk_shift_id', 'bulk_no_break');
 bindShiftNoBreakPrefill('rot_shift_id', 'rot_no_break');
+bindShiftNoBreakPrefill('sd_value', 'sd_no_break');
 
 /* ── Bulk rotation selection ──────────────────────────────────── */
 var bulkRotationForm = document.getElementById('bulk-rotation-form');
@@ -933,12 +985,16 @@ var empCheckboxes    = document.querySelectorAll('.ss-emp-checkbox');
 var selectAllCb       = document.getElementById('ss-select-all');
 var bulkSubmitBtn     = document.getElementById('bulk-rotation-submit');
 var bulkCountEl       = document.getElementById('bulk-rotation-count');
+var singleDaySubmitBtn = document.getElementById('single-day-submit');
+var singleDayCountEl   = document.getElementById('single-day-count');
 var weekSaveBulkHint  = document.getElementById('week-save-bulk-hint');
 
 function updateBulkRotationState() {
     var checked = document.querySelectorAll('.ss-emp-checkbox:checked').length;
     if (bulkCountEl) bulkCountEl.textContent = checked;
     if (bulkSubmitBtn) bulkSubmitBtn.disabled = checked === 0;
+    if (singleDayCountEl) singleDayCountEl.textContent = checked;
+    if (singleDaySubmitBtn) singleDaySubmitBtn.disabled = checked === 0;
     if (selectAllCb) selectAllCb.checked = checked > 0 && checked === empCheckboxes.length;
 
     if (weekSaveBulkHint) {
@@ -978,6 +1034,40 @@ if (bulkRotationForm) {
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#6b7280',
         }).then(function (res) { if (res.isConfirmed) bulkRotationForm.submit(); });
+    });
+}
+
+/* ── Single-day override: inject selected employees, confirm before submit ── */
+var singleDayForm = document.getElementById('single-day-form');
+if (singleDayForm) {
+    singleDayForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var checked = document.querySelectorAll('.ss-emp-checkbox:checked');
+        if (checked.length === 0) return;
+
+        singleDayForm.querySelectorAll('input[name="user_ids[]"]').forEach(function (el) { el.remove(); });
+        checked.forEach(function (cb) {
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'user_ids[]';
+            hidden.value = cb.value;
+            singleDayForm.appendChild(hidden);
+        });
+
+        var date = document.getElementById('sd_date').value;
+        var select = document.getElementById('sd_value');
+        var label = select.options[select.selectedIndex].text;
+        var count = checked.length;
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Override this date?',
+            html: 'This will set <b>' + count + '</b> selected employee(s) to <b>' + label + '</b> on <b>' + date + '</b> only. Every other day of their schedule is left unchanged.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, apply',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) { if (res.isConfirmed) singleDayForm.submit(); });
     });
 }
 

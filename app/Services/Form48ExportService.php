@@ -423,6 +423,21 @@ class Form48ExportService
         return $map;
     }
 
+    public function buildWfhMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+
+        EmployeeShiftSchedule::where('user_id', $userId)
+            ->where('type', 'wfh')
+            ->whereBetween('date', [$from, $to])
+            ->get(['date'])
+            ->each(function ($a) use (&$map): void {
+                $map[(int) $a->date->day] = true;
+            });
+
+        return $map;
+    }
+
     /**
      * Build a day-of-month → office_order_num map for office orders covering this user.
      * Expands each order to every day from issued_date through effective_date (or
@@ -575,21 +590,26 @@ class Form48ExportService
         array $restDayMap = [],
         array $fieldWorkMap = [],
         array $excuseMap = [],
-        array $officeOrderMap = []
+        array $officeOrderMap = [],
+        array $wfhMap = []
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
         $schedule = WorkSchedule::forUser($employee);
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
 
         // Exclude rest days, leave days, and ETA days with fewer than 4 punches from the total.
         // For locator days, zero the penalty for each covered slot that lacks a punch.
         // For excused slots, substitute 'EXCUSED' so computeSlotPenalties() skips them.
         $totalMins = 0;
         foreach ($records as $day => $r) {
-            if (isset($restDayMap[$day]) || isset($fieldWorkMap[$day])) {
+            if (isset($restDayMap[$day])) {
+                continue;
+            }
+            if ((isset($fieldWorkMap[$day]) || isset($wfhMap[$day])) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
+                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
                 continue;
             }
             if (isset($leaveMap[$day])) {
@@ -722,7 +742,8 @@ class Form48ExportService
         array $restDayMap = [],
         array $fieldWorkMap = [],
         array $excuseMap = [],
-        array $officeOrderMap = []
+        array $officeOrderMap = [],
+        array $wfhMap = []
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -758,8 +779,12 @@ class Form48ExportService
                 continue;
             }
 
-            // Field work day: merge cells and write "Field Work" label.
-            if (isset($fieldWorkMap[$day])) {
+            // Field work day: merge cells and write "Field Work" label. Only when no
+            // real, approved event (leave/ETA/OO/excuse/locator) also covers this date -
+            // those take priority, same as the ordering already established below for
+            // ETA/OO/excuse/locator relative to each other.
+            if (isset($fieldWorkMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
+                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
                 foreach (range(0, 3) as $i) {
                     $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
                     try {
@@ -767,6 +792,27 @@ class Form48ExportService
                     } catch (\Throwable) {
                     }
                     $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Field Work');
+                    $sheet->getStyle($range)->getAlignment()
+                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                }
+
+                continue;
+            }
+
+            // Work-from-home day: merge cells and write "Work From Home" label. Same
+            // priority rule as field work above - real events (leave/ETA/OO/excuse/locator)
+            // take precedence over this label when both cover the same date.
+            if (isset($wfhMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
+                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
+                foreach (range(0, 3) as $i) {
+                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Work From Home');
                     $sheet->getStyle($range)->getAlignment()
                         ->setHorizontal(Alignment::HORIZONTAL_CENTER);
                     $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');

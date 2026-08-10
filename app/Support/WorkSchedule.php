@@ -280,8 +280,8 @@ class WorkSchedule
 
     /**
      * True when the employee is scheduled off on $date (assignment row with shift_id
-     * = null and type 'rest' - excludes 'field_work' and 'standard', which are also
-     * shift_id = null but represent working days, not a day off).
+     * = null and type 'rest' - excludes 'field_work', 'wfh', and 'standard', which are
+     * also shift_id = null but represent working days, not a day off).
      *
      * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
      */
@@ -298,14 +298,15 @@ class WorkSchedule
         }
 
         return $assignment !== null && $assignment->shift_id === null
-            && ! in_array($assignment->type, ['field_work', 'standard'], true);
+            && ! in_array($assignment->type, ['field_work', 'wfh', 'standard'], true);
     }
 
     /**
      * True when $user is scheduled to work on $date: an explicit per-date
      * override always wins (a rest-day row = no; an assigned-shift, field_work,
-     * or standard-day row = yes); otherwise falls back to the user's assigned
-     * shift's weekly work-days pattern, or Mon-Fri if no shift is assigned.
+     * wfh, or standard-day row = yes); otherwise falls back to the user's
+     * assigned shift's weekly work-days pattern, or Mon-Fri if no shift is
+     * assigned.
      *
      * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
      */
@@ -318,7 +319,7 @@ class WorkSchedule
             : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->first();
 
         if ($assignment !== null) {
-            return ! ($assignment->shift_id === null && ! in_array($assignment->type, ['field_work', 'standard'], true));
+            return ! ($assignment->shift_id === null && ! in_array($assignment->type, ['field_work', 'wfh', 'standard'], true));
         }
 
         $historical = self::resolveShiftAssignment($user, $date);
@@ -363,6 +364,26 @@ class WorkSchedule
     }
 
     /**
+     * True when the employee is working from home on $date (assignment row with type = 'wfh').
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function isWfh(User $user, Carbon $date, ?Collection $preloaded = null): bool
+    {
+        $dateStr = $date->toDateString();
+
+        if ($preloaded !== null) {
+            $assignment = $preloaded->get($dateStr);
+        } else {
+            $assignment = EmployeeShiftSchedule::where('user_id', $user->id)
+                ->where('date', $dateStr)
+                ->first();
+        }
+
+        return $assignment !== null && $assignment->type === 'wfh';
+    }
+
+    /**
      * Read-only reporting helper (e.g. the per-employee resolved-schedule
      * calendar) describing WHICH layer decided $date's schedule and what
      * shift name that layer names - never consulted by DTR/payroll
@@ -396,6 +417,7 @@ class WorkSchedule
             $shiftName = match (true) {
                 $override->shift_id !== null => $shift?->name,
                 $override->type === 'standard' => 'Standard Day',
+                $override->type === 'wfh' => 'Work From Home',
                 default => null, // rest / field_work - no shift hours apply
             };
 

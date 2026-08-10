@@ -820,8 +820,10 @@ class DtrController extends Controller
             if ($assignment->type === 'standard') {
                 continue; // forced Standard Day is a normal working day, not a rest/field-work special row
             }
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr)) {
-                continue; // already represented by a DTR or leave row
+            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])
+                || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])
+                || isset($excuseMap[$dateStr]) || isset($locatorDateMap[$dateStr])) {
+                continue; // already represented by a DTR, leave, ETA, office order, travel order, excuse, or locator row
             }
 
             if ($assignment->type === 'field_work') {
@@ -835,6 +837,19 @@ class DtrController extends Controller
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>',
+                    'office_order_badge' => '',
+                ]);
+            } elseif ($assignment->type === 'wfh') {
+                $data->push([
+                    'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
+                    'time_in_ot' => '-', 'time_out_ot' => '-',
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>',
                     'office_order_badge' => '',
                 ]);
             } else {
@@ -1058,10 +1073,11 @@ class DtrController extends Controller
         $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
         $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
         $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
+        $wfhMap = $exportService->buildWfhMap($employee->id, $from, $to);
         $spreadsheet = IOFactory::load($templatePath);
         $sheet = $spreadsheet->getActiveSheet();
 
-        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
+        $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
 
         $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'DTR';
         $downloadName = "CSC_Form_48_({$safe}).xlsx";
@@ -1133,13 +1149,14 @@ class DtrController extends Controller
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
             $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
             $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
+            $wfhMap = $exportService->buildWfhMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
 
             $spreadsheet = IOFactory::load($templatePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
+            $exportService->fill($sheet, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
 
             $safe = preg_replace('/[^A-Za-z0-9_]/', '', str_replace(' ', '_', $exportService->formatName($employee))) ?: 'Employee_'.$employee->id;
             $tmpPath = tempnam(sys_get_temp_dir(), 'dtr_');
@@ -1240,6 +1257,7 @@ class DtrController extends Controller
             $fieldWorkMap = $exportService->buildFieldWorkMap($employee->id, $from, $to);
             $excuseMap = $exportService->buildExcuseMap($employee->id, $from, $to);
             $officeOrderMap = $exportService->buildOfficeOrderMap($employee->id, $from, $to);
+            $wfhMap = $exportService->buildWfhMap($employee->id, $from, $to);
             if (empty($records) && empty($leaveMap) && empty($etaMap) && empty($locatorMap)) {
                 continue;
             }
@@ -1253,7 +1271,7 @@ class DtrController extends Controller
 
             // addSheet before fill so merged-cell operations resolve against the workbook.
             $workbook->addSheet($clone);
-            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap);
+            $exportService->fill($clone, $records, $employee, $monthYear, $from, $leaveMap, $etaMap, $locatorMap, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
             $filled++;
         }
 

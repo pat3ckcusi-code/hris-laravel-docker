@@ -330,7 +330,7 @@ class AttendanceMonitoringExportService
                 for ($date = $serviceStart->copy(); $date->lte($periodEndDate); $date->addDay()) {
                     $dateStr = $date->toDateString();
 
-                    if (WorkSchedule::isFieldWork($emp, $date, $empAssignments)) {
+                    if (WorkSchedule::isFieldWork($emp, $date, $empAssignments) || WorkSchedule::isWfh($emp, $date, $empAssignments)) {
                         continue;
                     }
 

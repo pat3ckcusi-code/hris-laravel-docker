@@ -657,6 +657,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.shift-schedule.store');
     Route::post('/attendance/shift-schedule/store-bulk', [ShiftScheduleController::class, 'storeBulk'])
         ->name('attendance.shift-schedule.store-bulk');
+    Route::post('/attendance/shift-schedule/single-day', [ShiftScheduleController::class, 'storeSingleDay'])
+        ->name('attendance.shift-schedule.store-single-day');
     Route::post('/attendance/shift-schedule/apply-weekly-pattern', [ShiftScheduleController::class, 'applyWeeklyPattern'])
         ->name('attendance.shift-schedule.apply-weekly-pattern');
     Route::post('/attendance/shift-schedule/generate-pattern', [ShiftScheduleController::class, 'generatePattern'])

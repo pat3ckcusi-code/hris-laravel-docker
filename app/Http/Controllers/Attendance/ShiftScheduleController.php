@@ -195,6 +195,7 @@ class ShiftScheduleController extends Controller
      *   - a numeric shift_id  → assign that shift
      *   - 'rest'              → mark as rest day (shift_id null, type 'rest')
      *   - 'field_work'        → mark as field work (shift_id null, type 'field_work')
+     *   - 'wfh'                → mark as work from home (shift_id null, type 'wfh')
      *   - 'standard'          → force Standard Day for this date (shift_id null, type
      *                           'standard'), overriding whatever the Shift Assignment
      *                           history would otherwise resolve to for that date
@@ -351,6 +352,12 @@ class ShiftScheduleController extends Controller
                     ['shift_id' => null, 'type' => 'field_work', 'created_by' => $actor->id, 'is_rotation_generated' => false]
                 );
                 $recomputeNeeded = true;
+            } elseif ($value === 'wfh') {
+                EmployeeShiftSchedule::updateOrCreate(
+                    ['user_id' => $employee->id, 'date' => $dateStr],
+                    ['shift_id' => null, 'type' => 'wfh', 'created_by' => $actor->id, 'is_rotation_generated' => false]
+                );
+                $recomputeNeeded = true;
             } elseif ($value === 'standard') {
                 EmployeeShiftSchedule::updateOrCreate(
                     ['user_id' => $employee->id, 'date' => $dateStr],
@@ -413,7 +420,7 @@ class ShiftScheduleController extends Controller
         // a shift that's out of scope for even one employee must reject the
         // whole request rather than leaving a partial bulk write behind.
         $shiftIds = collect($validated['assignments'])
-            ->reject(fn ($value) => in_array($value, ['default', '', 'rest', 'field_work', 'standard'], true))
+            ->reject(fn ($value) => in_array($value, ['default', '', 'rest', 'field_work', 'wfh', 'standard'], true))
             ->map(fn ($value) => (int) $value)
             ->unique();
 
@@ -449,6 +456,82 @@ class ShiftScheduleController extends Controller
             'employee_id' => $request->input('employee_id'),
             'week_start' => $weekStart->toDateString(),
         ])->with('schedule_status', "Shift schedule saved for {$count} employee(s).");
+    }
+
+    /**
+     * Override exactly one date (e.g. a calamity-driven Work From Home day) for
+     * a hand-picked set of employees, without touching any other date on their
+     * schedule. Unlike storeBulk() - which broadcasts the entire currently
+     * displayed week grid to every checked employee, and so would silently
+     * overwrite each of their other 6 days too - this reuses
+     * applyWeekAssignments() with a single-entry assignments map and a
+     * single-date $validDates collection, guaranteeing only $date is written
+     * for each selected employee.
+     */
+    public function storeSingleDay(Request $request): RedirectResponse
+    {
+        $actor = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
+
+        $validated = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+            'date' => ['required', 'date'],
+            'value' => ['required', 'string'],
+            'no_break' => ['nullable', 'boolean'],
+        ]);
+
+        $userIds = array_map('intval', $validated['user_ids']);
+        $noBreak = (bool) ($validated['no_break'] ?? false);
+
+        if ($accessibleIds !== null) {
+            $unauthorized = array_diff($userIds, $accessibleIds);
+            if (! empty($unauthorized)) {
+                abort(403, 'You may only schedule employees in your own department.');
+            }
+        }
+
+        $employees = User::whereIn('id', $userIds)->get();
+        $dateStr = Carbon::parse($validated['date'])->toDateString();
+        $validDates = collect([$dateStr]);
+        $value = $validated['value'];
+
+        // Same up-front validation as storeBulk(): if $value resolves to a
+        // shift_id, reject the whole request before writing anything when
+        // that shift is out of scope for even one selected employee's
+        // department.
+        if (! in_array($value, ['default', '', 'rest', 'field_work', 'wfh', 'standard'], true)) {
+            $shiftId = (int) $value;
+            foreach ($employees->pluck('Dept_id')->unique() as $deptId) {
+                $this->assertShiftAssignable($shiftId, $deptId, $actor);
+            }
+        }
+
+        $changedEmployeeIds = [];
+
+        foreach ($employees as $employee) {
+            $recomputeNeeded = $this->applyWeekAssignments($employee, [$dateStr => $value], $validDates, $actor, $noBreak);
+
+            if ($recomputeNeeded) {
+                $this->importService->recomputeDtr($employee, $dateStr, $dateStr);
+                $changedEmployeeIds[] = $employee->id;
+            }
+        }
+
+        if (! empty($changedEmployeeIds)) {
+            $this->logBulkScheduleAction($actor, $changedEmployeeIds, 'shift_schedule_updated', [
+                'date' => $dateStr,
+                'value' => $value,
+                'no_break' => $noBreak,
+            ]);
+        }
+
+        $count = count($changedEmployeeIds);
+
+        return redirect()->route('attendance.shift-schedule.index', [
+            'dept_id' => $request->input('dept_id'),
+            'employee_id' => $request->input('employee_id'),
+        ])->with('schedule_status', "Single-day override for {$dateStr} saved for {$count} employee(s).");
     }
 
     /**
