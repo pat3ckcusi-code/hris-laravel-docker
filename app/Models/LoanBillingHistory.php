@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -44,8 +45,8 @@ class LoanBillingHistory extends Model
     {
         return [
             'billing_month' => 'date',
-            'balance' => 'float',
-            'monthly_payment' => 'float',
+            'balance' => EncryptedDecimal::class,
+            'monthly_payment' => EncryptedDecimal::class,
         ];
     }
 

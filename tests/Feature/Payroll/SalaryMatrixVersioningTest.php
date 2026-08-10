@@ -299,8 +299,10 @@ class SalaryMatrixVersioningTest extends TestCase
         ]);
 
         $response->assertSessionHas('error');
-        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01', 'amount' => 19716]);
-        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15', 'amount' => 21000]);
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-01-01']);
+        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15']);
+        $this->assertEquals(19716.0, SalaryMatrix::where('sg', 6)->where('step', 1)->where('effective_date', '2026-01-01')->firstOrFail()->amount);
+        $this->assertEquals(21000.0, SalaryMatrix::where('sg', 6)->where('step', 1)->where('effective_date', '2026-07-15')->firstOrFail()->amount);
     }
 
     public function test_updating_a_tranche_succeeds_when_target_date_has_no_overlapping_cells(): void
@@ -315,8 +317,8 @@ class SalaryMatrixVersioningTest extends TestCase
         ]);
 
         $response->assertSessionHas('status');
-        $this->assertDatabaseHas('salary_matrices', ['sg' => 6, 'step' => 1, 'effective_date' => '2026-07-15', 'amount' => 19716]);
-        $this->assertDatabaseHas('salary_matrices', ['sg' => 10, 'step' => 3, 'effective_date' => '2026-07-15', 'amount' => 25000]);
+        $this->assertEquals(19716.0, SalaryMatrix::where('sg', 6)->where('step', 1)->where('effective_date', '2026-07-15')->firstOrFail()->amount);
+        $this->assertEquals(25000.0, SalaryMatrix::where('sg', 10)->where('step', 3)->where('effective_date', '2026-07-15')->firstOrFail()->amount);
     }
 
     public function test_updating_ordinance_reference_only_keeps_the_same_date(): void

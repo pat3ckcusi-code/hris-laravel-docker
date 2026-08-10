@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedArray;
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -56,20 +58,20 @@ class PayrollDetail extends Model
     protected function casts(): array
     {
         return [
-            'basic_salary' => 'float',
-            'basic_salary_breakdown' => 'array',
-            'gross_pay' => 'float',
-            'earnings' => 'float',
-            'deductions' => 'float',
-            'gsis_deduction' => 'float',
-            'philhealth_deduction' => 'float',
-            'pagibig_deduction' => 'float',
-            'bir_deduction' => 'float',
-            'lwop_deduction' => 'float',
-            'loan_deduction' => 'float',
-            'other_deductions' => 'float',
-            'deduction_breakdown' => 'array',
-            'net_pay' => 'float',
+            'basic_salary' => EncryptedDecimal::class,
+            'basic_salary_breakdown' => EncryptedArray::class,
+            'gross_pay' => EncryptedDecimal::class,
+            'earnings' => EncryptedDecimal::class,
+            'deductions' => EncryptedDecimal::class,
+            'gsis_deduction' => EncryptedDecimal::class,
+            'philhealth_deduction' => EncryptedDecimal::class,
+            'pagibig_deduction' => EncryptedDecimal::class,
+            'bir_deduction' => EncryptedDecimal::class,
+            'lwop_deduction' => EncryptedDecimal::class,
+            'loan_deduction' => EncryptedDecimal::class,
+            'other_deductions' => EncryptedDecimal::class,
+            'deduction_breakdown' => EncryptedArray::class,
+            'net_pay' => EncryptedDecimal::class,
         ];
     }
 

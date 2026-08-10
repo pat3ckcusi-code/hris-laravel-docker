@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedArray;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -47,7 +48,7 @@ class Deduction extends Model
     ];
 
     protected $casts = [
-        'mandatory_config' => 'array',
+        'mandatory_config' => EncryptedArray::class,
         'is_active' => 'boolean',
         'eligible_employee_types' => 'array',
     ];

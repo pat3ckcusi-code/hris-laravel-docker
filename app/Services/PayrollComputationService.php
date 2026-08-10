@@ -691,8 +691,8 @@ class PayrollComputationService
         $loans = Loan::with('deduction')
             ->where('employee_id', $employeeId)
             ->where('status', 'active')
-            ->where('balance', '>', 0)
-            ->get();
+            ->get()
+            ->filter(fn ($loan) => (float) $loan->balance > 0);
 
         $items = [];
         $total = 0.0;

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,7 +46,7 @@ class WithholdingTax extends Model
         return [
             'year' => 'integer',
             'month' => 'integer',
-            'amount' => 'float',
+            'amount' => EncryptedDecimal::class,
         ];
     }
 

@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Holiday;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveRequest;
+use App\Models\PayrollDetail;
 use App\Models\PayrollException;
 use App\Models\PayrollRun;
 use App\Models\Pds;
@@ -880,18 +881,18 @@ class HRDashboardService
         if (Schema::hasTable('payroll_details')) {
             $lockedRun = PayrollRun::query()->whereNotNull('locked_at')->orderByDesc('id')->first(['id']);
             if ($lockedRun) {
-                $rows = DB::table('payroll_details')
-                    ->join('users', 'users.id', '=', 'payroll_details.employee_id')
-                    ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-                    ->where('payroll_details.payroll_run_id', $lockedRun->id)
-                    ->selectRaw('departments.Dept_name, SUM(payroll_details.net_pay) as total_net')
-                    ->groupBy('departments.Dept_id', 'departments.Dept_name')
-                    ->orderByDesc('total_net')
+                $details = PayrollDetail::with('employee.department')
+                    ->where('payroll_run_id', $lockedRun->id)
                     ->get();
 
+                $grouped = $details
+                    ->groupBy(fn ($d) => $d->employee?->department?->Dept_name ?? 'Unknown')
+                    ->map(fn ($g) => round($g->sum('net_pay'), 2))
+                    ->sortDesc();
+
                 $deptNetPay = [
-                    'labels' => $rows->pluck('Dept_name')->map(fn ($n) => $n ?? 'Unknown')->all(),
-                    'values' => $rows->pluck('total_net')->map(fn ($v) => round((float) $v, 2))->all(),
+                    'labels' => $grouped->keys()->all(),
+                    'values' => $grouped->values()->all(),
                 ];
             }
         }

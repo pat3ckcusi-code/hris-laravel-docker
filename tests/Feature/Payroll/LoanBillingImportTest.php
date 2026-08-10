@@ -47,6 +47,36 @@ class LoanBillingImportTest extends TestCase
         return $file;
     }
 
+    /**
+     * loans.balance/monthly_payment and loan_billing_history.balance/monthly_payment
+     * are encrypted at rest (App\Casts\EncryptedDecimal), so assertDatabaseHas()
+     * can't match them directly against a plain value — assert via the
+     * Eloquent model instead, which decrypts on read.
+     */
+    private function assertLoanBalance(int $employeeId, int $deductionId, float $expectedBalance, ?float $expectedMonthlyPayment = null): void
+    {
+        $loan = Loan::where('employee_id', $employeeId)->where('deduction_id', $deductionId)->first();
+
+        $this->assertNotNull($loan, "No loans row for employee {$employeeId} deduction {$deductionId}");
+        $this->assertEquals($expectedBalance, $loan->balance);
+
+        if ($expectedMonthlyPayment !== null) {
+            $this->assertEquals($expectedMonthlyPayment, $loan->monthly_payment);
+        }
+    }
+
+    private function assertBillingHistory(int $loanId, string $billingMonth, float $expectedBalance, ?float $expectedMonthlyPayment = null): void
+    {
+        $history = LoanBillingHistory::where('loan_id', $loanId)->where('billing_month', $billingMonth)->first();
+
+        $this->assertNotNull($history, "No loan_billing_history row for loan {$loanId} month {$billingMonth}");
+        $this->assertEquals($expectedBalance, $history->balance);
+
+        if ($expectedMonthlyPayment !== null) {
+            $this->assertEquals($expectedMonthlyPayment, $history->monthly_payment);
+        }
+    }
+
     public function test_upload_updates_an_existing_employees_loan_and_records_history(): void
     {
         $admin = $this->createPayrollManager();
@@ -69,10 +99,9 @@ class LoanBillingImportTest extends TestCase
         $this->assertDatabaseHas('loan_billing_history', [
             'loan_id' => $loan->id,
             'billing_month' => '2026-04-01',
-            'balance' => 4500.00,
-            'monthly_payment' => 450.00,
             'uploaded_by' => $admin->id,
         ]);
+        $this->assertBillingHistory($loan->id, '2026-04-01', 4500.00, 450.00);
     }
 
     public function test_upload_creates_a_new_loan_for_an_unassigned_empno(): void
@@ -93,10 +122,9 @@ class LoanBillingImportTest extends TestCase
         $this->assertDatabaseHas('loans', [
             'employee_id' => $employee->id,
             'deduction_id' => $deduction->id,
-            'balance' => 3000.00,
-            'monthly_payment' => 300.00,
             'status' => 'active',
         ]);
+        $this->assertLoanBalance($employee->id, $deduction->id, 3000.00, 300.00);
     }
 
     public function test_unmatched_empno_is_reported_and_does_not_abort_other_rows(): void
@@ -119,7 +147,7 @@ class LoanBillingImportTest extends TestCase
             return str_contains($message, 'Employee Agency Number not found: 9999999');
         });
 
-        $this->assertDatabaseHas('loans', ['employee_id' => $employee->id, 'deduction_id' => $deduction->id, 'balance' => 3000.00]);
+        $this->assertLoanBalance($employee->id, $deduction->id, 3000.00);
     }
 
     public function test_zero_padded_and_non_padded_empno_both_match(): void
@@ -135,7 +163,7 @@ class LoanBillingImportTest extends TestCase
             'billing_file' => $file,
         ]);
 
-        $this->assertDatabaseHas('loans', ['employee_id' => $employee->id, 'deduction_id' => $deduction->id, 'balance' => 2000.00]);
+        $this->assertLoanBalance($employee->id, $deduction->id, 2000.00);
     }
 
     public function test_reuploading_the_same_month_updates_the_history_row_instead_of_duplicating(): void
@@ -156,7 +184,7 @@ class LoanBillingImportTest extends TestCase
 
         $loan = Loan::where('employee_id', $employee->id)->where('deduction_id', $deduction->id)->firstOrFail();
         $this->assertEquals(1, LoanBillingHistory::where('loan_id', $loan->id)->where('billing_month', '2026-04-01')->count());
-        $this->assertDatabaseHas('loan_billing_history', ['loan_id' => $loan->id, 'billing_month' => '2026-04-01', 'balance' => 2700.00]);
+        $this->assertBillingHistory($loan->id, '2026-04-01', 2700.00);
     }
 
     public function test_zero_balance_row_marks_the_loan_paid(): void
@@ -280,6 +308,6 @@ class LoanBillingImportTest extends TestCase
                 && ! str_contains($message, 'SAMPLE');
         });
 
-        $this->assertDatabaseHas('loans', ['employee_id' => $employee->id, 'deduction_id' => $deduction->id, 'balance' => 4000.00]);
+        $this->assertLoanBalance($employee->id, $deduction->id, 4000.00);
     }
 }

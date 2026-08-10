@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedArray;
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -50,15 +52,15 @@ class Payslip extends Model
     protected function casts(): array
     {
         return [
-            'basic_salary' => 'float',
-            'gross_pay' => 'float',
-            'mandatory_deductions' => 'float',
-            'loan_deduction' => 'float',
-            'other_deductions' => 'float',
-            'lwop_deduction' => 'float',
-            'total_deductions' => 'float',
-            'net_pay' => 'float',
-            'deduction_breakdown' => 'array',
+            'basic_salary' => EncryptedDecimal::class,
+            'gross_pay' => EncryptedDecimal::class,
+            'mandatory_deductions' => EncryptedDecimal::class,
+            'loan_deduction' => EncryptedDecimal::class,
+            'other_deductions' => EncryptedDecimal::class,
+            'lwop_deduction' => EncryptedDecimal::class,
+            'total_deductions' => EncryptedDecimal::class,
+            'net_pay' => EncryptedDecimal::class,
+            'deduction_breakdown' => EncryptedArray::class,
         ];
     }
 

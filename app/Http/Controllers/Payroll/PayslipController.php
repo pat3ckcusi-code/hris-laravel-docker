@@ -36,7 +36,7 @@ class PayslipController extends Controller
 
         $stats = [
             'total_payslips' => (clone $query)->count(),
-            'total_net_pay' => (clone $query)->sum('net_pay'),
+            'total_net_pay' => (clone $query)->get()->sum('net_pay'),
             'employees_covered' => (clone $query)->distinct('employee_id')->count('employee_id'),
         ];
 

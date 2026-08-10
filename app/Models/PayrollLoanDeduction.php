@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -43,9 +44,9 @@ class PayrollLoanDeduction extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'float',
-            'balance_before' => 'float',
-            'balance_after' => 'float',
+            'amount' => EncryptedDecimal::class,
+            'balance_before' => EncryptedDecimal::class,
+            'balance_after' => EncryptedDecimal::class,
         ];
     }
 

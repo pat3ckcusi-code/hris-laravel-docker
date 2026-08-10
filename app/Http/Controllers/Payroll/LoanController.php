@@ -47,7 +47,7 @@ class LoanController extends Controller
             'providers' => $providers->count(),
             'total_loans' => Loan::count(),
             'active_loans' => Loan::where('status', 'active')->count(),
-            'outstanding_balance' => (float) Loan::where('status', 'active')->sum('balance'),
+            'outstanding_balance' => (float) Loan::where('status', 'active')->get()->sum('balance'),
         ];
 
         return view('payroll.loans', compact('loans', 'search', 'status', 'provider', 'providers', 'stats'));

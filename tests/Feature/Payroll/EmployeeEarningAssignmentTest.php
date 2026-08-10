@@ -29,6 +29,19 @@ class EmployeeEarningAssignmentTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * employee_earnings.amount is encrypted at rest (App\Casts\EncryptedDecimal),
+     * so assertDatabaseHas() can't match it directly against a plain value —
+     * assert via the Eloquent model instead, which decrypts on read.
+     */
+    private function assertEarningAmount(int $employeeId, int $earningsId, float $expectedAmount): void
+    {
+        $row = EmployeeEarning::where('employee_id', $employeeId)->where('earnings_id', $earningsId)->first();
+
+        $this->assertNotNull($row, "No employee_earnings row for employee {$employeeId} earning {$earningsId}");
+        $this->assertEquals($expectedAmount, $row->amount);
+    }
+
     public function test_bulk_assign_creates_row_per_selected_employee(): void
     {
         $manager = $this->createPayrollManager();
@@ -55,9 +68,9 @@ class EmployeeEarningAssignmentTest extends TestCase
                 'employee_id' => $employee->id,
                 'earnings_id' => $earning->id,
                 'amount_type' => 'fixed',
-                'amount' => 2000,
                 'recurring' => true,
             ]);
+            $this->assertEarningAmount($employee->id, $earning->id, 2000);
         }
     }
 
@@ -92,16 +105,8 @@ class EmployeeEarningAssignmentTest extends TestCase
         });
 
         // The new employee gets a row; the already-assigned one keeps its original amount (not overwritten).
-        $this->assertDatabaseHas('employee_earnings', [
-            'employee_id' => $new->id,
-            'earnings_id' => $earning->id,
-            'amount' => 2000,
-        ]);
-        $this->assertDatabaseHas('employee_earnings', [
-            'employee_id' => $alreadyAssigned->id,
-            'earnings_id' => $earning->id,
-            'amount' => 1000,
-        ]);
+        $this->assertEarningAmount($new->id, $earning->id, 2000);
+        $this->assertEarningAmount($alreadyAssigned->id, $earning->id, 1000);
         $this->assertEquals(1, EmployeeEarning::where('employee_id', $alreadyAssigned->id)
             ->where('earnings_id', $earning->id)->count());
     }

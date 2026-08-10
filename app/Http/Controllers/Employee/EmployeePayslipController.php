@@ -30,8 +30,8 @@ class EmployeePayslipController extends Controller
             'total_payslips' => Payslip::where('employee_id', $employeeId)->count(),
             'ytd_net_pay' => Payslip::where('employee_id', $employeeId)
                 ->whereHas('payrollRun', fn ($q) => $q->whereYear('period_end', $currentYear))
-                ->sum('net_pay'),
-            'average_net_pay' => Payslip::where('employee_id', $employeeId)->avg('net_pay') ?? 0,
+                ->get()->sum('net_pay'),
+            'average_net_pay' => Payslip::where('employee_id', $employeeId)->get()->avg('net_pay') ?? 0,
         ];
 
         return view('employee.payslips', compact('payslips', 'latestPayslip', 'stats', 'currentYear'));

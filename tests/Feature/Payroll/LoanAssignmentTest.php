@@ -23,6 +23,29 @@ class LoanAssignmentTest extends TestCase
         ]);
     }
 
+    /**
+     * loans.balance/monthly_payment are encrypted at rest
+     * (App\Casts\EncryptedDecimal). A ciphertext string is non-numeric, and
+     * MySQL coerces a non-numeric string to 0 in a numeric comparison — so
+     * assertDatabaseHas(['balance' => 0]) would falsely pass against any
+     * ciphertext regardless of its real decrypted value. Assert via the
+     * Eloquent model instead, which decrypts on read.
+     */
+    private function assertLoanAmounts(int $loanId, ?float $expectedBalance = null, ?float $expectedMonthlyPayment = null): void
+    {
+        $loan = Loan::find($loanId);
+
+        $this->assertNotNull($loan, "No loans row with id {$loanId}");
+
+        if ($expectedBalance !== null) {
+            $this->assertEquals($expectedBalance, $loan->balance);
+        }
+
+        if ($expectedMonthlyPayment !== null) {
+            $this->assertEquals($expectedMonthlyPayment, $loan->monthly_payment);
+        }
+    }
+
     public function test_store_creates_loan_for_employee(): void
     {
         $manager = $this->createPayrollManager();
@@ -43,10 +66,10 @@ class LoanAssignmentTest extends TestCase
         $this->assertDatabaseHas('loans', [
             'employee_id' => $employee->id,
             'deduction_id' => $deduction->id,
-            'balance' => 5000,
-            'monthly_payment' => 500,
             'status' => 'active',
         ]);
+        $loan = Loan::where('employee_id', $employee->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $this->assertLoanAmounts($loan->id, 5000, 500);
     }
 
     public function test_store_validates_required_fields(): void
@@ -111,7 +134,7 @@ class LoanAssignmentTest extends TestCase
         );
 
         $response->assertRedirect(route('payroll.contributions.show', $deduction->id));
-        $this->assertDatabaseHas('loans', ['id' => $loan->id, 'balance' => 4500]);
+        $this->assertLoanAmounts($loan->id, 4500);
     }
 
     public function test_destroy_removes_loan(): void
@@ -147,8 +170,12 @@ class LoanAssignmentTest extends TestCase
         );
 
         $response->assertRedirect(route('payroll.contributions.show', $deduction->id));
-        $this->assertDatabaseHas('loans', ['employee_id' => $employeeOne->id, 'deduction_id' => $deduction->id, 'balance' => 0, 'monthly_payment' => 0, 'status' => 'active']);
-        $this->assertDatabaseHas('loans', ['employee_id' => $employeeTwo->id, 'deduction_id' => $deduction->id, 'balance' => 0, 'monthly_payment' => 0, 'status' => 'active']);
+        $this->assertDatabaseHas('loans', ['employee_id' => $employeeOne->id, 'deduction_id' => $deduction->id, 'status' => 'active']);
+        $this->assertDatabaseHas('loans', ['employee_id' => $employeeTwo->id, 'deduction_id' => $deduction->id, 'status' => 'active']);
+        $loanOne = Loan::where('employee_id', $employeeOne->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $loanTwo = Loan::where('employee_id', $employeeTwo->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $this->assertLoanAmounts($loanOne->id, 0, 0);
+        $this->assertLoanAmounts($loanTwo->id, 0, 0);
     }
 
     public function test_bulk_assign_skips_employees_already_on_the_roster(): void
@@ -170,8 +197,10 @@ class LoanAssignmentTest extends TestCase
         });
 
         $this->assertEquals(1, Loan::where('employee_id', $existingEmployee->id)->where('deduction_id', $deduction->id)->count());
-        $this->assertDatabaseHas('loans', ['employee_id' => $existingEmployee->id, 'deduction_id' => $deduction->id, 'balance' => 3000]);
-        $this->assertDatabaseHas('loans', ['employee_id' => $newEmployee->id, 'deduction_id' => $deduction->id, 'balance' => 0]);
+        $existingLoan = Loan::where('employee_id', $existingEmployee->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $newLoan = Loan::where('employee_id', $newEmployee->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $this->assertLoanAmounts($existingLoan->id, 3000);
+        $this->assertLoanAmounts($newLoan->id, 0);
     }
 
     public function test_bulk_assign_rejected_for_an_inactive_provider(): void

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +35,7 @@ class EmployeeDeduction extends Model
     protected function casts(): array
     {
         return [
+            'amount' => EncryptedDecimal::class,
             'recurring' => 'boolean',
         ];
     }

@@ -25,6 +25,23 @@ class EmployeeDeductionAssignmentTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * employee_deductions.amount is encrypted at rest (App\Casts\EncryptedDecimal),
+     * so assertDatabaseHas() can't match it directly against a plain value —
+     * assert via the Eloquent model instead, which decrypts on read.
+     */
+    private function assertDeductionAmount(int $employeeId, int $deductionId, float $expectedAmount, ?bool $recurring = null): void
+    {
+        $row = EmployeeDeduction::where('employee_id', $employeeId)->where('deduction_id', $deductionId)->first();
+
+        $this->assertNotNull($row, "No employee_deductions row for employee {$employeeId} deduction {$deductionId}");
+        $this->assertEquals($expectedAmount, $row->amount);
+
+        if ($recurring !== null) {
+            $this->assertSame($recurring, $row->recurring);
+        }
+    }
+
     public function test_bulk_assign_creates_row_per_selected_employee(): void
     {
         $manager = $this->createPayrollManager();
@@ -46,12 +63,7 @@ class EmployeeDeductionAssignmentTest extends TestCase
         });
 
         foreach ($employees as $employee) {
-            $this->assertDatabaseHas('employee_deductions', [
-                'employee_id' => $employee->id,
-                'deduction_id' => $deduction->id,
-                'amount' => 100,
-                'recurring' => true,
-            ]);
+            $this->assertDeductionAmount($employee->id, $deduction->id, 100, true);
         }
     }
 
@@ -83,8 +95,8 @@ class EmployeeDeductionAssignmentTest extends TestCase
                 && str_contains($message, '1 already had this deduction and were skipped.');
         });
 
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $new->id, 'deduction_id' => $deduction->id, 'amount' => 100]);
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $alreadyAssigned->id, 'deduction_id' => $deduction->id, 'amount' => 50]);
+        $this->assertDeductionAmount($new->id, $deduction->id, 100);
+        $this->assertDeductionAmount($alreadyAssigned->id, $deduction->id, 50);
         $this->assertEquals(1, EmployeeDeduction::where('employee_id', $alreadyAssigned->id)->where('deduction_id', $deduction->id)->count());
     }
 
@@ -144,8 +156,8 @@ class EmployeeDeductionAssignmentTest extends TestCase
             return str_contains($message, 'Assigned to 2 employee(s)');
         });
 
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $permanentOne->id, 'deduction_id' => $deduction->id, 'amount' => 150]);
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $permanentTwo->id, 'deduction_id' => $deduction->id, 'amount' => 150]);
+        $this->assertDeductionAmount($permanentOne->id, $deduction->id, 150);
+        $this->assertDeductionAmount($permanentTwo->id, $deduction->id, 150);
         $this->assertDatabaseMissing('employee_deductions', ['employee_id' => $casual->id, 'deduction_id' => $deduction->id]);
     }
 
@@ -173,8 +185,8 @@ class EmployeeDeductionAssignmentTest extends TestCase
                 && str_contains($message, '1 already had this deduction and were skipped.');
         });
 
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $new->id, 'deduction_id' => $deduction->id, 'amount' => 150]);
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $alreadyAssigned->id, 'deduction_id' => $deduction->id, 'amount' => 50]);
+        $this->assertDeductionAmount($new->id, $deduction->id, 150);
+        $this->assertDeductionAmount($alreadyAssigned->id, $deduction->id, 50);
     }
 
     public function test_bulk_assign_by_type_covers_multiple_selected_types(): void
@@ -190,8 +202,8 @@ class EmployeeDeductionAssignmentTest extends TestCase
             ['employee_types' => ['Permanent', 'Casual'], 'amount' => 75, 'recurring' => '0']
         );
 
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $permanent->id, 'deduction_id' => $deduction->id, 'amount' => 75, 'recurring' => false]);
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $casual->id, 'deduction_id' => $deduction->id, 'amount' => 75]);
+        $this->assertDeductionAmount($permanent->id, $deduction->id, 75, false);
+        $this->assertDeductionAmount($casual->id, $deduction->id, 75);
         $this->assertDatabaseMissing('employee_deductions', ['employee_id' => $jobOrder->id, 'deduction_id' => $deduction->id]);
     }
 

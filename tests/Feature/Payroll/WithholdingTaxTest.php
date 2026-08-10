@@ -31,6 +31,19 @@ class WithholdingTaxTest extends TestCase
     use CreatesTestUsers, RefreshDatabase;
 
     /**
+     * withholding_taxes.amount is encrypted at rest (App\Casts\EncryptedDecimal),
+     * so assertDatabaseHas() can't match it directly against a plain value —
+     * assert via the Eloquent model instead, which decrypts on read.
+     */
+    private function assertWithholdingAmount(int $employeeId, int $year, int $month, float $expected): void
+    {
+        $entry = WithholdingTax::where('employee_id', $employeeId)->where('year', $year)->where('month', $month)->first();
+
+        $this->assertNotNull($entry, "No withholding_taxes row for employee {$employeeId} {$year}-{$month}");
+        $this->assertEquals($expected, $entry->amount);
+    }
+
+    /**
      * Mirrors the real template's layout: a title row, a 14-column header
      * row (Employee Agency Number, Name, Jan..Dec), then data.
      */
@@ -179,7 +192,7 @@ class WithholdingTaxTest extends TestCase
         ]);
 
         $response->assertRedirect(route('payroll.contributions.show', ['contribution' => $bir->id, 'year' => 2026]));
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 5, 'amount' => 300]);
+        $this->assertWithholdingAmount($employee->id, 2026, 5, 300);
     }
 
     public function test_store_updates_in_place_instead_of_duplicating_on_a_repeat_submit(): void
@@ -198,7 +211,7 @@ class WithholdingTaxTest extends TestCase
         $submit(350);
 
         $this->assertEquals(1, WithholdingTax::where('employee_id', $employee->id)->where('year', 2026)->where('month', 5)->count());
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 5, 'amount' => 350]);
+        $this->assertWithholdingAmount($employee->id, 2026, 5, 350);
     }
 
     // ── update() ────────────────────────────────────────────────────────
@@ -256,9 +269,9 @@ class WithholdingTaxTest extends TestCase
         ]);
 
         $response->assertSessionHas('status', fn ($m) => str_contains($m, '3 entr'));
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 1, 'amount' => 100]);
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 2, 'amount' => 200]);
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 12, 'amount' => 500]);
+        $this->assertWithholdingAmount($employee->id, 2026, 1, 100);
+        $this->assertWithholdingAmount($employee->id, 2026, 2, 200);
+        $this->assertWithholdingAmount($employee->id, 2026, 12, 500);
         $this->assertDatabaseMissing('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 3]);
     }
 
@@ -275,7 +288,7 @@ class WithholdingTaxTest extends TestCase
         ]);
 
         $this->assertEquals(1, WithholdingTax::where('employee_id', $employee->id)->where('year', 2026)->where('month', 1)->count());
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 1, 'amount' => 150]);
+        $this->assertWithholdingAmount($employee->id, 2026, 1, 150);
     }
 
     public function test_unmatched_empno_is_reported_and_does_not_abort_other_rows(): void
@@ -294,7 +307,7 @@ class WithholdingTaxTest extends TestCase
         ]);
 
         $response->assertSessionHas('status', fn ($m) => str_contains($m, 'Employee Agency Number not found: 9999999'));
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 1, 'amount' => 100]);
+        $this->assertWithholdingAmount($employee->id, 2026, 1, 100);
     }
 
     public function test_upload_flags_a_name_mismatch_without_blocking_the_row(): void
@@ -310,7 +323,7 @@ class WithholdingTaxTest extends TestCase
         ]);
 
         $response->assertSessionHas('status', fn ($m) => str_contains($m, 'Name mismatch') && str_contains($m, '2600014'));
-        $this->assertDatabaseHas('withholding_taxes', ['employee_id' => $employee->id, 'year' => 2026, 'month' => 1, 'amount' => 100]);
+        $this->assertWithholdingAmount($employee->id, 2026, 1, 100);
     }
 
     // ── PayrollComputationService integration ──────────────────────────

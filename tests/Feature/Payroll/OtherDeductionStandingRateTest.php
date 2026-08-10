@@ -250,7 +250,8 @@ class OtherDeductionStandingRateTest extends TestCase
         $this->assertEquals(150.0, $detail->other_deductions);
 
         // The old row is untouched in the database, just no longer read.
-        $this->assertDatabaseHas('employee_deductions', ['employee_id' => $employee->id, 'deduction_id' => $deduction->id, 'amount' => 50]);
+        $oldRow = EmployeeDeduction::where('employee_id', $employee->id)->where('deduction_id', $deduction->id)->firstOrFail();
+        $this->assertEquals(50.0, $oldRow->amount);
     }
 
     public function test_switching_back_to_individual_resumes_the_old_custom_amount(): void
