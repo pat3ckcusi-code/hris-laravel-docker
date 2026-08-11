@@ -600,7 +600,9 @@ class Form48ExportService
         $this->fillHeader($sheet, $name, $designation, $monthYear);
         $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
 
-        // Exclude rest days, leave days, and ETA days with fewer than 4 punches from the total.
+        // Exclude rest days, leave days, and field work/WFH/ETA/OO days with fewer than 4
+        // punches from the total (mirrors fillDailyRows()'s punch-count gating for those
+        // same day types - a day with all 4 slots punched counts like any normal day).
         // For locator days, zero the penalty for each covered slot that lacks a punch.
         // For excused slots, substitute 'EXCUSED' so computeSlotPenalties() skips them.
         $totalMins = 0;
@@ -608,12 +610,18 @@ class Form48ExportService
             if (isset($restDayMap[$day])) {
                 continue;
             }
-            if ((isset($fieldWorkMap[$day]) || isset($wfhMap[$day])) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
-                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
-                continue;
-            }
             if (isset($leaveMap[$day])) {
                 continue;
+            }
+            if ((isset($fieldWorkMap[$day]) || isset($wfhMap[$day])) && ! isset($etaMap[$day])
+                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
+                $fwPunches = count(array_filter([
+                    $r['am_in'] ?? null, $r['am_out'] ?? null,
+                    $r['pm_in'] ?? null, $r['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== ''));
+                if ($fwPunches < 4) {
+                    continue;
+                }
             }
             if (isset($etaMap[$day])) {
                 $etaPunches = count(array_filter([
@@ -702,6 +710,77 @@ class Form48ExportService
 
     // ── PRIVATE ───────────────────────────────────────────────────────────────
 
+    /**
+     * Writes a "real punch times for filled slots, remaining (assumed
+     * sequential am_in → am_out → pm_in → pm_out) empty slots merged into one
+     * $label cell" row - the same merge pattern the Office Order branch below
+     * uses, shared here for Field Work/WFH so all three don't duplicate it.
+     *
+     * @param  array<string, mixed>|null  $rec
+     */
+    private function writeSequentialPartialPunchLabel(Worksheet $sheet, int $row, ?array $rec, int $punchCount, string $label): void
+    {
+        $fmt = fn (?string $t): string => ($t !== null && $t !== '') ? substr($t, 0, 5) : '';
+
+        foreach (range(0, 3) as $i) {
+            $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+            $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+
+            match ($punchCount) {
+                0 => (function () use ($sheet, $i, $row, $label): void {
+                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, $label);
+                    $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                })(),
+
+                1 => (function () use ($sheet, $i, $row, $rec, $fmt, $label): void {
+                    $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
+                    $sheet->getStyle(self::AM_IN_COLS[$i].$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $range = self::AM_OUT_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $label);
+                    $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                })(),
+
+                2 => (function () use ($sheet, $i, $row, $rec, $fmt, $label): void {
+                    $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
+                    $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $fmt($rec['am_out'] ?? null));
+                    foreach ([self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i]] as $col) {
+                        $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    }
+                    $range = self::PM_IN_COLS[$i].$row.':'.self::PM_OUT_COLS[$i].$row;
+                    try {
+                        $sheet->mergeCells($range);
+                    } catch (\Throwable) {
+                    }
+                    $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $label);
+                    $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                })(),
+
+                default => (function () use ($sheet, $i, $row, $rec, $fmt, $label): void {
+                    // 3 punches: show am_in, am_out, pm_in; pm_out = $label
+                    $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $fmt($rec['am_in'] ?? null));
+                    $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $fmt($rec['am_out'] ?? null));
+                    $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $fmt($rec['pm_in'] ?? null));
+                    $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $label);
+                    foreach ([
+                        self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i],
+                        self::PM_IN_COLS[$i], self::PM_OUT_COLS[$i],
+                    ] as $col) {
+                        $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    }
+                })(),
+            };
+        }
+    }
+
     private function fillHeader(
         Worksheet $sheet,
         string $name,
@@ -779,47 +858,45 @@ class Form48ExportService
                 continue;
             }
 
-            // Field work day: merge cells and write "Field Work" label. Only when no
+            // Field work day: same sequential partial-punch merge pattern as Office Order
+            // below - real times for filled slots, remaining empty slots merged into one
+            // "Field Work" cell, so a real biometric punch is never discarded. Only when no
             // real, approved event (leave/ETA/OO/excuse/locator) also covers this date -
             // those take priority, same as the ordering already established below for
-            // ETA/OO/excuse/locator relative to each other.
+            // ETA/OO/excuse/locator relative to each other. If all 4 slots are present,
+            // fall through to the normal write below.
             if (isset($fieldWorkMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
                 && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
-                foreach (range(0, 3) as $i) {
-                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
-                    try {
-                        $sheet->mergeCells($range);
-                    } catch (\Throwable) {
-                    }
-                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Field Work');
-                    $sheet->getStyle($range)->getAlignment()
-                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
-                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
-                }
+                $punchCount = $rec ? count(array_filter([
+                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
+                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '')) : 0;
 
-                continue;
+                if ($punchCount < 4) {
+                    $this->writeSequentialPartialPunchLabel($sheet, $row, $rec, $punchCount, 'Field Work');
+
+                    continue;
+                }
+                // punchCount === 4: fall through to normal write below.
             }
 
-            // Work-from-home day: merge cells and write "Work From Home" label. Same
-            // priority rule as field work above - real events (leave/ETA/OO/excuse/locator)
-            // take precedence over this label when both cover the same date.
+            // Work-from-home day: same sequential partial-punch merge pattern as field
+            // work above. Same priority rule - real events (leave/ETA/OO/excuse/locator)
+            // take precedence over this label when both cover the same date. If all 4
+            // slots are present, fall through to the normal write below.
             if (isset($wfhMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
                 && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
-                foreach (range(0, 3) as $i) {
-                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
-                    try {
-                        $sheet->mergeCells($range);
-                    } catch (\Throwable) {
-                    }
-                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'Work From Home');
-                    $sheet->getStyle($range)->getAlignment()
-                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
-                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
-                }
+                $punchCount = $rec ? count(array_filter([
+                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
+                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '')) : 0;
 
-                continue;
+                if ($punchCount < 4) {
+                    $this->writeSequentialPartialPunchLabel($sheet, $row, $rec, $punchCount, 'Work From Home');
+
+                    continue;
+                }
+                // punchCount === 4: fall through to normal write below.
             }
 
             // Approved leave: merge AM-in → PM-out and write the leave code.

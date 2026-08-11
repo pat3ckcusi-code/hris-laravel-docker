@@ -430,6 +430,26 @@ class DtrController extends Controller
             $suspension = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! empty($suspensionSlots)) ? $suspensionRow : null;
             $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! $suspension) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
+            // Field Work/WFH: lowest priority of all - only when nothing else above
+            // (leave/ETA/OO/TO/excuse/suspension/locator) already explains the date,
+            // matching Form48ExportService's own field_work/wfh priority so the two
+            // pages agree. Reuses $shiftAssignments (already loaded for schedule
+            // resolution) rather than a new query - same source the "no dtrs row at
+            // all" synthetic loop below reads from.
+            $fieldWorkWfhAssignment = $shiftAssignments[$dateStr] ?? null;
+            $isFieldWorkWfhDay = ! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay
+                && ! $excuse && ! $suspension && ! $loc
+                && $fieldWorkWfhAssignment !== null
+                && $fieldWorkWfhAssignment->shift_id === null
+                && in_array($fieldWorkWfhAssignment->type, ['field_work', 'wfh'], true);
+
+            $fieldWorkWfhPunchCount = $isFieldWorkWfhDay ? count(array_filter([
+                $dtr->time_in_am, $dtr->time_out_am,
+                $dtr->time_in_pm, $dtr->time_out_pm,
+            ], fn ($v) => $v !== null && $v !== '')) : 4;
+
+            $showFieldWorkWfh = $isFieldWorkWfhDay && $fieldWorkWfhPunchCount < 4;
+
             // Missing AM In / PM Out with nothing else explaining the gap - impute the
             // full half-day block from the shift template, mirroring the Monitoring
             // Matrix report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
@@ -518,6 +538,13 @@ class DtrController extends Controller
                 if ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
                     $utMin = $imputePmOutUndertime();
                 }
+            } elseif ($showFieldWorkWfh) {
+                $label = $fieldWorkWfhAssignment->type === 'wfh' ? 'Work From Home' : 'Field Work';
+                $tAmIn = $dtr->time_in_am ?: $label;
+                $tAmOut = $dtr->time_out_am ?: $label;
+                $tPmIn = $dtr->time_in_pm ?: $label;
+                $tPmOut = $dtr->time_out_pm ?: $label;
+                $lateMin = $utMin = 0;
             } else {
                 // A null slot only reads as "Missing" (vs. a plain "-") once its
                 // window has passed - a shift still in progress shouldn't accuse
@@ -548,7 +575,7 @@ class DtrController extends Controller
 
             // Per-cell late/undertime flags: only highlight the slot that actually caused the penalty.
             // Using the row-level is_late class to color AM In was wrong when lateness came from PM In.
-            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'Missing', 'LOCATOR', 'ETA', 'EXCUSED', 'SUSPENDED'], true) && strlen($v) >= 5
+            $slotHm = fn (string $v): ?string => ! in_array($v, ['-', 'Missing', 'LOCATOR', 'ETA', 'EXCUSED', 'SUSPENDED', 'Field Work', 'Work From Home'], true) && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $slotHm($tAmIn);
@@ -595,9 +622,13 @@ class DtrController extends Controller
                                     ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>'
                                     : ($loc
                                         ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
-                                        : ($dtr->is_absent
-                                            ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                            : $this->punchStatusBadge($dtr->status))))))));
+                                        : ($showFieldWorkWfh
+                                            ? ($fieldWorkWfhAssignment->type === 'wfh'
+                                                ? '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>'
+                                                : '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>')
+                                            : ($dtr->is_absent
+                                                ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                                : $this->punchStatusBadge($dtr->status)))))))));
 
             if (! empty($dtr->unmatched_logs)) {
                 $unmatchedTitle = e(implode(', ', array_map(fn ($t) => substr((string) $t, 0, 5), $dtr->unmatched_logs)));

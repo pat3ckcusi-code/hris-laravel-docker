@@ -1540,6 +1540,207 @@ class ShiftScheduleTest extends TestCase
         $this->assertStringContainsString('Work Suspended', $row['status_badge']);
     }
 
+    /**
+     * Regression: a field_work/wfh EmployeeShiftSchedule override used to be
+     * consulted only for a date with NO dtrs row at all - the moment any real
+     * punch data existed (even a single partial punch), the day fell into the
+     * plain per-punch loop with no Field Work indication whatsoever. Fixed to
+     * behave just like the existing ETA branch: real time for filled slots,
+     * "Field Work" for the rest, zero late/undertime.
+     */
+    public function test_daily_time_records_shows_field_work_label_for_missing_slots_alongside_a_partial_punch(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Fieldworker']);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('08:00', $row['time_in_am']);
+        $this->assertSame('Field Work', $row['time_out_am']);
+        $this->assertSame('Field Work', $row['time_in_pm']);
+        $this->assertSame('Field Work', $row['time_out_pm']);
+        $this->assertSame(0, $row['late_minutes']);
+        $this->assertSame(0, $row['undertime_minutes']);
+        $this->assertStringContainsString('Field Work', $row['status_badge']);
+    }
+
+    /** Same partial-punch scenario as above, but for a wfh override. */
+    public function test_daily_time_records_shows_wfh_label_for_missing_slots_alongside_a_partial_punch(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Wfhworker']);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'wfh',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('08:00', $row['time_in_am']);
+        $this->assertSame('Work From Home', $row['time_out_am']);
+        $this->assertStringContainsString('Work From Home', $row['status_badge']);
+    }
+
+    /**
+     * Regression guard: a fully-punched (all 4 slots) field-work day must show
+     * the real times untouched with no "Field Work" label anywhere and no
+     * special badge - it falls through to the normal status badge, exactly
+     * like the ETA/Office Order/Travel Order branches already do at 4 punches.
+     */
+    public function test_daily_time_records_shows_real_punches_with_no_field_work_label_when_fully_punched(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Fullypunched']);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'present',
+            'is_absent' => false,
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('08:00', $row['time_in_am']);
+        $this->assertSame('12:00', $row['time_out_am']);
+        $this->assertSame('13:00', $row['time_in_pm']);
+        $this->assertSame('17:00', $row['time_out_pm']);
+        $this->assertStringNotContainsString('Field Work', $row['status_badge']);
+    }
+
+    /**
+     * Priority guard: Field Work/WFH is the lowest tier - an approved leave
+     * covering the same date must still win, matching Form48ExportService's
+     * own field_work/wfh priority (loses to leave/ETA/OO/excuse/locator).
+     */
+    public function test_daily_time_records_leave_takes_priority_over_field_work_override(): void
+    {
+        $employee = $this->createEmployee(['last_name' => 'Onleave']);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        // A dtrs row must exist for this date so the assertion actually
+        // exercises the new field_work/wfh branch's priority guard inside the
+        // main per-dtrs-row loop, rather than the separate pure-leave-only
+        // synthetic row (which never touches EmployeeShiftSchedule at all).
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-15',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $leave = LeaveRequest::create([
+            'user_id' => $employee->id,
+            'leave_type' => 'VL',
+            'start_date' => '2026-06-15',
+            'end_date' => '2026-06-15',
+            'reason' => 'Test',
+            'status' => 'approved',
+        ]);
+        LeaveDate::create(['leave_request_id' => $leave->id, 'leave_date' => '2026-06-15', 'is_cancelled' => false]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('VL', $row['time_in_am']);
+        $this->assertStringContainsString('On Leave', $row['status_badge']);
+        $this->assertStringNotContainsString('Field Work', $row['status_badge']);
+    }
+
     // ── Department Head / Administrative Officer: grant-gated, dept-scoped access ──
 
     private function makeDepartment(string $name): Department

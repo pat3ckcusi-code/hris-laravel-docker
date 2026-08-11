@@ -17,6 +17,8 @@ use App\Services\ShiftAssignmentService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
@@ -603,5 +605,188 @@ class AttendanceComputationTest extends TestCase
 
         $this->assertSame(0, $records[$day]['tardiness']);
         $this->assertSame(0, $records[$day]['undertime']);
+    }
+
+    /**
+     * Regression for a real reported bug: the Form 48 download showed "Field
+     * Work" for a date that actually had a real biometric log, discarding the
+     * punch times entirely. fillDailyRows() applied the fieldWorkMap/wfhMap
+     * label unconditionally whenever an EmployeeShiftSchedule override existed
+     * for the date, never checking whether real punch data ($rec) was present -
+     * unlike the ETA/Office Order/Excuse branches right next to it, and unlike
+     * DtrController::data(), where a dtrs row always wins outright over a
+     * field-work/wfh override. Real punch data must now win here too.
+     */
+    public function test_form48_export_shows_real_punches_over_field_work_label_when_both_exist(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id,
+            'date' => self::DATE,
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'present',
+            'source' => 'biometric',
+        ]);
+
+        [$sheet, $day, $row, $service] = $this->fillForm48Sheet($user, self::DATE, self::DATE, [
+            'fieldWorkMap' => app(Form48ExportService::class)->buildFieldWorkMap($user->id, self::DATE, self::DATE),
+        ]);
+
+        $this->assertSame('08:00', $sheet->getCell('C'.$row)->getValue());
+        $this->assertSame('12:00', $sheet->getCell('D'.$row)->getValue());
+        $this->assertSame('13:00', $sheet->getCell('E'.$row)->getValue());
+        $this->assertSame('17:00', $sheet->getCell('F'.$row)->getValue());
+        $this->assertNotSame('Field Work', $sheet->getCell('C'.$row)->getValue());
+    }
+
+    /** Same scenario as above, but for a Work-From-Home override. */
+    public function test_form48_export_shows_real_punches_over_wfh_label_when_both_exist(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id,
+            'date' => self::DATE,
+            'shift_id' => null,
+            'type' => 'wfh',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'present',
+            'source' => 'biometric',
+        ]);
+
+        [$sheet, $day, $row] = $this->fillForm48Sheet($user, self::DATE, self::DATE, [
+            'wfhMap' => app(Form48ExportService::class)->buildWfhMap($user->id, self::DATE, self::DATE),
+        ]);
+
+        $this->assertSame('08:00', $sheet->getCell('C'.$row)->getValue());
+        $this->assertNotSame('Work From Home', $sheet->getCell('C'.$row)->getValue());
+    }
+
+    /**
+     * Regression guard: a genuinely punch-free field-work day (no dtrs row,
+     * no attendance_logs) must still render the "Field Work" label - the fix
+     * above must not remove this legitimate case.
+     */
+    public function test_form48_export_still_shows_field_work_label_when_there_are_no_punches(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id,
+            'date' => self::DATE,
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        [$sheet, $day, $row] = $this->fillForm48Sheet($user, self::DATE, self::DATE, [
+            'fieldWorkMap' => app(Form48ExportService::class)->buildFieldWorkMap($user->id, self::DATE, self::DATE),
+        ]);
+
+        $this->assertSame('Field Work', $sheet->getCell('C'.$row)->getValue());
+    }
+
+    /**
+     * Regression for the follow-up report: with only the "! $rec" gate, a
+     * field-work day with SOME but not all 4 punches lost the "Field Work"
+     * label entirely (fell straight through to a blank normal write) instead
+     * of showing the real punch(es) plus a "Field Work" label for the
+     * still-missing slots - merged into one cell, mirroring the Office
+     * Order branch's sequential partial-punch merge pattern.
+     */
+    public function test_form48_export_shows_field_work_label_for_missing_slots_alongside_a_partial_punch(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id,
+            'date' => self::DATE,
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:00:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'missing_out',
+            'source' => 'biometric',
+        ]);
+
+        [$sheet, $day, $row] = $this->fillForm48Sheet($user, self::DATE, self::DATE, [
+            'fieldWorkMap' => app(Form48ExportService::class)->buildFieldWorkMap($user->id, self::DATE, self::DATE),
+        ]);
+
+        // am_in is real and stands alone; am_out->pm_out (D:F) are merged into one "Field Work" cell.
+        $this->assertSame('08:00', $sheet->getCell('C'.$row)->getValue());
+        $this->assertSame('Field Work', $sheet->getCell('D'.$row)->getValue());
+        $this->assertContains('D'.$row.':F'.$row, $sheet->getMergeCells());
+    }
+
+    /**
+     * @param  array<string, array<int, mixed>>  $maps  keyed by fill()'s map param names
+     *                                                  (leaveMap/etaMap/locatorMap/restDayMap/
+     *                                                  fieldWorkMap/excuseMap/officeOrderMap/wfhMap)
+     * @return array{0: Worksheet, 1: int, 2: int, 3: Form48ExportService}
+     */
+    private function fillForm48Sheet(User $user, string $from, string $to, array $maps = []): array
+    {
+        $service = app(Form48ExportService::class);
+        $records = $service->buildRecords($user->id, $from, $to);
+
+        $spreadsheet = IOFactory::load(storage_path('app/templates/form48.xls'));
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $service->fill(
+            $sheet,
+            $records,
+            $user,
+            'June 2026',
+            $from,
+            $maps['leaveMap'] ?? [],
+            $maps['etaMap'] ?? [],
+            $maps['locatorMap'] ?? [],
+            $maps['restDayMap'] ?? [],
+            $maps['fieldWorkMap'] ?? [],
+            $maps['excuseMap'] ?? [],
+            $maps['officeOrderMap'] ?? [],
+            $maps['wfhMap'] ?? [],
+        );
+
+        $day = (int) Carbon::parse($from)->day;
+        $row = 11 + $day;
+
+        return [$sheet, $day, $row, $service];
     }
 }
