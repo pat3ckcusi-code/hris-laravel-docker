@@ -548,8 +548,11 @@
     }
 
     // ── Checkbox / bulk toolbar ────────────────────────────────────────
+    // Partial (per-date) rows render their checkbox disabled - bulk actions only
+    // support whole-row requests (see the disabled input's title for why). Every
+    // selector below must exclude :disabled so "Select All" can never pull one in.
     function getSelectedIds() {
-        return $('.row-select:checked').map(function(){ return parseInt($(this).val(), 10); }).get();
+        return $('.row-select:checked:not(:disabled)').map(function(){ return parseInt($(this).val(), 10); }).get();
     }
 
     function updateBulkToolbar() {
@@ -563,12 +566,12 @@
     }
 
     $(document).on('change', '#select-all-cb', function(){
-        $('.row-select').prop('checked', $(this).is(':checked'));
+        $('.row-select:not(:disabled)').prop('checked', $(this).is(':checked'));
         updateBulkToolbar();
     });
 
     $(document).on('change', '.row-select', function(){
-        var total = $('.row-select').length, checked = $('.row-select:checked').length;
+        var total = $('.row-select:not(:disabled)').length, checked = $('.row-select:checked:not(:disabled)').length;
         $('#select-all-cb').prop('indeterminate', checked > 0 && checked < total)
                            .prop('checked', checked === total && total > 0);
         updateBulkToolbar();
@@ -744,10 +747,13 @@
             dataType: 'json'
         }).done(function(resp){
             if (resp && resp.success) {
+                var hasErrors = resp.errors && resp.errors.length;
                 var msg = resp.processed + ' request' + (resp.processed !== 1 ? 's' : '') + ' approved.';
-                if (resp.errors && resp.errors.length) msg += ' ' + resp.errors.length + ' failed.';
-                showToast(msg, resp.errors && resp.errors.length ? 'error' : 'success');
-                setTimeout(function(){ window.location.reload(); }, 1400);
+                if (hasErrors) msg += ' ' + resp.errors.length + ' failed.';
+                showToast(msg, hasErrors ? 'error' : 'success');
+                // Skip the reload when something failed so the toast stays on screen
+                // long enough to actually read instead of being cut off mid-display.
+                if (!hasErrors) setTimeout(function(){ window.location.reload(); }, 1400);
             } else {
                 showToast(resp && resp.error ? resp.error : 'Bulk approve failed.', 'error');
             }
@@ -787,10 +793,13 @@
             dataType: 'json'
         }).done(function(resp){
             if (resp && resp.success) {
+                var hasErrors = resp.errors && resp.errors.length;
                 var msg = resp.processed + ' request' + (resp.processed !== 1 ? 's' : '') + ' rejected.';
-                if (resp.errors && resp.errors.length) msg += ' ' + resp.errors.length + ' failed.';
-                showToast(msg, 'success');
-                setTimeout(function(){ window.location.reload(); }, 1400);
+                if (hasErrors) msg += ' ' + resp.errors.length + ' failed.';
+                showToast(msg, hasErrors ? 'error' : 'success');
+                // Skip the reload when something failed so the toast stays on screen
+                // long enough to actually read instead of being cut off mid-display.
+                if (!hasErrors) setTimeout(function(){ window.location.reload(); }, 1400);
             } else {
                 showToast(resp && resp.error ? resp.error : 'Bulk reject failed.', 'error');
             }
