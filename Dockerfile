@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libonig-dev libxml2-dev libzip-dev libicu-dev \
         zip build-essential pkg-config \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl intl \
+    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl intl opcache \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -43,6 +43,8 @@ RUN cp .env.example .env \
     && cp -r storage/app/templates /opt/app-templates 2>/dev/null || true
 
 COPY docker/php-upload.ini /usr/local/etc/php/conf.d/99-upload.ini
+COPY docker/php-opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
+COPY docker/php-fpm-pool.conf /usr/local/etc/php-fpm.d/zz-pool.conf
 COPY docker/app-entrypoint.sh /usr/local/bin/app-entrypoint
 RUN chmod +x /usr/local/bin/app-entrypoint
 
