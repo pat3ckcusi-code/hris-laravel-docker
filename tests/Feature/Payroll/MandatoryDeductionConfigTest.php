@@ -330,6 +330,29 @@ class MandatoryDeductionConfigTest extends TestCase
         $this->assertDatabaseHas('deductions', ['id' => $gsis->id]);
     }
 
+    public function test_description_and_formula_over_255_characters_are_stored_without_truncation(): void
+    {
+        // Regression guard: description/formula used to be VARCHAR(255) while
+        // validation allowed max:500, so a value over 255 chars threw
+        // SQLSTATE[22001] on save.
+        $admin = $this->createPayrollManager();
+        $longDescription = str_repeat('B', 350);
+        $longFormula = str_repeat('C', 350);
+
+        $this->actingAs($admin)->post(route('payroll.contributions.store'), [
+            'type' => 'Custom Allowance',
+            'deduction_category' => 'other',
+            'description' => $longDescription,
+            'formula' => $longFormula,
+        ])->assertSessionHas('status');
+
+        $this->assertDatabaseHas('deductions', [
+            'type' => 'Custom Allowance',
+            'description' => $longDescription,
+            'formula' => $longFormula,
+        ]);
+    }
+
     public function test_renaming_a_mandatory_row_changes_the_payslip_breakdown_label(): void
     {
         ['admin' => $admin, 'employee' => $employee, 'run' => $run] = $this->seedPayrollScaffold();

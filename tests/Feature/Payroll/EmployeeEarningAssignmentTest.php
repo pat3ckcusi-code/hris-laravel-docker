@@ -42,6 +42,25 @@ class EmployeeEarningAssignmentTest extends TestCase
         $this->assertEquals($expectedAmount, $row->amount);
     }
 
+    public function test_description_over_255_characters_is_stored_without_truncation(): void
+    {
+        // Regression guard: earnings.description used to be VARCHAR(255)
+        // while validation allowed max:500, so a value over 255 chars threw
+        // SQLSTATE[22001] on save.
+        $manager = $this->createPayrollManager();
+        $longDescription = str_repeat('D', 350);
+
+        $this->actingAs($manager)->post(route('payroll.earnings.store'), [
+            'type' => 'Custom Allowance',
+            'description' => $longDescription,
+        ])->assertRedirect(route('payroll.earnings.index'));
+
+        $this->assertDatabaseHas('earnings', [
+            'type' => 'Custom Allowance',
+            'description' => $longDescription,
+        ]);
+    }
+
     public function test_bulk_assign_creates_row_per_selected_employee(): void
     {
         $manager = $this->createPayrollManager();

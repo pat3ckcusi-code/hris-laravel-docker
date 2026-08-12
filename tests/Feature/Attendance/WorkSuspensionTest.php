@@ -144,6 +144,23 @@ class WorkSuspensionTest extends TestCase
             ->assertSee('Weather / Typhoon');
     }
 
+    public function test_reason_over_255_characters_is_stored_without_truncation(): void
+    {
+        // Regression guard: `reason` used to be VARCHAR(255) while validation allowed
+        // max:1000, so any reason over 255 chars threw SQLSTATE[22001] on save.
+        $tk = $this->createTimeKeeper();
+        $longReason = str_repeat('A', 600);
+
+        $this->actingAs($tk)
+            ->post(route('attendance.work-suspensions.store'), $this->payload(['reason' => $longReason]))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('work_suspensions', [
+            'suspension_date' => self::DATE,
+            'reason' => $longReason,
+        ]);
+    }
+
     public function test_duplicate_date_is_rejected(): void
     {
         $tk = $this->createTimeKeeper();

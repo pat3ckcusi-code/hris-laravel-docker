@@ -307,6 +307,41 @@ class LeaveManagerTest extends TestCase
         }
     }
 
+    public function test_approve_date_cancellation_with_long_reason_is_stored_without_truncation(): void
+    {
+        // Regression guard: leave_dates.cancel_reason used to be VARCHAR(255)
+        // while cancellation_reason (copied into it on approval) is
+        // validated at max:2000, so any reason over 255 chars threw
+        // SQLSTATE[22001] on this exact endpoint.
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp, ['VL' => 14.000]);
+        $longReason = str_repeat('E', 279);
+
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Cancel test',
+            'status' => 'approved',
+        ]);
+        $leaveDate = LeaveDate::create([
+            'leave_request_id' => $leave->id,
+            'leave_date' => now()->addWeek()->toDateString(),
+            'is_cancelled' => false,
+            'cancellation_status' => 'AO Endorsed',
+            'cancellation_reason' => $longReason,
+        ]);
+
+        $response = $this->actingAs($lm)->postJson(route('api.leave.approve-date-cancellation', $leave->id), [
+            'leave_date_ids' => [$leaveDate->id],
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals($longReason, $leaveDate->fresh()->cancel_reason);
+    }
+
     public function test_cancel_leave_rollback_integrity(): void
     {
         $lm = $this->createLeaveManager();
