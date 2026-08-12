@@ -50,6 +50,27 @@ class ShiftScheduleController extends Controller
         abort_unless(in_array($role, self::MANAGER_ROLES, true), 403);
     }
 
+    /**
+     * Guards against PHP's max_input_vars silently truncating a large
+     * user_ids[] submission before Laravel ever sees it (see the comment in
+     * docker/php-upload.ini) - the "select all" checkbox JS sends how many
+     * checkboxes it actually checked alongside the array itself, so a
+     * mismatch here means some were silently dropped during request
+     * parsing, not genuinely excluded by anything the user did.
+     */
+    private function assertBulkSelectionComplete(Request $request, array $userIds): void
+    {
+        $expectedCount = $request->input('expected_count');
+
+        if ($expectedCount !== null && (int) $expectedCount !== count($userIds)) {
+            abort(422, sprintf(
+                '%d employee(s) were selected but only %d were received by the server - the selection was too large for one request. Try selecting fewer employees at once.',
+                (int) $expectedCount,
+                count($userIds)
+            ));
+        }
+    }
+
     public function index(Request $request): View
     {
         $user = $request->user();
@@ -403,6 +424,8 @@ class ShiftScheduleController extends Controller
         $userIds = array_map('intval', $validated['user_ids']);
         $noBreak = (bool) ($validated['no_break'] ?? false);
 
+        $this->assertBulkSelectionComplete($request, $userIds);
+
         if ($accessibleIds !== null) {
             $unauthorized = array_diff($userIds, $accessibleIds);
             if (! empty($unauthorized)) {
@@ -483,6 +506,8 @@ class ShiftScheduleController extends Controller
 
         $userIds = array_map('intval', $validated['user_ids']);
         $noBreak = (bool) ($validated['no_break'] ?? false);
+
+        $this->assertBulkSelectionComplete($request, $userIds);
 
         if ($accessibleIds !== null) {
             $unauthorized = array_diff($userIds, $accessibleIds);
@@ -633,6 +658,8 @@ class ShiftScheduleController extends Controller
         ]);
 
         $userIds = array_map('intval', $validated['user_ids']);
+
+        $this->assertBulkSelectionComplete($request, $userIds);
 
         if ($accessibleIds !== null) {
             $unauthorized = array_diff($userIds, $accessibleIds);

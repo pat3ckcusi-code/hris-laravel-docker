@@ -508,6 +508,7 @@
     <form id="bulk-rotation-form" method="POST" action="{{ route('attendance.shift-schedule.generate-pattern-bulk') }}" class="ss-bulk-bar">
         @csrf
         <input type="hidden" name="dept_id" value="{{ $deptId }}">
+        <input type="hidden" name="expected_count" id="bulk-rotation-expected-count" value="0">
         <div class="ss-bulk-field">
             <label for="bulk_shift_id">Shift</label>
             <select name="shift_id" id="bulk_shift_id" required>
@@ -556,6 +557,7 @@
     <form id="single-day-form" method="POST" action="{{ route('attendance.shift-schedule.store-single-day') }}" class="ss-bulk-bar">
         @csrf
         <input type="hidden" name="dept_id" value="{{ $deptId }}">
+        <input type="hidden" name="expected_count" id="single-day-expected-count" value="0">
         <div class="ss-bulk-field">
             <label for="sd_date">Date</label>
             <input type="date" name="date" id="sd_date" value="{{ \Carbon\Carbon::today()->toDateString() }}" required>
@@ -761,6 +763,7 @@
                 <input type="hidden" name="user_id"    value="{{ $selectedEmployee->id }}">
                 <input type="hidden" name="week_start"  value="{{ $weekStart->toDateString() }}">
                 <input type="hidden" name="dept_id"     value="{{ $deptId }}">
+                <input type="hidden" name="expected_count" id="week-form-expected-count" value="0">
 
                 <div class="ss-week-grid">
                     @foreach($weekDays as $day)
@@ -1023,6 +1026,7 @@ if (bulkRotationForm) {
         var shiftLabel = select.options[select.selectedIndex].text;
         var count = document.querySelectorAll('.ss-emp-checkbox:checked').length;
         if (count === 0) return;
+        document.getElementById('bulk-rotation-expected-count').value = count;
         var from = document.getElementById('bulk_start_date').value;
         var to = document.getElementById('bulk_end_date').value;
         Swal.fire({
@@ -1058,6 +1062,7 @@ if (singleDayForm) {
         var select = document.getElementById('sd_value');
         var label = select.options[select.selectedIndex].text;
         var count = checked.length;
+        document.getElementById('single-day-expected-count').value = count;
 
         Swal.fire({
             icon: 'warning',
@@ -1145,6 +1150,7 @@ if (weekForm) {
         });
 
         var count = checked.length;
+        document.getElementById('week-form-expected-count').value = count;
         Swal.fire({
             icon: 'warning',
             title: 'Save week schedule for multiple employees?',
