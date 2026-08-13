@@ -364,20 +364,20 @@
             <div class="settings-panel" id="tab-export">
                 <p class="settings-hint" style="margin-bottom:1rem;">PDF and Excel export defaults for leave forms, Form 48, and payslips.</p>
 
-                <div class="settings-section-title">Excel / Form 48</div>
+                <div class="settings-section-title">Excel / Form 48 & Monitoring Matrix</div>
                 <div class="toggle-row" style="margin-bottom:.5rem;">
                     <input type="hidden" name="excel_protection_enabled" value="0">
                     <input type="checkbox" id="excel_protection_enabled" name="excel_protection_enabled" value="1"
                            @checked($settings && ($settings->excel_protection_enabled ?? true))>
-                    <label for="excel_protection_enabled">Enable Sheet Protection on Form 48 Export</label>
+                    <label for="excel_protection_enabled">Enable Sheet Protection on Form 48 & Monitoring Matrix Exports</label>
                 </div>
                 <div style="max-width:300px;">
-                    <label for="excel_sheet_password">Form 48 Sheet Password</label>
+                    <label for="excel_sheet_password">Form 48 & Monitoring Matrix Sheet Password</label>
                     <input type="password" class="hrm-input" id="excel_sheet_password"
                            name="excel_sheet_password"
                            autocomplete="new-password"
                            placeholder="{{ ($settings->excel_sheet_password ?? '') !== '' ? '(password set - leave blank to keep)' : 'Set a new password' }}">
-                    <span class="settings-hint">Password required to edit the exported Form 48 spreadsheet.</span>
+                    <span class="settings-hint">Password required to edit the exported Form 48 and Monitoring Matrix spreadsheets.</span>
                     @error('excel_sheet_password')<span class="hrm-error">{{ $message }}</span>@enderror
                 </div>
 
