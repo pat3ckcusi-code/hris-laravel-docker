@@ -4,7 +4,9 @@ namespace Tests\Feature\Attendance;
 
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Services\AttendanceMonitoringExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 
@@ -360,5 +362,74 @@ class TimeLogsMonitoringTest extends TestCase
 
         // 16 employees, 15 per page - page 2 must have exactly 1 remaining and differ from page 1's content.
         $this->assertNotEquals($page1->getContent(), $page2->getContent());
+    }
+
+    public function test_office_order_covered_day_does_not_count_toward_tardiness_or_undertime(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'OnOfficeOrder']);
+
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-05',
+            'late_minutes' => 25,
+            'undertime_minutes' => 54,
+            'is_absent' => false,
+        ]);
+
+        $officeOrderId = DB::table('office_orders')->insertGetId([
+            'office_order_num' => 'OO-2026-001',
+            'subject' => 'Official business',
+            'issued_date' => '2026-06-05',
+            'effective_date' => '2026-06-05',
+            'status' => 'Pending Recommendation',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('office_order_employees')->insert([
+            'office_order_id' => $officeOrderId,
+            'emp_no' => $employee->EmpNo,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $rows = app(AttendanceMonitoringExportService::class)->getRows(collect([$deptA]), 6, 2026);
+        $row = $rows->firstWhere('user_id', $employee->id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(0, $row['tardiness_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['tardiness_minutes']);
+        $this->assertSame(0, $row['undertime_minutes']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringContainsString('Office Order', $row['remarks']);
+        $this->assertStringNotContainsString('Tardy', $row['remarks']);
+        $this->assertStringNotContainsString('Undertime', $row['remarks']);
+    }
+
+    public function test_tardiness_and_undertime_still_count_without_office_order_coverage(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'NoOfficeOrder']);
+
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-05',
+            'late_minutes' => 25,
+            'undertime_minutes' => 54,
+            'is_absent' => false,
+        ]);
+
+        $rows = app(AttendanceMonitoringExportService::class)->getRows(collect([$deptA]), 6, 2026);
+        $row = $rows->firstWhere('user_id', $employee->id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(1, $row['tardiness_count']);
+        $this->assertSame(1, $row['undertime_count']);
+        $this->assertSame(25, $row['tardiness_minutes']);
+        $this->assertSame(54, $row['undertime_minutes']);
+        $this->assertSame(79, $row['total_minutes']);
+        $this->assertStringContainsString('Tardy (25 mins)', $row['remarks']);
+        $this->assertStringContainsString('Undertime (54 mins)', $row['remarks']);
     }
 }

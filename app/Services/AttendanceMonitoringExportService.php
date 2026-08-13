@@ -179,24 +179,6 @@ class AttendanceMonitoringExportService
                 ->map(fn ($d) => Carbon::parse($d)->toDateString())
                 ->flip();
 
-            $undertimeCount = $workDtrs->filter(function ($d) use ($empExcusesByDate) {
-                if ($d->undertime_minutes <= 0) {
-                    return false;
-                }
-                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
-
-                return ! ($excuse && ($excuse->is_full_day || $excuse->excuse_pm_out));
-            })->count();
-
-            $tardinessCount = $workDtrs->filter(function ($d) use ($empExcusesByDate) {
-                if ($d->late_minutes <= 0) {
-                    return false;
-                }
-                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
-
-                return ! ($excuse && ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in));
-            })->count();
-
             $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings, $empExcusesByDate) {
                 if (! $d->is_absent) {
                     return false;
@@ -306,6 +288,25 @@ class AttendanceMonitoringExportService
                 return in_array($slot, $coveredSlots, true);
             };
 
+            // Late/undertime-specific views of $isSlotCovered, checking the same slots
+            // the pre-existing DtrExcuse-only logic used to check directly (tardiness ->
+            // am_in/pm_in, undertime -> pm_out). Since $isSlotCovered already folds
+            // DtrExcuse::excludedSlotKeys() into its per-slot check, this reproduces the
+            // old excuse-only behavior unchanged while additionally suppressing
+            // tardiness/undertime on any Office-Order/Travel-Order/ETA/approved-Leave/
+            // Locator/Suspension-covered day - closing the gap where those whole-day
+            // sources explained an absence but not a same-day late/undertime charge.
+            $isLateCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'am_in') || $isSlotCovered($dateStr, 'pm_in');
+            $isUndertimeCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'pm_out');
+
+            $undertimeCount = $workDtrs->filter(
+                fn ($d) => $d->undertime_minutes > 0 && ! $isUndertimeCovered(Carbon::parse($d->date)->toDateString())
+            )->count();
+
+            $tardinessCount = $workDtrs->filter(
+                fn ($d) => $d->late_minutes > 0 && ! $isLateCovered(Carbon::parse($d->date)->toDateString())
+            )->count();
+
             // Flagged when a scheduled, already-ended workday has no punched logs at all
             // and nothing (Leave/Locator/ETA/Office Order/Travel Order/DtrExcuse) explains
             // the absence. DTR-exempt employees are never expected to punch, so they're
@@ -391,23 +392,13 @@ class AttendanceMonitoringExportService
             // Leave" total as any manually-flagged (is_absent) Dtr rows above.
             $unfiledCount += count($unfiledLeaveDays);
 
-            $tardinessMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
-                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
-                if (! $excuse) {
-                    return (int) $d->late_minutes;
-                }
+            $tardinessMinutes = $workDtrs->sum(
+                fn ($d) => $isLateCovered(Carbon::parse($d->date)->toDateString()) ? 0 : (int) $d->late_minutes
+            );
 
-                return ($excuse->is_full_day || $excuse->excuse_am_in || $excuse->excuse_pm_in) ? 0 : (int) $d->late_minutes;
-            });
-
-            $undertimeMinutes = $workDtrs->sum(function ($d) use ($empExcusesByDate) {
-                $excuse = $empExcusesByDate[Carbon::parse($d->date)->toDateString()] ?? null;
-                if (! $excuse) {
-                    return (int) $d->undertime_minutes;
-                }
-
-                return ($excuse->is_full_day || $excuse->excuse_pm_out) ? 0 : (int) $d->undertime_minutes;
-            });
+            $undertimeMinutes = $workDtrs->sum(
+                fn ($d) => $isUndertimeCovered(Carbon::parse($d->date)->toDateString()) ? 0 : (int) $d->undertime_minutes
+            );
 
             $totalMinutes = $tardinessMinutes + $undertimeMinutes;
 
@@ -461,14 +452,16 @@ class AttendanceMonitoringExportService
             // Each entry: ['day' => int, 'label' => string]
             $remarkEntries = collect();
 
-            // DTR: tardiness days
-            foreach ($workDtrs->filter(fn ($d) => $d->late_minutes > 0) as $d) {
+            // DTR: tardiness days (skip any day already explained by Office Order/Travel
+            // Order/ETA/approved Leave/Locator/DtrExcuse - see $isLateCovered above).
+            foreach ($workDtrs->filter(fn ($d) => $d->late_minutes > 0 && ! $isLateCovered(Carbon::parse($d->date)->toDateString())) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$d->late_minutes.' mins)']);
             }
 
-            // DTR: undertime days (including missing-PM-Out days charged as phantom undertime)
-            foreach ($workDtrs->filter(fn ($d) => $d->undertime_minutes > 0) as $d) {
+            // DTR: undertime days (including missing-PM-Out days charged as phantom
+            // undertime), skipping any day already explained per $isUndertimeCovered above.
+            foreach ($workDtrs->filter(fn ($d) => $d->undertime_minutes > 0 && ! $isUndertimeCovered(Carbon::parse($d->date)->toDateString())) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$d->undertime_minutes.' mins)']);
             }
