@@ -3,6 +3,18 @@
     'subtitle' => 'Manage DTR excuse records for employees unable to punch due to power interruptions or similar events.',
 ])
 
+@section('page_head')
+<style>
+.dex-stat-strip { display:flex; flex-wrap:wrap; gap:1rem; margin:0 0 1rem; }
+.dex-stat-card { flex:1; min-width:11rem; background:#fff; border-radius:.75rem; box-shadow:0 1px 3px rgba(0,0,0,.1); padding:1rem 1.25rem; display:flex; align-items:center; gap:.85rem; }
+.dex-stat-icon { width:2.5rem; height:2.5rem; border-radius:.6rem; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; font-size:1rem; }
+.dex-stat-value { font-size:1.35rem; font-weight:700; color:#0f172a; line-height:1.1; }
+.dex-stat-label { font-size:.75rem; color:#64748b; margin-top:.15rem; }
+.dex-flag-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.3rem .65rem; border-radius:9999px; font-size:.72rem; font-weight:600; white-space:nowrap; background:#fee2e2; color:#991b1b; }
+.dex-month-chip { display:inline-block; padding:.15rem .5rem; border-radius:.35rem; font-size:.7rem; font-weight:600; margin:0 .2rem .2rem 0; background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+</style>
+@endsection
+
 @section('top_actions')
     <button type="button" class="btn btn-sm" onclick="openExcuseModal()">
         <i class="fas fa-plus"></i> Add Excuse
@@ -30,6 +42,17 @@
         <form method="GET" action="{{ route('attendance.dtr-excuse.index') }}">
             <div class="hris-table-filters hris-filters-sticky">
                 <div class="hris-filter-left">
+                    @if ($departments->count() > 1)
+                        <div class="hris-filter-group">
+                            <label class="hris-filter-label">Department</label>
+                            <select name="department_id" class="hris-filter-select" style="min-width:200px;">
+                                <option value="">All Departments</option>
+                                @foreach ($departments as $dept)
+                                    <option value="{{ $dept->Dept_id }}" @selected((int) $filters['departmentId'] === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
                     <div class="hris-filter-group">
                         <label class="hris-filter-label">Employee</label>
                         <input type="text" name="search" class="hris-filter-select"
@@ -63,13 +86,16 @@
                     <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm">
                         <i class="fas fa-search"></i> Filter
                     </button>
-                    @if ($filters['search'] || $filters['dateFrom'] || $filters['dateTo'] || $filters['excuseType'])
+                    @if ($filters['search'] || $filters['dateFrom'] || $filters['dateTo'] || $filters['excuseType'] || $filters['departmentId'])
                         <a href="{{ route('attendance.dtr-excuse.index') }}" class="hris-btn hris-btn-secondary hris-btn-sm">
                             <i class="fas fa-times"></i> Clear
                         </a>
                     @endif
                 </div>
             </div>
+            @if ($canViewAbuseFlags)
+                <input type="hidden" name="abuse_year" value="{{ $abuseYear }}">
+            @endif
         </form>
 
         {{-- Result count --}}
@@ -87,6 +113,7 @@
                 <thead>
                     <tr>
                         <th>Employee</th>
+                        <th>Department</th>
                         <th>Date</th>
                         <th>Type</th>
                         <th>Scope</th>
@@ -105,6 +132,9 @@
                                 <span style="font-weight:600;color:#0f172a;">
                                     {{ $excuse->user?->last_name }}, {{ $excuse->user?->first_name }}
                                 </span>
+                            </td>
+                            <td>
+                                <span style="color:#475569;">{{ $excuse->user?->department?->Dept_name ?? '—' }}</span>
                             </td>
                             <td style="white-space:nowrap;">
                                 <span style="font-weight:500;">{{ \Carbon\Carbon::parse($excuse->date)->format('M d, Y') }}</span>
@@ -172,12 +202,12 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" style="padding:0;border:none;">
+                            <td colspan="8" style="padding:0;border:none;">
                                 <div class="hris-empty-state">
                                     <div class="hris-empty-state-icon"><i class="fas fa-file-slash"></i></div>
                                     <div class="hris-empty-state-title">No DTR Excuses Found</div>
                                     <p class="hris-empty-state-text">
-                                        @if ($filters['search'] || $filters['dateFrom'] || $filters['dateTo'] || $filters['excuseType'])
+                                        @if ($filters['search'] || $filters['dateFrom'] || $filters['dateTo'] || $filters['excuseType'] || $filters['departmentId'])
                                             No records match your current filters. Try adjusting or
                                             <a href="{{ route('attendance.dtr-excuse.index') }}" style="color:#ea580c;">clearing them</a>.
                                         @else
@@ -199,6 +229,114 @@
         @endif
 
     </div>
+
+    @if ($canViewAbuseFlags)
+        @php
+            $monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        @endphp
+
+        <div class="hris-table-card" style="margin-top:1.5rem;">
+            <div class="hris-table-header">
+                <div class="hris-table-header-title">
+                    <h2 class="hris-table-title"><i class="fas fa-triangle-exclamation" style="color:#ea580c;margin-right:.5rem;"></i>Possible DTR Excuse Abuse || {{ $abuseYear }}</h2>
+                    <p class="hris-table-subtitle">
+                        Employees who filed {{ $abuseThreshold }}+ DTR excuses in a calendar month, in at least 2 months within a semester (Jan&ndash;Jun / Jul&ndash;Dec) or 2 consecutive months; mirroring the CSC MC No. 04, s. 1991 habitual-violation pattern used for tardiness monitoring. Adjust the threshold in
+                        <a href="{{ route('hr-manager.settings') }}" style="color:#ea580c;">System Settings</a>.
+                    </p>
+                </div>
+            </div>
+
+            <div class="dex-stat-strip" style="padding:0 1.25rem;">
+                <div class="dex-stat-card">
+                    <span class="dex-stat-icon" style="background:#fee2e2;color:#991b1b;"><i class="fas fa-user-shield"></i></span>
+                    <div>
+                        <div class="dex-stat-value">{{ $abuseFlags->total() }}</div>
+                        <div class="dex-stat-label">Employees Flagged in {{ $abuseYear }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <form method="GET" action="{{ route('attendance.dtr-excuse.index') }}" style="padding:1rem 1.25rem 0;display:flex;gap:.5rem;align-items:flex-end;">
+                <input type="hidden" name="search" value="{{ $filters['search'] }}">
+                <input type="hidden" name="date_from" value="{{ $filters['dateFrom'] }}">
+                <input type="hidden" name="date_to" value="{{ $filters['dateTo'] }}">
+                <input type="hidden" name="excuse_type" value="{{ $filters['excuseType'] }}">
+                <input type="hidden" name="department_id" value="{{ $filters['departmentId'] }}">
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="abuse_year">Year</label>
+                    <select id="abuse_year" name="abuse_year" class="hris-filter-select">
+                        @foreach (range((int) date('Y') - 2, (int) date('Y') + 1) as $y)
+                            <option value="{{ $y }}" @selected($y === $abuseYear)>{{ $y }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm"><i class="fas fa-search"></i> View</button>
+            </form>
+
+            <div class="hris-table-wrapper">
+                <table class="hris-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Employee</th>
+                            <th style="text-align:left;">Department</th>
+                            <th>Total Excuses</th>
+                            <th style="text-align:left;">Violation Months ({{ $abuseThreshold }}+/mo)</th>
+                            <th>Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($abuseFlags as $flag)
+                            @php $empName = $flag['employee'] ? trim("{$flag['employee']->last_name}, {$flag['employee']->first_name}") : null; @endphp
+                            <tr>
+                                <td style="text-align:left;font-weight:600;color:#0f172a;">{{ $empName ?? '—' }}</td>
+                                <td style="text-align:left;color:#475569;">{{ $flag['employee']?->department?->Dept_name ?? '—' }}</td>
+                                <td>{{ $flag['total_excuses'] }}</td>
+                                <td style="text-align:left;">
+                                    @foreach ($flag['violation_months'] as $m)
+                                        <span class="dex-month-chip">{{ $monthNames[$m] }}</span>
+                                    @endforeach
+                                </td>
+                                <td>
+                                    <span class="dex-flag-badge dex-violation-trigger"
+                                          data-employee="{{ $empName ?? '—' }}"
+                                          data-violations='@json($flag['violations'])'
+                                          title="Click to view violation details"
+                                          style="cursor:pointer;">
+                                        <i class="fas fa-flag"></i> Possible Abuse
+                                    </span>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="5">
+                                    <div class="hris-empty-state">
+                                        <div class="hris-empty-state-icon"><i class="fas fa-circle-check"></i></div>
+                                        <div class="hris-empty-state-title">No Flagged Employees</div>
+                                        <p class="hris-empty-state-text">No employees crossed the abuse threshold in {{ $abuseYear }}.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            @if ($abuseFlags->hasPages())
+                <div class="hris-table-footer">
+                    {{ $abuseFlags->links() }}
+                </div>
+            @endif
+        </div>
+
+        {{-- Violation details modal, shared by every Flag badge above --}}
+        <div class="modal-overlay" id="dex-violation-modal">
+            <div class="modal-box">
+                <button type="button" class="modal-close" onclick="closeViolationModal()">&times;</button>
+                <h3 id="dex-violation-modal-title"></h3>
+                <div id="dex-violation-modal-body"></div>
+            </div>
+        </div>
+    @endif
 
     {{-- ═══════════════════════════════════════════════════════════════
          Duplicate Confirmation Overlay
@@ -562,5 +700,37 @@
             empApplyFilter('');
             empRenderPage();
         });
+
+        // ── DTR Excuse abuse: violation details modal ───────────────────
+        document.querySelectorAll('.dex-violation-trigger').forEach(function (badge) {
+            badge.addEventListener('click', function () {
+                var employeeName = this.dataset.employee;
+                var violations = JSON.parse(this.dataset.violations || '[]');
+
+                document.getElementById('dex-violation-modal-title').textContent = 'Excuse Details — ' + employeeName;
+
+                var body = document.getElementById('dex-violation-modal-body');
+                body.innerHTML = violations.length
+                    ? violations.map(function (v) {
+                        return '<div class="detail-row"><span>' + v.date + ' — ' + v.type + ' (' + v.scope + ')</span><span>' + (v.reason || '—') + '</span></div>';
+                    }).join('')
+                    : '<p style="color:#94a3b8;">No violation details available.</p>';
+
+                document.getElementById('dex-violation-modal').classList.add('active');
+            });
+        });
+
+        function closeViolationModal() {
+            document.getElementById('dex-violation-modal').classList.remove('active');
+        }
+
+        var dexViolationModal = document.getElementById('dex-violation-modal');
+        if (dexViolationModal) {
+            dexViolationModal.addEventListener('click', function (e) {
+                if (e.target === this) {
+                    closeViolationModal();
+                }
+            });
+        }
     </script>
 @endsection

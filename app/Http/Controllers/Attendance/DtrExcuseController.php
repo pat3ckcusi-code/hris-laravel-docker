@@ -3,19 +3,27 @@
 namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\DtrExcuse;
+use App\Models\HRAuditTrail;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
+use App\Support\HabitualPatternRule;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class DtrExcuseController extends Controller
 {
-    private const ADMIN_ROLES = ['hr manager'];
+    private const ADMIN_ROLES = ['hr manager', 'time keeper'];
 
     private const OFFICER_ROLES = ['administrative officer', 'department head'];
 
@@ -25,16 +33,28 @@ class DtrExcuseController extends Controller
     ) {}
 
     /**
+     * True for the unrestricted admin roles (HR Manager / Time Keeper), false
+     * for the department-scoped officer roles (Administrative Officer /
+     * Department Head).
+     */
+    private function isAdmin(User $user): bool
+    {
+        $role = strtolower(trim((string) ($user->access_level ?? '')));
+
+        return in_array($role, self::ADMIN_ROLES, true);
+    }
+
+    /**
      * Resolve employee IDs accessible to the acting user.
      * Returns null for full admins (all employees), or an array of IDs for scoped officers.
      */
     private function resolveAccessibleEmployeeIds(User $user): ?array
     {
-        $role = strtolower(trim((string) ($user->access_level ?? '')));
-
-        if (in_array($role, self::ADMIN_ROLES, true)) {
+        if ($this->isAdmin($user)) {
             return null;
         }
+
+        $role = strtolower(trim((string) ($user->access_level ?? '')));
 
         if (! in_array($role, self::OFFICER_ROLES, true)) {
             abort(403);
@@ -51,10 +71,145 @@ class DtrExcuseController extends Controller
             ->toArray();
     }
 
+    /**
+     * Departments the acting user may filter by: every department for
+     * unrestricted admins (HR Manager / Time Keeper), or only the caller's
+     * own department(s) - including active OIC coverage - for Department
+     * Head / Administrative Officer. Mirrors WorkforceCalendarController.
+     */
+    private function resolveAccessibleDepartments(User $user): Collection
+    {
+        if ($this->isAdmin($user)) {
+            return Department::orderBy('Dept_name')->get();
+        }
+
+        $role = strtolower(trim((string) ($user->access_level ?? '')));
+        $roleNormalized = strtolower(str_replace(['-', '_'], ' ', $role));
+
+        return $roleNormalized === 'administrative officer'
+            ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+            : $this->departmentService->resolveAllDepartmentsForUser($user);
+    }
+
+    /**
+     * Human-readable Form 48 slot labels for one excuse row (e.g. ['Full
+     * Day'] or ['AM In', 'PM Out']) - shared by check()'s duplicate-check
+     * payload and buildExcuseAbuseFlags()'s violation-detail payload.
+     *
+     * @return array<int, string>
+     */
+    private function excusedSlotLabels(DtrExcuse $excuse): array
+    {
+        if ($excuse->is_full_day) {
+            return ['Full Day'];
+        }
+
+        $labels = [];
+        if ($excuse->excuse_am_in) {
+            $labels[] = 'AM In';
+        }
+        if ($excuse->excuse_am_out) {
+            $labels[] = 'AM Out';
+        }
+        if ($excuse->excuse_pm_in) {
+            $labels[] = 'PM In';
+        }
+        if ($excuse->excuse_pm_out) {
+            $labels[] = 'PM Out';
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Employees who filed $threshold+ DTR excuses in a calendar month, in a
+     * pattern matching HabitualPatternRule (2 consecutive months, or 2
+     * months within the same semester) - a possible sign of DTR Excuse
+     * abuse rather than genuine one-off inability to punch. Company-wide,
+     * not department-scoped (see class-level access notes on index()).
+     * Each flag carries the individual excuse rows behind its violation
+     * months, for the "view details" modal on the DTR Excuses page.
+     *
+     * @return Collection<int, array{user_id: int, employee: ?User, violation_months: Collection<int, int>, total_excuses: int, violations: Collection<int, array>}>
+     */
+    private function buildExcuseAbuseFlags(int $year, int $threshold): Collection
+    {
+        $monthly = DB::table('dtr_excuses')
+            ->whereYear('date', $year)
+            ->selectRaw('user_id, MONTH(date) as mo, COUNT(*) as excuse_count')
+            ->groupBy('user_id', 'mo')
+            ->get()
+            ->groupBy('user_id');
+
+        $employees = User::whereIn('id', $monthly->keys())
+            ->with('department')
+            ->get(['id', 'first_name', 'last_name', 'Dept_id'])
+            ->keyBy('id');
+
+        $flags = collect();
+        $violationMonthsByUser = [];
+
+        foreach ($monthly as $userId => $months) {
+            $violationMonths = $months->where('excuse_count', '>=', $threshold)
+                ->pluck('mo')->map(fn ($m) => (int) $m)->sort()->values();
+
+            if (! HabitualPatternRule::meets($violationMonths)) {
+                continue;
+            }
+
+            $violationMonthsByUser[$userId] = $violationMonths->all();
+
+            $flags->push([
+                'user_id' => $userId,
+                'employee' => $employees->get($userId),
+                'violation_months' => $violationMonths,
+                'total_excuses' => (int) $months->sum('excuse_count'),
+            ]);
+        }
+
+        if ($flags->isEmpty()) {
+            return $flags;
+        }
+
+        $violationsByUser = DtrExcuse::whereIn('user_id', array_keys($violationMonthsByUser))
+            ->whereYear('date', $year)
+            ->orderBy('date')
+            ->get(['user_id', 'date', 'excuse_type', 'is_full_day', 'excuse_am_in', 'excuse_am_out', 'excuse_pm_in', 'excuse_pm_out', 'reason'])
+            ->filter(fn (DtrExcuse $e) => in_array((int) $e->date->month, $violationMonthsByUser[$e->user_id], true))
+            ->groupBy('user_id')
+            ->map(fn (Collection $rows) => $rows->map(fn (DtrExcuse $e) => [
+                'date' => $e->date->format('M d, Y'),
+                'type' => DtrExcuse::typeConfig($e->excuse_type)['label'],
+                'scope' => implode(', ', $this->excusedSlotLabels($e)),
+                'reason' => $e->reason,
+            ])->values());
+
+        return $flags->map(function (array $flag) use ($violationsByUser) {
+            $flag['violations'] = $violationsByUser->get($flag['user_id'], collect());
+
+            return $flag;
+        })->sortBy(fn ($f) => $f['employee']?->last_name)->values();
+    }
+
+    private function paginateCollection(Request $request, Collection $items, int $perPage, string $pageName): LengthAwarePaginator
+    {
+        $page = LengthAwarePaginator::resolveCurrentPage($pageName);
+
+        return new LengthAwarePaginator(
+            $items->forPage($page, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => $pageName]
+        );
+    }
+
     public function index(Request $request): View
     {
         $user = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
+        $departments = $this->resolveAccessibleDepartments($user);
+        $departmentId = $request->integer('department_id') ?: null;
 
         $employeesQuery = User::active()->where('dtr_exempt', false)
             ->orderBy('last_name')
@@ -69,8 +224,9 @@ class DtrExcuseController extends Controller
         $dateTo = $request->input('date_to');
         $excuseType = $request->input('excuse_type');
 
-        $excusesQuery = DtrExcuse::with(['user', 'filedBy'])
-            ->orderBy('date', 'desc');
+        $excusesQuery = DtrExcuse::with(['user.department', 'filedBy'])
+            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc');
 
         if ($accessibleIds !== null) {
             $excusesQuery->whereIn('user_id', $accessibleIds);
@@ -95,10 +251,36 @@ class DtrExcuseController extends Controller
             $excusesQuery->where('excuse_type', $excuseType);
         }
 
-        $excuses = $excusesQuery->paginate(25)->withQueryString();
-        $filters = compact('search', 'dateFrom', 'dateTo', 'excuseType');
+        if ($departmentId) {
+            $excusesQuery->whereHas('user', fn ($q) => $q->where('Dept_id', $departmentId));
+        }
 
-        return view('attendance.dtr-excuse.index', compact('employees', 'excuses', 'filters'));
+        $excuses = $excusesQuery->paginate(25)->withQueryString();
+        $filters = compact('search', 'dateFrom', 'dateTo', 'excuseType', 'departmentId');
+
+        $abuseYear = (int) $request->query('abuse_year', (int) now()->year);
+        if ($abuseYear < 2000 || $abuseYear > 2100) {
+            $abuseYear = (int) now()->year;
+        }
+
+        $canViewAbuseFlags = $this->isAdmin($user);
+        $abuseFlags = collect();
+        $abuseThreshold = null;
+
+        if ($canViewAbuseFlags) {
+            $abuseThreshold = (int) (Setting::first()?->dtr_excuse_abuse_monthly_threshold ?? 3);
+            $abuseFlags = $this->paginateCollection(
+                $request,
+                $this->buildExcuseAbuseFlags($abuseYear, $abuseThreshold),
+                15,
+                'abuse_page'
+            );
+        }
+
+        return view('attendance.dtr-excuse.index', compact(
+            'employees', 'excuses', 'filters', 'departments',
+            'canViewAbuseFlags', 'abuseFlags', 'abuseYear', 'abuseThreshold'
+        ));
     }
 
     public function store(Request $request): RedirectResponse
@@ -134,6 +316,10 @@ class DtrExcuseController extends Controller
         $newPmIn = $isFullDay || ! empty($validated['excuse_pm_in']);
         $newPmOut = $isFullDay || ! empty($validated['excuse_pm_out']);
 
+        $batchId = (string) Str::uuid();
+        $now = now();
+        $auditRows = [];
+
         foreach ($userIds as $userId) {
             $existing = DtrExcuse::where('user_id', $userId)
                 ->whereDate('date', $validated['date'])
@@ -151,8 +337,10 @@ class DtrExcuseController extends Controller
                     'excuse_pm_in' => $mergedFullDay || $newPmIn || $existing->excuse_pm_in,
                     'excuse_pm_out' => $mergedFullDay || $newPmOut || $existing->excuse_pm_out,
                 ]);
+                $record = $existing;
+                $wasMerged = true;
             } else {
-                DtrExcuse::create([
+                $record = DtrExcuse::create([
                     'user_id' => $userId,
                     'date' => $validated['date'],
                     'excuse_type' => $validated['excuse_type'],
@@ -164,12 +352,44 @@ class DtrExcuseController extends Controller
                     'excuse_pm_in' => $newPmIn,
                     'excuse_pm_out' => $newPmOut,
                 ]);
+                $wasMerged = false;
             }
+
+            $auditRows[] = [
+                'actor_user_id' => $user->id,
+                'module' => 'dtr_excuse',
+                'action' => 'dtr_excuse_filed',
+                'target_type' => 'user',
+                'target_id' => $userId,
+                'batch_id' => $batchId,
+                'details' => json_encode([
+                    'date' => $validated['date'],
+                    'excuse_type' => $validated['excuse_type'],
+                    'is_full_day' => $record->is_full_day,
+                    'excuse_am_in' => $record->excuse_am_in,
+                    'excuse_am_out' => $record->excuse_am_out,
+                    'excuse_pm_in' => $record->excuse_pm_in,
+                    'excuse_pm_out' => $record->excuse_pm_out,
+                    'reason' => $validated['reason'] ?? null,
+                    'merged' => $wasMerged,
+                    'actor_role' => $user->access_level,
+                ]),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
 
             // Re-derive this day's slots now that the resolver knows which slot(s)
             // have no real punch, so an already-imported punch shifts into its
             // correct slot instead of staying mis-assigned.
             $this->importService->recomputeDtr(User::find($userId), $validated['date'], $validated['date']);
+        }
+
+        try {
+            foreach (array_chunk($auditRows, 500) as $chunk) {
+                HRAuditTrail::insert($chunk);
+            }
+        } catch (\Exception) {
+            // audit failure must not block the filing
         }
 
         $count = count($userIds);
@@ -197,31 +417,11 @@ class DtrExcuseController extends Controller
             ->whereDate('date', $validated['date'])
             ->with('user:id,first_name,last_name')
             ->get()
-            ->map(function ($e) {
-                $slots = [];
-                if ($e->is_full_day) {
-                    $slots[] = 'Full Day';
-                } else {
-                    if ($e->excuse_am_in) {
-                        $slots[] = 'AM In';
-                    }
-                    if ($e->excuse_am_out) {
-                        $slots[] = 'AM Out';
-                    }
-                    if ($e->excuse_pm_in) {
-                        $slots[] = 'PM In';
-                    }
-                    if ($e->excuse_pm_out) {
-                        $slots[] = 'PM Out';
-                    }
-                }
-
-                return [
-                    'id' => $e->user_id,
-                    'name' => trim(($e->user?->last_name ?? '').', '.($e->user?->first_name ?? '')),
-                    'excused_slots' => $slots,
-                ];
-            })
+            ->map(fn ($e) => [
+                'id' => $e->user_id,
+                'name' => trim(($e->user?->last_name ?? '').', '.($e->user?->first_name ?? '')),
+                'excused_slots' => $this->excusedSlotLabels($e),
+            ])
             ->values();
 
         return response()->json(['duplicates' => $duplicates]);
@@ -238,8 +438,35 @@ class DtrExcuseController extends Controller
 
         $excusedUser = $dtrExcuse->user;
         $excusedDate = $dtrExcuse->date->format('Y-m-d');
+        $excusedUserId = $dtrExcuse->user_id;
+
+        $deletedDetails = [
+            'date' => $excusedDate,
+            'excuse_type' => $dtrExcuse->excuse_type,
+            'is_full_day' => $dtrExcuse->is_full_day,
+            'excuse_am_in' => $dtrExcuse->excuse_am_in,
+            'excuse_am_out' => $dtrExcuse->excuse_am_out,
+            'excuse_pm_in' => $dtrExcuse->excuse_pm_in,
+            'excuse_pm_out' => $dtrExcuse->excuse_pm_out,
+            'reason' => $dtrExcuse->reason,
+            'originally_filed_by_user_id' => $dtrExcuse->filed_by_user_id,
+            'actor_role' => $user->access_level,
+        ];
 
         $dtrExcuse->delete();
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $user->id,
+                'module' => 'dtr_excuse',
+                'action' => 'dtr_excuse_deleted',
+                'target_type' => 'user',
+                'target_id' => $excusedUserId,
+                'details' => $deletedDetails,
+            ]);
+        } catch (\Exception) {
+            // audit failure must not block the deletion
+        }
 
         // Re-derive the day's slots without this excuse's exclusions in case the
         // punch should move back to its originally-resolved slot.

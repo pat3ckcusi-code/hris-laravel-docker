@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\User;
 use App\Services\AttendanceMonitoringExportService;
+use App\Support\HabitualPatternRule;
 use App\Support\RoleNormalizer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -220,8 +221,8 @@ class TimeLogsMonitoringController extends Controller
             $undertimeMonths = $months->where('undertime_days', '>=', self::HABITUAL_MONTHLY_THRESHOLD)
                 ->pluck('mo')->map(fn ($m) => (int) $m)->sort()->values();
 
-            $habitualTardy = $this->meetsHabitualRule($tardyMonths);
-            $frequentUndertime = $this->meetsHabitualRule($undertimeMonths);
+            $habitualTardy = HabitualPatternRule::meets($tardyMonths);
+            $frequentUndertime = HabitualPatternRule::meets($undertimeMonths);
 
             if (! $habitualTardy && ! $frequentUndertime) {
                 continue;
@@ -237,30 +238,5 @@ class TimeLogsMonitoringController extends Controller
         }
 
         return $violations->sortBy(fn ($v) => $v['employee']?->last_name)->values();
-    }
-
-    /**
-     * CSC MC No. 04, s. 1991: violated in at least 2 months within the same
-     * semester (Jan-Jun / Jul-Dec), or 2 consecutive calendar months.
-     *
-     * @param  Collection<int, int>  $violationMonths  sorted, unique month numbers (1-12)
-     */
-    private function meetsHabitualRule(Collection $violationMonths): bool
-    {
-        if ($violationMonths->count() < 2) {
-            return false;
-        }
-
-        $months = $violationMonths->values()->all();
-        for ($i = 0; $i < count($months) - 1; $i++) {
-            if ($months[$i + 1] - $months[$i] === 1) {
-                return true;
-            }
-        }
-
-        $firstSemester = $violationMonths->filter(fn ($m) => $m <= 6)->count();
-        $secondSemester = $violationMonths->filter(fn ($m) => $m >= 7)->count();
-
-        return $firstSemester >= 2 || $secondSemester >= 2;
     }
 }

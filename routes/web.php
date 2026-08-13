@@ -608,8 +608,8 @@ Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {
         ->name('hr-manager.attendance.import.store');
 });
 
-// DTR Excuse management (HR Manager, Administrative Officer, Department Head)
-Route::middleware(['auth', 'role:hr-manager,administrative-officer,department-head'])->group(function () {
+// DTR Excuse management (Time Keeper, HR Manager, Administrative Officer, Department Head)
+Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,department-head'])->group(function () {
     Route::get('/attendance/dtr-excuse', [DtrExcuseController::class, 'index'])
         ->name('attendance.dtr-excuse.index');
     Route::post('/attendance/dtr-excuse', [DtrExcuseController::class, 'store'])

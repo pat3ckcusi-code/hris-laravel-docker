@@ -269,6 +269,17 @@
                     @error('leave_balance_decimals')<span class="hrm-error">{{ $message }}</span>@enderror
                 </div>
 
+                <div class="settings-section-title" style="margin-top:1.5rem;">DTR Excuse Abuse Detection</div>
+                <div style="max-width:220px;">
+                    <label for="dtr_excuse_abuse_monthly_threshold">Monthly Excuse Threshold</label>
+                    <input type="number" class="hrm-input" id="dtr_excuse_abuse_monthly_threshold"
+                           name="dtr_excuse_abuse_monthly_threshold"
+                           value="{{ old('dtr_excuse_abuse_monthly_threshold', $settings->dtr_excuse_abuse_monthly_threshold ?? 3) }}"
+                           min="1">
+                    <span class="settings-hint">Employees who file this many DTR excuses in a calendar month, in 2 consecutive months or 2 months within a semester, are flagged for possible abuse on the DTR Excuses page.</span>
+                    @error('dtr_excuse_abuse_monthly_threshold')<span class="hrm-error">{{ $message }}</span>@enderror
+                </div>
+
                 <div class="settings-section-title" style="margin-top:1.5rem;">Automatic Import</div>
                 <p class="settings-hint" style="margin-bottom:1rem;">
                     When enabled, a background scheduler pulls biometric punch logs automatically

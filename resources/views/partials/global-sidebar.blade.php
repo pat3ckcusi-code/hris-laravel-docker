@@ -186,6 +186,7 @@
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'DTR Excuses',        'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',    'active' => ['attendance.dtr-excuse.*']],
             ['label' => 'Time Logs Monitoring', 'icon' => 'monitoring_matrix', 'route' => 'attendance.time-logs-monitoring', 'active' => ['attendance.time-logs-monitoring*']],
             ['label' => 'Monitoring Matrix',  'icon' => 'monitoring_matrix', 'route' => 'attendance.monitoring-matrix',        'active' => ['attendance.monitoring-matrix*']],
             ['label' => 'Work Suspensions',   'icon' => 'attendance_import', 'route' => 'attendance.work-suspensions.index',  'active' => ['attendance.work-suspensions*']],
@@ -284,6 +285,7 @@
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',      'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
+            ['label' => 'DTR Excuses',      'icon' => 'audit',             'route' => 'attendance.dtr-excuse.index',       'active' => ['attendance.dtr-excuse.*']],
             ['label' => 'Shift Templates',  'icon' => 'work_schedule',     'route' => 'attendance.shifts',                 'active' => ['attendance.shifts*']],
             ['label' => 'Shift Assignment', 'icon' => 'work_schedule',     'route' => 'attendance.schedules',              'active' => ['attendance.schedules*']],
             ['label' => 'Shift Schedule',   'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',   'active' => ['attendance.shift-schedule*']],

@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property bool $attendance_enabled
  * @property bool $eta_enabled
  * @property int|null $pending_alert_threshold
+ * @property int $dtr_excuse_abuse_monthly_threshold
  * @property string|null $email_template_subject
  * @property string|null $email_template_body
  * @property string $work_start
@@ -72,6 +73,7 @@ class Setting extends Model
         'attendance_enabled',
         'eta_enabled',
         'pending_alert_threshold',
+        'dtr_excuse_abuse_monthly_threshold',
         'email_template_subject',
         'email_template_body',
         'work_start',

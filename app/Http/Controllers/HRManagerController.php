@@ -740,6 +740,7 @@ class HRManagerController extends Controller
             'attendance_enabled' => 'nullable|boolean',
             'eta_enabled' => 'nullable|boolean',
             'pending_alert_threshold' => 'nullable|integer|min:1',
+            'dtr_excuse_abuse_monthly_threshold' => 'nullable|integer|min:1',
             // Email templates
             'email_template_subject' => 'nullable|string|max:255',
             'email_template_body' => 'nullable|string',
