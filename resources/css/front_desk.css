@@ -1,50 +1,234 @@
 .request-control-page {
     display: grid;
-    gap: 16px;
+    gap: 18px;
 }
+
+/* ── Hero / welcome band (dashboard landing page) ───────────── */
+
+.fd-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    border-radius: 16px;
+    padding: 22px 26px;
+    background: linear-gradient(120deg, #ea580c, #fb923c);
+    color: #fff;
+    box-shadow: 0 14px 30px rgba(234, 88, 12, 0.22);
+}
+
+.fd-hero-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.fd-hero-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.fd-hero-title h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.fd-hero-title p {
+    margin: 4px 0 0;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 0.9rem;
+}
+
+.fd-hero-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ── Stat cards ──────────────────────────────────────────────
+   White card + colored left-border accent + icon, matching the
+   app's more current card idiom instead of a solid gradient fill. */
 
 .summary-grid {
     display: grid;
-    gap: 12px;
+    gap: 14px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .summary-card {
-    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid var(--fd-card-accent, #ea580c);
+    border-radius: 12px;
     padding: 16px 18px;
-    color: #ffffff;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-    display: grid;
-    gap: 6px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+    color: var(--ink, #111827);
+    transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.summary-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    color: #fff;
+    background: var(--fd-card-accent, #ea580c);
+    flex-shrink: 0;
 }
 
 .summary-card strong {
-    font-size: 1.8rem;
-    line-height: 1;
+    font-size: 1.6rem;
+    line-height: 1.1;
+    display: block;
 }
 
 .summary-label {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    opacity: 0.92;
+    letter-spacing: 0.05em;
+    color: var(--muted, #475569);
+    font-weight: 600;
 }
 
-.summary-total {
-    background: linear-gradient(135deg, #0f172a, #1e293b);
+.summary-total     { --fd-card-accent: #ea580c; }
+.summary-pending    { --fd-card-accent: #d97706; }
+.summary-approved   { --fd-card-accent: #1d4ed8; }
+.summary-completed  { --fd-card-accent: #16a34a; }
+.summary-rejected   { --fd-card-accent: #dc2626; }
+
+/* ── Quick-action cards (dashboard landing page) ────────────── */
+
+.fd-quick-actions {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.summary-pending {
-    background: linear-gradient(135deg, #b45309, #f59e0b);
+.fd-quick-action {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
-.summary-approved {
-    background: linear-gradient(135deg, #1d4ed8, #38bdf8);
+.fd-quick-action:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+    border-color: #fdba74;
 }
 
-.summary-completed {
-    background: linear-gradient(135deg, #166534, #22c55e);
+.fd-quick-action-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #fff7ed;
+    color: #ea580c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
 }
+
+.fd-quick-action-body strong {
+    display: block;
+    font-size: 0.98rem;
+    color: var(--ink, #111827);
+    margin-bottom: 3px;
+}
+
+.fd-quick-action-body span {
+    font-size: 0.83rem;
+    color: var(--muted, #475569);
+    line-height: 1.4;
+}
+
+.fd-quick-action-arrow {
+    margin-left: auto;
+    color: #cbd5e1;
+    align-self: center;
+    font-size: 0.9rem;
+}
+
+/* ── Recent activity list (dashboard landing page) ──────────── */
+
+.fd-recent-list {
+    display: grid;
+    gap: 2px;
+}
+
+.fd-recent-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 6px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.fd-recent-row:last-child {
+    border-bottom: none;
+}
+
+.fd-recent-name {
+    font-weight: 600;
+    color: var(--ink, #111827);
+    font-size: 0.88rem;
+}
+
+.fd-recent-sub {
+    display: block;
+    font-weight: 400;
+    color: var(--muted, #475569);
+    font-size: 0.78rem;
+    margin-top: 1px;
+}
+
+.fd-recent-type {
+    font-size: 0.83rem;
+    color: var(--muted, #475569);
+}
+
+.fd-recent-date {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+/* ── Filters (pre-existing, used by resources/views/employee/pending-requests.blade.php) ── */
 
 .filter-tile {
     display: grid;
@@ -96,6 +280,8 @@
     background: linear-gradient(135deg, #166534, #22c55e);
 }
 
+/* ── Tables ──────────────────────────────────────────────────── */
+
 .request-tables-grid {
     display: grid;
     gap: 16px;
@@ -103,7 +289,7 @@
 
 .table-tile {
     display: grid;
-    gap: 10px;
+    gap: 14px;
 }
 
 .table-header-row {
@@ -112,9 +298,23 @@
     align-items: center;
 }
 
+.table-header-row h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.15rem;
+}
+
+.table-header-row h2 i {
+    color: #ea580c;
+    font-size: 1rem;
+}
+
 .table-wrap {
     overflow-y: auto;
     overflow-x: hidden;
+    border: 1px solid #eef2f7;
+    border-radius: 10px;
 }
 
 .request-control-table {
@@ -135,21 +335,28 @@
 
 .request-control-table th,
 .request-control-table td {
-    border: 1px solid #e2e8f0;
-    padding: 8px 10px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 10px 12px;
     vertical-align: middle;
+    font-size: 0.86rem;
 }
 
 .request-control-table thead th {
     background: #f8fafc;
+    color: #475569;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
 }
 
-.request-control-table tbody tr:nth-child(even) {
-    background: #fbfdff;
+.request-control-table tbody tr {
+    transition: background-color 120ms ease;
 }
 
 .request-control-table tbody tr:hover {
-    background: #f1f5f9;
+    background: #fff7ed;
 }
 
 .cell-truncate {
@@ -159,20 +366,33 @@
     white-space: nowrap;
 }
 
+/* ── Status badges ───────────────────────────────────────────── */
+
 .request-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 5px;
     min-width: 88px;
     border-radius: 999px;
     padding: 4px 10px;
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.request-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
 }
 
 .badge-requested {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: #fef3c7;
+    color: #b45309;
 }
 
 .badge-approved {
@@ -200,17 +420,32 @@
     margin-bottom: 10px;
 }
 
+/* ── Action buttons ──────────────────────────────────────────── */
+
+.fd-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
 .fd-action-btn {
     border: 0;
     border-radius: 8px;
     color: #fff;
-    padding: 6px 10px;
-    font-size: 0.75rem;
+    padding: 7px 11px;
+    font-size: 0.76rem;
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    text-decoration: none;
+    transition: filter 120ms ease, transform 120ms ease;
+}
+
+.fd-action-btn:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
 }
 
 .fd-accept-btn {
@@ -229,11 +464,7 @@
     background: linear-gradient(135deg, #1d4ed8, #38bdf8);
 }
 
-.fd-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
+/* ── SweetAlert2 overrides ───────────────────────────────────── */
 
 .swal2-popup {
     border-radius: 12px;
@@ -252,20 +483,57 @@
     background: #64748b !important;
 }
 
+/* ── Flash banner (document settings page) ──────────────────── */
+
+.fd-flash-success {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.fd-flash-success i {
+    color: #16a34a;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+
 @media (max-width: 1180px) {
     .summary-grid,
-    .filter-grid {
+    .filter-grid,
+    .fd-quick-actions {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 720px) {
     .summary-grid,
-    .filter-grid {
+    .filter-grid,
+    .fd-quick-actions {
         grid-template-columns: 1fr;
     }
 
     .filter-heading {
         flex-direction: column;
+    }
+
+    .fd-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .fd-recent-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        row-gap: 4px;
+    }
+
+    .fd-recent-type {
+        display: none;
     }
 }

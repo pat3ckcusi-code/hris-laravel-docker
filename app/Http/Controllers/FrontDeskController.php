@@ -20,8 +20,16 @@ class FrontDeskController extends Controller
     {
         $this->ensureFrontDesk($request);
 
+        $recentRequests = $this->filteredRequests()
+            ->orderByDesc('document_requests.requested_on')
+            ->orderByDesc('document_requests.id')
+            ->limit(6)
+            ->get()
+            ->map(fn (DocumentRequest $requestItem) => $this->transformRequest($requestItem));
+
         return view('front-desk', [
             'summary' => $this->buildSummary($request),
+            'recentRequests' => $recentRequests,
             'documentTypes' => DocumentRequest::query()
                 ->select('document_type')
                 ->distinct()

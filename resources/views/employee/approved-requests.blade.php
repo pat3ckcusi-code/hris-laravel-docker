@@ -5,32 +5,34 @@
 
 @section('page_head')
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    @vite(['resources/css/front_desk.css'])
+    @vite(['resources/css/front_desk.css', 'resources/js/front_desk.js'])
 @endsection
 
 @section('content')
     <div class="request-control-page">
         <section class="summary-grid" aria-label="Request summary">
-            <article class="summary-card summary-total">
-                <span class="summary-label">Total Approved</span>
-                <strong id="summaryTotal">{{ ($summary['approved'] ?? 0) + ($summary['completed'] ?? 0) }}</strong>
-            </article>
             <article class="summary-card summary-approved">
-                <span class="summary-label">Processed</span>
-                <strong id="summaryApproved">{{ $summary['approved'] ?? 0 }}</strong>
+                <span class="summary-icon"><i class="fas fa-check-circle"></i></span>
+                <div>
+                    <span class="summary-label">Approved Requests</span>
+                    <strong id="summaryTotal">{{ $summary['approved'] ?? 0 }}</strong>
+                </div>
             </article>
-            <article class="summary-card summary-completed">
-                <span class="summary-label">Released</span>
-                <strong id="summaryCompleted">{{ $summary['completed'] ?? 0 }}</strong>
+            <article class="summary-card summary-total">
+                <span class="summary-icon"><i class="fas fa-file-lines"></i></span>
+                <div>
+                    <span class="summary-label">Document Types</span>
+                    <strong id="summaryApproved">{{ $documentTypes->count() }}</strong>
+                </div>
             </article>
         </section>
 
         <section class="tile table-tile">
             <div class="table-header-row">
-                <h2 style="margin: 0;">Approved Requests</h2>
+                <h2><i class="fas fa-check-circle"></i> Approved Requests</h2>
             </div>
             <div class="table-wrap">
-                <table class="display request-control-table" style="width:100%">
+                <table class="display request-control-table hris-table" style="width:100%">
                     <thead>
                         <tr>
                             <th>Emp No.</th>
@@ -53,22 +55,24 @@
                                 <td>{{ $request['document_type'] }}</td>
                                 <td class="cell-truncate" title="{{ $request['purpose'] }}">{{ $request['purpose'] }}</td>
                                 <td>{{ $request['requested_on'] }}</td>
-                                <td><span class="badge badge-success">{{ $request['status'] }}</span></td>
+                                <td><span class="request-badge badge-approved">{{ $request['status'] }}</span></td>
                                 <td class="cell-truncate" title="{{ $request['remarks'] }}">{{ $request['remarks'] }}</td>
                                 <td>
-                                    <a href="{{ url('/dashboard/employee/front-desk/print/' . $request['id']) }}"
-                                       class="btn btn-sm btn-primary"
-                                       target="_blank"
-                                       rel="noopener noreferrer">
-                                        Print
-                                    </a>
-                                    @if ($request['status'] !== 'Completed')
-                                        <button type="button"
-                                                class="btn btn-sm btn-success"
-                                                onclick="completeRequest({{ $request['id'] }})">
-                                            Complete
-                                        </button>
-                                    @endif
+                                    <div class="fd-actions">
+                                        <a href="{{ url('/dashboard/employee/front-desk/print/' . $request['id']) }}"
+                                           class="fd-action-btn fd-print-btn"
+                                           target="_blank"
+                                           rel="noopener noreferrer">
+                                            <i class="fas fa-print"></i> Print
+                                        </a>
+                                        @if ($request['status'] !== 'Completed')
+                                            <button type="button"
+                                                    class="fd-action-btn fd-complete-btn"
+                                                    onclick="completeRequest({{ $request['id'] }})">
+                                                <i class="fas fa-box-open"></i> Complete
+                                            </button>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @empty

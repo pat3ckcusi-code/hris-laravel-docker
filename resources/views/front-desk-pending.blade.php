@@ -11,19 +11,25 @@
 @section('content')
     <div class="request-control-page">
         <section class="summary-grid" aria-label="Request summary">
-            <article class="summary-card summary-total">
-                <span class="summary-label">Total Pending</span>
-                <strong id="summaryTotal">{{ $summary['pending'] ?? 0 }}</strong>
-            </article>
             <article class="summary-card summary-pending">
-                <span class="summary-label">Pending</span>
-                <strong id="summaryPending">{{ $summary['pending'] ?? 0 }}</strong>
+                <span class="summary-icon"><i class="fas fa-hourglass-half"></i></span>
+                <div>
+                    <span class="summary-label">Pending Requests</span>
+                    <strong id="summaryTotal">{{ $summary['pending'] ?? 0 }}</strong>
+                </div>
+            </article>
+            <article class="summary-card summary-total">
+                <span class="summary-icon"><i class="fas fa-file-lines"></i></span>
+                <div>
+                    <span class="summary-label">Document Types</span>
+                    <strong id="summaryPending">{{ $documentTypes->count() }}</strong>
+                </div>
             </article>
         </section>
 
         <section class="tile table-tile">
             <div class="table-header-row">
-                <h2 style="margin: 0;">Pending Requests</h2>
+                <h2><i class="fas fa-hourglass-half"></i> Pending Requests</h2>
             </div>
             <div class="table-wrap">
                 <table class="display request-control-table hris-table" style="width:100%">
@@ -49,11 +55,13 @@
                                 <td>{{ $request['document_type'] }}</td>
                                 <td class="cell-truncate" title="{{ $request['purpose'] }}">{{ $request['purpose'] }}</td>
                                 <td>{{ $request['requested_on'] }}</td>
-                                <td><span class="badge badge-info">{{ $request['status'] }}</span></td>
+                                <td><span class="request-badge badge-requested">{{ $request['status'] }}</span></td>
                                 <td class="cell-truncate" title="{{ $request['remarks'] }}">{{ $request['remarks'] }}</td>
                                 <td>
-                                    <button type="button" class="btn btn-sm btn-primary" onclick="acceptRequest({{ $request['id'] }})" title="Accept this request"><i class="fas fa-check"></i> Accept</button>
-                                    <button type="button" class="btn btn-sm btn-danger" onclick="rejectRequest({{ $request['id'] }})" title="Reject this request"><i class="fas fa-times"></i> Reject</button>
+                                    <div class="fd-actions">
+                                        <button type="button" class="fd-action-btn fd-accept-btn" onclick="acceptRequest({{ $request['id'] }})" title="Accept this request"><i class="fas fa-check"></i> Accept</button>
+                                        <button type="button" class="fd-action-btn fd-reject-btn" onclick="rejectRequest({{ $request['id'] }})" title="Reject this request"><i class="fas fa-times"></i> Reject</button>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
