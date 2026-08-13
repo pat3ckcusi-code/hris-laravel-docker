@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DocumentRequest;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
+use App\Services\DocumentPlaceholderResolver;
 use App\Services\DocumentWordExportService;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
@@ -218,7 +219,7 @@ class FrontDeskController extends Controller
     {
         $this->ensureFrontDesk($request);
 
-        $documentRequest = DocumentRequest::with(['employee', 'documentType'])
+        $documentRequest = DocumentRequest::with(['employee.department', 'documentType'])
             ->findOrFail($id);
 
         $template = $documentRequest->documentType->parts ?? [];
@@ -229,6 +230,7 @@ class FrontDeskController extends Controller
             'documentRequest' => $documentRequest,
             'employee' => $employee,
             'template' => $template,
+            'replacements' => DocumentPlaceholderResolver::resolve($employee),
         ]);
     }
 
@@ -236,7 +238,7 @@ class FrontDeskController extends Controller
     {
         $this->ensureFrontDesk($request);
 
-        $documentRequest = DocumentRequest::with(['employee', 'documentType'])->findOrFail($id);
+        $documentRequest = DocumentRequest::with(['employee.department', 'documentType'])->findOrFail($id);
         $paper = $request->query('paper', 'letter');
 
         return app(DocumentWordExportService::class)->download($documentRequest, $paper);

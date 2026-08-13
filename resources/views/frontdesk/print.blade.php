@@ -208,16 +208,13 @@ function downloadWord() {
 
         $footerImage = $documentRequest->documentType->footer_image ?? ($footerD['image'] ?? null);
 
-        /* Prepare replacements */
-        $employeeName = $employee->name ?? 'Employee';
-        $designation = $employee->designation ?? 'Position';
-        $employeeType = $employee->employee_type ?? 'Permanent';
-        $department = $employee->dept_name ?? '';
-        $dateToday = now()->format('F d, Y');
-        $salaryRaw = $employee
-            ? \App\Models\PayrollDetail::where('employee_id', $employee->id)->latest('id')->value('basic_salary')
-            : null;
-        $salaryFormatted = $salaryRaw !== null ? '₱' . number_format((float) $salaryRaw, 2) : 'N/A';
+        /* Placeholder values resolved by the controller (App\Services\DocumentPlaceholderResolver) */
+        $employeeName = $replacements['employee_name'];
+        $designation = $replacements['designation'];
+        $employeeType = $replacements['employee_type'];
+        $department = $replacements['department'];
+        $dateToday = $replacements['date'];
+        $salaryFormatted = $replacements['salary'];
 
         /* Replace placeholders in body text with optionally-styled spans */
         $phStyles = $parts['placeholder_styles'] ?? [];
