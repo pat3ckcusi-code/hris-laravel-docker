@@ -73,6 +73,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
     @endif
 
     <form method="POST"
+          id="documentTypeForm"
           action="{{ route('employee.document-settings.update', $documentType->id) }}"
           enctype="multipart/form-data">
         @csrf
@@ -368,5 +369,38 @@ function previewImg(input, previewId) {
         img.style.display = 'block';
     }
 }
+
+(function () {
+    const form = document.getElementById('documentTypeForm');
+
+    form.addEventListener('submit', function (e) {
+        if (form.dataset.confirmed === '1') return;
+
+        e.preventDefault();
+
+        const Swal = window.Swal;
+        if (!Swal) {
+            if (window.confirm('Update this document type?')) {
+                form.dataset.confirmed = '1';
+                form.submit();
+            }
+            return;
+        }
+
+        Swal.fire({
+            icon: 'question',
+            title: 'Update Document Type?',
+            text: 'This will overwrite the current template with your changes.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Update',
+            cancelButtonText: 'Cancel',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.dataset.confirmed = '1';
+                form.submit();
+            }
+        });
+    });
+})();
 </script>
 @endsection

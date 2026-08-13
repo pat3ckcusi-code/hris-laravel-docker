@@ -55,6 +55,7 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
     @endif
 
     <form method="POST"
+          id="documentTypeForm"
           action="{{ route('employee.document-settings.store') }}"
           enctype="multipart/form-data">
         @csrf
@@ -333,5 +334,38 @@ function previewImg(input, previewId) {
         img.style.display = 'block';
     }
 }
+
+(function () {
+    const form = document.getElementById('documentTypeForm');
+
+    form.addEventListener('submit', function (e) {
+        if (form.dataset.confirmed === '1') return;
+
+        e.preventDefault();
+
+        const Swal = window.Swal;
+        if (!Swal) {
+            if (window.confirm('Create this document type?')) {
+                form.dataset.confirmed = '1';
+                form.submit();
+            }
+            return;
+        }
+
+        Swal.fire({
+            icon: 'question',
+            title: 'Create Document Type?',
+            text: 'This will save a new document template that employees can request.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Create',
+            cancelButtonText: 'Cancel',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                form.dataset.confirmed = '1';
+                form.submit();
+            }
+        });
+    });
+})();
 </script>
 @endsection
