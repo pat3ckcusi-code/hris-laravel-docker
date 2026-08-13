@@ -21,6 +21,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Time Keeper / HR Manager screen for setting per-date shift assignments.
@@ -780,15 +781,17 @@ class ShiftScheduleController extends Controller
 
     /**
      * One hr_audit_trails row per affected employee (same shape as
-     * logScheduleAction), bulk-inserted in chunks so ShiftLogController's
-     * existing department-filtered log view needs no changes to display a
-     * bulk rotation the same way it already does bulk shift assignment.
+     * logScheduleAction), bulk-inserted in chunks. All rows share one
+     * batch_id so ShiftLogController can collapse the whole batch into a
+     * single log entry instead of flooding the page with one row per
+     * employee (a real problem at 1,000+ employee scale).
      *
      * @param  int[]  $employeeIds
      */
     private function logBulkScheduleAction(User $actor, array $employeeIds, string $action, array $details): void
     {
         $now = now();
+        $batchId = (string) Str::uuid();
 
         $rows = array_map(fn (int $employeeId) => [
             'actor_user_id' => $actor->id,
@@ -796,6 +799,7 @@ class ShiftScheduleController extends Controller
             'action' => $action,
             'target_type' => 'user',
             'target_id' => $employeeId,
+            'batch_id' => $batchId,
             'details' => json_encode($details + ['bulk' => true]),
             'created_at' => $now,
             'updated_at' => $now,

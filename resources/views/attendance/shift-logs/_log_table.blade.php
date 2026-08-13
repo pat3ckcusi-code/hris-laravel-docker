@@ -51,7 +51,19 @@
                                 {{ $log->action_label }}
                             </span>
                         </td>
-                        <td style="{{ $td }}text-align:left;font-weight:600;">{{ $log->target_label }}</td>
+                        <td style="{{ $td }}text-align:left;font-weight:600;">
+                            @if ($log->is_batch)
+                                <button type="button" class="shift-log-batch-trigger"
+                                        data-batch-id="{{ $log->batch_id }}"
+                                        data-action-label="{{ $log->action_label }}"
+                                        style="background:none;border:none;padding:0;color:#2563eb;
+                                               text-decoration:underline;cursor:pointer;font:inherit;font-weight:600;">
+                                    {{ $log->target_label }}
+                                </button>
+                            @else
+                                {{ $log->target_label }}
+                            @endif
+                        </td>
                         <td style="{{ $td }}text-align:left;color:#374151;">{{ $log->summary }}</td>
                         <td style="{{ $td }}text-align:left;">{{ $actorName ?: '-' }}</td>
                     </tr>

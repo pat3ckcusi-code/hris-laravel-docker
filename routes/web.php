@@ -726,6 +726,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
 Route::middleware(['auth', 'role:time-keeper'])->group(function () {
     Route::get('/attendance/shift-logs', [ShiftLogController::class, 'index'])
         ->name('attendance.shift-logs');
+    Route::get('/attendance/shift-logs/batch/{batchId}/employees', [ShiftLogController::class, 'batchEmployees'])
+        ->name('attendance.shift-logs.batch-employees');
 });
 
 // Mayor's Office routes

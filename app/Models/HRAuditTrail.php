@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $action
  * @property string|null $target_type
  * @property int|null $target_id
+ * @property string|null $batch_id
  * @property array|null $details
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -34,6 +35,7 @@ class HRAuditTrail extends Model
         'action',
         'target_type',
         'target_id',
+        'batch_id',
         'details',
     ];
 

@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -623,9 +624,10 @@ class EmployeeScheduleController extends Controller
 
     /**
      * One hr_audit_trails row per affected employee (same shape as
-     * logShiftAssigned), bulk-inserted in chunks so ShiftLogController's
-     * existing department-filtered log view and 'shift_assigned' label need
-     * no changes to display a bulk assignment.
+     * logShiftAssigned), bulk-inserted in chunks so 'shift_assigned' still
+     * carries a real per-employee target_id. All rows share one batch_id so
+     * ShiftLogController can collapse the whole batch into a single log entry
+     * instead of flooding the page with one row per employee.
      *
      * @param  int[]  $employeeIds
      */
@@ -633,6 +635,7 @@ class EmployeeScheduleController extends Controller
     {
         $shiftName = $assignShiftId ? Shift::find($assignShiftId)?->name : null;
         $now = now();
+        $batchId = (string) Str::uuid();
 
         $rows = array_map(fn (int $employeeId) => [
             'actor_user_id' => $actor->id,
@@ -640,6 +643,7 @@ class EmployeeScheduleController extends Controller
             'action' => 'shift_assigned',
             'target_type' => 'user',
             'target_id' => $employeeId,
+            'batch_id' => $batchId,
             'details' => json_encode([
                 'shift_id' => $assignShiftId,
                 'shift_name' => $shiftName,
@@ -667,6 +671,7 @@ class EmployeeScheduleController extends Controller
     private function logBulkShiftRemoved(User $actor, array $employeeIds, Carbon $from): void
     {
         $now = now();
+        $batchId = (string) Str::uuid();
 
         $rows = array_map(fn (int $employeeId) => [
             'actor_user_id' => $actor->id,
@@ -674,6 +679,7 @@ class EmployeeScheduleController extends Controller
             'action' => 'shift_removed',
             'target_type' => 'user',
             'target_id' => $employeeId,
+            'batch_id' => $batchId,
             'details' => json_encode([
                 'actor_role' => $actor->access_level,
                 'bulk' => true,

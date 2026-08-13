@@ -36,4 +36,104 @@
     'subtitle' => 'Every shift template, assignment, schedule, and access change, most recent first.',
 ])
 
+{{-- Drill-down for a collapsed bulk-action row ("N employees") --}}
+<div class="modal-overlay" id="shiftLogBatchModal">
+    <div class="modal-box" style="max-width:640px;">
+        <button type="button" class="modal-close">&times;</button>
+        <h3 id="shiftLogBatchModalTitle" style="margin-top:0;"></h3>
+        <p id="shiftLogBatchModalSubtitle" style="color:#6b7280;font-size:0.85rem;"></p>
+        <div class="hris-table-wrapper" style="max-height:420px;overflow-y:auto;">
+            <table class="hris-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                    </tr>
+                </thead>
+                <tbody id="shiftLogBatchModalBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@endsection
+
+@section('page_scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('shiftLogBatchModal');
+    var modalBody = document.getElementById('shiftLogBatchModalBody');
+    var modalTitle = document.getElementById('shiftLogBatchModalTitle');
+    var modalSubtitle = document.getElementById('shiftLogBatchModalSubtitle');
+
+    function closeModal() {
+        modal.classList.remove('active');
+    }
+
+    function clearModalBody() {
+        while (modalBody.firstChild) {
+            modalBody.removeChild(modalBody.firstChild);
+        }
+    }
+
+    function appendRow(cells) {
+        var tr = document.createElement('tr');
+        cells.forEach(function (text) {
+            var td = document.createElement('td');
+            td.textContent = text;
+            tr.appendChild(td);
+        });
+        modalBody.appendChild(tr);
+    }
+
+    modal.querySelector('.modal-close').addEventListener('click', closeModal);
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.shift-log-batch-trigger').forEach(function (el) {
+        el.addEventListener('click', function () {
+            var batchId = el.dataset.batchId;
+            var deptId = new URLSearchParams(window.location.search).get('dept_id') || '';
+
+            modalTitle.textContent = el.dataset.actionLabel || 'Affected Employees';
+            modalSubtitle.textContent = 'Loading...';
+            clearModalBody();
+            modal.classList.add('active');
+
+            var url = '{{ url('/attendance/shift-logs/batch') }}/' + encodeURIComponent(batchId) + '/employees';
+            if (deptId) {
+                url += '?dept_id=' + encodeURIComponent(deptId);
+            }
+
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    modalSubtitle.textContent = data.count + ' employee(s) affected';
+                    clearModalBody();
+
+                    if (!data.employees.length) {
+                        var tr = document.createElement('tr');
+                        var td = document.createElement('td');
+                        td.colSpan = 2;
+                        td.className = 'hris-empty-state';
+                        td.textContent = 'No employees found.';
+                        tr.appendChild(td);
+                        modalBody.appendChild(tr);
+                        return;
+                    }
+
+                    data.employees.forEach(function (emp) {
+                        appendRow([emp.name, emp.department]);
+                    });
+                })
+                .catch(function () {
+                    modalSubtitle.textContent = 'Failed to load employees.';
+                });
+        });
+    });
+});
+</script>
 @endsection
