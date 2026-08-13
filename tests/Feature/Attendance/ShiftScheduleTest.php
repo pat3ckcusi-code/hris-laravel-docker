@@ -406,6 +406,43 @@ class ShiftScheduleTest extends TestCase
         $this->assertCount(4, $groups['2026-06-10']);
     }
 
+    /**
+     * A night shift's closing punch must fold back to its own start date
+     * even when the following calendar day carries a wholly different
+     * schedule - normal, expected day-to-day variation in this app (a rest
+     * day, WFH, or a different shift). Without this, the closing punch gets
+     * evaluated against tomorrow's own (non-crossing) resolution instead of
+     * the shift it actually belongs to, and stays stranded on tomorrow's
+     * date as its own incomplete row.
+     */
+    public function test_night_shift_closing_punch_folds_back_even_when_next_day_has_a_different_schedule(): void
+    {
+        $shift = $this->nightShiftModel();
+        $user = $this->createEmployee(['shift_id' => $shift->id]);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id,
+            'date' => '2026-06-11',
+            'shift_id' => null,
+            'type' => 'standard',
+            'created_by' => $user->id,
+        ]);
+
+        foreach (['2026-06-10 22:05:00', '2026-06-11 05:55:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo,
+                'logdate' => $d, 'logtime' => $t, 'in_out' => 'IN',
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-10', $groups);
+        $this->assertArrayNotHasKey('2026-06-11', $groups);
+        $this->assertCount(2, $groups['2026-06-10']);
+    }
+
     public function test_day_shift_punches_group_by_logdate(): void
     {
         $user = $this->createEmployee();   // no shift → standard day
@@ -681,6 +718,45 @@ class ShiftScheduleTest extends TestCase
 
         $shift = Shift::where('name', 'Graveyard')->firstOrFail();
         $this->assertTrue($shift->crosses_midnight);
+    }
+
+    /**
+     * Reproduces the real incident this guard was added for: a "VET -
+     * Evening Shift" template kept the Create Shift form's stale
+     * Standard-Day break defaults (12:00/13:00) after Time In/Time Out were
+     * changed to an evening window (21:00-05:00), producing a break window
+     * hours outside the shift's own span - which degenerated
+     * AttendanceMatcher's slot windows and corrupted real DTR data.
+     */
+    public function test_shift_creation_rejects_break_window_outside_shift_span(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'VET - Evening Shift',
+                'time_in' => '21:00',
+                'break_out' => '12:00',
+                'break_in' => '13:00',
+                'time_out' => '05:00',
+            ])
+            ->assertSessionHasErrors('break_out');
+
+        $this->assertDatabaseMissing('shifts', ['name' => 'VET - Evening Shift']);
+    }
+
+    public function test_shift_creation_accepts_break_window_correctly_ordered_within_a_crossing_shift(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'VET - Evening Shift',
+                'time_in' => '21:00',
+                'break_out' => '23:00',
+                'break_in' => '23:30',
+                'time_out' => '05:00',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('shifts', ['name' => 'VET - Evening Shift', 'crosses_midnight' => true]);
     }
 
     public function test_time_keeper_can_assign_shift_to_employee(): void
@@ -2587,7 +2663,7 @@ class ShiftScheduleTest extends TestCase
             'user_id' => $emp->id,
             'week_start' => '2026-08-03',
             'assignments' => ['2026-08-03' => (string) $shift->id, '2026-08-04' => 'rest'],
-            'no_break' => '1',
+            'no_break' => ['2026-08-03' => '1'],
         ])->assertRedirect();
 
         $this->assertDatabaseHas('employee_shift_schedules', [
@@ -2615,7 +2691,7 @@ class ShiftScheduleTest extends TestCase
             'user_ids' => [$emp1->id, $emp2->id],
             'week_start' => '2026-08-03',
             'assignments' => ['2026-08-03' => (string) $shift->id],
-            'no_break' => '1',
+            'no_break' => ['2026-08-03' => '1'],
         ])->assertRedirect();
 
         foreach ([$emp1, $emp2] as $emp) {
@@ -2640,7 +2716,7 @@ class ShiftScheduleTest extends TestCase
             'start_date' => '2026-08-03',
             'end_date' => '2026-08-09',
             'pattern' => [1 => (string) $shift->id, 2 => '', 3 => '', 4 => '', 5 => '', 6 => 'rest', 7 => 'rest'],
-            'no_break' => '1',
+            'no_break' => [1 => '1'],
         ])->assertRedirect();
 
         $this->assertDatabaseHas('employee_shift_schedules', [
@@ -2652,6 +2728,62 @@ class ShiftScheduleTest extends TestCase
 
         $emp->refresh();
         $this->assertTrue(WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'))->noBreak);
+    }
+
+    /**
+     * Regression: before no_break became per-day, the week-grid's single
+     * checkbox was never pre-filled from existing state and defaulted
+     * unchecked on every page load - so any later resave of the week (even
+     * one just touching an unrelated day) silently reset no_break back to
+     * false for every shift-carrying day in it, since a real browser would
+     * submit the checkbox's own (always-unchecked) current state. This is
+     * exactly what corrupted real DTR data in production. The per-day
+     * checkbox now pre-fills from that day's own currently saved state, so
+     * a plain resubmission - which just resends whatever the page actually
+     * shows - preserves it instead of silently discarding it.
+     */
+    public function test_week_grid_no_break_checkbox_prefills_and_survives_a_resave(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'CCC Shift 1', 'time_in' => '07:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '16:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        // First save: shift assigned Monday, No Break checked for that day.
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.store'), [
+            'user_id' => $emp->id,
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => (string) $shift->id],
+            'no_break' => ['2026-08-03' => '1'],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
+
+        // The page must pre-fill that day's checkbox as checked from the
+        // already-saved state - this is what a real browser would resubmit.
+        $response = $this->actingAs($tk)->get(route('attendance.shift-schedule.index', [
+            'employee_id' => $emp->id,
+            'week_start' => '2026-08-03',
+        ]));
+        $response->assertSee('id="no-break-2026-08-03" checked', false);
+
+        // Resaving the week - submitting exactly what the pre-filled page
+        // shows, i.e. touching an unrelated day but leaving Monday's
+        // checkbox checked - must not reset no_break back to false.
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.store'), [
+            'user_id' => $emp->id,
+            'week_start' => '2026-08-03',
+            'assignments' => ['2026-08-03' => (string) $shift->id, '2026-08-04' => 'rest'],
+            'no_break' => ['2026-08-03' => '1'],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('employee_shift_schedules', [
+            'user_id' => $emp->id, 'date' => '2026-08-03', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
     }
 
     // ── Bulk shift assignment (checkbox-selected employees) ─────────────────
@@ -3494,9 +3626,9 @@ class ShiftScheduleTest extends TestCase
         $response->assertSee('Default (Rest day)', false);
 
         // ...but the select itself pre-selects the real resolved shift as its value.
-        $response->assertSee("<option value=\"{$mwfShift->id}\" selected>MWF 7-4</option>", false);
-        $response->assertSee("<option value=\"{$tthShift->id}\" selected>TTH 8:30-5:30</option>", false);
-        $response->assertSee('<option value="rest"        selected>Rest Day / Off</option>', false);
+        $response->assertSee("<option value=\"{$mwfShift->id}\" data-no-break=\"0\" selected>MWF 7-4</option>", false);
+        $response->assertSee("<option value=\"{$tthShift->id}\" data-no-break=\"0\" selected>TTH 8:30-5:30</option>", false);
+        $response->assertSee('<option value="rest"        data-no-break="0" selected>Rest Day / Off</option>', false);
     }
 
     /**
@@ -3539,9 +3671,9 @@ class ShiftScheduleTest extends TestCase
             'week_start' => '2026-07-06',
         ]));
 
-        $response->assertSee("<option value=\"{$mwfShift->id}\" selected>MWF 7-4</option>", false);
-        $response->assertSee("<option value=\"{$tthShift->id}\" selected>TTH 8:30-5:30</option>", false);
-        $response->assertDontSee('<option value="standard"    selected>Standard Day</option>', false);
+        $response->assertSee("<option value=\"{$mwfShift->id}\" data-no-break=\"0\" selected>MWF 7-4</option>", false);
+        $response->assertSee("<option value=\"{$tthShift->id}\" data-no-break=\"0\" selected>TTH 8:30-5:30</option>", false);
+        $response->assertDontSee('<option value="standard"    data-no-break="0" selected>Standard Day</option>', false);
     }
 
     public function test_week_grid_offers_a_standard_day_option_alongside_the_resolved_default(): void
@@ -3564,7 +3696,7 @@ class ShiftScheduleTest extends TestCase
         $response->assertSee('<option value="standard"', false);
         $response->assertSee('>Standard Day<', false);
         // The assigned shift itself is what's actually pre-selected in the dropdown.
-        $response->assertSee("<option value=\"{$shift->id}\" selected>CCC Shift 1</option>", false);
+        $response->assertSee("<option value=\"{$shift->id}\" data-no-break=\"0\" selected>CCC Shift 1</option>", false);
     }
 
     public function test_standard_day_override_forces_global_schedule_and_counts_as_a_workday(): void
@@ -3605,7 +3737,7 @@ class ShiftScheduleTest extends TestCase
             'employee_id' => $emp->id,
             'week_start' => '2026-08-03',
         ]));
-        $response->assertSee('<option value="standard"    selected>Standard Day</option>', false);
+        $response->assertSee('<option value="standard"    data-no-break="0" selected>Standard Day</option>', false);
     }
 
     // ── Bulk week schedule save (checkbox-selected employees) ───────────────

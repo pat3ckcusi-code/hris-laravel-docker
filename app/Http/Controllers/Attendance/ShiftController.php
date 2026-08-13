@@ -15,6 +15,7 @@ use App\Support\RoleNormalizer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * Time Keeper management of named work-shift templates (e.g. "Standard Day",
@@ -140,7 +141,7 @@ class ShiftController extends Controller
      */
     private function validateShift(Request $request): array
     {
-        $v = $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:100'],
             'time_in' => ['required', 'date_format:H:i'],
             'break_out' => ['required', 'date_format:H:i'],
@@ -151,6 +152,28 @@ class ShiftController extends Controller
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $timeIn = $request->input('time_in');
+            $breakOut = $request->input('break_out');
+            $breakIn = $request->input('break_in');
+            $timeOut = $request->input('time_out');
+
+            // Format errors on any of these are already reported by the base
+            // rules above - skip the ordering check rather than double-report.
+            if (! $timeIn || ! $breakOut || ! $breakIn || ! $timeOut) {
+                return;
+            }
+
+            if (! $this->breakWindowIsWithinShift($timeIn, $breakOut, $breakIn, $timeOut)) {
+                $validator->errors()->add(
+                    'break_out',
+                    'Break Out and Break In must fall between Time In and Time Out, in that order.'
+                );
+            }
+        });
+
+        $v = $validator->validate();
 
         return [
             'name' => $v['name'],
@@ -163,6 +186,32 @@ class ShiftController extends Controller
             'is_global' => $request->boolean('is_global'),
             'no_break' => $request->boolean('no_break'),
         ];
+    }
+
+    /**
+     * Normalizes the four HH:MM times onto a single timeline - rolling any
+     * value at/before time_in forward by 24h, mirroring the same "which side
+     * of midnight" logic Shift::isCrossMidnight() already uses for time_out
+     * alone - then asserts strict shift order: time_in < break_out <
+     * break_in < time_out. Catches a break window left outside the shift's
+     * own span (e.g. a stale 12:00/13:00 default carried over onto a newly
+     * created night shift) before it can produce degenerate matching windows
+     * in AttendanceMatcher at DTR-resolution time.
+     */
+    private function breakWindowIsWithinShift(string $timeIn, string $breakOut, string $breakIn, string $timeOut): bool
+    {
+        $toMinutes = fn (string $hhmm): int => ((int) substr($hhmm, 0, 2)) * 60 + ((int) substr($hhmm, 3, 2));
+
+        $timeInMinutes = $toMinutes($timeIn);
+        $normalize = fn (int $minutes): int => $minutes <= $timeInMinutes ? $minutes + 1440 : $minutes;
+
+        $breakOutMinutes = $normalize($toMinutes($breakOut));
+        $breakInMinutes = $normalize($toMinutes($breakIn));
+        $timeOutMinutes = $normalize($toMinutes($timeOut));
+
+        return $timeInMinutes < $breakOutMinutes
+            && $breakOutMinutes < $breakInMinutes
+            && $breakInMinutes < $timeOutMinutes;
     }
 
     private function recomputeEmployee(User $user): void

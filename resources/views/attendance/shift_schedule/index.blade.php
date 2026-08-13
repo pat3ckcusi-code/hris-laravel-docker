@@ -278,6 +278,17 @@
 .ss-day-select.is-standard  { background: #f1f5f9; color: #334155; border-color: #94a3b8; }
 .ss-day-select.is-assigned  { background: #eff6ff; color: #1e40af; border-color: #93c5fd; }
 
+.ss-day-no-break {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    margin-top: .35rem;
+    font-size: .66rem;
+    color: #64748b;
+    cursor: pointer;
+    font-weight: 500;
+}
+
 /* State dot indicator */
 .ss-state-dot {
     position: absolute;
@@ -774,23 +785,29 @@
                             $isWeekend   = $day->isWeekend();
 
                             if ($assignment === null) {
-                                $resolved     = $resolvedDefaults[$dateStr] ?? ['label' => 'Standard Day', 'value' => 'standard'];
-                                $currentValue = $resolved['value'];
+                                $resolved      = $resolvedDefaults[$dateStr] ?? ['label' => 'Standard Day', 'value' => 'standard', 'no_break' => false];
+                                $currentValue  = $resolved['value'];
+                                $currentNoBreak = $resolved['no_break'] ?? false;
                                 $stateClass   = '';
                             } elseif ($assignment->type === 'field_work') {
                                 $currentValue = 'field_work';
+                                $currentNoBreak = false;
                                 $stateClass   = 'state-field-work';
                             } elseif ($assignment->type === 'wfh') {
                                 $currentValue = 'wfh';
+                                $currentNoBreak = false;
                                 $stateClass   = 'state-wfh';
                             } elseif ($assignment->type === 'standard') {
                                 $currentValue = 'standard';
+                                $currentNoBreak = false;
                                 $stateClass   = 'state-standard';
                             } elseif ($assignment->shift_id === null) {
                                 $currentValue = 'rest';
+                                $currentNoBreak = false;
                                 $stateClass   = 'state-rest';
                             } else {
                                 $currentValue = (string) $assignment->shift_id;
+                                $currentNoBreak = (bool) $assignment->no_break;
                                 $stateClass   = 'state-assigned';
                             }
                         @endphp
@@ -807,15 +824,18 @@
                                     class="ss-day-select {{ $currentValue === 'rest' ? 'is-rest' : ($currentValue === 'field_work' ? 'is-field-work' : ($currentValue === 'wfh' ? 'is-wfh' : ($currentValue === 'standard' ? 'is-standard' : ($currentValue !== 'default' ? 'is-assigned' : '')))) }}"
                                     data-date="{{ $dateStr }}"
                                     onchange="onShiftChange(this)">
-                                <option value="default"     @selected($currentValue === 'default')>Default ({{ $resolvedDefaults[$dateStr]['label'] ?? 'Standard Day' }})</option>
-                                <option value="standard"    @selected($currentValue === 'standard')>Standard Day</option>
-                                <option value="rest"        @selected($currentValue === 'rest')>Rest Day / Off</option>
-                                <option value="field_work"  @selected($currentValue === 'field_work')>Field Work</option>
-                                <option value="wfh"         @selected($currentValue === 'wfh')>Work From Home</option>
+                                <option value="default"     data-no-break="0" @selected($currentValue === 'default')>Default ({{ $resolvedDefaults[$dateStr]['label'] ?? 'Standard Day' }})</option>
+                                <option value="standard"    data-no-break="0" @selected($currentValue === 'standard')>Standard Day</option>
+                                <option value="rest"        data-no-break="0" @selected($currentValue === 'rest')>Rest Day / Off</option>
+                                <option value="field_work"  data-no-break="0" @selected($currentValue === 'field_work')>Field Work</option>
+                                <option value="wfh"         data-no-break="0" @selected($currentValue === 'wfh')>Work From Home</option>
                                 @foreach($shifts as $shift)
-                                    <option value="{{ $shift->id }}" @selected($currentValue === (string)$shift->id)>{{ $shift->name }}</option>
+                                    <option value="{{ $shift->id }}" data-no-break="{{ $shift->no_break ? 1 : 0 }}" @selected($currentValue === (string)$shift->id)>{{ $shift->name }}</option>
                                 @endforeach
                             </select>
+                            <label class="ss-day-no-break" id="no-break-label-{{ $dateStr }}" style="{{ ctype_digit($currentValue) ? '' : 'display:none;' }}">
+                                <input type="checkbox" name="no_break[{{ $dateStr }}]" value="1" id="no-break-{{ $dateStr }}" @checked($currentNoBreak)> No Break
+                            </label>
                         </div>
                     @endforeach
                 </div>
@@ -832,10 +852,8 @@
                 </div>
 
                 {{-- Actions ─────────────────────────────────── --}}
+                {{-- No Break is now set per-day (next to each day's shift select) instead of one shared checkbox here - a single checkbox couldn't correctly represent a week mixing a no-break shift with a with-break shift, and it also silently reset no_break to false on every resave since it was never pre-filled. --}}
                 <div class="ss-form-actions">
-                    <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;color:#475569;cursor:pointer;font-weight:600;">
-                        <input type="checkbox" name="no_break" value="1"> No Break (2-punch)
-                    </label>
                     <button type="submit" class="hris-btn hris-btn-primary">Save Week Schedule</button>
                     <span style="font-size:.78rem;color:#6b7280;">DTRs for this week will be recomputed on save.</span>
                     <span id="week-save-bulk-hint" style="font-size:.78rem;color:#1d4ed8;font-weight:600;display:none;"></span>
@@ -879,6 +897,19 @@ function onShiftChange(sel) {
     else if (v === 'wfh')        card.className += ' state-wfh';
     else if (v === 'standard')   card.className += ' state-standard';
     else if (v !== 'default')    card.className += ' state-assigned';
+
+    // No Break only means anything for an actual shift_id day - hide it
+    // otherwise, and when a real shift is picked, pre-fill it from that
+    // shift's own no_break hint (mirrors bindShiftNoBreakPrefill() below,
+    // just scoped per day instead of one shared checkbox for the form).
+    const noBreakLabel = document.getElementById('no-break-label-' + date);
+    const noBreakBox   = document.getElementById('no-break-' + date);
+    const isShift       = /^\d+$/.test(v);
+    if (noBreakLabel) noBreakLabel.style.display = isShift ? '' : 'none';
+    if (noBreakBox && isShift) {
+        const opt = sel.options[sel.selectedIndex];
+        noBreakBox.checked = !!opt && opt.dataset.noBreak === '1';
+    }
 }
 
 /* ── Employee search ─────────────────────────────────────────── */
