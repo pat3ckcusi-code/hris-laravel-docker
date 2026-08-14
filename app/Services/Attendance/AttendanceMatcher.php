@@ -155,11 +155,20 @@ class AttendanceMatcher
             default => $end->copy()->addMinutes((int) round($lateOut * 60)),
         };
 
-        if ($schedule->noBreak) {
-            $candidates = [
-                new ExpectedEvent('am_in', true, $start, $start->copy()->subMinutes((int) round($earlyIn * 60)), $end->copy()->subSecond()),
-                new ExpectedEvent('pm_out', false, $end, $start->copy()->addSecond(), $pmOutWindowEnd),
-            ];
+        // Field Work-style schedules (punchRequirement in_only/out_only)
+        // collapse a day down to exactly one expected punch - checked ahead
+        // of noBreak so a Field Work assignment never needs no_break=true set
+        // in parallel, and the two flags can never disagree. Reuses the exact
+        // am_in/pm_out ExpectedEvent shapes the noBreak branch already builds.
+        $amInEvent = new ExpectedEvent('am_in', true, $start, $start->copy()->subMinutes((int) round($earlyIn * 60)), $end->copy()->subSecond());
+        $pmOutEvent = new ExpectedEvent('pm_out', false, $end, $start->copy()->addSecond(), $pmOutWindowEnd);
+
+        if ($schedule->punchRequirement === 'in_only') {
+            $candidates = [$amInEvent];
+        } elseif ($schedule->punchRequirement === 'out_only') {
+            $candidates = [$pmOutEvent];
+        } elseif ($schedule->noBreak) {
+            $candidates = [$amInEvent, $pmOutEvent];
         } else {
             $breakOut = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
             $lunchReturn = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);

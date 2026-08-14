@@ -14,6 +14,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * effect on a row that also carries a shift_id - WorkSchedule::forUserOnDate()
  * only reads it in that branch, so a rest/field_work/standard row's no_break
  * value (always false, since nothing ever sets it) is simply never consulted.
+ * punch_requirement mirrors the same field on shift_assignments, with the
+ * identical restriction - only meaningful on a row that also carries a shift_id.
+ *
+ * type also has one value written only by code, never picked in the UI:
+ * 'field_work_unconfirmed', written by
+ * App\Services\Attendance\WeeklyPunchPairReconciliationService to retroactively
+ * turn a normally-excluded field-work day into a real, absence-eligible
+ * workday once a week's Monday/Friday punch pairing is confirmed incomplete -
+ * see that class and WorkSchedule::isWorkday()/isRestDay() for how this type
+ * is treated identically to 'field_work'/'wfh'/'standard' for workday
+ * purposes, but carries no shift_id (there was never a real shift expected
+ * that date, only a retroactive absence marker).
  *
  * is_rotation_generated marks a row written by
  * ShiftScheduleController::writeRotationForEmployee() as part of the same
@@ -26,15 +38,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * manual edit through the Shift Schedule week-grid (applyWeekAssignments())
  * explicitly resets this back to false, since it's then a genuine deliberate
  * override again.
+ *
+ * is_reconciliation_generated is the analogous marker for
+ * WeeklyPunchPairReconciliationService's own writes (both the
+ * 'field_work_unconfirmed' rows and a mid-week 'in_only' check-in override) -
+ * it's what lets that service tell its own prior output apart from a genuine
+ * manual override on the same date (never touched/deleted) and safely
+ * self-heal (delete its own stale rows) once a week's outcome changes on a
+ * later run.
  */
 class EmployeeShiftSchedule extends Model
 {
-    protected $fillable = ['user_id', 'date', 'shift_id', 'type', 'created_by', 'is_rotation_generated', 'no_break'];
+    protected $fillable = ['user_id', 'date', 'shift_id', 'type', 'created_by', 'is_rotation_generated', 'no_break', 'punch_requirement', 'is_reconciliation_generated'];
 
     protected $casts = [
         'date' => 'date',
         'is_rotation_generated' => 'boolean',
         'no_break' => 'boolean',
+        'is_reconciliation_generated' => 'boolean',
     ];
 
     public function employee(): BelongsTo

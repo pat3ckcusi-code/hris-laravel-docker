@@ -21,6 +21,15 @@
 .shift-dept-checklist { width:100%; min-width:14rem; max-height:9rem; overflow-y:auto; border:1px solid #cbd5e1; border-radius:.35rem; padding:.4rem .6rem; background:#fff; }
 .shift-dept-checklist label { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#374151; padding:.15rem 0; cursor:pointer; }
 .shift-dept-checklist input { width:auto; }
+.shift-badge-fieldwork { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#dcfce7; color:#166534; }
+.shift-cell-na { color:#94a3b8; font-size:.78rem; }
+.fw-pattern-card { border-color:#bbf7d0; background:#f0fdf4; }
+.fw-pattern-rule { margin-top:1rem; padding-top:.85rem; border-top:1px dashed #bbf7d0; }
+.fw-pattern-rule h4 { margin:0 0 .5rem; font-size:.82rem; font-weight:600; color:#166534; }
+.fw-pattern-table { width:100%; border-collapse:collapse; font-size:.76rem; }
+.fw-pattern-table th, .fw-pattern-table td { padding:.35rem .5rem; border:1px solid #bbf7d0; text-align:left; }
+.fw-pattern-table th { background:#dcfce7; color:#166534; font-weight:600; }
+.fw-pattern-table td { color:#374151; background:#fff; }
 </style>
 @endsection
 
@@ -76,6 +85,63 @@
         </div>
     </form>
 </div>
+
+{{-- Dedicated, minimal creation form for the Field Work weekly pattern -
+     deliberately separate from the generic form above rather than a checkbox
+     on it, since this shift type has no Break Out/In, No Break, or Punch
+     Requirement to set: every day is a single in-only or out-only punch, and
+     assigning it to an employee (Shift Assignment page) is fully automatic -
+     no Work Days or per-day configuration needed there either. --}}
+<div class="shift-form-card fw-pattern-card">
+    <h3 style="margin:0 0 .5rem;font-size:.9rem;font-weight:600;color:#0f172a;">New Field Work Shift</h3>
+    <p style="margin:0 0 .75rem;font-size:.78rem;color:#64748b;">
+        A self-contained Monday check-in / Friday check-out weekly pattern for field-work employees. Time In
+        is the Monday check-in anchor, Time Out is the Friday check-out anchor - nothing else to configure
+        here or when assigning it. See the rule below.
+    </p>
+    <form method="POST" action="{{ route('attendance.shifts.store') }}" id="create-field-work-form">
+        @csrf
+        <input type="hidden" name="is_field_work_pair" value="1">
+        <div class="shift-form-grid">
+            <div class="shift-field"><label>Name</label><input type="text" name="name" placeholder="e.g. Field Work" required></div>
+            <div class="shift-field"><label>Time In</label><input type="time" name="time_in" value="08:00" required></div>
+            <div class="shift-field"><label>Time Out</label><input type="time" name="time_out" value="17:00" required></div>
+            <div class="shift-field" style="align-self:center;">
+                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" name="is_global" value="1" id="create-fw-is-global" style="width:auto;" checked onchange="toggleCreateFwDeptPicker(this)">
+                    <span>Shared / All Departments</span>
+                </label>
+            </div>
+            <div class="shift-field" id="create-fw-dept-field" style="display:none;">
+                <label>Departments</label>
+                <div class="shift-dept-checklist">
+                    @foreach ($departments as $d)
+                        <label>
+                            <input type="checkbox" name="department_ids[]" value="{{ $d->Dept_id }}">
+                            <span>{{ $d->Dept_name }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+            <div class="shift-field"><button type="submit" class="hris-btn hris-btn-primary">Add Shift</button></div>
+        </div>
+    </form>
+    <div class="fw-pattern-rule">
+        <h4>Field Work Shift: Monday Check-In / Friday Check-Out Only</h4>
+        <table class="fw-pattern-table">
+            <thead>
+                <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>8:00 AM</td><td>–</td><td>–</td><td>–</td><td>5:00 PM</td><td>Mon Present, Tue–Thu excluded, Fri Present (normal week)</td></tr>
+                <tr><td>–</td><td>–</td><td>–</td><td>–</td><td>5:00 PM</td><td>Mon–Thu all Absent (real consequences), Fri Present</td></tr>
+                <tr><td>8:00 AM</td><td>–</td><td>–</td><td>–</td><td>–</td><td>Mon Absent (voided despite the punch), Tue–Thu Absent, Fri Absent</td></tr>
+                <tr><td>–</td><td>–</td><td>9:15 AM</td><td>–</td><td>5:00 PM</td><td>Mon–Tue Absent, Wed Present/Late (check-in day), Thu excluded, Fri Present</td></tr>
+                <tr><td>–</td><td>–</td><td>9:15 AM</td><td>–</td><td>–</td><td>Mon–Thu <b>all</b> Absent (Wed's punch is voided too &mdash; Friday missing wins), Fri Absent</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 @else
 <div class="shift-form-card">
     <span style="color:#64748b;font-size:.82rem;">View only - your Time Keeper manages shift templates.</span>
@@ -105,16 +171,27 @@
                     <tr>
                         <td><input form="{{ $fid }}" type="text" name="name" value="{{ $shift->name }}" style="padding:.3rem .45rem;border:1px solid #cbd5e1;border-radius:.35rem;font-size:.8rem;" {{ $canManage ? '' : 'disabled' }}></td>
                         <td><input form="{{ $fid }}" type="time" name="time_in" value="{{ substr($shift->time_in,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
-                        <td><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
-                        <td><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
+                        @if ($shift->is_field_work_pair)
+                            <td><span class="shift-cell-na">&mdash;</span></td>
+                            <td><span class="shift-cell-na">&mdash;</span></td>
+                        @else
+                            <td><input form="{{ $fid }}" type="time" name="break_out" value="{{ $shift->break_out ? substr($shift->break_out,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
+                            <td><input form="{{ $fid }}" type="time" name="break_in" value="{{ $shift->break_in ? substr($shift->break_in,0,5) : '' }}" {{ $canManage ? '' : 'disabled' }}></td>
+                        @endif
                         <td><input form="{{ $fid }}" type="time" name="time_out" value="{{ substr($shift->time_out,0,5) }}" {{ $canManage ? '' : 'disabled' }}></td>
-                        <td style="text-align:center;">
-                            <input form="{{ $fid }}" type="checkbox" name="no_break" value="1"
-                                {{ $shift->no_break ? 'checked' : '' }} {{ $canManage ? '' : 'disabled' }}
-                                style="width:auto;cursor:pointer;">
-                        </td>
+                        @if ($shift->is_field_work_pair)
+                            <td style="text-align:center;"><span class="shift-cell-na">&mdash;</span></td>
+                        @else
+                            <td style="text-align:center;">
+                                <input form="{{ $fid }}" type="checkbox" name="no_break" value="1"
+                                    {{ $shift->no_break ? 'checked' : '' }} {{ $canManage ? '' : 'disabled' }}
+                                    style="width:auto;cursor:pointer;">
+                            </td>
+                        @endif
                         <td>
-                            @if ($shift->crosses_midnight)
+                            @if ($shift->is_field_work_pair)
+                                <span class="shift-badge-fieldwork">Field Work</span>
+                            @elseif ($shift->crosses_midnight)
                                 <span class="shift-badge-night">Night</span>
                             @else
                                 <span class="shift-badge-day">Day</span>
@@ -158,6 +235,7 @@
                                 <form id="{{ $fid }}" class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.update', $shift) }}">
                                     @csrf
                                     @method('PUT')
+                                    <input type="hidden" name="is_field_work_pair" value="{{ $shift->is_field_work_pair ? 1 : 0 }}">
                                     <button type="submit" class="hris-btn hris-btn-primary">Save</button>
                                 </form>
                                 <form class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.destroy', $shift) }}"
@@ -184,6 +262,10 @@
 <script>
 function toggleCreateDeptPicker(cb) {
     document.getElementById('create-dept-field').style.display = cb.checked ? 'none' : 'block';
+}
+
+function toggleCreateFwDeptPicker(cb) {
+    document.getElementById('create-fw-dept-field').style.display = cb.checked ? 'none' : 'block';
 }
 
 function toggleRowDeptPicker(cb, shiftId) {

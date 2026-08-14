@@ -4,8 +4,8 @@ namespace Tests\Feature\Attendance;
 
 use App\Services\Attendance\AttendanceMatcher;
 use App\Services\Attendance\MatchResult;
-use App\Support\WorkSchedule;
 use App\Services\DtrPunchResolver;
+use App\Support\WorkSchedule;
 use Tests\TestCase;
 
 /**
@@ -252,5 +252,69 @@ class AttendanceMatcherTest extends TestCase
         $this->assertSame('12:02:00', $resolved['am_out']);
         $this->assertSame('13:01:00', $resolved['pm_in']);
         $this->assertSame('17:00:00', $resolved['pm_out']);
+    }
+
+    // ── Field Work (punchRequirement in_only / out_only) ────────────────────
+
+    private function inOnlyDay(): WorkSchedule
+    {
+        return new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, false, false, 'in_only');
+    }
+
+    private function outOnlyDay(): WorkSchedule
+    {
+        return new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, false, false, 'out_only');
+    }
+
+    public function test_in_only_schedule_matches_only_the_am_in_slot(): void
+    {
+        $r = $this->match(['08:05'], $this->inOnlyDay());
+
+        $this->assertSlots($r, '08:05', null, null, null);
+        $this->assertUnmatched($r, []);
+    }
+
+    public function test_in_only_schedule_ignores_a_stray_afternoon_punch(): void
+    {
+        // Only am_in is ever an expected event under in_only - a 17:00 punch
+        // has nothing to be claimed by and goes unmatched.
+        $r = $this->match(['08:05', '17:00'], $this->inOnlyDay());
+
+        $this->assertSlots($r, '08:05', null, null, null);
+        $this->assertUnmatched($r, ['17:00']);
+    }
+
+    public function test_out_only_schedule_matches_only_the_pm_out_slot(): void
+    {
+        $r = $this->match(['17:02'], $this->outOnlyDay());
+
+        $this->assertSlots($r, null, null, null, '17:02');
+        $this->assertUnmatched($r, []);
+    }
+
+    public function test_in_only_full_day_suspension_still_voids_the_lone_event(): void
+    {
+        [$suspendedSchedule, $excludedSlots] = $this->inOnlyDay()->applySuspension(null);
+
+        $r = (new AttendanceMatcher)->match(
+            [self::DATE.' 08:05:00'],
+            self::DATE,
+            $suspendedSchedule,
+            $excludedSlots
+        );
+
+        $this->assertSlots($r, null, null, null, null);
+        $this->assertUnmatched($r, ['08:05']);
+    }
+
+    public function test_apply_suspension_preserves_punch_requirement_through_the_clone(): void
+    {
+        // A partial-cutoff suspension (after lunchReturn) returns a NEW
+        // WorkSchedule instance - regression test for the constructor call
+        // that used to silently drop punchRequirement back to 'both'.
+        [$cappedSchedule] = $this->outOnlyDay()->applySuspension('16:00');
+
+        $this->assertSame('out_only', $cappedSchedule->punchRequirement);
+        $this->assertSame('16:00', $cappedSchedule->workEnd);
     }
 }

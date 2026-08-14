@@ -360,7 +360,10 @@ class AttendanceMonitoringExportService
                         continue;
                     }
 
-                    if ($dtr && ($dtr->time_in_am || $dtr->time_in_pm)) {
+                    // Also recognizes an OUT-side-only punch (e.g. a Field
+                    // Work out_only Friday, which never has an AM punch by
+                    // design) as proof of presence - not just an IN-side one.
+                    if ($dtr && ($dtr->time_in_am || $dtr->time_in_pm || $dtr->time_out_am || $dtr->time_out_pm)) {
                         continue;
                     }
 

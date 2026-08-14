@@ -11,6 +11,7 @@ use App\Models\HRAuditTrail;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\User;
+use App\Services\Attendance\WeeklyPunchPairReconciliationService;
 use App\Services\DepartmentService;
 use App\Services\PersonnelLogImportService;
 use App\Services\ResolvedScheduleService;
@@ -47,6 +48,7 @@ class EmployeeScheduleController extends Controller
         private readonly DepartmentService $departmentService,
         private readonly ShiftAssignmentService $shiftAssignmentService,
         private readonly ResolvedScheduleService $resolvedScheduleService,
+        private readonly WeeklyPunchPairReconciliationService $weeklyReconciliation,
     ) {}
 
     private function authorizeManager(User $user): void
@@ -318,6 +320,36 @@ class EmployeeScheduleController extends Controller
             }));
     }
 
+    /**
+     * punch_requirement_by_day arrives keyed by day-of-week as request-sourced
+     * string keys (e.g. "1" => "in_only") - normalize to int keys so lookups
+     * against an int day-of-week (from days_of_week[]/work_days[], already
+     * int-cast) actually match. An empty-string value is dropped entirely so
+     * that day falls through to the flat punch_requirement value instead of
+     * being forced to a literal "both". No form in the UI submits this field
+     * directly any more (the per-day override grid was removed once the
+     * dedicated is_field_work_pair Shift Template made manual Monday-in/
+     * Friday-out setup unnecessary) - the only live caller of this method is
+     * the is_field_work_pair auto-configuration branch below, which builds
+     * the array itself ([1 => 'in_only', 5 => 'out_only']) rather than
+     * reading it from the request.
+     *
+     * @param  array<string|int, string>  $raw
+     * @return array<int, string>
+     */
+    private function normalizePunchRequirementByDay(array $raw): array
+    {
+        $normalized = [];
+        foreach ($raw as $day => $requirement) {
+            if ($requirement === '' || $requirement === null) {
+                continue;
+            }
+            $normalized[(int) $day] = $requirement;
+        }
+
+        return $normalized;
+    }
+
     public function update(Request $request, User $user): RedirectResponse
     {
         $actor = $request->user();
@@ -342,6 +374,9 @@ class EmployeeScheduleController extends Controller
             'work_days' => ['nullable', 'array'],
             'work_days.*' => ['integer', 'between:0,6'],
             'no_break' => ['nullable', 'boolean'],
+            'punch_requirement' => ['nullable', 'string', 'in:both,in_only,out_only'],
+            'punch_requirement_by_day' => ['nullable', 'array'],
+            'punch_requirement_by_day.*' => ['nullable', 'string', 'in:,both,in_only,out_only'],
         ]);
 
         if ($validated['shift_id'] !== null) {
@@ -356,6 +391,8 @@ class EmployeeScheduleController extends Controller
         // persisted, not the raw (possibly narrower/broader) submitted value.
         $workDays = $daysOfWeek ?? ($validated['work_days'] ?? null);
         $noBreak = (bool) ($validated['no_break'] ?? false);
+        $punchRequirement = $validated['punch_requirement'] ?? 'both';
+        $punchRequirementByDay = $this->normalizePunchRequirementByDay($validated['punch_requirement_by_day'] ?? []);
         $isCorrection = ($validated['form_type'] ?? null) === 'edit';
 
         // Named from what was actually submitted, not users.shift_id (today's
@@ -365,15 +402,40 @@ class EmployeeScheduleController extends Controller
         $assignedShift = $submittedShiftId ? Shift::find($submittedShiftId) : null;
         $label = $assignedShift?->name ?? 'Standard Day';
 
-        // An "edit" submission reuses assign() unchanged: submitting the same
+        // A Field Work Pattern shift is self-configuring: whatever the form
+        // actually submitted for Work Days/Advanced split/Punch Requirement
+        // is replaced outright with the fixed Monday-in/Friday-out shape, so
+        // picking this shift needs no further configuration and can't be
+        // misconfigured. Scoped to "add" only - "edit" corrects one specific
+        // already-existing row (Monday's or Friday's) using that row's own
+        // pre-filled day scope, and forcing both days there would silently
+        // touch the sibling row the Time Keeper never chose to edit; "remove"
+        // has no shift_id at all.
+        if ($assignedShift?->is_field_work_pair && ($validated['form_type'] ?? 'add') === 'add') {
+            $daysOfWeek = null;
+            $workDays = [1, 5];
+            $punchRequirement = 'both';
+            $punchRequirementByDay = [1 => 'in_only', 5 => 'out_only'];
+        }
+
+        // An "edit"/"remove" submission never carries punch_requirement_by_day
+        // (only the "+ Add Shift" form's optional grid does), so this always
+        // collapses to a single assign() call using the original
+        // $daysOfWeek/$workDays exactly as before - see
+        // ShiftAssignmentService::assignGroupedByPunchRequirement() for why
+        // that's byte-identical to calling assign() directly. An "edit"
+        // submission also reuses assign() unchanged: submitting the same
         // effective_from as the row being corrected triggers its existing
         // same-start-date replacement rule (delete-and-recreate) rather than
         // the usual truncate-and-append history rule - see
         // ShiftAssignmentService::assign() for why that's already safe here.
-        $this->shiftAssignmentService->assign($user, $submittedShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak);
+        $assignments = $this->shiftAssignmentService->assignGroupedByPunchRequirement($user, $submittedShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak, $punchRequirement, $punchRequirementByDay);
 
         $this->recomputeEmployee($user);
-        $this->logShiftAssigned($actor, $user, $submittedShiftId, $assignedShift?->name, $from, $until, $daysOfWeek, $isCorrection, $workDays, $noBreak);
+        foreach ($assignments as $assignment) {
+            $this->logShiftAssigned($actor, $user, $submittedShiftId, $assignedShift?->name, $from, $until, $assignment->days_of_week, $isCorrection, $assignment->work_days, $noBreak, $assignment->punch_requirement);
+        }
+        $this->reconcileEagerlyIfNeeded($user, $assignments);
 
         $name = trim("{$user->first_name} {$user->last_name}");
         $daysLabel = ShiftAssignment::daysOfWeekLabel($daysOfWeek);
@@ -413,6 +475,9 @@ class EmployeeScheduleController extends Controller
             'work_days' => ['nullable', 'array'],
             'work_days.*' => ['integer', 'between:0,6'],
             'no_break' => ['nullable', 'boolean'],
+            'punch_requirement' => ['nullable', 'string', 'in:both,in_only,out_only'],
+            'punch_requirement_by_day' => ['nullable', 'array'],
+            'punch_requirement_by_day.*' => ['nullable', 'string', 'in:,both,in_only,out_only'],
         ]);
 
         if ($request->boolean('select_all_matching')) {
@@ -448,6 +513,17 @@ class EmployeeScheduleController extends Controller
         // Mirror ShiftAssignmentService::assign()'s own forcing rule (see update()).
         $workDays = $daysOfWeek ?? ($validated['work_days'] ?? null);
         $noBreak = (bool) ($validated['no_break'] ?? false);
+        $punchRequirement = $validated['punch_requirement'] ?? 'both';
+        $punchRequirementByDay = $this->normalizePunchRequirementByDay($validated['punch_requirement_by_day'] ?? []);
+
+        // Same self-configuring override as update()'s "add" path above -
+        // see that comment for why.
+        if ($assignShiftId !== null && (Shift::find($assignShiftId)?->is_field_work_pair)) {
+            $daysOfWeek = null;
+            $workDays = [1, 5];
+            $punchRequirement = 'both';
+            $punchRequirementByDay = [1 => 'in_only', 5 => 'out_only'];
+        }
 
         $employees = User::whereIn('id', $userIds)->get(['id', 'Dept_id', 'dtr_exempt']);
 
@@ -460,12 +536,35 @@ class EmployeeScheduleController extends Controller
         $employeeIds = $employees->pluck('id')->all();
 
         foreach ($employees as $employee) {
-            $this->shiftAssignmentService->assign($employee, $assignShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak);
+            $this->shiftAssignmentService->assignGroupedByPunchRequirement($employee, $assignShiftId, $from, $until, $actor->id, $daysOfWeek, $workDays, $noBreak, $punchRequirement, $punchRequirementByDay);
         }
 
-        $this->logBulkShiftAssigned($actor, $employeeIds, $assignShiftId, $from, $until, $daysOfWeek, $workDays, $noBreak);
+        // The grouping is identical for every employee (it only depends on
+        // this shared request input, not the employee), so it's resolved
+        // once here purely to log one batch per group rather than one shared
+        // batch across groups with genuinely different details - see
+        // logBulkShiftAssigned()'s own docblock for why that distinction
+        // matters to ShiftLogController's collapsed-row rendering.
+        $groups = $this->shiftAssignmentService->resolvePunchRequirementGroups($daysOfWeek, $workDays, $punchRequirement, $punchRequirementByDay);
+        if (count($groups) <= 1) {
+            $this->logBulkShiftAssigned($actor, $employeeIds, $assignShiftId, $from, $until, $daysOfWeek, $workDays, $noBreak, $punchRequirement);
+        } else {
+            foreach ($groups as $requirement => $days) {
+                $this->logBulkShiftAssigned($actor, $employeeIds, $assignShiftId, $from, $until, $days, $days, $noBreak, $requirement);
+            }
+        }
 
-        BulkShiftRecomputeJob::dispatch($employeeIds);
+        // Mirrors update()'s reconcileEagerlyIfNeeded() - only relevant when
+        // this bulk submission actually produced an in_only/out_only group
+        // (a Field Work Pair shift, or a hand-built matching per-day grid),
+        // in which case every affected employee needs the same eager
+        // reconciliation pass so a backdated effective_from's already-elapsed
+        // weeks don't sit showing "No Punch Required" until the next
+        // scheduled sweep. Deferred into the same queued job as the DTR
+        // recompute itself, for the same reason (a large bulk selection).
+        $reconcileSince = array_intersect_key($groups, ['in_only' => true, 'out_only' => true]) !== [] ? $from : null;
+
+        BulkShiftRecomputeJob::dispatch($employeeIds, $reconcileSince?->toDateString());
 
         $label = $assignShiftId ? (Shift::find($assignShiftId)?->name ?? 'shift') : 'Standard Day';
         $count = count($employeeIds);
@@ -597,7 +696,7 @@ class EmployeeScheduleController extends Controller
      * Change Log clearly flags a retroactive fix to already-recorded history,
      * rather than reading like a fresh assignment.
      */
-    private function logShiftAssigned(User $actor, User $employee, ?int $shiftId, ?string $shiftName, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, bool $isCorrection = false, ?array $workDays = null, bool $noBreak = false): void
+    private function logShiftAssigned(User $actor, User $employee, ?int $shiftId, ?string $shiftName, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, bool $isCorrection = false, ?array $workDays = null, bool $noBreak = false, string $punchRequirement = 'both'): void
     {
         try {
             HRAuditTrail::create([
@@ -615,6 +714,7 @@ class EmployeeScheduleController extends Controller
                     'days_of_week' => $daysOfWeek,
                     'work_days' => $workDays,
                     'no_break' => $noBreak,
+                    'punch_requirement' => $punchRequirement,
                 ],
             ]);
         } catch (\Exception) {
@@ -625,13 +725,21 @@ class EmployeeScheduleController extends Controller
     /**
      * One hr_audit_trails row per affected employee (same shape as
      * logShiftAssigned), bulk-inserted in chunks so 'shift_assigned' still
-     * carries a real per-employee target_id. All rows share one batch_id so
-     * ShiftLogController can collapse the whole batch into a single log entry
-     * instead of flooding the page with one row per employee.
+     * carries a real per-employee target_id. All rows from one call share one
+     * (freshly generated) batch_id so ShiftLogController can collapse them
+     * into a single log entry instead of flooding the page with one row per
+     * employee. bulkAssign() calls this once per distinct punch-requirement
+     * group when a submission splits into more than one (see its own
+     * resolvePunchRequirementGroups() call) - each call's own fresh batch_id
+     * keeps every group's rows internally consistent (identical details,
+     * differing only by target_id), which is what ShiftLogController's
+     * ANY_VALUE()-based collapse relies on; sharing one batch_id across
+     * groups with genuinely different days_of_week/punch_requirement would
+     * silently drop one group's details from the collapsed view instead.
      *
      * @param  int[]  $employeeIds
      */
-    private function logBulkShiftAssigned(User $actor, array $employeeIds, ?int $assignShiftId, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false): void
+    private function logBulkShiftAssigned(User $actor, array $employeeIds, ?int $assignShiftId, Carbon $from, ?Carbon $until, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false, string $punchRequirement = 'both'): void
     {
         $shiftName = $assignShiftId ? Shift::find($assignShiftId)?->name : null;
         $now = now();
@@ -654,6 +762,7 @@ class EmployeeScheduleController extends Controller
                 'days_of_week' => $daysOfWeek,
                 'work_days' => $workDays,
                 'no_break' => $noBreak,
+                'punch_requirement' => $punchRequirement,
             ]),
             'created_at' => $now,
             'updated_at' => $now,
@@ -706,5 +815,37 @@ class EmployeeScheduleController extends Controller
     private function recomputeEmployee(User $user): void
     {
         $this->importService->recomputeFullRange($user);
+    }
+
+    /**
+     * recomputeEmployee() above already makes real punches resolve against a
+     * newly-assigned schedule immediately - but for an in_only/out_only
+     * (Field Work Pair) assignment backdated onto already-elapsed weeks, that
+     * alone leaves those weeks' Tue/Wed/Thu showing the plain "No Punch
+     * Required" gap label instead of a real Absence, since the retroactive
+     * voiding step (WeeklyPunchPairReconciliationService) otherwise only runs
+     * on its nightly schedule. Scoped to only the assignment(s) that actually
+     * used in_only/out_only, and to the earliest of their effective_from
+     * dates - an ordinary shift assignment never reaches this at all, and
+     * reconcileWeek()'s own gate check would no-op for any week outside a
+     * recognized Field Work Pair pairing regardless.
+     *
+     * @param  \Illuminate\Support\Collection<int, ShiftAssignment>  $assignments
+     */
+    private function reconcileEagerlyIfNeeded(User $user, Collection $assignments): void
+    {
+        $since = null;
+        foreach ($assignments as $assignment) {
+            if (! in_array($assignment->punch_requirement, ['in_only', 'out_only'], true)) {
+                continue;
+            }
+            if ($since === null || $assignment->effective_from->lt($since)) {
+                $since = $assignment->effective_from;
+            }
+        }
+
+        if ($since !== null) {
+            $this->weeklyReconciliation->reconcileForUser($user, $since);
+        }
     }
 }

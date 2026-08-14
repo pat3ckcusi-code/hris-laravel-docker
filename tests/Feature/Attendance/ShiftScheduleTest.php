@@ -11,6 +11,7 @@ use App\Models\DtrExcuse;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\Holiday;
+use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
@@ -757,6 +758,48 @@ class ShiftScheduleTest extends TestCase
             ->assertSessionDoesntHaveErrors();
 
         $this->assertDatabaseHas('shifts', ['name' => 'VET - Evening Shift', 'crosses_midnight' => true]);
+    }
+
+    /**
+     * A Field Work Pattern template represents a weekly (not daily) span -
+     * Time In is Monday's check-in anchor, Time Out is Friday's check-out
+     * anchor - so it has no break window or same-day ordering to require.
+     */
+    public function test_field_work_pair_shift_creation_does_not_require_break_times(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'Field Work',
+                'time_in' => '08:00',
+                'time_out' => '17:00',
+                'is_field_work_pair' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $shift = Shift::where('name', 'Field Work')->firstOrFail();
+        $this->assertTrue($shift->is_field_work_pair);
+        $this->assertNull($shift->break_out);
+        $this->assertNull($shift->break_in);
+        $this->assertFalse($shift->crosses_midnight);
+    }
+
+    /**
+     * The relaxed validation above is scoped to is_field_work_pair=1 only -
+     * an ordinary template submission omitting break_out/break_in still
+     * fails exactly as before.
+     */
+    public function test_ordinary_shift_creation_still_requires_break_times(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'Missing Breaks',
+                'time_in' => '08:00',
+                'time_out' => '17:00',
+            ])
+            ->assertSessionHasErrors(['break_out', 'break_in']);
+
+        $this->assertDatabaseMissing('shifts', ['name' => 'Missing Breaks']);
     }
 
     public function test_time_keeper_can_assign_shift_to_employee(): void
@@ -2882,6 +2925,313 @@ class ShiftScheduleTest extends TestCase
     }
 
     /**
+     * Bulk-assign rollout for a "Field Work" shift: the documented two-
+     * submission pattern (Monday in_only, then Friday out_only, same
+     * employees, same template) produces exactly the two concurrent
+     * ShiftAssignment rows WeeklyPunchPairReconciliationService expects.
+     */
+    public function test_bulk_assign_with_punch_requirement_gives_field_work_monday_friday_pair(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $fieldWorkShift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        // One submission: Work Days = Mon+Fri, top-level Punch Requirement
+        // left at the default "both", with Monday/Friday overridden via the
+        // per-day grid - EmployeeScheduleController::bulkAssign() now routes
+        // through ShiftAssignmentService::assignGroupedByPunchRequirement(),
+        // which splits this into the same two rows the old two-submission
+        // flow used to require.
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
+            'assign_shift_id' => $fieldWorkShift->id,
+            'user_ids' => [$emp->id],
+            'work_days' => [1, 5],
+            'punch_requirement' => 'both',
+            'punch_requirement_by_day' => [1 => 'in_only', 5 => 'out_only'],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        $rows = ShiftAssignment::where('user_id', $emp->id)->get();
+        $this->assertCount(2, $rows);
+
+        $mondayRow = $rows->firstWhere('days_of_week', [1]);
+        $this->assertNotNull($mondayRow);
+        $this->assertSame('in_only', $mondayRow->punch_requirement);
+
+        $fridayRow = $rows->firstWhere('days_of_week', [5]);
+        $this->assertNotNull($fridayRow);
+        $this->assertSame('out_only', $fridayRow->punch_requirement);
+
+        $monday = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-03'));
+        $this->assertSame('in_only', $monday->punchRequirement);
+        $friday = WorkSchedule::forUserOnDate($emp, Carbon::parse('2026-08-07'));
+        $this->assertSame('out_only', $friday->punchRequirement);
+
+        // The two groups differ in days_of_week/punch_requirement, so they
+        // must be logged under two distinct batch_ids - sharing one would
+        // violate ShiftLogController::buildLogPage()'s ANY_VALUE() invariant
+        // that every row in a batch shares identical details.
+        $auditRows = HRAuditTrail::where('module', 'shift_management')
+            ->where('action', 'shift_assigned')
+            ->where('target_id', $emp->id)
+            ->get();
+        $this->assertCount(2, $auditRows);
+        $this->assertNotSame($auditRows[0]->batch_id, $auditRows[1]->batch_id);
+        $this->assertNotNull($auditRows[0]->batch_id);
+        $this->assertNotNull($auditRows[1]->batch_id);
+    }
+
+    /**
+     * The common case (no per-day punch_requirement override) must still
+     * collapse to exactly one ShiftAssignment row with days_of_week=null
+     * (unrestricted) - the same shape assign() has always produced directly
+     * - so introducing the grouped-assign path doesn't change ordinary
+     * bulk-assign behavior for the vast majority of shifts that never touch
+     * the per-day grid.
+     */
+    public function test_bulk_assign_without_punch_requirement_override_still_produces_a_single_unrestricted_row(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'Regular', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
+            'assign_shift_id' => $shift->id,
+            'user_ids' => [$emp->id],
+            'work_days' => [1, 2, 3, 4, 5],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        $rows = ShiftAssignment::where('user_id', $emp->id)->get();
+        $this->assertCount(1, $rows);
+        $this->assertNull($rows->first()->days_of_week);
+        $this->assertSame('both', $rows->first()->punch_requirement);
+
+        $auditRows = HRAuditTrail::where('module', 'shift_management')
+            ->where('action', 'shift_assigned')
+            ->where('target_id', $emp->id)
+            ->get();
+        $this->assertCount(1, $auditRows);
+    }
+
+    /**
+     * A Field Work Pattern shift is self-configuring server-side: even when
+     * the request submits a deliberately wrong Work Days shape (a plain
+     * Mon-Fri selection, no per-day overrides at all - what a Time Keeper
+     * would get by leaving every default alone, or what a bypassed/broken
+     * client script would send), EmployeeScheduleController::bulkAssign()
+     * still forces the fixed Monday-in/Friday-out split, since correctness
+     * for this shift type can't depend on the request getting it right.
+     */
+    public function test_bulk_assign_field_work_pair_shift_ignores_submitted_work_days_and_forces_the_pattern(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $fieldWorkShift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'time_out' => '17:00',
+            'is_active' => true, 'is_field_work_pair' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
+            'assign_shift_id' => $fieldWorkShift->id,
+            'user_ids' => [$emp->id],
+            'work_days' => [1, 2, 3, 4, 5],
+            'punch_requirement' => 'both',
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        $rows = ShiftAssignment::where('user_id', $emp->id)->get();
+        $this->assertCount(2, $rows);
+
+        $mondayRow = $rows->firstWhere('days_of_week', [1]);
+        $this->assertNotNull($mondayRow);
+        $this->assertSame('in_only', $mondayRow->punch_requirement);
+
+        $fridayRow = $rows->firstWhere('days_of_week', [5]);
+        $this->assertNotNull($fridayRow);
+        $this->assertSame('out_only', $fridayRow->punch_requirement);
+    }
+
+    /**
+     * bulkAssign() must tell BulkShiftRecomputeJob to also eagerly reconcile
+     * (reconcileSince = the submitted effective_from) whenever the resulting
+     * groups include in_only/out_only - closing the same gap the "+ Add
+     * Shift" single-employee path closes via reconcileEagerlyIfNeeded().
+     * An ordinary (non-Field-Work-Pair) bulk assignment must leave
+     * reconcileSince null, since it never needs this call at all.
+     */
+    public function test_bulk_assign_field_work_pair_shift_dispatches_job_with_reconcile_since(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $fieldWorkShift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'time_out' => '17:00',
+            'is_active' => true, 'is_field_work_pair' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
+            'assign_shift_id' => $fieldWorkShift->id,
+            'user_ids' => [$emp->id],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        Queue::assertPushed(BulkShiftRecomputeJob::class, fn ($job) => $job->reconcileSince === '2026-07-01');
+    }
+
+    public function test_bulk_assign_ordinary_shift_dispatches_job_with_no_reconcile_since(): void
+    {
+        Queue::fake();
+
+        $tk = $this->createTimeKeeper();
+        $shift = Shift::create([
+            'name' => 'Ordinary', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.bulk-assign'), [
+            'assign_shift_id' => $shift->id,
+            'user_ids' => [$emp->id],
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        Queue::assertPushed(BulkShiftRecomputeJob::class, fn ($job) => $job->reconcileSince === null);
+    }
+
+    /**
+     * Same guarantee via the per-employee "+ Add Shift" form (update()'s
+     * "add" form_type), with no Work Days/punch-requirement input submitted
+     * at all - the simplest possible way a Time Keeper would actually use it.
+     */
+    public function test_add_shift_field_work_pair_shift_needs_no_configuration(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $fieldWorkShift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'time_out' => '17:00',
+            'is_active' => true, 'is_field_work_pair' => true,
+        ]);
+        $emp = $this->createEmployee();
+
+        $this->actingAs($tk)->put(route('attendance.schedules.update', $emp), [
+            'form_type' => 'add',
+            'shift_id' => $fieldWorkShift->id,
+            'effective_from' => '2026-07-01',
+            'effective_until' => '2026-12-31',
+        ])->assertRedirect();
+
+        $rows = ShiftAssignment::where('user_id', $emp->id)->get();
+        $this->assertCount(2, $rows);
+        $this->assertNotNull($rows->firstWhere('days_of_week', [1]));
+        $this->assertSame('out_only', $rows->firstWhere('days_of_week', [5])->punch_requirement);
+    }
+
+    /**
+     * Tue/Wed/Thu of a Field Work Pair week are a WorkSchedule::isWorkday()
+     * false day-of-week gap, same as any other assignment gap - but the DTR
+     * view must not collapse it into the generic "Rest Day" badge (which
+     * wrongly implies a day off) the way it does for an ordinary gap. See
+     * WorkSchedule::isFieldWorkPairGapDay().
+     */
+    public function test_dtr_view_labels_field_work_pair_gap_days_no_punch_required_not_rest_day(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-31 09:00:00'));
+
+        $shift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'time_out' => '17:00',
+            'is_active' => true, 'is_field_work_pair' => true,
+        ]);
+        $employee = $this->createEmployee(['last_name' => 'Fieldworker']);
+
+        app(ShiftAssignmentService::class)->assignGroupedByPunchRequirement(
+            $employee, $shift->id, Carbon::parse('2026-07-01'), Carbon::parse('2026-12-31'), null,
+            null, [1, 5], false, 'both', [1 => 'in_only', 5 => 'out_only']
+        );
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-07',
+            ]));
+
+        $response->assertOk();
+        $rows = collect($response->json('data'));
+
+        // 2026-07-06 is a Monday, 2026-07-07/08/09 are the following Tue/Wed/Thu.
+        foreach (['2026-07-07', '2026-07-08', '2026-07-09'] as $dateStr) {
+            $row = $rows->firstWhere('date', Carbon::parse($dateStr)->format('M d, Y (D)'));
+            $this->assertNotNull($row, "$dateStr should have a row.");
+            $this->assertStringContainsString('No Punch Required', $row['status_badge']);
+            $this->assertStringNotContainsString('Rest Day', $row['status_badge']);
+        }
+
+        // Monday is a real workday with no punches - must not be mistaken for the gap state.
+        $monday = $rows->firstWhere('date', Carbon::parse('2026-07-06')->format('M d, Y (D)'));
+        $this->assertNotNull($monday);
+        $this->assertStringNotContainsString('No Punch Required', $monday['status_badge']);
+        $this->assertStringNotContainsString('Rest Day', $monday['status_badge']);
+    }
+
+    /**
+     * assignGroupedByPunchRequirement() at the service level: a uniform
+     * punch_requirement map (or none at all) must collapse to exactly one
+     * assign() call/row - the regression guard for the common case not
+     * changing shape - while a genuinely mixed map splits into one
+     * day-restricted row per distinct value.
+     */
+    public function test_assign_grouped_by_punch_requirement_collapses_when_uniform_and_splits_when_mixed(): void
+    {
+        $shift = Shift::create([
+            'name' => 'Field Work', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00', 'is_active' => true,
+        ]);
+        $service = app(ShiftAssignmentService::class);
+
+        $uniformEmp = $this->createEmployee();
+        $uniformRows = $service->assignGroupedByPunchRequirement(
+            $uniformEmp, $shift->id, Carbon::parse('2026-07-01'), null, null,
+            null, [1, 2, 3, 4, 5], false, 'both', []
+        );
+        $this->assertCount(1, $uniformRows);
+        $stored = ShiftAssignment::where('user_id', $uniformEmp->id)->get();
+        $this->assertCount(1, $stored);
+        $this->assertNull($stored->first()->days_of_week, 'Unrestricted row shape must be preserved when nothing actually varies.');
+        $this->assertSame('both', $stored->first()->punch_requirement);
+
+        $mixedEmp = $this->createEmployee();
+        $mixedRows = $service->assignGroupedByPunchRequirement(
+            $mixedEmp, $shift->id, Carbon::parse('2026-07-01'), null, null,
+            null, [1, 5], false, 'both', [1 => 'in_only', 5 => 'out_only']
+        );
+        $this->assertCount(2, $mixedRows);
+        $mixedStored = ShiftAssignment::where('user_id', $mixedEmp->id)->get();
+        $this->assertCount(2, $mixedStored);
+        $mondayRow = $mixedStored->firstWhere('days_of_week', [1]);
+        $this->assertSame('in_only', $mondayRow->punch_requirement);
+        $fridayRow = $mixedStored->firstWhere('days_of_week', [5]);
+        $this->assertSame('out_only', $fridayRow->punch_requirement);
+    }
+
+    /**
      * Regression for a configuration trap: days_of_week=[Mon,Wed,Fri] on a
      * row means the row only GOVERNS Mon/Wed/Fri (ShiftAssignment::appliesOnDate()),
      * so a broader work_days=[Mon..Fri] submitted alongside it was previously
@@ -2918,6 +3268,8 @@ class ShiftScheduleTest extends TestCase
      */
     public function test_add_shift_with_string_typed_days_of_week_still_resolves_correctly(): void
     {
+        $this->travelTo(Carbon::parse('2026-07-20'));
+
         $tk = $this->createTimeKeeper();
         $mwfShift = Shift::create([
             'name' => 'MWF 7-4', 'time_in' => '07:00', 'break_out' => '12:00',

@@ -25,7 +25,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * screens when this template is selected - the actual value used for DTR
  * resolution always comes from the shift_assignments/employee_shift_schedules
  * row, not this column, so the same template's clock times can still be
- * scheduled with or without a break differently per employee.
+ * scheduled with or without a break differently per employee. punch_requirement
+ * follows the identical "UI-default only" rule - it pre-fills the per-employee
+ * Punch Requirement dropdown, but the real value always comes from
+ * shift_assignments.punch_requirement / employee_shift_schedules.punch_requirement.
+ *
+ * is_field_work_pair is different in kind from the two UI-default columns
+ * above - it IS authoritative, not a pre-fill. When true, this template
+ * represents the whole Monday-check-in/Friday-check-out weekly pattern (see
+ * App\Services\Attendance\WeeklyPunchPairReconciliationService), and
+ * EmployeeScheduleController assigns it with a fixed, server-enforced
+ * days_of_week=[1,5] + punch_requirement in_only/out_only split regardless
+ * of what the assignment form submits - break_out/break_in are always null
+ * and crosses_midnight is always false for a template flagged this way,
+ * since neither concept applies across a weekly (not daily) span.
  *
  * @property int $id
  * @property string $name
@@ -37,6 +50,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $is_active
  * @property bool $is_global
  * @property bool $no_break
+ * @property string $punch_requirement
+ * @property bool $is_field_work_pair
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -54,6 +69,8 @@ class Shift extends Model
         'is_active',
         'is_global',
         'no_break',
+        'punch_requirement',
+        'is_field_work_pair',
     ];
 
     protected function casts(): array
@@ -63,6 +80,7 @@ class Shift extends Model
             'is_active' => 'boolean',
             'is_global' => 'boolean',
             'no_break' => 'boolean',
+            'is_field_work_pair' => 'boolean',
         ];
     }
 

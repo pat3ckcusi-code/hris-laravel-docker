@@ -61,4 +61,24 @@ return [
         'match_reward_minutes' => 240,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Weekly punch-pair reconciliation ("Field Work" shift)
+    |--------------------------------------------------------------------------
+    |
+    | WeeklyPunchPairReconciliationService retroactively resolves a Monday
+    | in_only / Friday out_only shift pairing once a week has fully closed.
+    | See App\Console\Commands\ReconcilePunchPairWeeks.
+    |
+    */
+
+    'punch_pair_reconciliation' => [
+
+        // How many days back from "today" to scan for weeks needing
+        // reconciliation. Wide enough to self-heal a late-corrected week
+        // (e.g. a backfilled punch import) without rescanning an employee's
+        // entire history every night.
+        'lookback_days' => 45,
+    ],
+
 ];

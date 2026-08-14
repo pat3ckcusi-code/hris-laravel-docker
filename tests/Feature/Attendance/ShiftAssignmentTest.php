@@ -5,7 +5,6 @@ namespace Tests\Feature\Attendance;
 use App\Console\Commands\SyncShiftAssignmentCache;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
-use App\Models\User;
 use App\Services\ShiftAssignmentService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -141,7 +140,7 @@ class ShiftAssignmentTest extends TestCase
 
     // ── WorkSchedule resolution ───────────────────────────────────────────────
 
-    public function test_forUserOnDate_resolves_future_dated_assignment_only_once_it_starts(): void
+    public function test_for_user_on_date_resolves_future_dated_assignment_only_once_it_starts(): void
     {
         $employee = $this->createEmployee();
         $shiftA = $this->shiftModel('Day');
@@ -159,7 +158,7 @@ class ShiftAssignmentTest extends TestCase
         $this->assertTrue($within->crossesMidnight);
     }
 
-    public function test_forUserOnDate_falls_back_to_standard_day_once_the_window_closes(): void
+    public function test_for_user_on_date_falls_back_to_standard_day_once_the_window_closes(): void
     {
         WorkSchedule::flushGlobal();
         // Anchor "today" outside both assignment windows below, so users.shift_id's
@@ -239,6 +238,8 @@ class ShiftAssignmentTest extends TestCase
 
     public function test_shift_destroy_is_blocked_by_a_future_only_assignment(): void
     {
+        $this->travelTo(Carbon::parse('2026-07-10'));
+
         $employee = $this->createEmployee();
         $shift = $this->shiftModel('Future Only');
 
@@ -311,6 +312,37 @@ class ShiftAssignmentTest extends TestCase
         // Saturday (2026-08-08) is covered by neither scope - must not fall
         // back to the global Standard Day shift.
         $this->assertFalse(WorkSchedule::isWorkday($employee, Carbon::parse('2026-08-08')));
+    }
+
+    public function test_field_work_monday_in_only_friday_out_only_pair_resolves_correctly(): void
+    {
+        $employee = $this->createEmployee();
+        $fieldWorkShift = $this->shiftModel('Field Work');
+
+        // Monday=1, Friday=5 (Carbon's dayOfWeek numbering).
+        $this->service()->assign($employee, $fieldWorkShift->id, Carbon::parse('2026-08-01'), null, null, [1], null, false, 'in_only');
+        $this->service()->assign($employee, $fieldWorkShift->id, Carbon::parse('2026-08-01'), null, null, [5], null, false, 'out_only');
+
+        $rows = ShiftAssignment::forUser($employee->id)->get();
+        $this->assertCount(2, $rows);
+
+        $monday = WorkSchedule::forUserOnDate($employee, Carbon::parse('2026-08-03'));
+        $this->assertSame('in_only', $monday->punchRequirement);
+        $this->assertTrue(WorkSchedule::isWorkday($employee, Carbon::parse('2026-08-03')));
+
+        $friday = WorkSchedule::forUserOnDate($employee, Carbon::parse('2026-08-07'));
+        $this->assertSame('out_only', $friday->punchRequirement);
+        $this->assertTrue(WorkSchedule::isWorkday($employee, Carbon::parse('2026-08-07')));
+
+        // Tuesday-Thursday: no assignment row covers these weekdays - a
+        // deliberate non-workday (day-of-week gap), not a fallback to
+        // Standard Day, and not excluded via any punch_requirement value.
+        foreach (['2026-08-04', '2026-08-05', '2026-08-06'] as $dateStr) {
+            $this->assertFalse(
+                WorkSchedule::isWorkday($employee, Carbon::parse($dateStr)),
+                "$dateStr should be a non-workday"
+            );
+        }
     }
 
     public function test_new_all_days_assignment_truncates_an_existing_mwf_and_tth_pair(): void

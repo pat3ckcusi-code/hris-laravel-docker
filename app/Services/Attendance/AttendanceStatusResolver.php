@@ -17,12 +17,20 @@ use App\Enums\AttendanceStatus;
  */
 class AttendanceStatusResolver
 {
-    public function resolve(MatchResult $result, int $lateMinutes, int $undertimeMinutes, bool $noBreak): AttendanceStatus
+    public function resolve(MatchResult $result, int $lateMinutes, int $undertimeMinutes, bool $noBreak, string $punchRequirement = 'both'): AttendanceStatus
     {
         $amIn = $result->has('am_in');
         $amOut = $result->has('am_out');
         $pmIn = $result->has('pm_in');
         $pmOut = $result->has('pm_out');
+
+        if ($punchRequirement === 'in_only') {
+            return $amIn ? $this->scored($lateMinutes, $undertimeMinutes) : AttendanceStatus::Incomplete;
+        }
+
+        if ($punchRequirement === 'out_only') {
+            return $pmOut ? $this->scored($lateMinutes, $undertimeMinutes) : AttendanceStatus::Incomplete;
+        }
 
         if ($noBreak) {
             // Two-punch convention: am_in = shift IN, pm_out = shift OUT.

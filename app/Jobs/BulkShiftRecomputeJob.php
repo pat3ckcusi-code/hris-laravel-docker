@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\User;
+use App\Services\Attendance\WeeklyPunchPairReconciliationService;
 use App\Services\PersonnelLogImportService;
+use Carbon\Carbon;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -24,13 +26,33 @@ class BulkShiftRecomputeJob implements ShouldQueue
     // Allow up to 10 minutes for large employee sets.
     public int $timeout = 600;
 
-    public function __construct(public readonly array $userIds) {}
+    /**
+     * $reconcileSince (Y-m-d, nullable) mirrors
+     * EmployeeScheduleController::reconcileEagerlyIfNeeded() for the bulk
+     * path: set only when the bulk submission actually produced an
+     * in_only/out_only group (a Field Work Pair shift, or a hand-built
+     * matching per-day grid), so a backdated effective_from's already-elapsed
+     * weeks get voided immediately for every affected employee rather than
+     * sitting on the plain "No Punch Required" gap label until the next
+     * scheduled sweep. Left null for an ordinary bulk assignment, which never
+     * needs this call at all.
+     */
+    public function __construct(
+        public readonly array $userIds,
+        public readonly ?string $reconcileSince = null,
+    ) {}
 
-    public function handle(PersonnelLogImportService $importService): void
+    public function handle(PersonnelLogImportService $importService, WeeklyPunchPairReconciliationService $reconciliation): void
     {
-        User::whereIn('id', $this->userIds)->chunkById(100, function ($users) use ($importService): void {
+        $since = $this->reconcileSince !== null ? Carbon::parse($this->reconcileSince) : null;
+
+        User::whereIn('id', $this->userIds)->chunkById(100, function ($users) use ($importService, $reconciliation, $since): void {
             foreach ($users as $user) {
                 $importService->recomputeFullRange($user);
+
+                if ($since !== null) {
+                    $reconciliation->reconcileForUser($user, $since);
+                }
             }
         });
     }

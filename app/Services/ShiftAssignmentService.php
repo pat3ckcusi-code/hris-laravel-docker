@@ -6,6 +6,7 @@ use App\Models\EmployeeShiftSchedule;
 use App\Models\ShiftAssignment;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,7 +30,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ShiftAssignmentService
 {
-    public function assign(User $user, ?int $shiftId, Carbon $from, ?Carbon $until, ?int $createdBy, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false): ShiftAssignment
+    public function assign(User $user, ?int $shiftId, Carbon $from, ?Carbon $until, ?int $createdBy, ?array $daysOfWeek = null, ?array $workDays = null, bool $noBreak = false, string $punchRequirement = 'both'): ShiftAssignment
     {
         // Normalize here (not just in the model's cast) so overlaps()'s
         // comparison below is guaranteed to work regardless of whether the
@@ -52,7 +53,7 @@ class ShiftAssignmentService
             $workDays = $daysOfWeek;
         }
 
-        return DB::transaction(function () use ($user, $shiftId, $from, $until, $createdBy, $daysOfWeek, $workDays, $noBreak) {
+        return DB::transaction(function () use ($user, $shiftId, $from, $until, $createdBy, $daysOfWeek, $workDays, $noBreak, $punchRequirement) {
             $existing = ShiftAssignment::forUser($user->id)->lockForUpdate()->get();
 
             foreach ($existing as $row) {
@@ -81,6 +82,7 @@ class ShiftAssignmentService
                 'days_of_week' => $daysOfWeek,
                 'work_days' => $workDays,
                 'no_break' => $noBreak,
+                'punch_requirement' => $punchRequirement,
                 'effective_from' => $from,
                 'effective_until' => $until,
                 'created_by' => $createdBy,
@@ -90,6 +92,80 @@ class ShiftAssignmentService
 
             return $assignment;
         });
+    }
+
+    /**
+     * Like assign(), but lets one submission set a different punch_requirement
+     * per weekday (e.g. Monday In Only, Friday Out Only for a "Field Work"
+     * pattern) without the caller having to submit twice.
+     *
+     * $punchRequirementByDay only matters when it actually varies across the
+     * day set being assigned ($daysOfWeek when the caller set it - the
+     * existing "Advanced: split into concurrent shifts" selection - falling
+     * back to $workDays otherwise): if every day in that set resolves to the
+     * same requirement (a day absent from the map defaults to $punchRequirement,
+     * the flat top-level value), this is a single assign() call using the
+     * caller's original $daysOfWeek/$workDays exactly as assign() itself
+     * would receive them directly - byte-identical to today's behavior,
+     * including preserving days_of_week=null (an unrestricted/default row)
+     * when the caller never set it.
+     *
+     * Only when real variation exists does this split into multiple groups -
+     * one assign() call per distinct requirement value, each one forced
+     * day-restricted (days_of_week = work_days = that group's days), which is
+     * structurally required for the resulting rows to coexist without
+     * truncating each other (see overlaps() below: an unrestricted row always
+     * conflicts with everything). This is exactly what the existing
+     * "concurrent shifts" feature already produces when a caller manually
+     * submits twice with different day-of-week selections - here it happens
+     * from one submission instead. Wrapped in its own transaction so a
+     * multi-group split commits atomically rather than leaving a partial
+     * split on a mid-way failure (assign()'s own inner transaction still
+     * applies per group).
+     *
+     * @param  array<int, string>  $punchRequirementByDay
+     * @return Collection<int, ShiftAssignment>
+     */
+    public function assignGroupedByPunchRequirement(User $user, ?int $shiftId, Carbon $from, ?Carbon $until, ?int $createdBy, ?array $daysOfWeek, ?array $workDays, bool $noBreak = false, string $punchRequirement = 'both', array $punchRequirementByDay = []): Collection
+    {
+        $groups = $this->resolvePunchRequirementGroups($daysOfWeek, $workDays, $punchRequirement, $punchRequirementByDay);
+
+        if (count($groups) <= 1) {
+            return collect([$this->assign($user, $shiftId, $from, $until, $createdBy, $daysOfWeek, $workDays, $noBreak, $punchRequirement)]);
+        }
+
+        return DB::transaction(function () use ($user, $shiftId, $from, $until, $createdBy, $noBreak, $groups) {
+            $assignments = collect();
+
+            foreach ($groups as $requirement => $days) {
+                $assignments->push($this->assign($user, $shiftId, $from, $until, $createdBy, $days, $days, $noBreak, $requirement));
+            }
+
+            return $assignments;
+        });
+    }
+
+    /**
+     * The grouping algorithm assignGroupedByPunchRequirement() applies,
+     * exposed separately so a caller assigning the same day/punch-requirement
+     * shape to many employees at once (bulkAssign()) can log audit entries
+     * per group without recomputing (and risking drift from) this logic
+     * inline - the grouping itself is identical for every employee in a bulk
+     * call, since it depends only on the shared request input, not the user.
+     *
+     * @param  array<int, string>  $punchRequirementByDay
+     * @return array<string, int[]> requirement value => day-of-week list
+     */
+    public function resolvePunchRequirementGroups(?array $daysOfWeek, ?array $workDays, string $punchRequirement, array $punchRequirementByDay = []): array
+    {
+        $dayUniverse = $daysOfWeek ?? $workDays ?? [];
+
+        $groups = [];
+        foreach ($dayUniverse as $day) {
+            $groups[$punchRequirementByDay[$day] ?? $punchRequirement][] = $day;
+        }
+
+        return $groups;
     }
 
     /**

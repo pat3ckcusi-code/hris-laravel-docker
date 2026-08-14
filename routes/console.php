@@ -34,3 +34,12 @@ Schedule::command('cache:prune-expired')->daily();
 // Auto-reactivation on renewal is handled separately, in
 // JobOrderAppointmentService, not by this command.
 Schedule::command('job-order:deactivate-expired')->dailyAt('00:10');
+
+// Retroactively resolve a "Field Work" Monday in_only/Friday out_only punch
+// pairing once its week has fully closed: if the pairing is incomplete and
+// nothing (Leave/Locator/ETA/Office/Travel Order/Holiday/Suspension)
+// explains the gap, the affected dates become real, consequence-bearing
+// absences (see WeeklyPunchPairReconciliationService for the full rule).
+// Only ever evaluates a week whose Friday is already strictly in the past,
+// so it can never race attendance:auto-import's rolling yesterday/today window.
+Schedule::command('attendance:reconcile-punch-pairs')->dailyAt('01:15');

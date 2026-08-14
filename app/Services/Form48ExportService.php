@@ -12,6 +12,7 @@ use App\Models\Locator;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkSuspension;
+use App\Services\Attendance\WeeklyPunchPairReconciliationService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class Form48ExportService
     public function __construct(
         private readonly DtrPunchResolver $punchResolver,
         private readonly ShiftPunchGrouper $punchGrouper,
+        private readonly WeeklyPunchPairReconciliationService $punchPairReconciliation,
     ) {}
 
     // Row where day 1 lives: 11 + 1 = 12.
@@ -135,6 +137,20 @@ class Form48ExportService
             $day = (int) Carbon::parse($date)->day;
             if (isset($records[$day])) {
                 continue;   // DTR entry already covers this shift
+            }
+
+            // A Field Work-style in_only date (Monday, or a reconciliation-
+            // written mid-week check-in override) whose week was voided by
+            // WeeklyPunchPairReconciliationService must never resurrect its
+            // real punch here from attendance_logs (which is never deleted) -
+            // otherwise this export would silently disagree with the
+            // deliberately-deleted dtrs row everywhere else in the app shows
+            // this date as Absent. out_only (Friday) is never voided, so this
+            // only ever needs to gate the in_only case.
+            $dateSchedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date));
+            if ($dateSchedule->punchRequirement === 'in_only'
+                && $this->punchPairReconciliation->dateWasVoided($user, Carbon::parse($date))) {
+                continue;
             }
 
             $daySchedule = $schedule;

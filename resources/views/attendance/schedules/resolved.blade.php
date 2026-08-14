@@ -39,6 +39,8 @@
 .rsc-day.is-blank { background: transparent; border: none; box-shadow: none; }
 .rsc-day.is-today { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6 inset; }
 .rsc-day.is-rest { background: #f8fafc; }
+.rsc-day.is-field-work-gap { background: #f0fdf4; }
+.rsc-day.is-voided-absence { background: #fef2f2; border-color: #fecaca; }
 .rsc-day.is-conflict { border-color: #fde68a; background: #fffbeb; }
 .rsc-day-head { display: flex; align-items: center; justify-content: space-between; }
 .rsc-day-num { font-size: .8rem; font-weight: 700; color: #0f172a; }
@@ -99,6 +101,8 @@
     <span class="rsc-legend-item"><span class="rsc-dot rsc-dot-assignment"></span>Decided by Shift Assignment</span>
     <span class="rsc-legend-item"><span class="rsc-dot rsc-dot-override"></span>Decided by a Shift Schedule override</span>
     <span class="rsc-legend-item"><span class="rsc-dot rsc-dot-default"></span>Default (no shift assigned)</span>
+    <span class="rsc-legend-item"><span class="rsc-dot" style="background:#f0fdf4;border:1px solid #bbf7d0;"></span>No Punch Required (Field Work Shift)</span>
+    <span class="rsc-legend-item"><span class="rsc-dot" style="background:#fef2f2;border:1px solid #fecaca;"></span>Absent - Unconfirmed Field Work week</span>
 </div>
 
 <div class="rsc-card">
@@ -118,6 +122,8 @@
             <div class="rsc-day
                 {{ $dateStr === $todayStr ? 'is-today' : '' }}
                 {{ $day['isRestDay'] ? 'is-rest' : '' }}
+                {{ $day['isFieldWorkPairGap'] ? 'is-field-work-gap' : '' }}
+                {{ $day['isVoidedAbsence'] ? 'is-voided-absence' : '' }}
                 {{ $isConflict ? 'is-conflict' : '' }}">
                 <div class="rsc-day-head">
                     <span class="rsc-day-num">{{ $day['date']->day }}</span>

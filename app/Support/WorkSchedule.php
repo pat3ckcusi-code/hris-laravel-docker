@@ -52,6 +52,7 @@ class WorkSchedule
         public readonly bool $crossesMidnight = false,
         public readonly bool $noBreak = false,
         public readonly bool $isStandardDay = false,
+        public readonly string $punchRequirement = 'both',
     ) {}
 
     /** The system-wide standard-day shift from the settings table (memoized). */
@@ -71,6 +72,7 @@ class WorkSchedule
             noonEnd: self::hm($s?->noon_end) ?? '14:00',
             crossesMidnight: false,
             isStandardDay: true,
+            punchRequirement: 'both',
         );
     }
 
@@ -104,10 +106,10 @@ class WorkSchedule
 
             if ($shift !== null) {
                 // Unlike a resolved ShiftAssignment row, a per-date override
-                // has its own no_break column (added directly to
-                // employee_shift_schedules, not shift_assignments) since it
-                // has no shift_assignments row of its own to read from.
-                return self::fromShift($shift, (bool) $assignment->no_break);
+                // has its own no_break/punch_requirement columns (added
+                // directly to employee_shift_schedules, not shift_assignments)
+                // since it has no shift_assignments row of its own to read from.
+                return self::fromShift($shift, (bool) $assignment->no_break, (string) ($assignment->punch_requirement ?? 'both'));
             }
         }
 
@@ -211,13 +213,14 @@ class WorkSchedule
 
     /**
      * Low-level builder from a bare Shift, with no per-assignment context -
-     * $noBreak defaults to false since a template no longer carries its own
-     * no_break value. Used directly only by the EmployeeShiftSchedule
-     * per-date-override path (no shift_assignments row exists there) and as
-     * forUser()'s defensive fallback. Everywhere a real ShiftAssignment is in
-     * hand, use fromAssignment() instead so no_break resolves correctly.
+     * $noBreak/$punchRequirement default to false/'both' since a template no
+     * longer carries its own real values for either. Used directly only by
+     * the EmployeeShiftSchedule per-date-override path (no shift_assignments
+     * row exists there) and as forUser()'s defensive fallback. Everywhere a
+     * real ShiftAssignment is in hand, use fromAssignment() instead so
+     * no_break/punch_requirement resolve correctly.
      */
-    private static function fromShift(Shift $shift, bool $noBreak = false): self
+    private static function fromShift(Shift $shift, bool $noBreak = false, string $punchRequirement = 'both'): self
     {
         return new self(
             workStart: self::hm($shift->time_in),
@@ -227,13 +230,14 @@ class WorkSchedule
             noonEnd: self::hm($shift->time_out),
             crossesMidnight: (bool) $shift->crosses_midnight,
             noBreak: $noBreak,
+            punchRequirement: $punchRequirement,
         );
     }
 
-    /** Builds from a resolved ShiftAssignment row, reading no_break from the row itself. */
+    /** Builds from a resolved ShiftAssignment row, reading no_break/punch_requirement from the row itself. */
     private static function fromAssignment(ShiftAssignment $assignment): self
     {
-        return self::fromShift($assignment->shift, (bool) $assignment->no_break);
+        return self::fromShift($assignment->shift, (bool) $assignment->no_break, (string) ($assignment->punch_requirement ?? 'both'));
     }
 
     /**
@@ -275,13 +279,16 @@ class WorkSchedule
             crossesMidnight: $this->crossesMidnight,
             noBreak: $this->noBreak,
             isStandardDay: $this->isStandardDay,
+            punchRequirement: $this->punchRequirement,
         ), []];
     }
 
     /**
      * True when the employee is scheduled off on $date (assignment row with shift_id
-     * = null and type 'rest' - excludes 'field_work', 'wfh', and 'standard', which are
-     * also shift_id = null but represent working days, not a day off).
+     * = null and type 'rest' - excludes 'field_work', 'wfh', 'standard', and
+     * 'field_work_unconfirmed', which are also shift_id = null but represent
+     * working days, not a day off - see EmployeeShiftSchedule's class docblock
+     * for what 'field_work_unconfirmed' means).
      *
      * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
      */
@@ -298,7 +305,7 @@ class WorkSchedule
         }
 
         return $assignment !== null && $assignment->shift_id === null
-            && ! in_array($assignment->type, ['field_work', 'wfh', 'standard'], true);
+            && ! in_array($assignment->type, ['field_work', 'wfh', 'standard', 'field_work_unconfirmed'], true);
     }
 
     /**
@@ -319,7 +326,7 @@ class WorkSchedule
             : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->first();
 
         if ($assignment !== null) {
-            return ! ($assignment->shift_id === null && ! in_array($assignment->type, ['field_work', 'wfh', 'standard'], true));
+            return ! ($assignment->shift_id === null && ! in_array($assignment->type, ['field_work', 'wfh', 'standard', 'field_work_unconfirmed'], true));
         }
 
         $historical = self::resolveShiftAssignment($user, $date);
@@ -381,6 +388,59 @@ class WorkSchedule
         }
 
         return $assignment !== null && $assignment->type === 'wfh';
+    }
+
+    /**
+     * True when $date's absence was retroactively voided by
+     * WeeklyPunchPairReconciliationService (a Field Work Pair week that
+     * resolved incomplete - either it fell before the week's real check-in
+     * day, or the whole week was voided because Friday's check-out never
+     * happened; see that class's docblock for the full rule). This is a
+     * real, consequence-bearing absence - isWorkday() is true for it, unlike
+     * an ordinary rest day/gap - but display layers need to tell it apart
+     * from an actual normal working day, since resolutionSource() has no
+     * shift/hours to describe for it (shiftName resolves null, same as a
+     * plain 'rest' override) and it would otherwise render misleadingly as
+     * "Standard Day" or "Rest Day" instead of the real absence it is.
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloaded
+     */
+    public static function isFieldWorkPairVoidedAbsence(User $user, Carbon $date, ?Collection $preloaded = null): bool
+    {
+        $dateStr = $date->toDateString();
+        $assignment = $preloaded !== null
+            ? $preloaded->get($dateStr)
+            : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->first();
+
+        return $assignment !== null && $assignment->type === 'field_work_unconfirmed';
+    }
+
+    /**
+     * True when isWorkday() is false for $date SPECIFICALLY because an
+     * is_field_work_pair ShiftAssignment covers the date range but doesn't
+     * apply to this weekday (e.g. Tue/Wed/Thu, or a weekend, within a
+     * Monday-in/Friday-out Field Work Shift week) - not an ordinary rest day
+     * or an unrelated day-of-week gap (e.g. an MWF+TTH concurrent split's off
+     * days). Display-only, like resolutionSource() below - DTR/payroll
+     * resolution itself doesn't care why a date isn't a workday, only that
+     * it isn't (isWorkday()/isRestDay() are untouched by this method).
+     *
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloadedOverrides
+     */
+    public static function isFieldWorkPairGapDay(User $user, Carbon $date, ?Collection $preloadedOverrides = null): bool
+    {
+        $dateStr = $date->toDateString();
+        $override = $preloadedOverrides !== null
+            ? $preloadedOverrides->get($dateStr)
+            : EmployeeShiftSchedule::where('user_id', $user->id)->where('date', $dateStr)->first();
+
+        if ($override !== null || self::resolveShiftAssignment($user, $date) !== null) {
+            return false;
+        }
+
+        return self::assignmentRowsFor($user)
+            ->filter(fn (ShiftAssignment $row) => self::coversDate($row, $date))
+            ->contains(fn (ShiftAssignment $row) => (bool) $row->shift?->is_field_work_pair);
     }
 
     /**

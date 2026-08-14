@@ -19,7 +19,7 @@ use Illuminate\Support\Collection;
 class ResolvedScheduleService
 {
     /**
-     * @return Collection<string, array{date: Carbon, label: string, source: string, shiftName: ?string, hours: ?string, noBreak: bool, isWorkday: bool, isRestDay: bool, isFieldWork: bool, shadowedAssignmentShiftName: ?string}>
+     * @return Collection<string, array{date: Carbon, label: string, source: string, shiftName: ?string, hours: ?string, noBreak: bool, isWorkday: bool, isRestDay: bool, isFieldWork: bool, isFieldWorkPairGap: bool, isVoidedAbsence: bool, shadowedAssignmentShiftName: ?string}>
      */
     public function buildMonth(User $user, Carbon $monthStart): Collection
     {
@@ -41,24 +41,35 @@ class ResolvedScheduleService
             $isRestDay = WorkSchedule::isRestDay($user, $date, $overrides);
             $isFieldWork = WorkSchedule::isFieldWork($user, $date, $overrides);
             $isWorkday = WorkSchedule::isWorkday($user, $date, $overrides);
+            $isVoidedAbsence = WorkSchedule::isFieldWorkPairVoidedAbsence($user, $date, $overrides);
             $resolution = WorkSchedule::resolutionSource($user, $date, $overrides);
 
-            // Display-only: any day that's neither a workday nor field work is
-            // effectively a rest day, whether it's an explicit override or an
-            // implicit day-of-week gap between assignments - see
-            // WorkSchedule::isRestDay()'s docblock for why that narrower,
+            // A Field Work Pair gap day (e.g. Tue/Wed/Thu of a Monday-in/
+            // Friday-out week) is also neither a workday nor field work, but
+            // gets its own distinct label below rather than collapsing into
+            // "Rest Day" like an ordinary day-of-week gap does - see
+            // WorkSchedule::isFieldWorkPairGapDay()'s docblock.
+            $isFieldWorkPairGap = ! $isWorkday && ! $isFieldWork && ! $isRestDay
+                && WorkSchedule::isFieldWorkPairGapDay($user, $date, $overrides);
+
+            // Display-only: any other day that's neither a workday nor field
+            // work is effectively a rest day, whether it's an explicit
+            // override or an implicit day-of-week gap between assignments -
+            // see WorkSchedule::isRestDay()'s docblock for why that narrower,
             // override-only definition must stay untouched for DTR/payroll.
-            $isEffectiveRestDay = $isRestDay || (! $isWorkday && ! $isFieldWork);
+            $isEffectiveRestDay = $isRestDay || (! $isWorkday && ! $isFieldWork && ! $isFieldWorkPairGap);
 
             $hours = null;
             $noBreak = false;
-            if ($isWorkday && ! $isRestDay) {
+            if ($isWorkday && ! $isRestDay && ! $isVoidedAbsence) {
                 $ws = WorkSchedule::forUserOnDate($user, $date, $overrides);
                 $hours = $ws->workStart.'-'.$ws->workEnd;
                 $noBreak = $ws->noBreak;
             }
 
             $label = match (true) {
+                $isVoidedAbsence => 'Absent (Unconfirmed Field Work)',
+                $isFieldWorkPairGap => 'No Punch Required',
                 $isEffectiveRestDay => 'Rest Day',
                 $isFieldWork => 'Field Work',
                 $isWorkday => $resolution['shiftName'] ?? 'Standard Day',
@@ -75,6 +86,8 @@ class ResolvedScheduleService
                 'isWorkday' => $isWorkday,
                 'isRestDay' => $isEffectiveRestDay,
                 'isFieldWork' => $isFieldWork,
+                'isFieldWorkPairGap' => $isFieldWorkPairGap,
+                'isVoidedAbsence' => $isVoidedAbsence,
                 'shadowedAssignmentShiftName' => $resolution['shadowedAssignmentShiftName'],
             ]);
         }

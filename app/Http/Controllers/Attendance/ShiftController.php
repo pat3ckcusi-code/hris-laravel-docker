@@ -132,28 +132,40 @@ class ShiftController extends Controller
      * break-in / out) - whether a given employee's assignment actually uses
      * the break slots is a per-assignment decision (ShiftAssignment::no_break),
      * not a template one, so break_out/break_in are unconditionally required
-     * here regardless of how any assignment ends up using this template.
+     * here regardless of how any assignment ends up using this template -
+     * EXCEPT for an is_field_work_pair template, where Time In/Time Out
+     * represent two different calendar days (Monday's check-in, Friday's
+     * check-out) rather than one day's span, so there's no break window (or
+     * even a same-day ordering) to require or validate at all.
      * The template's own no_break flag validated below is a UI default only
      * (pre-fills the per-employee checkbox when this template is picked) -
      * it never controls whether break_out/break_in are required or used.
      *
-     * @return array{name: string, time_in: string, break_out: string, break_in: string, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool, no_break: bool}
+     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool, no_break: bool, punch_requirement: string, is_field_work_pair: bool}
      */
     private function validateShift(Request $request): array
     {
+        $isFieldWorkPair = $request->boolean('is_field_work_pair');
+
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:100'],
             'time_in' => ['required', 'date_format:H:i'],
-            'break_out' => ['required', 'date_format:H:i'],
-            'break_in' => ['required', 'date_format:H:i'],
+            'break_out' => [$isFieldWorkPair ? 'nullable' : 'required', 'date_format:H:i'],
+            'break_in' => [$isFieldWorkPair ? 'nullable' : 'required', 'date_format:H:i'],
             'time_out' => ['required', 'date_format:H:i'],
             'is_global' => ['nullable', 'boolean'],
             'no_break' => ['nullable', 'boolean'],
+            'punch_requirement' => ['nullable', 'string', 'in:both,in_only,out_only'],
+            'is_field_work_pair' => ['nullable', 'boolean'],
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
         ]);
 
-        $validator->after(function ($validator) use ($request) {
+        $validator->after(function ($validator) use ($request, $isFieldWorkPair) {
+            if ($isFieldWorkPair) {
+                return;
+            }
+
             $timeIn = $request->input('time_in');
             $breakOut = $request->input('break_out');
             $breakIn = $request->input('break_in');
@@ -178,13 +190,15 @@ class ShiftController extends Controller
         return [
             'name' => $v['name'],
             'time_in' => $v['time_in'],
-            'break_out' => $v['break_out'],
-            'break_in' => $v['break_in'],
+            'break_out' => $isFieldWorkPair ? null : $v['break_out'],
+            'break_in' => $isFieldWorkPair ? null : $v['break_in'],
             'time_out' => $v['time_out'],
-            'crosses_midnight' => Shift::isCrossMidnight($v['time_in'], $v['time_out']),
+            'crosses_midnight' => $isFieldWorkPair ? false : Shift::isCrossMidnight($v['time_in'], $v['time_out']),
             'is_active' => true,
             'is_global' => $request->boolean('is_global'),
             'no_break' => $request->boolean('no_break'),
+            'punch_requirement' => $v['punch_requirement'] ?? 'both',
+            'is_field_work_pair' => $isFieldWorkPair,
         ];
     }
 

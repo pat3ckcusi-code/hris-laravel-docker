@@ -20,6 +20,7 @@
 
 /* ── Inputs ── */
 .sched-shift-select { padding:.4rem .55rem; border:1px solid #cbd5e1; border-radius:.4rem; font-size:.82rem; min-width:13rem; background:#fff; }
+.sched-punch-requirement { padding:.35rem .5rem; border:1px solid #cbd5e1; border-radius:.35rem; font-size:.78rem; background:#fff; margin-top:.2rem; }
 
 /* ── Badges ── */
 .sched-badge {
@@ -169,9 +170,9 @@
     <div>
         <label for="assign_shift_id">Bulk assign shift</label>
         <select name="assign_shift_id" id="assign_shift_id" class="sched-shift-select">
-            <option value="" data-no-break="0">Standard Day (default)</option>
+            <option value="" data-no-break="0" data-punch-requirement="both" data-field-work-pair="0">Standard Day (default)</option>
             @foreach ($shifts as $s)
-                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
+                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}" data-punch-requirement="{{ $s->punch_requirement }}" data-field-work-pair="{{ $s->is_field_work_pair ? 1 : 0 }}">{{ $s->name }}</option>
             @endforeach
         </select>
     </div>
@@ -221,9 +222,10 @@
             @endforeach
         </div>
         <p class="sched-days-hint">
-            Only needed to give an employee two concurrent shifts on different days - submit this form once
-            per set of days (e.g. Mon/Wed/Fri for one shift, then Tue/Thu for another). While open, Work Days
-            above follows this selection, since a day this covers can never be worked under a different pattern.
+            Only needed to give an employee two concurrent shifts on different days (different shift templates) -
+            submit this form once per set of days (e.g. Mon/Wed/Fri for one shift, then Tue/Thu for another).
+            While open, Work Days above follows this selection, since a day this covers can never be worked
+            under a different pattern.
         </p>
     </details>
 </form>
@@ -437,9 +439,9 @@
                                         @method('PUT')
                                         <input type="hidden" name="form_type" value="add">
                                         <select name="shift_id" class="sched-shift-select">
-                                            <option value="" data-no-break="0">Standard Day</option>
+                                            <option value="" data-no-break="0" data-punch-requirement="both" data-field-work-pair="0">Standard Day</option>
                                             @foreach ($shifts as $s)
-                                                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
+                                                <option value="{{ $s->id }}" data-no-break="{{ $s->no_break ? 1 : 0 }}" data-punch-requirement="{{ $s->punch_requirement }}" data-field-work-pair="{{ $s->is_field_work_pair ? 1 : 0 }}">{{ $s->name }}</option>
                                             @endforeach
                                         </select>
                                         <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>
@@ -463,9 +465,10 @@
                                                 @endforeach
                                             </div>
                                             <p class="sched-days-hint">
-                                                Only needed to give this employee a second, concurrent shift on
-                                                different days - submit this form again for the other shift/days.
-                                                While open, Work Days above follows this selection.
+                                                Only needed to give this employee a second, concurrent shift on a
+                                                different template on different days - submit this form again for
+                                                the other shift/days. While open, Work Days above follows this
+                                                selection.
                                             </p>
                                         </details>
                                         <div class="sched-add-dates">
@@ -554,20 +557,59 @@ function bindAdvancedSplit(detailsEl) {
 
 document.querySelectorAll('.sched-advanced-split').forEach(bindAdvancedSplit);
 
-// Pre-fills each shift-picker form's own no_break checkbox from the
-// just-selected template's default (Shift::no_break) - a client-side
-// convenience only. The checkbox's own state at submit time is what's
-// actually sent; server-side validation/persistence in
-// EmployeeScheduleController is unchanged. Bound via 'change' only, never
-// invoked on initial render, so an Edit row's own pre-checked value (from
-// ShiftAssignment::no_break) is never clobbered on page load.
+// Pre-fills each shift-picker form's own no_break checkbox and Punch
+// Requirement select from the just-selected template's defaults
+// (Shift::no_break / Shift::punch_requirement) - a client-side convenience
+// only. The controls' own state at submit time is what's actually sent;
+// server-side validation/persistence in EmployeeScheduleController is
+// unchanged. Bound via 'change' only, never invoked on initial render, so an
+// Edit row's own pre-selected value (from ShiftAssignment::no_break/
+// punch_requirement) is never clobbered on page load.
+//
+// A Field Work Pattern shift (opt.dataset.fieldWorkPair === '1') additionally
+// auto-configures and locks Work Days to Mon+Fri and collapses/disables the
+// "Advanced: split into concurrent shifts" section, since none of that needs
+// to be (or should be) set by hand for this shift type -
+// EmployeeScheduleController ignores whatever those controls submit anyway
+// and always applies the fixed Monday-in/Friday-out split server-side, so
+// this is UX guidance, not the source of truth. Only the bulk-assign bar and
+// "+ Add Shift" form's <option>s carry data-field-work-pair - the per-row
+// Edit form's <option>s deliberately don't (see _edit-shift-form.blade.php),
+// so this block is a no-op there and an existing row's own Work Days are
+// never disturbed by editing it.
 document.querySelectorAll('.sched-shift-select').forEach(function (select) {
     select.addEventListener('change', function () {
         var form = select.closest('form');
-        var noBreakCb = form && form.querySelector('input[name="no_break"]');
-        if (!noBreakCb) return;
+        if (!form) return;
         var opt = select.options[select.selectedIndex];
-        noBreakCb.checked = !!opt && opt.dataset.noBreak === '1';
+        var noBreakCb = form.querySelector('input[name="no_break"]');
+        if (noBreakCb) {
+            noBreakCb.checked = !!opt && opt.dataset.noBreak === '1';
+        }
+        var punchRequirementSelect = form.querySelector('select[name="punch_requirement"]');
+        if (punchRequirementSelect && opt && opt.dataset.punchRequirement) {
+            punchRequirementSelect.value = opt.dataset.punchRequirement;
+        }
+
+        var isFieldWorkPair = !!opt && opt.dataset.fieldWorkPair === '1';
+        var workDaysBoxes = Array.prototype.slice.call(form.querySelectorAll('.sched-workdays-group input[type=checkbox]'));
+        var advancedSplit = form.querySelector('.sched-advanced-split');
+
+        if (isFieldWorkPair) {
+            workDaysBoxes.forEach(function (cb) {
+                cb.checked = (cb.value === '1' || cb.value === '5');
+                cb.disabled = true;
+            });
+        } else {
+            workDaysBoxes.forEach(function (cb) { cb.disabled = false; });
+        }
+        if (advancedSplit) {
+            if (isFieldWorkPair) advancedSplit.open = false;
+            advancedSplit.style.display = isFieldWorkPair ? 'none' : '';
+        }
+        if (punchRequirementSelect) {
+            punchRequirementSelect.disabled = isFieldWorkPair;
+        }
     });
 });
 

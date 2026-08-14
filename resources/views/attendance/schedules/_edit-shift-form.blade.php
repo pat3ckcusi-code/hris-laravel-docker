@@ -29,12 +29,12 @@
         @method('PUT')
         <input type="hidden" name="form_type" value="edit">
         <select name="shift_id" class="sched-shift-select">
-            <option value="" @selected($row->shift_id === null) data-no-break="0">Standard Day</option>
+            <option value="" @selected($row->shift_id === null) data-no-break="0" data-punch-requirement="both">Standard Day</option>
             @unless($rowShiftInList)
-                <option value="{{ $row->shift_id }}" selected data-no-break="{{ $row->shift->no_break ? 1 : 0 }}">{{ $row->shift->name }} (inactive)</option>
+                <option value="{{ $row->shift_id }}" selected data-no-break="{{ $row->shift->no_break ? 1 : 0 }}" data-punch-requirement="{{ $row->shift->punch_requirement }}">{{ $row->shift->name }} (inactive)</option>
             @endunless
             @foreach ($shifts as $s)
-                <option value="{{ $s->id }}" @selected($row->shift_id === $s->id) data-no-break="{{ $s->no_break ? 1 : 0 }}">{{ $s->name }}</option>
+                <option value="{{ $s->id }}" @selected($row->shift_id === $s->id) data-no-break="{{ $s->no_break ? 1 : 0 }}" data-punch-requirement="{{ $s->punch_requirement }}">{{ $s->name }}</option>
             @endforeach
         </select>
         <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Work Days</label>
@@ -62,6 +62,18 @@
             <p class="sched-days-hint">
                 Only needed for a concurrent second shift on different days. While open, Work Days above
                 follows this selection.
+            </p>
+            <label style="display:block;font-size:.72rem;color:#475569;margin-top:.3rem;">Punch Requirement</label>
+            <select name="punch_requirement" class="sched-punch-requirement">
+                <option value="both" @selected($row->punch_requirement === 'both')>Both (normal)</option>
+                <optgroup label="In Only &amp; Out Only">
+                    <option value="in_only" @selected($row->punch_requirement === 'in_only')>Time-In Only</option>
+                    <option value="out_only" @selected($row->punch_requirement === 'out_only')>Time-Out Only</option>
+                </optgroup>
+            </select>
+            <p class="sched-days-hint">
+                Only needed for a "Field Work" style pattern (e.g. Monday check-in only, Friday check-out only) -
+                typically paired with a narrow day split above.
             </p>
         </details>
         <div class="sched-add-dates">

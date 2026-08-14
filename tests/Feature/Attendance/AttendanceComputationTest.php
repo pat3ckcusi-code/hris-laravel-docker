@@ -310,6 +310,49 @@ class AttendanceComputationTest extends TestCase
         }
     }
 
+    public function test_status_for_in_only_punch_requirement(): void
+    {
+        $resolver = new AttendanceStatusResolver;
+
+        $this->assertSame(
+            AttendanceStatus::Present,
+            $resolver->resolve($this->matchResult(['am_in' => '08:00']), 0, 0, noBreak: false, punchRequirement: 'in_only')
+        );
+        $this->assertSame(
+            AttendanceStatus::Late,
+            $resolver->resolve($this->matchResult(['am_in' => '08:30']), 30, 0, noBreak: false, punchRequirement: 'in_only')
+        );
+        // No punch at all is defensive-only (a punchless day never reaches
+        // the resolver in practice - no dtrs row gets written for it).
+        $this->assertSame(
+            AttendanceStatus::Incomplete,
+            $resolver->resolve($this->matchResult([]), 0, 0, noBreak: false, punchRequirement: 'in_only')
+        );
+        // A stray pm_out (never expected under in_only) doesn't change the outcome.
+        $this->assertSame(
+            AttendanceStatus::Present,
+            $resolver->resolve($this->matchResult(['am_in' => '08:00', 'pm_out' => '17:00']), 0, 0, noBreak: false, punchRequirement: 'in_only')
+        );
+    }
+
+    public function test_status_for_out_only_punch_requirement(): void
+    {
+        $resolver = new AttendanceStatusResolver;
+
+        $this->assertSame(
+            AttendanceStatus::Present,
+            $resolver->resolve($this->matchResult(['pm_out' => '17:00']), 0, 0, noBreak: false, punchRequirement: 'out_only')
+        );
+        $this->assertSame(
+            AttendanceStatus::Undertime,
+            $resolver->resolve($this->matchResult(['pm_out' => '16:30']), 0, 30, noBreak: false, punchRequirement: 'out_only')
+        );
+        $this->assertSame(
+            AttendanceStatus::Incomplete,
+            $resolver->resolve($this->matchResult([]), 0, 0, noBreak: false, punchRequirement: 'out_only')
+        );
+    }
+
     public function test_complete_day_status_reflects_the_penalty_totals(): void
     {
         $resolver = new AttendanceStatusResolver;

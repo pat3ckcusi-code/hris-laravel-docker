@@ -37,6 +37,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * pattern wider than days_of_week would be silently ignored for the days it
  * claims to add - see ShiftAssignmentService::assign() for where this is
  * enforced.
+ *
+ * punch_requirement (both/in_only/out_only) collapses which of the normal
+ * expected punches actually apply on a date this row governs - in_only means
+ * only a time-in is expected that day, out_only means only a time-out is.
+ * Unlike no_break/work_days, ShiftAssignmentService::assign() deliberately
+ * does NOT tie this to days_of_week - a Monday-only in_only row plus a
+ * Friday-only out_only row for the same employee is a business convention
+ * (a "Field Work" weekly check-in/check-out pattern), not a data-model
+ * constraint enforced here. See App\Services\Attendance\WeeklyPunchPairReconciliationService
+ * for the actual weekly pairing/absence logic built on top of this field.
  */
 class ShiftAssignment extends Model
 {
@@ -46,7 +56,7 @@ class ShiftAssignment extends Model
     private const DAY_LABELS = [0 => 'Sun', 1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat'];
 
     protected $fillable = [
-        'user_id', 'shift_id', 'days_of_week', 'work_days', 'no_break', 'effective_from', 'effective_until', 'created_by',
+        'user_id', 'shift_id', 'days_of_week', 'work_days', 'no_break', 'punch_requirement', 'effective_from', 'effective_until', 'created_by',
     ];
 
     protected function casts(): array

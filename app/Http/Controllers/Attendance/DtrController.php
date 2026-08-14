@@ -554,10 +554,18 @@ class DtrController extends Controller
                 $shiftEnded = Carbon::now()->gte($rowSchedule->referenceDateTime($dateStr, $rowSchedule->workEnd));
                 $missing = fn (?string $v, bool $eligible): string => $v ?? ($eligible && $shiftEnded ? 'Missing' : '-');
 
-                $tAmIn = $missing($dtr->time_in_am, true);
-                $tAmOut = $missing($dtr->time_out_am, ! $rowSchedule->noBreak);
-                $tPmIn = $missing($dtr->time_in_pm, ! $rowSchedule->noBreak);
-                $tPmOut = $missing($dtr->time_out_pm, true);
+                // A Field Work-style in_only/out_only day expects exactly one
+                // slot - the other three (including am_in/pm_out on the side
+                // that's never expected) are never real slots to miss, same
+                // treatment as no_break's am_out/pm_in.
+                $hasBreakSlots = ! $rowSchedule->noBreak && $rowSchedule->punchRequirement === 'both';
+                $amInEligible = $rowSchedule->punchRequirement !== 'out_only';
+                $pmOutEligible = $rowSchedule->punchRequirement !== 'in_only';
+
+                $tAmIn = $missing($dtr->time_in_am, $amInEligible);
+                $tAmOut = $missing($dtr->time_out_am, $hasBreakSlots);
+                $tPmIn = $missing($dtr->time_in_pm, $hasBreakSlots);
+                $tPmOut = $missing($dtr->time_out_pm, $pmOutEligible);
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate();
                 $storedUt = $dtr->undertime_minutes ?? 0;
@@ -883,6 +891,25 @@ class DtrController extends Controller
                     'status_badge' => '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>',
                     'office_order_badge' => '',
                 ]);
+            } elseif ($assignment->type === 'field_work_unconfirmed') {
+                // A real, consequence-bearing absence written by
+                // WeeklyPunchPairReconciliationService (a Field Work Pair week
+                // that resolved incomplete - see that class's docblock) - must
+                // render like the plain "Absent" badge below (line ~1067),
+                // not fall into the generic "Rest Day" else-branch, since
+                // this date is neither a day off nor unresolved.
+                $data->push([
+                    'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                    'time_in_am' => '-', 'time_out_am' => '-',
+                    'time_in_pm' => '-', 'time_out_pm' => '-',
+                    'time_in_ot' => '-', 'time_out_ot' => '-',
+                    'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
+                    'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'source_badge' => '<span style="color:#9ca3af;">-</span>',
+                    'status_badge' => '<span class="hris-badge badge-rejected">Absent (Unconfirmed Field Work)</span>',
+                    'office_order_badge' => '',
+                ]);
             } else {
                 $data->push([
                     'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
@@ -942,8 +969,15 @@ class DtrController extends Controller
             // day-of-week match) still get a row - collapsing "explicit rest
             // override" and "implicit non-workday" into the same "Rest Day"
             // label mirrors how ResolvedScheduleService::buildMonth() already
-            // displays both cases identically elsewhere in this app.
+            // displays both cases identically elsewhere in this app. The one
+            // exception is a Field Work Pair gap day (e.g. Tue/Wed/Thu of a
+            // Monday-in/Friday-out week) - that's also a non-workday, but
+            // "Rest Day" wrongly implies a day off rather than "excluded,
+            // nothing counted" - see WorkSchedule::isFieldWorkPairGapDay().
             if (! WorkSchedule::isWorkday($employee, $cursor, $shiftAssignments)) {
+                $statusBadge = WorkSchedule::isFieldWorkPairGapDay($employee, $cursor, $shiftAssignments)
+                    ? '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">No Punch Required</span>'
+                    : '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>';
                 $data->push([
                     'date' => $cursor->format('M d, Y (D)'),
                     'time_in_am' => '-', 'time_out_am' => '-',
@@ -953,7 +987,7 @@ class DtrController extends Controller
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
-                    'status_badge' => '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>',
+                    'status_badge' => $statusBadge,
                     'office_order_badge' => '',
                 ]);
 
@@ -1022,12 +1056,20 @@ class DtrController extends Controller
                 continue;
             }
 
+            // A Field Work-style in_only/out_only date only ever has one real
+            // slot to miss - the rest (including am_in/pm_out on the side
+            // that's never expected) show a plain dash, same as no_break's
+            // am_out/pm_in already do.
+            $placeholderHasBreakSlots = ! $dateSchedule->noBreak && $dateSchedule->punchRequirement === 'both';
+            $placeholderAmInMissing = $dateSchedule->punchRequirement !== 'out_only' ? 'Missing' : '-';
+            $placeholderPmOutMissing = $dateSchedule->punchRequirement !== 'in_only' ? 'Missing' : '-';
+
             $data->push([
                 'date' => $cursor->format('M d, Y (D)'),
-                'time_in_am' => 'Missing',
-                'time_out_am' => $dateSchedule->noBreak ? '-' : 'Missing',
-                'time_in_pm' => $dateSchedule->noBreak ? '-' : 'Missing',
-                'time_out_pm' => 'Missing',
+                'time_in_am' => $placeholderAmInMissing,
+                'time_out_am' => $placeholderHasBreakSlots ? 'Missing' : '-',
+                'time_in_pm' => $placeholderHasBreakSlots ? 'Missing' : '-',
+                'time_out_pm' => $placeholderPmOutMissing,
                 'time_in_ot' => '-',
                 'time_out_ot' => '-',
                 'late_minutes' => 0,

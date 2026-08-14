@@ -73,7 +73,7 @@ class DtrPunchResolver
         $undertime = $this->undertimeCalculator->minutes($result, $shiftDate, $schedule);
         $overtime = $this->overtimeCalculator->minutes($result);
         $workedMinutes = $this->hoursWorkedCalculator->workedMinutes($result, $schedule->noBreak);
-        $status = $this->statusResolver->resolve($result, $late, $undertime, $schedule->noBreak);
+        $status = $this->statusResolver->resolve($result, $late, $undertime, $schedule->noBreak, $schedule->punchRequirement);
 
         return [
             'am_in' => $this->fmt($result->slot('am_in')),
