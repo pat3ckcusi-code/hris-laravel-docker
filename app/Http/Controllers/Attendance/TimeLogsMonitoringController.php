@@ -4,15 +4,21 @@ namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Department;
+use App\Models\HabitualViolationNotice;
+use App\Models\HRAuditTrail;
 use App\Models\User;
+use App\Notifications\HrisTransactionNotification;
 use App\Services\AttendanceMonitoringExportService;
 use App\Support\HabitualPatternRule;
 use App\Support\RoleNormalizer;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * Time Keeper / HR Manager company-wide screen for monitoring lateness and
@@ -34,6 +40,11 @@ class TimeLogsMonitoringController extends Controller
 
     /** CSC MC No. 04, s. 1991: 10+ late instances in a calendar month is a violation month. */
     private const HABITUAL_MONTHLY_THRESHOLD = 10;
+
+    private const VIOLATION_LABELS = [
+        HabitualViolationNotice::VIOLATION_TARDY => 'Habitual Tardiness',
+        HabitualViolationNotice::VIOLATION_UNDERTIME => 'Frequent Undertime',
+    ];
 
     public function __construct(private readonly AttendanceMonitoringExportService $monitoringExportService) {}
 
@@ -78,6 +89,10 @@ class TimeLogsMonitoringController extends Controller
         $year = (int) $request->query('year', (int) now()->year);
         $deptSearch = trim((string) $request->query('dept_search', ''));
         $violationSearch = trim((string) $request->query('violation_search', ''));
+        $violationSort = $request->input('violation_sort', 'name_asc');
+        if (! in_array($violationSort, ['name_asc', 'name_desc', 'count_desc', 'count_asc'], true)) {
+            $violationSort = 'name_asc';
+        }
 
         if ($month < 1 || $month > 12) {
             $month = (int) now()->month;
@@ -99,7 +114,7 @@ class TimeLogsMonitoringController extends Controller
         $tardinessBreakdown = $this->buildBreakdown('late_minutes', $month, $year, $deptId, $employeeType);
         $undertimeBreakdown = $this->buildBreakdown('undertime_minutes', $month, $year, $deptId, $employeeType);
 
-        $violations = $this->buildHabitualViolations($year, $deptId, $employeeType);
+        $violations = $this->buildHabitualViolations($year, $deptId, $employeeType, $violationSort);
         if ($violationSearch !== '') {
             $violations = $violations->filter(function (array $v) use ($violationSearch) {
                 $name = $v['employee'] ? trim("{$v['employee']->last_name}, {$v['employee']->first_name}") : '';
@@ -110,7 +125,7 @@ class TimeLogsMonitoringController extends Controller
         $violations = $this->paginateCollection($request, $violations, 15, 'violation_page');
 
         return view('attendance.time-logs-monitoring.index', compact(
-            'departments', 'deptId', 'employeeType', 'month', 'year', 'deptSearch', 'violationSearch',
+            'departments', 'deptId', 'employeeType', 'month', 'year', 'deptSearch', 'violationSearch', 'violationSort',
             'deptRanking', 'tardinessBreakdown', 'undertimeBreakdown', 'violations'
         ));
     }
@@ -192,9 +207,10 @@ class TimeLogsMonitoringController extends Controller
     }
 
     /**
+     * @param  string  $sort  'name_asc'|'name_desc'|'count_desc'|'count_asc'
      * @return Collection<int, array> employees who cross the habitual threshold this year
      */
-    private function buildHabitualViolations(int $year, ?int $deptId, ?string $employeeType): Collection
+    private function buildHabitualViolations(int $year, ?int $deptId, ?string $employeeType, string $sort = 'name_asc'): Collection
     {
         $monthly = DB::table('dtrs')
             ->join('users', 'users.id', '=', 'dtrs.employee_id')
@@ -212,6 +228,15 @@ class TimeLogsMonitoringController extends Controller
             ->with('department')
             ->get(['id', 'first_name', 'last_name', 'Dept_id'])
             ->keyBy('id');
+
+        // Bulk-load this year's notices for every candidate employee in one
+        // query, keyed by "employeeId:violationType", so the per-employee
+        // loop below does zero additional queries.
+        $notices = HabitualViolationNotice::whereIn('employee_id', $monthly->keys())
+            ->where('year', $year)
+            ->with('issuer:id,first_name,last_name,name')
+            ->get()
+            ->keyBy(fn (HabitualViolationNotice $n) => "{$n->employee_id}:{$n->violation_type}");
 
         $violations = collect();
 
@@ -234,9 +259,204 @@ class TimeLogsMonitoringController extends Controller
                 'undertime_months' => $undertimeMonths,
                 'habitual_tardy' => $habitualTardy,
                 'frequent_undertime' => $frequentUndertime,
+                'tardy_notice' => $habitualTardy
+                    ? $notices->get("{$employeeId}:".HabitualViolationNotice::VIOLATION_TARDY)
+                    : null,
+                'undertime_notice' => $frequentUndertime
+                    ? $notices->get("{$employeeId}:".HabitualViolationNotice::VIOLATION_UNDERTIME)
+                    : null,
             ]);
         }
 
-        return $violations->sortBy(fn ($v) => $v['employee']?->last_name)->values();
+        $violations = match ($sort) {
+            'name_desc' => $violations->sortByDesc(fn ($v) => $v['employee']?->last_name),
+            'count_desc' => $violations->sortByDesc(fn ($v) => $v['tardy_months']->count() + $v['undertime_months']->count()),
+            'count_asc' => $violations->sortBy(fn ($v) => $v['tardy_months']->count() + $v['undertime_months']->count()),
+            default => $violations->sortBy(fn ($v) => $v['employee']?->last_name), // name_asc
+        };
+        $violations = $violations->values();
+
+        if ($violations->isEmpty()) {
+            return $violations;
+        }
+
+        // Only the employees already identified as flagged need their raw
+        // per-date rows loaded - month chips just need which specific days
+        // behind each month's threshold, not a company-wide date scan.
+        $flaggedIds = $violations->pluck('employee.id')->filter()->values();
+
+        $violationDates = DB::table('dtrs')
+            ->whereIn('employee_id', $flaggedIds)
+            ->whereYear('date', $year)
+            ->where(function ($q) {
+                $q->where('late_minutes', '>', 0)->orWhere('undertime_minutes', '>', 0);
+            })
+            ->select('employee_id', 'date', 'late_minutes', 'undertime_minutes')
+            ->orderBy('date')
+            ->get()
+            ->groupBy('employee_id');
+
+        return $violations->map(function (array $v) use ($violationDates) {
+            $rows = $v['employee'] ? $violationDates->get($v['employee']->id, collect()) : collect();
+
+            $v['tardy_dates_by_month'] = $rows->where('late_minutes', '>', 0)
+                ->groupBy(fn ($r) => (int) \Carbon\Carbon::parse($r->date)->format('n'))
+                ->map(fn ($g) => $g->map(fn ($r) => [
+                    'date' => \Carbon\Carbon::parse($r->date)->format('M j, Y'),
+                    'minutes' => (int) $r->late_minutes,
+                ])->values());
+
+            $v['undertime_dates_by_month'] = $rows->where('undertime_minutes', '>', 0)
+                ->groupBy(fn ($r) => (int) \Carbon\Carbon::parse($r->date)->format('n'))
+                ->map(fn ($g) => $g->map(fn ($r) => [
+                    'date' => \Carbon\Carbon::parse($r->date)->format('M j, Y'),
+                    'minutes' => (int) $r->undertime_minutes,
+                ])->values());
+
+            return $v;
+        });
+    }
+
+    /**
+     * @return Collection<int, int> sorted month numbers where $column crossed
+     *                               the habitual monthly threshold for one
+     *                               employee/year - the single-employee
+     *                               equivalent of buildHabitualViolations()'s
+     *                               per-employee computation, used to
+     *                               re-verify eligibility server-side before
+     *                               issuing a notice (never trust a
+     *                               client-submitted employee/type/year on
+     *                               its own).
+     */
+    private function violationMonthsFor(int $employeeId, int $year, string $column): Collection
+    {
+        return DB::table('dtrs')
+            ->where('employee_id', $employeeId)
+            ->whereYear('date', $year)
+            ->selectRaw("MONTH(date) as mo, SUM(CASE WHEN {$column} > 0 THEN 1 ELSE 0 END) as violation_days")
+            ->groupBy('mo')
+            ->havingRaw('violation_days >= ?', [self::HABITUAL_MONTHLY_THRESHOLD])
+            ->pluck('mo')
+            ->map(fn ($m) => (int) $m)
+            ->sort()
+            ->values();
+    }
+
+    private static function ordinal(int $n): string
+    {
+        return match ($n) {
+            1 => '1st',
+            2 => '2nd',
+            3 => '3rd',
+            default => "{$n}th", // unreachable given the mod-3 cycle; defensive only
+        };
+    }
+
+    /**
+     * Issue the next sequential CSC habitual-violation notice (1st -> 2nd ->
+     * 3rd -> wraps back to 1st, a continuous lifetime cycle per employee +
+     * violation type, never reset by calendar year) against an employee
+     * currently flagged as habitual_tardy or frequent_undertime for the
+     * given year. At most one notice per (employee, violation_type, year).
+     */
+    public function issueNotice(Request $request): RedirectResponse
+    {
+        $actor = $request->user();
+        $this->authorizeManager($actor);
+
+        $validated = $request->validate([
+            'employee_id' => ['required', 'integer', 'exists:users,id'],
+            'violation_type' => ['required', 'string', Rule::in(HabitualViolationNotice::VALID_VIOLATION_TYPES)],
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        $employeeId = (int) $validated['employee_id'];
+        $violationType = $validated['violation_type'];
+        $year = (int) $validated['year'];
+
+        // Re-derive the flag from live DTR data - buildHabitualViolations()'s
+        // output is never persisted, and this endpoint must not trust a
+        // client-supplied employee_id/violation_type/year on faith alone.
+        $column = $violationType === HabitualViolationNotice::VIOLATION_TARDY ? 'late_minutes' : 'undertime_minutes';
+        $months = $this->violationMonthsFor($employeeId, $year, $column);
+
+        if (! HabitualPatternRule::meets($months)) {
+            return back()->with('error', 'This employee does not meet the habitual violation threshold for the selected year - notice not issued.');
+        }
+
+        try {
+            $notice = DB::transaction(function () use ($employeeId, $violationType, $year, $actor) {
+                // Lock the employee's own users row as a synchronization
+                // point - there's no natural per-(employee, violation_type)
+                // row to lock before the first notice exists. This
+                // serializes concurrent issuances for this employee so the
+                // count() inside nextOffenseNumber() is never read from a
+                // stale/racing state.
+                User::where('id', $employeeId)->lockForUpdate()->firstOrFail();
+
+                $offenseNumber = HabitualViolationNotice::nextOffenseNumber($employeeId, $violationType);
+
+                return HabitualViolationNotice::create([
+                    'employee_id' => $employeeId,
+                    'violation_type' => $violationType,
+                    'year' => $year,
+                    'offense_number' => $offenseNumber,
+                    'issued_by' => $actor->id,
+                ]);
+            });
+        } catch (QueryException $e) {
+            // Defense in depth: the lock above should already prevent this,
+            // but fall back cleanly on the DB unique constraint (MySQL 1062)
+            // rather than a raw 500 if it's ever hit anyway.
+            if ((string) $e->getCode() === '23000' && (int) ($e->errorInfo[1] ?? 0) === 1062) {
+                return back()->with('error', 'A notice for this employee and violation type has already been issued for this year.');
+            }
+            throw $e;
+        }
+
+        $sanction = HabitualViolationNotice::OFFENSE_SANCTIONS[$notice->offense_number];
+        $legalBasis = HabitualViolationNotice::LEGAL_BASIS[$violationType];
+
+        try {
+            HRAuditTrail::create([
+                'actor_user_id' => $actor->id,
+                'module' => 'disciplinary_notice',
+                'action' => 'notice_issued',
+                'target_type' => 'habitual_violation_notice',
+                'target_id' => $notice->id,
+                'details' => [
+                    'employee_id' => $employeeId,
+                    'violation_type' => $violationType,
+                    'year' => $year,
+                    'offense_number' => $notice->offense_number,
+                    'sanction' => $sanction,
+                    'legal_basis' => $legalBasis,
+                ],
+            ]);
+        } catch (\Exception) {
+            // audit failure must not block the already-recorded notice
+        }
+
+        $employee = User::find($employeeId);
+        if ($employee) {
+            try {
+                $employee->notify(new HrisTransactionNotification(
+                    requestType: self::VIOLATION_LABELS[$violationType],
+                    status: self::ordinal($notice->offense_number).' Offense - '.$sanction,
+                    details: [
+                        'Violation Type' => self::VIOLATION_LABELS[$violationType],
+                        'Offense' => self::ordinal($notice->offense_number).' Offense',
+                        'Sanction' => $sanction,
+                        'Year' => (string) $year,
+                        'Legal Basis' => $legalBasis,
+                    ],
+                    actor: $actor->name,
+                ));
+            } catch (\Exception) {
+                // notification failure must not block the already-recorded notice
+            }
+        }
+
+        return back()->with('success', self::VIOLATION_LABELS[$violationType].' notice issued - '.self::ordinal($notice->offense_number).' offense ('.$sanction.') recorded.');
     }
 }

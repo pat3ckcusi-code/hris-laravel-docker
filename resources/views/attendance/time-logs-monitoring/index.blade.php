@@ -4,6 +4,7 @@
 ])
 
 @section('page_head')
+<script src="{{ asset('vendor/sweetalert2/sweetalert2.all.min.js') }}"></script>
 <style>
 .tlm-rank {
     display:inline-flex; align-items:center; justify-content:center;
@@ -37,6 +38,8 @@
     font-size:.7rem; font-weight:600; margin:0 .2rem .2rem 0;
     background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
 }
+.tlm-clickable-chip { cursor:pointer; }
+.tlm-clickable-chip:hover { filter:brightness(0.95); text-decoration:underline; }
 .tlm-stat-strip { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; }
 .tlm-stat-card {
     flex:1; min-width:11rem; background:#fff; border-radius:.75rem;
@@ -49,12 +52,19 @@
 }
 .tlm-stat-value { font-size:1.35rem; font-weight:700; color:#0f172a; line-height:1.1; }
 .tlm-stat-label { font-size:.75rem; color:#64748b; margin-top:.15rem; }
+.tlm-notice-badge {
+    display:inline-flex; flex-direction:column; gap:.1rem;
+    padding:.35rem .65rem; border-radius:.5rem; font-size:.72rem; font-weight:600;
+    background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; cursor:help;
+}
+.tlm-notice-badge small { font-weight:500; color:#047857; font-size:.66rem; }
 </style>
 @endsection
 
 @php
     $monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    $anyFilterActive = $deptId || $employeeType || $deptSearch !== '' || $violationSearch !== '';
+    $ordinals = [1 => '1st', 2 => '2nd', 3 => '3rd'];
+    $anyFilterActive = $deptId || $employeeType || $deptSearch !== '' || $violationSearch !== '' || $violationSort !== 'name_asc';
 @endphp
 
 @section('content')
@@ -82,71 +92,6 @@
             <div class="tlm-stat-label">Ranking Period</div>
         </div>
     </div>
-</div>
-
-{{-- Filter bar --}}
-<div class="hris-table-card">
-    <form method="GET" action="{{ route('attendance.time-logs-monitoring') }}">
-        <div class="hris-table-filters hris-filters-sticky">
-            <div class="hris-filter-left" style="flex-wrap:wrap;">
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="dept_id">Department</label>
-                    <select id="dept_id" name="dept_id" class="hris-filter-select">
-                        <option value="">All Departments</option>
-                        @foreach ($departments as $dept)
-                            <option value="{{ $dept->Dept_id }}" @selected($deptId === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="month">Month</label>
-                    <select id="month" name="month" class="hris-filter-select">
-                        @foreach (range(1, 12) as $m)
-                            <option value="{{ $m }}" @selected($m === $month)>{{ \Carbon\Carbon::createFromDate(null, $m, 1)->format('F') }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="year">Year</label>
-                    <select id="year" name="year" class="hris-filter-select">
-                        @foreach (range((int) date('Y') - 2, (int) date('Y') + 1) as $y)
-                            <option value="{{ $y }}" @selected($y === $year)>{{ $y }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="employee_type">Employee Type</label>
-                    <select id="employee_type" name="employee_type" class="hris-filter-select">
-                        <option value="">All Types</option>
-                        <option value="permanent" @selected($employeeType === 'permanent')>Permanent</option>
-                        <option value="elected officials" @selected($employeeType === 'elected officials')>Elected Officials</option>
-                        <option value="co-terminus" @selected($employeeType === 'co-terminus')>Co-Terminus</option>
-                        <option value="casual" @selected($employeeType === 'casual')>Casual</option>
-                        <option value="job orders" @selected($employeeType === 'job orders')>Job Orders</option>
-                        <option value="contractual" @selected($employeeType === 'contractual')>Contractual</option>
-                    </select>
-                </div>
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="dept_search">Search Department</label>
-                    <input type="text" id="dept_search" name="dept_search" value="{{ $deptSearch }}" placeholder="Department name" class="hris-filter-select">
-                </div>
-                <div class="hris-filter-group">
-                    <label class="hris-filter-label" for="violation_search">Search Employee</label>
-                    <input type="text" id="violation_search" name="violation_search" value="{{ $violationSearch }}" placeholder="Employee name" class="hris-filter-select">
-                </div>
-            </div>
-            <div style="display:flex;gap:.5rem;align-items:flex-end;">
-                <button type="submit" class="hris-btn hris-btn-primary">
-                    <i class="fas fa-search"></i> View
-                </button>
-                @if ($anyFilterActive)
-                    <a href="{{ route('attendance.time-logs-monitoring') }}" class="hris-btn hris-btn-secondary">
-                        <i class="fas fa-times"></i> Clear
-                    </a>
-                @endif
-            </div>
-        </div>
-    </form>
 </div>
 
 {{-- Department Ranking --}}
@@ -251,6 +196,77 @@
         </div>
     </div>
 
+    <form method="GET" action="{{ route('attendance.time-logs-monitoring') }}">
+        <div class="hris-table-filters hris-filters-sticky">
+            <div class="hris-filter-left" style="flex-wrap:wrap;">
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="dept_id">Department</label>
+                    <select id="dept_id" name="dept_id" class="hris-filter-select">
+                        <option value="">All Departments</option>
+                        @foreach ($departments as $dept)
+                            <option value="{{ $dept->Dept_id }}" @selected($deptId === (int) $dept->Dept_id)>{{ $dept->Dept_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="month">Month</label>
+                    <select id="month" name="month" class="hris-filter-select">
+                        @foreach (range(1, 12) as $m)
+                            <option value="{{ $m }}" @selected($m === $month)>{{ \Carbon\Carbon::createFromDate(null, $m, 1)->format('F') }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="year">Year</label>
+                    <select id="year" name="year" class="hris-filter-select">
+                        @foreach (range((int) date('Y') - 2, (int) date('Y') + 1) as $y)
+                            <option value="{{ $y }}" @selected($y === $year)>{{ $y }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="employee_type">Employee Type</label>
+                    <select id="employee_type" name="employee_type" class="hris-filter-select">
+                        <option value="">All Types</option>
+                        <option value="permanent" @selected($employeeType === 'permanent')>Permanent</option>
+                        <option value="elected officials" @selected($employeeType === 'elected officials')>Elected Officials</option>
+                        <option value="co-terminus" @selected($employeeType === 'co-terminus')>Co-Terminus</option>
+                        <option value="casual" @selected($employeeType === 'casual')>Casual</option>
+                        <option value="job orders" @selected($employeeType === 'job orders')>Job Orders</option>
+                        <option value="contractual" @selected($employeeType === 'contractual')>Contractual</option>
+                    </select>
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="dept_search">Search Department</label>
+                    <input type="text" id="dept_search" name="dept_search" value="{{ $deptSearch }}" placeholder="Department name" class="hris-filter-select">
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="violation_search">Search Employee</label>
+                    <input type="text" id="violation_search" name="violation_search" value="{{ $violationSearch }}" placeholder="Employee name" class="hris-filter-select">
+                </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label" for="violation_sort">Order By</label>
+                    <select id="violation_sort" name="violation_sort" class="hris-filter-select">
+                        <option value="name_asc" @selected($violationSort === 'name_asc')>Employee Name (A-Z)</option>
+                        <option value="name_desc" @selected($violationSort === 'name_desc')>Employee Name (Z-A)</option>
+                        <option value="count_desc" @selected($violationSort === 'count_desc')>Most Violation Months First</option>
+                        <option value="count_asc" @selected($violationSort === 'count_asc')>Fewest Violation Months First</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:flex-end;">
+                <button type="submit" class="hris-btn hris-btn-primary">
+                    <i class="fas fa-search"></i> View
+                </button>
+                @if ($anyFilterActive)
+                    <a href="{{ route('attendance.time-logs-monitoring') }}" class="hris-btn hris-btn-secondary">
+                        <i class="fas fa-times"></i> Clear
+                    </a>
+                @endif
+            </div>
+        </div>
+    </form>
+
     <div class="hris-table-wrapper">
         <table class="hris-table">
             <thead>
@@ -260,6 +276,7 @@
                     <th>Flag</th>
                     <th style="text-align:left;">Tardy Months (10+/mo)</th>
                     <th style="text-align:left;">Undertime Months (10+/mo)</th>
+                    <th style="text-align:left;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -288,22 +305,88 @@
                         </td>
                         <td style="text-align:left;">
                             @forelse ($v['tardy_months'] as $m)
-                                <span class="tlm-month-chip">{{ $monthNames[$m] }}</span>
+                                <span class="tlm-month-chip tlm-clickable-chip"
+                                      data-employee="{{ $empName ?? 'Unknown' }}"
+                                      data-month-label="{{ $monthNames[$m] }} {{ $year }}"
+                                      data-violation-type="Tardiness"
+                                      data-dates='@json($v['tardy_dates_by_month']->get($m, collect()))'>{{ $monthNames[$m] }}</span>
                             @empty
                                 <span style="color:#cbd5e1;">&mdash;</span>
                             @endforelse
                         </td>
                         <td style="text-align:left;">
                             @forelse ($v['undertime_months'] as $m)
-                                <span class="tlm-month-chip" style="background:#fef9c3;color:#854d0e;border-color:#fde047;">{{ $monthNames[$m] }}</span>
+                                <span class="tlm-month-chip tlm-clickable-chip" style="background:#fef9c3;color:#854d0e;border-color:#fde047;"
+                                      data-employee="{{ $empName ?? 'Unknown' }}"
+                                      data-month-label="{{ $monthNames[$m] }} {{ $year }}"
+                                      data-violation-type="Undertime"
+                                      data-dates='@json($v['undertime_dates_by_month']->get($m, collect()))'>{{ $monthNames[$m] }}</span>
                             @empty
                                 <span style="color:#cbd5e1;">&mdash;</span>
                             @endforelse
                         </td>
+                        <td style="text-align:left;">
+                            <div style="display:flex;flex-direction:column;gap:.5rem;align-items:flex-start;">
+                                @if ($v['employee'])
+                                @if ($v['habitual_tardy'])
+                                    @if ($v['tardy_notice'])
+                                        @php
+                                            $tn = $v['tardy_notice'];
+                                            $tnIssuer = trim(($tn->issuer->first_name ?? '').' '.($tn->issuer->last_name ?? '')) ?: ($tn->issuer->name ?? 'Unknown');
+                                            $tnSanction = \App\Models\HabitualViolationNotice::OFFENSE_SANCTIONS[$tn->offense_number] ?? $tn->offense_number;
+                                        @endphp
+                                        <span class="tlm-notice-badge" title="{{ \App\Models\HabitualViolationNotice::LEGAL_BASIS[\App\Models\HabitualViolationNotice::VIOLATION_TARDY] }}">
+                                            <span><i class="fas fa-check-circle"></i> Tardiness: {{ $ordinals[$tn->offense_number] ?? $tn->offense_number }} Offense - {{ $tnSanction }}</span>
+                                            <small>issued by {{ $tnIssuer }} on {{ $tn->created_at->format('M j, Y') }}</small>
+                                        </span>
+                                    @else
+                                        <form method="POST" action="{{ route('attendance.time-logs-monitoring.issue-notice') }}"
+                                              class="tlm-notice-form" data-violation-label="Habitual Tardiness"
+                                              data-employee="{{ $empName }}"
+                                              data-legal-basis="{{ \App\Models\HabitualViolationNotice::LEGAL_BASIS[\App\Models\HabitualViolationNotice::VIOLATION_TARDY] }}">
+                                            @csrf
+                                            <input type="hidden" name="employee_id" value="{{ $v['employee']->id }}">
+                                            <input type="hidden" name="violation_type" value="{{ \App\Models\HabitualViolationNotice::VIOLATION_TARDY }}">
+                                            <input type="hidden" name="year" value="{{ $year }}">
+                                            <button type="submit" class="hris-btn hris-btn-warning hris-btn-sm">
+                                                <i class="fas fa-file-circle-exclamation"></i> Issue Notice (Tardiness)
+                                            </button>
+                                        </form>
+                                    @endif
+                                @endif
+                                @if ($v['frequent_undertime'])
+                                    @if ($v['undertime_notice'])
+                                        @php
+                                            $un = $v['undertime_notice'];
+                                            $unIssuer = trim(($un->issuer->first_name ?? '').' '.($un->issuer->last_name ?? '')) ?: ($un->issuer->name ?? 'Unknown');
+                                            $unSanction = \App\Models\HabitualViolationNotice::OFFENSE_SANCTIONS[$un->offense_number] ?? $un->offense_number;
+                                        @endphp
+                                        <span class="tlm-notice-badge" title="{{ \App\Models\HabitualViolationNotice::LEGAL_BASIS[\App\Models\HabitualViolationNotice::VIOLATION_UNDERTIME] }}">
+                                            <span><i class="fas fa-check-circle"></i> Undertime: {{ $ordinals[$un->offense_number] ?? $un->offense_number }} Offense - {{ $unSanction }}</span>
+                                            <small>issued by {{ $unIssuer }} on {{ $un->created_at->format('M j, Y') }}</small>
+                                        </span>
+                                    @else
+                                        <form method="POST" action="{{ route('attendance.time-logs-monitoring.issue-notice') }}"
+                                              class="tlm-notice-form" data-violation-label="Frequent Undertime"
+                                              data-employee="{{ $empName }}"
+                                              data-legal-basis="{{ \App\Models\HabitualViolationNotice::LEGAL_BASIS[\App\Models\HabitualViolationNotice::VIOLATION_UNDERTIME] }}">
+                                            @csrf
+                                            <input type="hidden" name="employee_id" value="{{ $v['employee']->id }}">
+                                            <input type="hidden" name="violation_type" value="{{ \App\Models\HabitualViolationNotice::VIOLATION_UNDERTIME }}">
+                                            <input type="hidden" name="year" value="{{ $year }}">
+                                            <button type="submit" class="hris-btn hris-btn-warning hris-btn-sm">
+                                                <i class="fas fa-file-circle-exclamation"></i> Issue Notice (Undertime)
+                                            </button>
+                                        </form>
+                                    @endif
+                                @endif
+                                @endif
+                            </div>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5">
+                        <td colspan="6">
                             <div class="hris-empty-state">
                                 <div class="hris-empty-state-icon"><i class="fas fa-circle-check"></i></div>
                                 <div class="hris-empty-state-title">No Habitual Violations</div>
@@ -369,5 +452,56 @@ document.getElementById('breakdown-modal').addEventListener('click', function (e
         closeBreakdownModal();
     }
 });
+
+document.querySelectorAll('.tlm-clickable-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+        var employee = this.dataset.employee;
+        var monthLabel = this.dataset.monthLabel;
+        var violationType = this.dataset.violationType;
+        var dates = JSON.parse(this.dataset.dates || '[]');
+
+        document.getElementById('breakdown-modal-title').textContent =
+            violationType + ' Dates - ' + employee + ' (' + monthLabel + ')';
+
+        var body = document.getElementById('breakdown-modal-body');
+        body.innerHTML = dates.length
+            ? dates.map(function (d) {
+                return '<div class="detail-row"><span>' + d.date + '</span><span>' + d.minutes + ' min ' + violationType.toLowerCase() + '</span></div>';
+            }).join('')
+            : '<p style="color:#94a3b8;">No dates recorded.</p>';
+
+        document.getElementById('breakdown-modal').classList.add('active');
+    });
+});
+
+document.querySelectorAll('.tlm-notice-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var label = form.dataset.violationLabel;
+        var name = form.dataset.employee;
+        var basis = form.dataset.legalBasis;
+        Swal.fire({
+            icon: 'warning',
+            title: 'Issue ' + label + ' Notice?',
+            html: 'This records the next sequential offense (1st &rarr; 2nd &rarr; 3rd, then wraps back to 1st) for <b>' + name + '</b> and notifies them by email. This cannot be undone.'
+                + '<p style="margin-top:.75rem;font-size:.78rem;color:#64748b;">' + basis + '</p>',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, issue notice',
+            confirmButtonColor: '#b45309',
+            cancelButtonColor: '#6b7280',
+        }).then(function (res) {
+            if (res.isConfirmed) {
+                form.submit();
+            }
+        });
+    });
+});
+
+@if (session('success'))
+    Swal.fire({ icon: 'success', title: 'Done', text: @json(session('success')), confirmButtonColor: '#3b82f6' });
+@endif
+@if (session('error'))
+    Swal.fire({ icon: 'error', title: 'Error', text: @json(session('error')) });
+@endif
 </script>
 @endsection

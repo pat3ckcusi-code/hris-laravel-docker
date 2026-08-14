@@ -686,6 +686,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
 
     Route::get('/attendance/time-logs-monitoring', [TimeLogsMonitoringController::class, 'index'])
         ->name('attendance.time-logs-monitoring');
+    Route::post('/attendance/time-logs-monitoring/issue-notice', [TimeLogsMonitoringController::class, 'issueNotice'])
+        ->name('attendance.time-logs-monitoring.issue-notice');
 
     Route::get('/attendance/monitoring-matrix', [TimeLogsMonitoringController::class, 'monitoringMatrix'])
         ->name('attendance.monitoring-matrix');

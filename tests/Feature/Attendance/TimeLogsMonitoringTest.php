@@ -42,6 +42,19 @@ class TimeLogsMonitoringTest extends TestCase
         }
     }
 
+    private function seedUndertimeDays(int $employeeId, string $yearMonth, int $count): void
+    {
+        for ($i = 1; $i <= $count; $i++) {
+            Dtr::create([
+                'employee_id' => $employeeId,
+                'date' => sprintf('%s-%02d', $yearMonth, $i),
+                'late_minutes' => 0,
+                'undertime_minutes' => 15,
+                'is_absent' => false,
+            ]);
+        }
+    }
+
     public function test_time_keeper_can_view_time_logs_monitoring(): void
     {
         $deptA = $this->makeDepartment('Dept A');
@@ -431,5 +444,90 @@ class TimeLogsMonitoringTest extends TestCase
         $this->assertSame(79, $row['total_minutes']);
         $this->assertStringContainsString('Tardy (25 mins)', $row['remarks']);
         $this->assertStringContainsString('Undertime (54 mins)', $row['remarks']);
+    }
+
+    public function test_tardy_month_chip_carries_violation_dates(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'ChipDates']);
+
+        $this->seedLateDays($employee->id, '2026-03', 10);
+        $this->seedLateDays($employee->id, '2026-04', 10);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.time-logs-monitoring', ['year' => 2026]));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('tlm-clickable-chip', $content);
+        $this->assertStringContainsString('data-violation-type="Tardiness"', $content);
+        $this->assertStringContainsString('"date":"Mar 1, 2026"', $content);
+        $this->assertStringContainsString('"date":"Mar 10, 2026"', $content);
+        $this->assertStringContainsString('"minutes":10', $content);
+    }
+
+    public function test_undertime_month_chip_carries_violation_dates(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'UndertimeChipDates']);
+
+        $this->seedUndertimeDays($employee->id, '2026-05', 10);
+        $this->seedUndertimeDays($employee->id, '2026-06', 10);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.time-logs-monitoring', ['year' => 2026]));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('data-violation-type="Undertime"', $content);
+        $this->assertStringContainsString('"date":"May 1, 2026"', $content);
+        $this->assertStringContainsString('"minutes":15', $content);
+    }
+
+    public function test_violation_sort_name_descending_reverses_default_order(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $alice = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'Alpha']);
+        $zack = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'Zulu']);
+
+        $this->seedLateDays($alice->id, '2026-01', 10);
+        $this->seedLateDays($alice->id, '2026-02', 10);
+        $this->seedLateDays($zack->id, '2026-01', 10);
+        $this->seedLateDays($zack->id, '2026-02', 10);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.time-logs-monitoring', ['year' => 2026, 'violation_sort' => 'name_desc']));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertTrue(strpos($content, 'Zulu') < strpos($content, 'Alpha'));
+    }
+
+    public function test_violation_sort_by_violation_count_puts_worse_offender_first(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $mild = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'MildOffender']);
+        $severe = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'SevereOffender']);
+
+        // Mild: 2 tardy months only.
+        $this->seedLateDays($mild->id, '2026-01', 10);
+        $this->seedLateDays($mild->id, '2026-02', 10);
+
+        // Severe: 2 tardy months + 2 undertime months = 4 combined violation months.
+        $this->seedLateDays($severe->id, '2026-01', 10);
+        $this->seedLateDays($severe->id, '2026-02', 10);
+        $this->seedUndertimeDays($severe->id, '2026-03', 10);
+        $this->seedUndertimeDays($severe->id, '2026-04', 10);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.time-logs-monitoring', ['year' => 2026, 'violation_sort' => 'count_desc']));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertTrue(strpos($content, 'SevereOffender') < strpos($content, 'MildOffender'));
     }
 }
