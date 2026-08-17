@@ -170,14 +170,22 @@ class AttendanceMonitoringExportService
             $empExcusesByDate = $dtrExcuses->get($emp->id, collect())
                 ->keyBy(fn ($e) => Carbon::parse($e->date)->toDateString());
 
+            // Keyed by date string for O(1) per-slot punch lookup - needed below by
+            // $isSlotCovered's half-day-leave branch, so this is built ahead of that
+            // closure rather than at its original, later position in this method.
+            $empDtrsByDate = $empDtrs->keyBy(fn ($d) => Carbon::parse($d->date)->toDateString());
+
             // Exclude DTR records that fall on rest days (per-date shift schedule).
             $workDtrs = $empDtrs->filter(
                 fn ($d) => ! WorkSchedule::isRestDay($emp, Carbon::parse($d->date), $empAssignments)
             );
 
-            $approvedLeaveDateStrings = $empLeaveDates->pluck('leave_date')
-                ->map(fn ($d) => Carbon::parse($d)->toDateString())
-                ->flip();
+            // dateStr => days (float). Kept as the real leave 'days' value (not a bare
+            // presence flag) so $isSlotCovered below can tell a full-day leave (days >=
+            // 1, covers the whole day unconditionally) apart from a half-day leave
+            // (days < 1, covers only the slot(s) with no real punch).
+            $approvedLeaveDateStrings = $empLeaveDates
+                ->mapWithKeys(fn ($ld) => [Carbon::parse($ld->leave_date)->toDateString() => (float) $ld->days]);
 
             $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings, $empExcusesByDate) {
                 if (! $d->is_absent) {
@@ -273,10 +281,34 @@ class AttendanceMonitoringExportService
             // Office Order/Travel Order (whole-day) or a Locator/DtrExcuse/WorkSuspension
             // (per-slot)", shared by unofficialExitCount and the phantom-undertime
             // computation below so the rules never disagree on what counts as covered.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap): bool {
+            // A full-day leave (days >= 1) still covers the whole day unconditionally,
+            // same as ETA/Office Order/Travel Order. A half-day leave (days < 1) only
+            // covers the slot(s) with no real punch - "which half" isn't stored
+            // anywhere, so it's inferred from the punch data itself, same convention
+            // as DtrController/Form48ExportService use for the same half-day-leave case.
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate): bool {
                 if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
-                    || isset($travelOrderCoveredDates[$dateStr]) || $approvedLeaveDateStrings->has($dateStr)) {
+                    || isset($travelOrderCoveredDates[$dateStr])) {
                     return true;
+                }
+                if ($approvedLeaveDateStrings->has($dateStr)) {
+                    if ($approvedLeaveDateStrings->get($dateStr) >= 1.0) {
+                        return true;
+                    }
+                    $dtr = $empDtrsByDate->get($dateStr);
+                    $punchValue = match ($slot) {
+                        'am_in' => $dtr?->time_in_am,
+                        'am_out' => $dtr?->time_out_am,
+                        'pm_in' => $dtr?->time_in_pm,
+                        'pm_out' => $dtr?->time_out_pm,
+                        default => null,
+                    };
+                    if (empty($punchValue)) {
+                        return true;
+                    }
+                    // A real punch exists for this slot on a half-day leave date - fall
+                    // through to the other, per-slot sources below instead of treating
+                    // the whole day as covered.
                 }
                 $excuse = $empExcusesByDate[$dateStr] ?? null;
                 $coveredSlots = array_unique(array_merge(
@@ -310,9 +342,8 @@ class AttendanceMonitoringExportService
             // Flagged when a scheduled, already-ended workday has no punched logs at all
             // and nothing (Leave/Locator/ETA/Office Order/Travel Order/DtrExcuse) explains
             // the absence. DTR-exempt employees are never expected to punch, so they're
-            // never flagged.
-            $empDtrsByDate = $empDtrs->keyBy(fn ($d) => Carbon::parse($d->date)->toDateString());
-
+            // never flagged. ($empDtrsByDate itself is built earlier now, ahead of
+            // $isSlotCovered's own use of it above.)
             $periodStartDate = Carbon::parse($periodStart);
             $periodEndDate = Carbon::parse($periodEnd);
 
@@ -349,20 +380,63 @@ class AttendanceMonitoringExportService
 
                     $dtr = $empDtrsByDate->get($dateStr);
 
-                    // Punched in for the afternoon but never punched out - an unofficial
-                    // exit regardless of employee type, alongside (not instead of) the
-                    // phantom-undertime charge computed separately below for the same day.
-                    if ($dtr && $dtr->time_in_pm && ! $dtr->time_out_pm) {
-                        if (! $isSlotCovered($dateStr, 'pm_out')) {
-                            $unofficialExitDays[$dateStr] = 'no_time_out';
-                        }
+                    // The schedule's real required-slot set: a normal 4-slot day needs
+                    // all four Form 48 slots; a no-break day only ever has am_in/pm_out
+                    // (no break in the middle, so am_out/pm_in are never real slots);
+                    // an in_only/out_only Field Work Shift day is excluded entirely
+                    // (empty set) - WeeklyPunchPairReconciliationService already owns
+                    // that pairing's absence logic week-by-week via its own
+                    // field_work_unconfirmed override, and a naive per-day required-
+                    // slot check here would double-flag/conflict with that more
+                    // sophisticated, week-aware mechanism.
+                    $requiredSlots = match (true) {
+                        $schedule->punchRequirement !== 'both' => [],
+                        $schedule->noBreak => ['am_in', 'pm_out'],
+                        default => ['am_in', 'am_out', 'pm_in', 'pm_out'],
+                    };
 
-                        continue;
+                    if ($dtr && $requiredSlots !== []) {
+                        $punchedSlots = array_keys(array_filter([
+                            'am_in' => $dtr->time_in_am,
+                            'am_out' => $dtr->time_out_am,
+                            'pm_in' => $dtr->time_in_pm,
+                            'pm_out' => $dtr->time_out_pm,
+                        ]));
+                        $punchedRequired = array_intersect($punchedSlots, $requiredSlots);
+
+                        // At least one required slot was punched - proof of presence
+                        // for the day - but any OTHER required slot that's still blank
+                        // and not individually covered (Locator/DtrExcuse/Suspension)
+                        // is an unofficial exit. This single rule replaces the old
+                        // narrow "PM In present, PM Out missing" special case, which is
+                        // now just one shape it produces (missingRequired === ['pm_out']).
+                        if ($punchedRequired !== []) {
+                            $missingRequired = array_values(array_filter(
+                                array_diff($requiredSlots, $punchedSlots),
+                                fn (string $slot): bool => ! $isSlotCovered($dateStr, $slot)
+                            ));
+
+                            if ($missingRequired !== []) {
+                                // Keep the exact pre-existing reason/label for the
+                                // single "PM Out only" shape so existing remark-text
+                                // assertions are unaffected; any broader gap (e.g. an
+                                // AM-In-only day) gets a distinct, more accurate reason.
+                                $unofficialExitDays[$dateStr] = $missingRequired === ['pm_out']
+                                    ? 'no_time_out'
+                                    : 'incomplete_punches';
+                            }
+
+                            continue;
+                        }
                     }
 
                     // Also recognizes an OUT-side-only punch (e.g. a Field
                     // Work out_only Friday, which never has an AM punch by
                     // design) as proof of presence - not just an IN-side one.
+                    // This is also the fallback for in_only/out_only days
+                    // (requiredSlots === [], skipped above) and any dtr row
+                    // whose only punches fall outside this schedule's
+                    // required-slot set.
                     if ($dtr && ($dtr->time_in_am || $dtr->time_in_pm || $dtr->time_out_am || $dtr->time_out_pm)) {
                         continue;
                     }
@@ -482,9 +556,11 @@ class AttendanceMonitoringExportService
             } else {
                 foreach ($unofficialExitDays as $dateStr => $reason) {
                     $day = Carbon::parse($dateStr)->day;
-                    $label = $reason === 'no_time_out'
-                        ? $day.'-Unofficial Exit (No Time Out)'
-                        : $day.'-Absent (Unofficial Exit)';
+                    $label = match ($reason) {
+                        'no_time_out' => $day.'-Unofficial Exit (No Time Out)',
+                        'incomplete_punches' => $day.'-Unofficial Exit (Incomplete Punches)',
+                        default => $day.'-Absent (Unofficial Exit)', // 'absent'
+                    };
                     $remarkEntries->push(['day' => $day, 'label' => $label]);
                 }
             }

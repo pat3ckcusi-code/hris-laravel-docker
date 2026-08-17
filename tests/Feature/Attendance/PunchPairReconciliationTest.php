@@ -410,6 +410,41 @@ class PunchPairReconciliationTest extends TestCase
         $this->assertSame(0, $row['unofficial_exit_count']);
     }
 
+    public function test_monitoring_matrix_does_not_flag_partial_punch_on_out_only_day(): void
+    {
+        // A stray PM-In punch with no matching PM-Out on an out_only Friday.
+        // Before this fix, the old narrow "PM In present, PM Out missing"
+        // check ran unconditionally regardless of schedule type and would
+        // have flagged this as Unofficial Exit (No Time Out); the new
+        // required-slot-aware rule skips in_only/out_only days entirely
+        // since WeeklyPunchPairReconciliationService already owns their
+        // week-aware absence logic.
+        $this->travelTo(Carbon::parse('2026-08-08 08:00:00'));
+
+        $user = $this->setUpFieldWorkEmployee();
+        $user->forceFill(['date_hired' => self::MONDAY])->save();
+
+        $this->punchDay($user, self::MONDAY, '08:00:00');
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::FRIDAY,
+            'time_in_pm' => '13:05:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        // No reconciliation run - Friday is still governed by the plain
+        // out_only assignment, not a field_work_unconfirmed override.
+
+        $departments = Department::where('Dept_id', $user->Dept_id)->get();
+        $rows = app(AttendanceMonitoringExportService::class)->getRows($departments, 8, 2026);
+        $row = $rows->firstWhere(fn ($r) => str_contains($r['name'], $user->last_name));
+
+        $this->assertNotNull($row);
+        $this->assertSame(0, $row['unofficial_exit_count']);
+    }
+
     // ── Command wiring ────────────────────────────────────────────────────────
 
     public function test_command_runs_and_reconciles(): void

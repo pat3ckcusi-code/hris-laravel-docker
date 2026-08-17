@@ -185,10 +185,12 @@ class Form48ExportService
     }
 
     /**
-     * Build a day-of-month → leave-code map for the given user and period.
-     * Only approved, non-cancelled leave dates are included.
+     * Build a day-of-month → leave entry map for the given user and period.
+     * Only approved, non-cancelled leave dates are included. 'days' < 1 means
+     * a half-day leave, which must not hide a real punch for the half of the
+     * day actually worked - see the per-slot fallback in fillDailyRows().
      *
-     * @return array<int, string> e.g. [3 => 'VL', 4 => 'VL', 10 => 'SL']
+     * @return array<int, array{code: string, days: float}> e.g. [3 => ['code' => 'VL', 'days' => 1.0], 10 => ['code' => 'SL', 'days' => 0.5]]
      */
     public function buildLeaveMap(int $userId, string $from, string $to): array
     {
@@ -200,11 +202,14 @@ class Form48ExportService
             ->where('leave_requests.status', 'approved')
             ->where('leave_dates.is_cancelled', false)
             ->whereBetween('leave_dates.leave_date', [$from, $to])
-            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type', 'leave_requests.details_others_type')
+            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_dates.days', 'leave_requests.leave_type', 'leave_requests.details_others_type')
             ->get()
             ->each(function ($row) use (&$map): void {
                 $day = (int) Carbon::parse($row->leave_date)->day;
-                $map[$day] = $row->is_lwop ? 'LWOP' : self::toLeaveCode($row->leave_type, $row->details_others_type);
+                $map[$day] = [
+                    'code' => $row->is_lwop ? 'LWOP' : self::toLeaveCode($row->leave_type, $row->details_others_type),
+                    'days' => (float) $row->days,
+                ];
             });
 
         return $map;
@@ -591,7 +596,7 @@ class Form48ExportService
      * Populate all cells on the Form 48 sheet.
      *
      * @param  array<int, array<string, mixed>>  $records  Keyed by day-of-month (1–31)
-     * @param  array<int, string>  $leaveMap  From buildLeaveMap()
+     * @param  array<int, array{code: string, days: float}>  $leaveMap  From buildLeaveMap()
      * @param  array<int, true>  $etaMap  From buildEtaMap()
      */
     public function fill(
@@ -627,6 +632,24 @@ class Form48ExportService
                 continue;
             }
             if (isset($leaveMap[$day])) {
+                if (($leaveMap[$day]['days'] ?? 1.0) >= 1.0) {
+                    continue;
+                }
+                // Half-day leave: recompute penalties from only the slots without a
+                // real punch (leave-covered) excluded - mirrors the excuse branch
+                // below, so the half actually worked still contributes to the total.
+                $coversAmIn = empty($r['am_in'] ?? null);
+                $coversPmIn = empty($r['pm_in'] ?? null);
+                $coversPmOut = empty($r['pm_out'] ?? null);
+                [$tardiness, $undertime] = self::computeSlotPenalties(
+                    $r['date'],
+                    $coversAmIn ? '' : ($r['am_in'] ?? ''),
+                    $coversPmIn ? '' : ($r['pm_in'] ?? ''),
+                    $coversPmOut ? '' : ($r['pm_out'] ?? ''),
+                    $schedule
+                );
+                $totalMins += $tardiness + $undertime;
+
                 continue;
             }
             if ((isset($fieldWorkMap[$day]) || isset($wfhMap[$day])) && ! isset($etaMap[$day])
@@ -854,7 +877,7 @@ class Form48ExportService
 
             $rec = $records[$day] ?? null;
             $isWeekend = $dayDate->isSaturday() || $dayDate->isSunday();
-            $leaveCode = $leaveMap[$day] ?? null;
+            $leaveCode = $leaveMap[$day]['code'] ?? null;
 
             // Per-date shift rest day: always shows "Rest Day", even if a stale DTR record exists.
             if (isset($restDayMap[$day])) {
@@ -915,21 +938,73 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
-            // Approved leave: merge AM-in → PM-out and write the leave code.
-            // Leave takes priority over any biometric/manual punch for that day.
+            // Approved leave: a full-day leave (days >= 1) merges all four slots and
+            // writes the leave code, overriding any incidental punch - unchanged,
+            // deliberate priority. A half-day leave (days < 1) instead falls back
+            // per slot, the same convention as the Excuse branch below: a real
+            // punch time where one exists, the leave code only for a slot with no
+            // real punch - "which half" isn't stored anywhere, so it's inferred
+            // from the punch data itself. Tardiness/undertime are recomputed from
+            // only the slots without a real punch excluded, so the half actually
+            // worked still charges genuine lateness/undertime instead of being
+            // blanket-zeroed. A half-day leave with zero real punches at all falls
+            // back to the same merged, whole-day rendering as full-day leave, since
+            // there's no real data to preserve either way.
             if ($leaveCode !== null) {
-                foreach (range(0, 3) as $i) {
-                    $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
-                    try {
-                        $sheet->mergeCells($range);
-                    } catch (\Throwable) {
+                $isFullDayLeave = ($leaveMap[$day]['days'] ?? 1.0) >= 1.0;
+                $punchCount = $rec ? count(array_filter([
+                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
+                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '')) : 0;
+
+                if ($isFullDayLeave || $punchCount === 0) {
+                    foreach (range(0, 3) as $i) {
+                        $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                        try {
+                            $sheet->mergeCells($range);
+                        } catch (\Throwable) {
+                        }
+                        $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, $leaveCode);
+                        $sheet->getStyle($range)->getAlignment()
+                            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        // No tardiness/undertime on a fully leave-covered day.
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
                     }
-                    $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, $leaveCode);
-                    $sheet->getStyle($range)->getAlignment()
-                        ->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                    // No tardiness/undertime on leave days.
-                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
-                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+
+                    continue;
+                }
+
+                $amIn = $fmt($rec['am_in'] ?? null) ?: $leaveCode;
+                $amOut = $fmt($rec['am_out'] ?? null) ?: $leaveCode;
+                $pmIn = $fmt($rec['pm_in'] ?? null) ?: $leaveCode;
+                $pmOut = $fmt($rec['pm_out'] ?? null) ?: $leaveCode;
+
+                [$tardiness, $undertime] = self::computeSlotPenalties(
+                    $rec['date'],
+                    $fmt($rec['am_in'] ?? null) ?: '',
+                    $fmt($rec['pm_in'] ?? null) ?: '',
+                    $fmt($rec['pm_out'] ?? null) ?: '',
+                    $schedule
+                );
+                $mins = $tardiness + $undertime;
+                $hVal = (int) floor($mins / 60);
+                $mVal = $mins % 60;
+
+                foreach (range(0, 3) as $i) {
+                    $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $amIn);
+                    $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $amOut);
+                    $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $pmIn);
+                    $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $pmOut);
+                    $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, $hVal ?: '');
+                    $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, $mVal ?: '');
+                    foreach ([
+                        self::AM_IN_COLS[$i],  self::AM_OUT_COLS[$i],
+                        self::PM_IN_COLS[$i],  self::PM_OUT_COLS[$i],
+                    ] as $col) {
+                        $sheet->getStyle($col.$row)->getAlignment()
+                            ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    }
                 }
 
                 continue;

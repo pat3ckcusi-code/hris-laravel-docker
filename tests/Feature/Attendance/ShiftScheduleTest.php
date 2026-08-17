@@ -1221,6 +1221,68 @@ class ShiftScheduleTest extends TestCase
         $this->assertStringContainsString('30-Unofficial Exit (No Time Out)', $row['remarks']);
     }
 
+    public function test_unofficial_exit_counted_for_am_in_only_punch(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // Real production shape: a single AM-In punch and nothing else all
+        // day (no AM Out, no PM In, no PM Out) - previously fell through the
+        // "any punch = presence" catch-all with zero flag anywhere.
+        $employee = $this->createEmployee(['last_name' => 'Aminonly', 'date_hired' => '2026-06-30']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-30',
+            'time_in_am' => '07:25:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertStringContainsString('30-Unofficial Exit (Incomplete Punches)', $row['remarks']);
+    }
+
+    public function test_unofficial_exit_counted_for_no_break_schedule_with_only_am_in_punched(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // No-break schedules only ever expect am_in/pm_out (no lunch break in
+        // the middle) - punching in but never logging the single "time out"
+        // must still flag, same as the 4-slot case.
+        $shift = Shift::create([
+            'name' => 'Guard Duty', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00',
+        ]);
+        $employee = $this->createEmployee(['last_name' => 'Nobreakaminonly', 'date_hired' => '2026-06-30']);
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id, 'date' => '2026-06-30', 'shift_id' => $shift->id, 'no_break' => true,
+        ]);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-30',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        // Only pm_out is missing from this schedule's required set (am_out/
+        // pm_in were never real slots to begin with), so this reuses the
+        // existing "No Time Out" label rather than "Incomplete Punches".
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertStringContainsString('30-Unofficial Exit (No Time Out)', $row['remarks']);
+    }
+
     public function test_unofficial_exit_not_counted_for_missing_pm_logout_covered_by_dtr_excuse(): void
     {
         $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));

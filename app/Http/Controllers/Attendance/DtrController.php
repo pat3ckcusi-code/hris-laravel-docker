@@ -241,17 +241,23 @@ class DtrController extends Controller
         // ShiftAssignment per date.
         WorkSchedule::preloadShiftAssignments([$employee->id]);
 
-        // Build leave map: date string → leave code (approved, non-cancelled).
+        // Build leave map: date string → ['code' => leave code, 'days' => decimal]
+        // (approved, non-cancelled). 'days' < 1 means a half-day leave, which must
+        // not hide real punches for the half of the day actually worked - see the
+        // per-slot fallback below.
         $leaveMap = LeaveDate::query()
             ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
             ->where('leave_requests.user_id', $employee->id)
             ->where('leave_requests.status', 'approved')
             ->where('leave_dates.is_cancelled', false)
             ->whereBetween('leave_dates.leave_date', [$from, $to])
-            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_requests.leave_type', 'leave_requests.details_others_type')
+            ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_dates.days', 'leave_requests.leave_type', 'leave_requests.details_others_type')
             ->get()
             ->keyBy(fn ($r) => Carbon::parse($r->leave_date)->format('Y-m-d'))
-            ->map(fn ($r) => $r->is_lwop ? 'LWOP' : Form48ExportService::toLeaveCode($r->leave_type, $r->details_others_type));
+            ->map(fn ($r) => [
+                'code' => $r->is_lwop ? 'LWOP' : Form48ExportService::toLeaveCode($r->leave_type, $r->details_others_type),
+                'days' => (float) $r->days,
+            ]);
 
         // Build ETA date set: date string → true for all days covered by approved ETA.
         $etaDateSet = [];
@@ -391,7 +397,9 @@ class DtrController extends Controller
                 [$rowSchedule, $suspensionSlots] = $rowSchedule->applySuspension($suspensionRow->suspension_time);
             }
 
-            $leaveCode = $leaveMap[$dateStr] ?? null;
+            $leaveEntry = $leaveMap[$dateStr] ?? null;
+            $leaveCode = $leaveEntry['code'] ?? null;
+            $isFullDayLeave = ($leaveEntry['days'] ?? 1.0) >= 1.0;
             $isEtaDay = ! $leaveCode && isset($etaDateSet[$dateStr]);
 
             $etaPunchCount = $isEtaDay ? count(array_filter([
@@ -471,8 +479,40 @@ class DtrController extends Controller
             // Resolve effective display values for each slot.
             $coversAmIn = $coversAmOut = $coversPmIn = $coversPmOut = false;
             if ($leaveCode) {
-                [$tAmIn, $tAmOut, $tPmIn, $tPmOut] = array_fill(0, 4, $leaveCode);
-                $lateMin = $utMin = 0;
+                // A full-day leave overrides every slot regardless of any incidental
+                // punch (deliberate - leave takes priority for the whole day, same as
+                // Form48ExportService's own leave branch). A half-day leave (days < 1)
+                // only covers whichever slots have no real punch, so the half actually
+                // worked shows real times instead of being hidden behind the leave code
+                // - mirroring the per-slot fallback already used for ETA/OO/TO below,
+                // since "which half" isn't stored anywhere and is inferred from the
+                // punch data itself.
+                $coversAmIn = $isFullDayLeave || empty($dtr->time_in_am);
+                $coversAmOut = $isFullDayLeave || empty($dtr->time_out_am);
+                $coversPmIn = $isFullDayLeave || empty($dtr->time_in_pm);
+                $coversPmOut = $isFullDayLeave || empty($dtr->time_out_pm);
+                $tAmIn = $coversAmIn ? $leaveCode : $dtr->time_in_am;
+                $tAmOut = $coversAmOut ? $leaveCode : $dtr->time_out_am;
+                $tPmIn = $coversPmIn ? $leaveCode : $dtr->time_in_pm;
+                $tPmOut = $coversPmOut ? $leaveCode : $dtr->time_out_pm;
+
+                // Recompute per-slot, same as the Locator branch below - a whole-day OR
+                // zero-out would hide genuine tardiness/undertime on the half actually
+                // worked. For a full-day leave every slot is covered, so these raw
+                // inputs are always '' and this correctly collapses to lateMin=utMin=0,
+                // matching the prior unconditional behavior.
+                $rawAmIn = $coversAmIn ? '' : ($dtr->time_in_am ?? '');
+                $rawPmIn = $coversPmIn ? '' : ($dtr->time_in_pm ?? '');
+                $rawPmOut = $coversPmOut ? '' : ($dtr->time_out_pm ?? '');
+                [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
+                    $dateStr, $rawAmIn, $rawPmIn, $rawPmOut, $rowSchedule
+                );
+                if ($lateMin === 0 && ! $coversAmIn) {
+                    $lateMin = $imputeAmInLate();
+                }
+                if ($utMin === 0 && ! $coversPmOut) {
+                    $utMin = $imputePmOutUndertime();
+                }
             } elseif ($showEta) {
                 $tAmIn = $dtr->time_in_am ?: 'ETA';
                 $tAmOut = $dtr->time_out_am ?: 'ETA';
@@ -674,10 +714,13 @@ class DtrController extends Controller
         }
 
         // Add pure leave-only rows (approved leave, no biometric record for that day).
-        foreach ($leaveMap as $dateStr => $leaveCode) {
+        // No real punch data exists for these dates either way, so there's nothing
+        // for a half-day leave to hide here - always shown as the leave code.
+        foreach ($leaveMap as $dateStr => $leaveEntry) {
             if (isset($dtrDates[$dateStr])) {
                 continue;
             }
+            $leaveCode = $leaveEntry['code'];
             $data->push([
                 'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
                 'time_in_am' => $leaveCode,
