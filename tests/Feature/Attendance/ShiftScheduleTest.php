@@ -573,6 +573,67 @@ class ShiftScheduleTest extends TestCase
         $this->assertArrayNotHasKey('2026-06-03', $groups);
     }
 
+    /**
+     * Regression for a real reported case: eligibleUntil() used to reach
+     * EXACTLY to the next on-day's own scheduled start with zero margin. An
+     * exactly-on-time arrival for that next on-day (equal to the stored
+     * eligibleUntil, an inclusive `lte` tie) was wrongly absorbed into the
+     * stale previous shift instead of opening its own - silently discarding
+     * that day's own attendance (it never got a groups[] entry at all).
+     */
+    public function test_24_hour_shift_does_not_swallow_the_next_on_days_own_arrival_after_two_rest_days(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-08-10');
+        $this->markRestDay($user, '2026-08-11');
+        $this->markRestDay($user, '2026-08-12');
+
+        foreach (['2026-08-10 08:05:00', '2026-08-11 08:02:00', '2026-08-13 08:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-08-10', $groups);
+        $this->assertCount(2, $groups['2026-08-10']); // 08-10 08:05 open + 08-11 08:02 close
+        $this->assertArrayNotHasKey('2026-08-11', $groups);
+        $this->assertArrayNotHasKey('2026-08-12', $groups);
+
+        $this->assertArrayHasKey('2026-08-13', $groups);
+        $this->assertCount(1, $groups['2026-08-13']); // its OWN on-time arrival, not absorbed into 08-10
+    }
+
+    /**
+     * The floor itself (early_in_hours before the next on-day's own start) is
+     * inclusive on AttendanceMatcher's side - a punch exactly there must still
+     * open its own new shift, not replay the same tie one boundary earlier.
+     */
+    public function test_24_hour_shift_treats_a_punch_exactly_at_the_early_in_floor_as_the_next_days_own_arrival(): void
+    {
+        [$user] = $this->employeeOnTwentyFourHourShift('2026-06-01');
+        $this->markRestDay($user, '2026-06-02');
+        $this->markRestDay($user, '2026-06-03');
+
+        // 2026-06-04 is the next on-day; early_in_hours defaults to 4.0, so
+        // 04:00 is the earliest instant AttendanceMatcher itself would treat
+        // as 2026-06-04's own legitimate early arrival.
+        foreach (['2026-06-01 08:00:00', '2026-06-04 04:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-06-01', $groups);
+        $this->assertCount(1, $groups['2026-06-01']);
+        $this->assertArrayHasKey('2026-06-04', $groups);
+        $this->assertCount(1, $groups['2026-06-04']);
+    }
+
     /** A stray mid-shift punch must not clobber the tracker before the real closing punch arrives. */
     public function test_24_hour_shift_absorbs_a_stray_mid_shift_punch_before_the_real_close(): void
     {

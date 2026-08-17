@@ -547,6 +547,52 @@ class AttendanceComputationTest extends TestCase
     }
 
     /**
+     * End-to-end regression for a real reported bug: a 1-on/2-off rotation
+     * where ShiftPunchGrouper's eligibility window used to reach EXACTLY to
+     * the next on-day's own scheduled start, so its on-time arrival was
+     * absorbed into the previous (stale) shift instead of opening its own -
+     * and that day got ZERO dtrs row, which DtrController's uncovered-day
+     * pass then renders as Absent even though the employee genuinely punched.
+     */
+    public function test_import_gives_the_next_on_days_own_arrival_its_own_row_after_two_rest_days(): void
+    {
+        $shift = Shift::create([
+            'name' => '24-Hour Duty', 'time_in' => '08:00', 'time_out' => '08:00',
+            'break_out' => null, 'break_in' => null, 'crosses_midnight' => true, 'is_active' => true,
+        ]);
+        $user = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse('2026-08-10'), null, null, null, [0, 1, 2, 3, 4, 5, 6], true
+        );
+        foreach (['2026-08-11', '2026-08-12'] as $date) {
+            EmployeeShiftSchedule::create([
+                'user_id' => $user->id, 'date' => $date, 'shift_id' => null, 'type' => 'rest', 'created_by' => $user->id,
+            ]);
+        }
+
+        foreach (['2026-08-10 08:05:00', '2026-08-11 08:02:00', '2026-08-13 08:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, '2026-08-10', '2026-08-13');
+
+        $openingRow = Dtr::where('employee_id', $user->id)->whereDate('date', '2026-08-10')->firstOrFail();
+        $this->assertSame('08:05:00', $openingRow->time_in_am);
+        $this->assertSame('08:02:00', $openingRow->time_out_pm);
+        $this->assertSame('late', $openingRow->status); // 5 min after the 08:00 scheduled start
+
+        $nextOnDayRow = Dtr::where('employee_id', $user->id)->whereDate('date', '2026-08-13')->first();
+        $this->assertNotNull($nextOnDayRow, '2026-08-13 must have its own dtrs row, not render as Absent.');
+        $this->assertSame('08:00:00', $nextOnDayRow->time_in_am);
+
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-08-11']);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-08-12']);
+    }
+
+    /**
      * Regression for a real reported export failure ("Undefined array key
      * 17"): Form48ExportService::buildRecords()'s attendance_logs fallback
      * (used for a day with raw punches but no dtrs row yet) must not crash
