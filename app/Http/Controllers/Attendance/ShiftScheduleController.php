@@ -21,6 +21,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 /**
@@ -69,6 +70,34 @@ class ShiftScheduleController extends Controller
                 (int) $expectedCount,
                 count($userIds)
             ));
+        }
+    }
+
+    /**
+     * A shift spanning a full 24 hours (Shift::isFullDayCrossing() - time_in
+     * == time_out, e.g. a genuine 24-on/24-off duty template) needs
+     * no_break=true on the rotation's own assignment - without it,
+     * AttendanceMatcher's break-slot window collides with the shift-end
+     * window at the exact 24h mark, silently zeroing undertime and
+     * misfiling the departure punch into the break-out slot instead (see
+     * CLAUDE.md "Shift management"). Rejects rather than silently forcing
+     * no_break=true, since the mismatch could instead mean the wrong shift
+     * template was picked entirely - the same fail-closed reasoning as
+     * assertBulkSelectionComplete() above.
+     */
+    private function assertNoBreakForFullDayShift(\Illuminate\Validation\Validator $validator, ?int $shiftId, bool $noBreak): void
+    {
+        if ($noBreak || $shiftId === null) {
+            return;
+        }
+
+        $shift = Shift::find($shiftId);
+
+        if ($shift !== null && Shift::isFullDayCrossing($shift->time_in, $shift->time_out)) {
+            $validator->errors()->add(
+                'no_break',
+                'This shift spans a full 24 hours (Time In equals Time Out) and requires "No Break (2-punch)" to be checked, or DTR will misscore the departure punch.'
+            );
         }
     }
 
@@ -598,7 +627,7 @@ class ShiftScheduleController extends Controller
         $actor = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'user_id' => ['required', 'integer', 'exists:users,id'],
             'shift_id' => ['required', 'integer', 'exists:shifts,id'],
             'on_days' => ['required', 'integer', 'min:1'],
@@ -607,6 +636,12 @@ class ShiftScheduleController extends Controller
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'no_break' => ['nullable', 'boolean'],
         ]);
+
+        $validator->after(fn ($validator) => $this->assertNoBreakForFullDayShift(
+            $validator, $request->integer('shift_id') ?: null, $request->boolean('no_break')
+        ));
+
+        $validated = $validator->validate();
 
         if ($accessibleIds !== null && ! in_array((int) $validated['user_id'], $accessibleIds, true)) {
             abort(403, 'You may only schedule employees in your own department.');
@@ -662,7 +697,7 @@ class ShiftScheduleController extends Controller
         $actor = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($actor);
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'shift_id' => ['required', 'integer', 'exists:shifts,id'],
@@ -672,6 +707,12 @@ class ShiftScheduleController extends Controller
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'no_break' => ['nullable', 'boolean'],
         ]);
+
+        $validator->after(fn ($validator) => $this->assertNoBreakForFullDayShift(
+            $validator, $request->integer('shift_id') ?: null, $request->boolean('no_break')
+        ));
+
+        $validated = $validator->validate();
 
         $userIds = array_map('intval', $validated['user_ids']);
 

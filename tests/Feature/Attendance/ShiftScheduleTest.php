@@ -2296,6 +2296,7 @@ class ShiftScheduleTest extends TestCase
             'off_days' => 0,
             'start_date' => '2026-08-10',
             'end_date' => '2026-08-12',
+            'no_break' => true,
         ])->assertRedirect();
 
         // The stale row must have been truncated, not left to keep winning.
@@ -2361,6 +2362,71 @@ class ShiftScheduleTest extends TestCase
         ]);
     }
 
+    /**
+     * A shift with time_in == time_out (Shift::isFullDayCrossing()) needs
+     * no_break=true or AttendanceMatcher misscores the departure punch (see
+     * CLAUDE.md "Shift management"). Both entry points must reject the
+     * misconfigured submission wholesale rather than silently writing a
+     * rotation that will never fold punches into a single 24h row.
+     */
+    public function test_generate_pattern_rejects_a_full_day_shift_without_no_break(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = $this->twentyFourHourShiftModel();
+        $employee = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.generate-pattern'), [
+            'user_id' => $employee->id,
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 2,
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-08',
+            // no_break intentionally omitted.
+        ])->assertSessionHasErrors('no_break');
+
+        $this->assertDatabaseMissing('shift_assignments', ['user_id' => $employee->id]);
+        $this->assertDatabaseMissing('employee_shift_schedules', ['user_id' => $employee->id]);
+    }
+
+    public function test_generate_pattern_bulk_rejects_a_full_day_shift_without_no_break(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = $this->twentyFourHourShiftModel();
+        $employee = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.generate-pattern-bulk'), [
+            'user_ids' => [$employee->id],
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 2,
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-08',
+            'no_break' => false,
+        ])->assertSessionHasErrors('no_break');
+
+        $this->assertDatabaseMissing('shift_assignments', ['user_id' => $employee->id]);
+    }
+
+    /** An ordinary (non-24h) shift must never trip the full-day-crossing guard, no_break or not. */
+    public function test_generate_pattern_allows_an_ordinary_shift_without_no_break(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $shift = $this->nightShiftModel();
+        $employee = $this->createEmployee();
+
+        $this->actingAs($tk)->post(route('attendance.shift-schedule.generate-pattern'), [
+            'user_id' => $employee->id,
+            'shift_id' => $shift->id,
+            'on_days' => 1,
+            'off_days' => 2,
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-08',
+        ])->assertSessionDoesntHaveErrors('no_break');
+
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $employee->id, 'shift_id' => $shift->id]);
+    }
+
     public function test_time_keeper_bulk_generates_rotation_for_checked_employees_only(): void
     {
         $tk = $this->createTimeKeeper();
@@ -2376,6 +2442,7 @@ class ShiftScheduleTest extends TestCase
             'off_days' => 2,
             'start_date' => '2026-08-01',
             'end_date' => '2026-08-08',
+            'no_break' => true,
         ])->assertRedirect();
 
         foreach ([$checked1, $checked2] as $emp) {
@@ -2417,6 +2484,7 @@ class ShiftScheduleTest extends TestCase
             'off_days' => 2,
             'start_date' => '2026-08-01',
             'end_date' => '2026-08-08',
+            'no_break' => true,
         ])->assertRedirect();
 
         // The rotation's ShiftAssignment is open-ended, so recompute must
@@ -2448,6 +2516,7 @@ class ShiftScheduleTest extends TestCase
             'off_days' => 1,
             'start_date' => '2026-08-01',
             'end_date' => '2026-08-03',
+            'no_break' => true,
         ])->assertRedirect();
 
         $this->assertDatabaseHas('shift_assignments', ['user_id' => $inDept->id, 'shift_id' => $shift->id]);
@@ -2460,6 +2529,7 @@ class ShiftScheduleTest extends TestCase
             'off_days' => 1,
             'start_date' => '2026-09-01',
             'end_date' => '2026-09-03',
+            'no_break' => true,
         ])->assertStatus(403);
 
         $this->assertDatabaseMissing('shift_assignments', ['user_id' => $outsider->id]);

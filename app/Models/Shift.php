@@ -105,6 +105,18 @@ class Shift extends Model
         return substr($timeOut, 0, 5) <= substr($timeIn, 0, 5);
     }
 
+    /**
+     * A shift spans a genuine continuous 24 hours when it starts and ends at
+     * the exact same clock time (e.g. a 24-on/24-off duty template). This is
+     * the specific case that requires no_break=true on whatever assignment
+     * uses it - see ShiftScheduleController's rotation generator, which
+     * guards against this template shape being assigned without it.
+     */
+    public static function isFullDayCrossing(string $timeIn, string $timeOut): bool
+    {
+        return substr($timeIn, 0, 5) === substr($timeOut, 0, 5);
+    }
+
     public function employees(): HasMany
     {
         return $this->hasMany(User::class, 'shift_id');
