@@ -23,6 +23,11 @@
     padding:.3rem .7rem; border-radius:9999px; font-size:.72rem; font-weight:600;
     background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;
 }
+.frontline-badge-excluded {
+    display:inline-flex; align-items:center; gap:.35rem;
+    padding:.3rem .7rem; border-radius:9999px; font-size:.72rem; font-weight:600;
+    background:#fef3c7; color:#92400e; border:1px solid #fcd34d;
+}
 </style>
 @endsection
 
@@ -171,12 +176,21 @@
                     <input type="text" name="emp_search" value="{{ $empSearch }}" placeholder="Employee name"
                            class="hris-filter-select" style="min-width:14rem;">
                 </div>
+                <div class="hris-filter-group">
+                    <label class="hris-filter-label">Department</label>
+                    <select name="emp_dept_id" class="hris-filter-select" style="min-width:16rem;">
+                        <option value="">All Departments</option>
+                        @foreach ($allDepartments as $d)
+                            <option value="{{ $d->Dept_id }}" @selected($empDeptId === $d->Dept_id)>{{ $d->Dept_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div style="display:flex;gap:.5rem;align-items:flex-end;">
                 <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm">
                     <i class="fas fa-search"></i> Search
                 </button>
-                @if ($empSearch !== '')
+                @if ($empSearch !== '' || $empDeptId !== null)
                     <a href="{{ route('attendance.frontline-personnel.index', ['dept_search' => $deptSearch]) }}" class="hris-btn hris-btn-secondary hris-btn-sm">
                         <i class="fas fa-times"></i> Clear
                     </a>
@@ -207,26 +221,59 @@
                         <td>
                             @if ($emp->is_frontline)
                                 <span class="frontline-badge-on"><i class="fas fa-shield-heart"></i> Frontline</span>
+                            @elseif ($emp->department?->is_frontline)
+                                @if ($emp->frontline_department_excluded)
+                                    <span class="frontline-badge-excluded" title="Opted out of {{ $emp->department->Dept_name }}'s frontline coverage">
+                                        <i class="fas fa-user-slash"></i> Excluded <span style="opacity:.75;font-weight:500;">(opted out)</span>
+                                    </span>
+                                @else
+                                    <span class="frontline-badge-on" title="Exempt because {{ $emp->department->Dept_name }} is marked frontline">
+                                        <i class="fas fa-shield-heart"></i> Frontline <span style="opacity:.75;font-weight:500;">(via dept.)</span>
+                                    </span>
+                                @endif
                             @else
                                 <span class="frontline-badge-off"><i class="fas fa-minus-circle"></i> Not marked</span>
                             @endif
                         </td>
                         <td style="text-align:right;white-space:nowrap;">
-                            <form method="POST" action="{{ route('attendance.frontline-personnel.employees.toggle', $emp) }}"
-                                  class="frontline-confirm-form" data-action="{{ $emp->is_frontline ? 'unmark' : 'mark' }}"
-                                  data-name="{{ trim($emp->first_name.' '.$emp->last_name) }}" style="display:inline;">
-                                @csrf
-                                @method('PUT')
-                                @if ($emp->is_frontline)
+                            @if ($emp->is_frontline)
+                                <form method="POST" action="{{ route('attendance.frontline-personnel.employees.toggle', $emp) }}"
+                                      class="frontline-confirm-form" data-action="unmark"
+                                      data-name="{{ trim($emp->first_name.' '.$emp->last_name) }}" style="display:inline;">
+                                    @csrf
+                                    @method('PUT')
                                     <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm">
                                         <i class="fas fa-ban"></i> Unmark
                                     </button>
-                                @else
+                                </form>
+                            @elseif ($emp->department?->is_frontline)
+                                <form method="POST" action="{{ route('attendance.frontline-personnel.employees.toggle-exclusion', $emp) }}"
+                                      class="frontline-confirm-form"
+                                      data-action="{{ $emp->frontline_department_excluded ? 'restore' : 'exclude' }}"
+                                      data-name="{{ trim($emp->first_name.' '.$emp->last_name) }}" style="display:inline;">
+                                    @csrf
+                                    @method('PUT')
+                                    @if ($emp->frontline_department_excluded)
+                                        <button type="submit" class="hris-btn hris-btn-secondary hris-btn-sm">
+                                            <i class="fas fa-rotate-left"></i> Restore Dept. Coverage
+                                        </button>
+                                    @else
+                                        <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm">
+                                            <i class="fas fa-user-slash"></i> Exclude from Suspension
+                                        </button>
+                                    @endif
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('attendance.frontline-personnel.employees.toggle', $emp) }}"
+                                      class="frontline-confirm-form" data-action="mark"
+                                      data-name="{{ trim($emp->first_name.' '.$emp->last_name) }}" style="display:inline;">
+                                    @csrf
+                                    @method('PUT')
                                     <button type="submit" class="hris-btn hris-btn-primary hris-btn-sm">
                                         <i class="fas fa-shield-heart"></i> Mark Frontline
                                     </button>
-                                @endif
-                            </form>
+                                </form>
+                            @endif
                         </td>
                     </tr>
                 @empty
@@ -258,20 +305,41 @@
 
 @section('page_scripts')
 <script>
+var FRONTLINE_CONFIRM_COPY = {
+    mark: {
+        icon: 'question', title: 'Mark as frontline?',
+        html: function (name) { return '<b>' + name + '</b> will be exempt from every current and future work suspension and must keep reporting normally.'; },
+        confirmButtonText: 'Yes, mark frontline', confirmButtonColor: '#b91c1c',
+    },
+    unmark: {
+        icon: 'warning', title: 'Unmark as frontline?',
+        html: function (name) { return '<b>' + name + '</b> will no longer be automatically exempt from work suspensions.'; },
+        confirmButtonText: 'Yes, unmark', confirmButtonColor: '#6b7280',
+    },
+    exclude: {
+        icon: 'warning', title: 'Exclude from department coverage?',
+        html: function (name) { return '<b>' + name + '</b> will no longer inherit frontline exemption from their department and will be subject to work suspensions like a normal employee.'; },
+        confirmButtonText: 'Yes, exclude', confirmButtonColor: '#b91c1c',
+    },
+    restore: {
+        icon: 'question', title: 'Restore department coverage?',
+        html: function (name) { return '<b>' + name + '</b> will again be exempt from work suspensions through their department\'s frontline designation.'; },
+        confirmButtonText: 'Yes, restore', confirmButtonColor: '#3b82f6',
+    },
+};
+
 document.querySelectorAll('.frontline-confirm-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         var name = form.dataset.name || 'this record';
-        var isMark = form.dataset.action === 'mark';
+        var copy = FRONTLINE_CONFIRM_COPY[form.dataset.action] || FRONTLINE_CONFIRM_COPY.mark;
         Swal.fire({
-            icon: isMark ? 'question' : 'warning',
-            title: isMark ? 'Mark as frontline?' : 'Unmark as frontline?',
-            html: isMark
-                ? '<b>' + name + '</b> will be exempt from every current and future work suspension and must keep reporting normally.'
-                : '<b>' + name + '</b> will no longer be automatically exempt from work suspensions.',
+            icon: copy.icon,
+            title: copy.title,
+            html: copy.html(name),
             showCancelButton: true,
-            confirmButtonText: isMark ? 'Yes, mark frontline' : 'Yes, unmark',
-            confirmButtonColor: isMark ? '#b91c1c' : '#6b7280',
+            confirmButtonText: copy.confirmButtonText,
+            confirmButtonColor: copy.confirmButtonColor,
             cancelButtonColor: '#6b7280',
         }).then(function (res) { if (res.isConfirmed) form.submit(); });
     });

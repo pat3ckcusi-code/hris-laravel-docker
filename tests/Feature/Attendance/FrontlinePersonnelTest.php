@@ -96,4 +96,62 @@ class FrontlinePersonnelTest extends TestCase
             ->assertStatus(200)
             ->assertSee($emp->last_name);
     }
+
+    public function test_time_keeper_can_exclude_an_employee_from_department_frontline_coverage(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $emp = $this->createEmployee();
+        $emp->department->update(['is_frontline' => true]);
+
+        $this->assertTrue($emp->fresh()->isFrontlineExempt());
+
+        $this->actingAs($tk)
+            ->put(route('attendance.frontline-personnel.employees.toggle-exclusion', $emp))
+            ->assertRedirect();
+
+        $emp->refresh();
+        $this->assertTrue($emp->frontline_department_excluded);
+        $this->assertFalse($emp->isFrontlineExempt());
+
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'shift_management',
+            'action' => 'frontline_employee_dept_exclusion_toggled',
+            'target_type' => 'user_dept_exclusion',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_toggling_the_exclusion_twice_restores_department_coverage(): void
+    {
+        $tk = $this->createTimeKeeper();
+        $emp = $this->createEmployee();
+        $emp->department->update(['is_frontline' => true]);
+
+        $this->actingAs($tk)->put(route('attendance.frontline-personnel.employees.toggle-exclusion', $emp));
+        $this->assertFalse($emp->fresh()->isFrontlineExempt());
+
+        $this->actingAs($tk)->put(route('attendance.frontline-personnel.employees.toggle-exclusion', $emp));
+        $this->assertTrue($emp->fresh()->isFrontlineExempt());
+    }
+
+    public function test_own_frontline_flag_wins_over_department_exclusion(): void
+    {
+        $emp = $this->createEmployee([
+            'is_frontline' => true,
+            'frontline_department_excluded' => true,
+        ]);
+        $emp->department->update(['is_frontline' => true]);
+
+        $this->assertTrue($emp->fresh()->isFrontlineExempt());
+    }
+
+    public function test_department_head_cannot_exclude_an_employee(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $emp = $this->createEmployee();
+
+        $this->actingAs($dh)
+            ->put(route('attendance.frontline-personnel.employees.toggle-exclusion', $emp))
+            ->assertStatus(403);
+    }
 }

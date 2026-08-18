@@ -79,12 +79,21 @@ class User extends Authenticatable
      * True when this employee must keep reporting normally during a declared
      * work suspension - either flagged individually, or a member of a
      * frontline/essential department (health, disaster response, security,
-     * etc.). Consulted everywhere WorkSchedule::applySuspension() would
-     * otherwise apply.
+     * etc.), unless individually opted out of that inherited department
+     * coverage via frontline_department_excluded. Consulted everywhere
+     * WorkSchedule::applySuspension() would otherwise apply.
      */
     public function isFrontlineExempt(): bool
     {
-        return (bool) $this->is_frontline || (bool) $this->department?->is_frontline;
+        if ($this->is_frontline) {
+            return true;
+        }
+
+        if ($this->frontline_department_excluded) {
+            return false;
+        }
+
+        return (bool) $this->department?->is_frontline;
     }
 
     public function oicAssignments()
@@ -117,6 +126,7 @@ class User extends Authenticatable
         'dtr_exempt',
         'is_frontline',
         'is_solo_parent',
+        'frontline_department_excluded',
     ];
 
     /**
@@ -251,6 +261,7 @@ class User extends Authenticatable
             'dtr_exempt' => 'boolean',
             'is_frontline' => 'boolean',
             'is_solo_parent' => 'boolean',
+            'frontline_department_excluded' => 'boolean',
             'job_order_auto_deactivated_at' => 'datetime',
             'remember_token_created_at' => 'datetime',
         ];

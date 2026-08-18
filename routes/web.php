@@ -722,6 +722,8 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager'])->group(function () {
         ->name('attendance.frontline-personnel.departments.toggle');
     Route::put('/attendance/frontline-personnel/employees/{user}', [FrontlinePersonnelController::class, 'toggleEmployee'])
         ->name('attendance.frontline-personnel.employees.toggle');
+    Route::put('/attendance/frontline-personnel/employees/{user}/exclusion', [FrontlinePersonnelController::class, 'toggleEmployeeDepartmentExclusion'])
+        ->name('attendance.frontline-personnel.employees.toggle-exclusion');
 });
 
 // Company-wide Shift Logs (Time Keeper only)
