@@ -62,6 +62,7 @@
                             <option value="">All Types</option>
                             <option value="weather" @selected($filters['type'] === 'weather')>Weather / Typhoon</option>
                             <option value="event"   @selected($filters['type'] === 'event')>Urgent Event</option>
+                            <option value="holiday" @selected($filters['type'] === 'holiday')>Holiday</option>
                             <option value="other"   @selected($filters['type'] === 'other')>Other</option>
                         </select>
                     </div>
@@ -397,6 +398,7 @@
                         <select name="type" id="suspension-type" class="hris-filter-select" style="width:100%;box-sizing:border-box;" required>
                             <option value="weather" @selected(old('type', 'weather') === 'weather')>Weather / Typhoon</option>
                             <option value="event"   @selected(old('type') === 'event')>Urgent Event</option>
+                            <option value="holiday" @selected(old('type') === 'holiday')>Holiday</option>
                             <option value="other"   @selected(old('type') === 'other')>Other</option>
                         </select>
                     </div>

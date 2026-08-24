@@ -1778,8 +1778,94 @@ class ShiftScheduleTest extends TestCase
             ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
 
         $this->assertNotNull($row, 'A full-day work suspension with zero punches must still appear in the DTR list.');
-        $this->assertSame('SUSPENDED', $row['time_in_am']);
-        $this->assertStringContainsString('Work Suspended', $row['status_badge']);
+        $this->assertSame('WEATHER / TYPHOON', $row['time_in_am']);
+        $this->assertStringContainsString('Weather / Typhoon', $row['status_badge']);
+    }
+
+    /**
+     * Regression: the rest-day/field-work/WFH row-push loop's skip guard
+     * checked dtrDates/leave/ETA/office order/travel order/excuse/locator
+     * but never a declared WorkSuspension, so a field_work (or wfh) date
+     * with zero punches always rendered "Field Work" even when the whole
+     * company was suspended for that date - the suspension had no visible
+     * effect at all. Fixed by deferring to the suspension-aware catch-all
+     * loop whenever a non-frontline-exempt suspension covers the date.
+     */
+    public function test_daily_time_records_prioritizes_full_day_suspension_over_field_work_with_no_punches(): void
+    {
+        $this->travelTo(Carbon::parse('2026-06-16 09:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Fieldworkholiday']);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        WorkSuspension::create([
+            'suspension_date' => '2026-06-15',
+            'suspension_time' => null, // null = full-day suspension
+            'reason' => 'Holiday',
+            'type' => 'holiday',
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row, 'A suspended field_work date with zero punches must still appear in the DTR list.');
+        $this->assertSame('HOLIDAY', $row['time_in_am']);
+        $this->assertStringContainsString('Holiday', $row['status_badge']);
+        $this->assertStringNotContainsString('Field Work', $row['status_badge']);
+    }
+
+    /**
+     * A frontline-exempt employee on a field_work date must be untouched by
+     * a declared suspension - isFrontlineExempt() short-circuits the new
+     * guard, exactly like it does for every other suspension call site.
+     */
+    public function test_daily_time_records_field_work_unaffected_by_suspension_for_frontline_exempt_employee(): void
+    {
+        $this->travelTo(Carbon::parse('2026-06-16 09:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Fieldworkfrontline', 'is_frontline' => true]);
+
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id,
+            'date' => '2026-06-15',
+            'shift_id' => null,
+            'type' => 'field_work',
+        ]);
+
+        WorkSuspension::create([
+            'suspension_date' => '2026-06-15',
+            'suspension_time' => null,
+            'reason' => 'Holiday',
+            'type' => 'holiday',
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $employee->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-06',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertStringContainsString('Field Work', $row['status_badge']);
     }
 
     /**

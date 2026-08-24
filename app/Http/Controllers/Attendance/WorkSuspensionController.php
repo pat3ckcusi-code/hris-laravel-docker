@@ -98,7 +98,7 @@ class WorkSuspensionController extends Controller
             'suspension_date' => ['required', 'date'],
             'suspension_time' => ['nullable', 'date_format:H:i'],
             'reason' => ['required', 'string', 'max:1000'],
-            'type' => ['required', Rule::in(['weather', 'event', 'other'])],
+            'type' => ['required', Rule::in(['weather', 'event', 'other', 'holiday'])],
         ]);
     }
 }

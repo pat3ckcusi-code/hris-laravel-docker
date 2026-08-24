@@ -667,7 +667,11 @@ class DtrController extends Controller
                             : ($excuse
                                 ? '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>'
                                 : ($suspension
-                                    ? '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>'
+                                    ? (function () use ($suspension) {
+                                        $cfg = WorkSuspension::typeConfig($suspension->type);
+
+                                        return '<span class="hris-badge" style="background:'.$cfg['bg'].';color:'.$cfg['color'].';"><i class="fas '.$cfg['icon'].'" style="font-size:.65rem;"></i> '.$cfg['label'].'</span>';
+                                    })()
                                     : ($loc
                                         ? '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>'
                                         : ($showFieldWorkWfh
@@ -907,6 +911,10 @@ class DtrController extends Controller
                 || isset($excuseMap[$dateStr]) || isset($locatorDateMap[$dateStr])) {
                 continue; // already represented by a DTR, leave, ETA, office order, travel order, excuse, or locator row
             }
+            if (in_array($assignment->type, ['field_work', 'wfh'], true)
+                && isset($suspensionMap[$dateStr]) && ! $employee->isFrontlineExempt()) {
+                continue; // a declared suspension takes priority - let the catch-all loop below render it
+            }
 
             if ($assignment->type === 'field_work') {
                 $data->push([
@@ -997,6 +1005,10 @@ class DtrController extends Controller
         }
         foreach ($shiftAssignments as $d => $assignment) {
             if ($assignment->shift_id === null && $assignment->type !== 'standard') {
+                if (in_array($assignment->type, ['field_work', 'wfh'], true)
+                    && isset($suspensionMap[$d]) && ! $employee->isFrontlineExempt()) {
+                    continue; // left uncovered so the catch-all loop below renders the suspension
+                }
                 $coveredDates[$d] = true; // rest/field-work rows, already handled above
             }
         }
@@ -1048,12 +1060,14 @@ class DtrController extends Controller
             if (count($uncoveredSuspensionSlots) === 4) {
                 // Full-day suspension with no Dtr row at all for this date -
                 // there are no punches to impute from, so just badge it.
+                $uncoveredCfg = WorkSuspension::typeConfig($uncoveredSuspension->type);
+                $uncoveredSlotLabel = strtoupper($uncoveredCfg['label']);
                 $data->push([
                     'date' => $cursor->format('M d, Y (D)'),
-                    'time_in_am' => 'SUSPENDED',
-                    'time_out_am' => 'SUSPENDED',
-                    'time_in_pm' => 'SUSPENDED',
-                    'time_out_pm' => 'SUSPENDED',
+                    'time_in_am' => $uncoveredSlotLabel,
+                    'time_out_am' => $uncoveredSlotLabel,
+                    'time_in_pm' => $uncoveredSlotLabel,
+                    'time_out_pm' => $uncoveredSlotLabel,
                     'time_in_ot' => '-',
                     'time_out_ot' => '-',
                     'late_minutes' => 0,
@@ -1067,7 +1081,7 @@ class DtrController extends Controller
                     'is_pm_in_late' => false,
                     'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
-                    'status_badge' => '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">Work Suspended</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:'.$uncoveredCfg['bg'].';color:'.$uncoveredCfg['color'].';"><i class="fas '.$uncoveredCfg['icon'].'" style="font-size:.65rem;"></i> '.$uncoveredCfg['label'].'</span>',
                     'office_order_badge' => '',
                 ]);
 

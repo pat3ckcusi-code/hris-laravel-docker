@@ -43,6 +43,7 @@ class WorkSuspension extends Model
         return match ($type) {
             'weather' => ['icon' => 'fa-cloud-showers-heavy', 'color' => '#2563eb', 'bg' => '#dbeafe', 'label' => 'Weather / Typhoon'],
             'event' => ['icon' => 'fa-bullhorn', 'color' => '#9f1239', 'bg' => '#fecdd3', 'label' => 'Urgent Event'],
+            'holiday' => ['icon' => 'fa-flag', 'color' => '#15803d', 'bg' => '#dcfce7', 'label' => 'Holiday'],
             default => ['icon' => 'fa-ellipsis-h', 'color' => '#6b7280', 'bg' => '#f3f4f6', 'label' => 'Other'],
         };
     }
