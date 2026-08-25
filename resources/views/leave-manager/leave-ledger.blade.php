@@ -111,12 +111,9 @@
                                 <th>Period Date</th>
                                 <th>Type</th>
                                 <th>Leave Type</th>
-                                <th class="text-right">Credit VL</th>
-                                <th class="text-right">Credit SL</th>
-                                <th class="text-right">Debit VL</th>
-                                <th class="text-right">Debit SL</th>
-                                <th class="text-right">VL Balance</th>
-                                <th class="text-right">SL Balance</th>
+                                <th class="text-right">Credit</th>
+                                <th class="text-right">Debit</th>
+                                <th class="text-right">Balance After</th>
                                 <th>WOP Days</th>
                                 <th>Remarks</th>
                                 <th>Posted By</th>
@@ -332,17 +329,24 @@ $(function () {
                 return '<span class="ll-badge ll-badge--' + b.cls + '">' + b.label + '</span>';
             }},
             { data: 'leave_type' },
-            { data: 'credit_vl',        className: 'text-right', render: function (v) { return amtCell(v, '+'); }},
-            { data: 'credit_sl',        className: 'text-right', render: function (v) { return amtCell(v, '+'); }},
-            { data: 'debit_vl',         className: 'text-right', render: function (v) { return amtCell(v, '−'); }},
-            { data: 'debit_sl',         className: 'text-right', render: function (v) { return amtCell(v, '−'); }},
-            { data: 'vl_balance_after', className: 'text-right', render: function (v) { return '<span class="ll-balance-cell">'+v+'</span>'; }},
-            { data: 'sl_balance_after', className: 'text-right', render: function (v) { return '<span class="ll-balance-cell">'+v+'</span>'; }},
+            { data: 'credit',        className: 'text-right', render: function (v) { return amtCell(v, '+'); }},
+            { data: 'debit',         className: 'text-right', render: function (v) { return amtCell(v, '−'); }},
+            { data: 'balance_after', className: 'text-right', render: function (v) { return v === '-' ? v : '<span class="ll-balance-cell">'+v+'</span>'; }},
             { data: 'abs_wop_days' },
             { data: 'remarks', defaultContent: '-' },
             { data: 'posted_by' },
         ],
-        order: [[0, 'desc']],
+        // No initial sort: the server already returns rows in true posting order
+        // (newest first), which is the only order the balance_after running-total
+        // column is actually valid in. Several transaction types are
+        // legitimately backdated relative to when they're posted (a CREDIT_CORRECTION
+        // dated to the original attendance month but posted later, a LEAVE_USED/
+        // LEAVE_CANCELLED dated to the leave's own start date but posted at approval
+        // time) — sorting by the Date column would reorder rows out of the sequence
+        // their balance-after values were actually computed in, making a correct
+        // running balance look wrong. The Date column stays clickable for an explicit
+        // re-sort; only the default view is affected.
+        order: [],
         pageLength: 25,
         dom: '<"dt-top-bar"ip>rt<"dt-bottom-bar"lip>',
         language: { emptyTable: 'Select an employee and click Load.' },
@@ -413,12 +417,12 @@ $(function () {
         $.getJSON('{{ route('api.leave-ledger.history') }}', {
             user_id: userId,
             year:    $('#ledger-year').val(),
+            month:   $('#ledger-month').val(),
         }, function (res) {
             historyTable.clear().rows.add(res.data).draw();
             if (res.data.length > 0) {
-                var last = res.data[0];
-                $('#summary-vl').text(last.vl_balance_after);
-                $('#summary-sl').text(last.sl_balance_after);
+                $('#summary-vl').text(res.current_vl);
+                $('#summary-sl').text(res.current_sl);
                 $('#ledger-balance-summary').show();
             } else {
                 $('#ledger-balance-summary').hide();

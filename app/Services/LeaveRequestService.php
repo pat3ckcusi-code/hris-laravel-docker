@@ -756,26 +756,26 @@ class LeaveRequestService
                             Log::error('HRAuditTrail write failed on reschedule cancel', ['leave_id' => $original->id, 'error' => $e->getMessage()]);
                         }
 
-                        try {
-                            app(LeaveLedgerService::class)->writeLedgerEntry([
-                                'user_id' => $original->user_id,
-                                'transaction_date' => $datesToCancel->min('leave_date') ?? now()->toDateString(),
-                                'period_end_date' => $datesToCancel->max('leave_date'),
-                                'transaction_type' => 'LEAVE_CANCELLED',
-                                'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
-                                'credit_vl' => floatval($restored['VL'] ?? 0),
-                                'credit_sl' => floatval($restored['SL'] ?? 0),
-                                'debit_vl' => 0,
-                                'debit_sl' => 0,
-                                'reference_id' => $original->id,
-                                'reference_type' => 'leave_request',
-                                'created_by' => auth()->id(),
-                                'is_system' => false,
-                                'remarks' => 'Leave rescheduled',
-                            ]);
-                        } catch (\Throwable $ex) {
-                            Log::error('LeaveLedger write failed on reschedule cancel', ['leave_id' => $original->id, 'error' => $ex->getMessage()]);
-                        }
+                        app(LeaveLedgerService::class)->writeLedgerEntry([
+                            'user_id' => $original->user_id,
+                            'transaction_date' => $datesToCancel->min('leave_date') ?? now()->toDateString(),
+                            'period_end_date' => $datesToCancel->max('leave_date'),
+                            'transaction_type' => 'LEAVE_CANCELLED',
+                            'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
+                            'credit_vl' => floatval($restored['VL'] ?? 0),
+                            'credit_sl' => floatval($restored['SL'] ?? 0),
+                            'credit_wlns' => floatval($restored['WLNS'] ?? 0),
+                            'credit_spl' => floatval($restored['SPL'] ?? 0),
+                            'credit_cto' => floatval($restored['CTO'] ?? 0),
+                            'credit_sp' => floatval($restored['SP'] ?? 0),
+                            'debit_vl' => 0,
+                            'debit_sl' => 0,
+                            'reference_id' => $original->id,
+                            'reference_type' => 'leave_request',
+                            'created_by' => auth()->id(),
+                            'is_system' => false,
+                            'remarks' => 'Leave rescheduled',
+                        ]);
                     });
                 } catch (\Exception $e) {
                     Log::error('Failed to cancel original leave during reschedule approval', ['original_id' => $original->id, 'error' => $e->getMessage()]);
@@ -990,7 +990,7 @@ class LeaveRequestService
             };
 
             if (! empty($preview)) {
-                DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField) {
+                DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField, $column) {
                     foreach ($preview as $col => $amt) {
                         if (! is_numeric($amt) || floatval($amt) <= 0) {
                             continue;
@@ -1021,6 +1021,26 @@ class LeaveRequestService
 
                     // persist only metadata; do NOT update leave_requests balance snapshot fields here
                     $leave->save();
+
+                    app(LeaveLedgerService::class)->writeLedgerEntry([
+                        'user_id' => $leave->user_id,
+                        'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                        'period_end_date' => $leave->end_date,
+                        'transaction_type' => 'LEAVE_USED',
+                        'leave_type' => ! empty($deductionLog) ? implode('+', array_keys($deductionLog)) : ($column ?? 'OTHER'),
+                        'debit_vl' => $deductionLog['VL'] ?? 0,
+                        'debit_sl' => $deductionLog['SL'] ?? 0,
+                        'debit_wlns' => $deductionLog['WLNS'] ?? 0,
+                        'debit_spl' => $deductionLog['SPL'] ?? 0,
+                        'debit_cto' => $deductionLog['CTO'] ?? 0,
+                        'debit_sp' => $deductionLog['SP'] ?? 0,
+                        'credit_vl' => 0,
+                        'credit_sl' => 0,
+                        'reference_id' => $leave->id,
+                        'reference_type' => 'leave_request',
+                        'created_by' => auth()->id(),
+                        'is_system' => false,
+                    ]);
                 });
             } else {
                 // Fallback: previous single-column deduction behavior
@@ -1080,6 +1100,26 @@ class LeaveRequestService
 
                     // do NOT write updated balances into leave_requests table; balances are kept in leave_balances only
                     $leave->save();
+
+                    app(LeaveLedgerService::class)->writeLedgerEntry([
+                        'user_id' => $leave->user_id,
+                        'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                        'period_end_date' => $leave->end_date,
+                        'transaction_type' => 'LEAVE_USED',
+                        'leave_type' => ! empty($deductionLog) ? implode('+', array_keys($deductionLog)) : ($column ?? 'OTHER'),
+                        'debit_vl' => $deductionLog['VL'] ?? 0,
+                        'debit_sl' => $deductionLog['SL'] ?? 0,
+                        'debit_wlns' => $deductionLog['WLNS'] ?? 0,
+                        'debit_spl' => $deductionLog['SPL'] ?? 0,
+                        'debit_cto' => $deductionLog['CTO'] ?? 0,
+                        'debit_sp' => $deductionLog['SP'] ?? 0,
+                        'credit_vl' => 0,
+                        'credit_sl' => 0,
+                        'reference_id' => $leave->id,
+                        'reference_type' => 'leave_request',
+                        'created_by' => auth()->id(),
+                        'is_system' => false,
+                    ]);
                 });
             }
         } catch (\Exception $e) {
@@ -1117,26 +1157,6 @@ class LeaveRequestService
             ]);
         } catch (\Exception $ex) {
             Log::error('Failed to write HRAuditTrail for leave deduction', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
-        }
-
-        try {
-            app(LeaveLedgerService::class)->writeLedgerEntry([
-                'user_id' => $leave->user_id,
-                'transaction_date' => $leave->start_date ?? now()->toDateString(),
-                'period_end_date' => $leave->end_date,
-                'transaction_type' => 'LEAVE_USED',
-                'leave_type' => $column ?? 'OTHER',
-                'debit_vl' => $deductionLog['VL'] ?? 0,
-                'debit_sl' => $deductionLog['SL'] ?? 0,
-                'credit_vl' => 0,
-                'credit_sl' => 0,
-                'reference_id' => $leave->id,
-                'reference_type' => 'leave_request',
-                'created_by' => auth()->id(),
-                'is_system' => false,
-            ]);
-        } catch (\Throwable $ex) {
-            Log::error('LeaveLedger write failed on approval', ['leave_id' => $leave->id, 'error' => $ex->getMessage()]);
         }
 
         Log::info('Leave approved and credits deducted', [

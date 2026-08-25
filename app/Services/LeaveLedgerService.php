@@ -13,8 +13,14 @@ class LeaveLedgerService
      *
      * Required params: user_id, transaction_date, transaction_type, leave_type,
      *   vl_balance_after and sl_balance_after are computed internally.
-     * Optional: period_end_date, debit_vl, debit_sl, credit_vl, credit_sl, days_present,
-     *   abs_wop_days, reference_id, reference_type, remarks, created_by, is_system.
+     * Optional: period_end_date, debit_vl, debit_sl, credit_vl, credit_sl,
+     *   debit_wlns, credit_wlns, debit_spl, credit_spl, debit_cto, credit_cto,
+     *   debit_sp, credit_sp, days_present, abs_wop_days, reference_id, reference_type,
+     *   remarks, created_by, is_system.
+     *
+     * The WLNS/SPL/CTO/SP debit/credit columns are plain record-keeping — unlike VL/SL
+     * they have no running-balance chain (no monthly accrual or CSC Leave Card concept
+     * applies to them), so there's no *_balance_after counterpart for them.
      */
     public function writeLedgerEntry(array $params): LeaveLedger
     {
@@ -42,6 +48,14 @@ class LeaveLedgerService
             'debit_sl' => $debitSl,
             'credit_vl' => $creditVl,
             'credit_sl' => $creditSl,
+            'debit_wlns' => (float) ($params['debit_wlns'] ?? 0),
+            'credit_wlns' => (float) ($params['credit_wlns'] ?? 0),
+            'debit_spl' => (float) ($params['debit_spl'] ?? 0),
+            'credit_spl' => (float) ($params['credit_spl'] ?? 0),
+            'debit_cto' => (float) ($params['debit_cto'] ?? 0),
+            'credit_cto' => (float) ($params['credit_cto'] ?? 0),
+            'debit_sp' => (float) ($params['debit_sp'] ?? 0),
+            'credit_sp' => (float) ($params['credit_sp'] ?? 0),
             'vl_balance_after' => $vlAfter,
             'sl_balance_after' => $slAfter,
             'reference_id' => $params['reference_id'] ?? null,
@@ -65,7 +79,7 @@ class LeaveLedgerService
 
     /**
      * Return ledger rows for an employee, newest first.
-     * Filters: year (int), transaction_type (string), leave_type (string).
+     * Filters: year (int), month (int, 1-12), transaction_type (string), leave_type (string).
      */
     public function getLedgerHistory(int $userId, array $filters = []): Collection
     {
@@ -74,6 +88,9 @@ class LeaveLedgerService
         if (isset($filters['year'])) {
             $query->whereYear('transaction_date', $filters['year']);
         }
+        if (isset($filters['month'])) {
+            $query->whereMonth('transaction_date', $filters['month']);
+        }
         if (isset($filters['transaction_type'])) {
             $query->where('transaction_type', $filters['transaction_type']);
         }
@@ -81,7 +98,7 @@ class LeaveLedgerService
             $query->where('leave_type', $filters['leave_type']);
         }
 
-        return $query->orderByDesc('created_at')->get();
+        return $query->orderByDesc('id')->get();
     }
 
     /**
@@ -125,8 +142,9 @@ class LeaveLedgerService
     private function resolveCurrentBalance(int $userId): array
     {
         $last = LeaveLedger::where('user_id', $userId)
-            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->select(['vl_balance_after', 'sl_balance_after'])
+            ->lockForUpdate()
             ->first();
 
         if ($last !== null) {

@@ -55,6 +55,85 @@ class LeaveManagerTest extends TestCase
         );
     }
 
+    public function test_update_leave_balance_writes_ledger_entry_for_wlns(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+        $balance = $this->createLeaveBalance($emp, ['WLNS' => 0.000]);
+
+        $response = $this->actingAs($lm)->patch(
+            route('leave-manager.update-balance', $balance->id),
+            ['field' => 'WLNS', 'value' => 5.000]
+        );
+
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Balance update failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $this->assertDatabaseHas('leave_ledger', [
+            'user_id' => $emp->id,
+            'transaction_type' => 'MANUAL_ADJUSTMENT',
+            'leave_type' => 'WLNS',
+        ]);
+
+        $entry = LeaveLedger::where('user_id', $emp->id)->where('transaction_type', 'MANUAL_ADJUSTMENT')->latest('id')->first();
+        $this->assertEquals(5.0, (float) $entry->credit_wlns);
+        $this->assertEquals(0.0, (float) $entry->debit_wlns);
+    }
+
+    public function test_approve_mixed_type_leave_records_all_leave_types_in_ledger(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $emp = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($emp, ['SL' => 15.000, 'SPL' => 5.000, 'WLNS' => 5.000]);
+
+        // Mirrors a real 3-date request where each date carries a different leave type
+        // (Sick Leave / Special Privilege Leave / Wellness Leave) -- the exact shape that
+        // previously produced a leave_ledger row with only the SL portion recorded.
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'Sick Leave, Special Privilege Leave, Wellness Leave',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->addDays(2)->toDateString(),
+            'paid_days' => 3.0,
+            'total_days' => 3.0,
+            'reason' => 'Mixed type test',
+            'status' => 'pending',
+            'printing_allowed' => true,
+            'printing_deduction_details' => json_encode(['SL' => 1.0, 'SPL' => 1.0, 'WLNS' => 1.0]),
+        ]);
+
+        $response = $this->actingAs($dh)->post(route('department-head.leave.approve', $leave->id));
+        $this->assertTrue(
+            $response->isSuccessful() || $response->isRedirection(),
+            "Leave approval failed: HTTP {$response->getStatusCode()}"
+        );
+
+        $leave->refresh();
+        $this->assertEquals('approved', $leave->status);
+
+        $balance = $emp->leaveBalance()->first();
+        $this->assertEquals(14.0, (float) $balance->SL);
+        $this->assertEquals(4.0, (float) $balance->SPL);
+        $this->assertEquals(4.0, (float) $balance->WLNS);
+
+        $entry = LeaveLedger::where('user_id', $emp->id)
+            ->where('transaction_type', 'LEAVE_USED')
+            ->where('reference_id', $leave->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($entry, 'Mixed-type leave approval must write a LEAVE_USED ledger entry.');
+        $this->assertEquals(1.0, (float) $entry->debit_sl);
+        $this->assertEquals(1.0, (float) $entry->debit_spl);
+        $this->assertEquals(1.0, (float) $entry->debit_wlns);
+        $this->assertEquals(0.0, (float) $entry->debit_cto);
+        $this->assertEquals(0.0, (float) $entry->debit_sp);
+        $this->assertEquals('SL+SPL+WLNS', $entry->leave_type,
+            'leave_type must list every type actually deducted, not just the first-resolved one.');
+    }
+
     public function test_concurrent_balance_adjustments(): void
     {
         $lm = $this->createLeaveManager();

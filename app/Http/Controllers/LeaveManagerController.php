@@ -6,6 +6,7 @@ use App\Console\Commands\ProcessMonthlyLeaveCredits;
 use App\Models\Department;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
+use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\MonthlyAttendance;
 use App\Models\User;
@@ -421,28 +422,28 @@ class LeaveManagerController extends Controller
             $leave->cancellation_remarks = $request->input('remarks') ?? null;
             $leave->save();
 
-            DB::commit();
+            app(LeaveLedgerService::class)->writeLedgerEntry([
+                'user_id' => $leave->user_id,
+                'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                'period_end_date' => $leave->end_date,
+                'transaction_type' => 'LEAVE_CANCELLED',
+                'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
+                'credit_vl' => floatval($applied['VL'] ?? 0),
+                'credit_sl' => floatval($applied['SL'] ?? 0),
+                'credit_wlns' => floatval($applied['WLNS'] ?? 0),
+                'credit_spl' => floatval($applied['SPL'] ?? 0),
+                'credit_cto' => floatval($applied['CTO'] ?? 0),
+                'credit_sp' => floatval($applied['SP'] ?? 0),
+                'debit_vl' => 0,
+                'debit_sl' => 0,
+                'reference_id' => $leave->id,
+                'reference_type' => 'leave_request',
+                'created_by' => Auth::id(),
+                'is_system' => false,
+                'remarks' => $leave->cancellation_reason ?? null,
+            ]);
 
-            try {
-                app(LeaveLedgerService::class)->writeLedgerEntry([
-                    'user_id' => $leave->user_id,
-                    'transaction_date' => $leave->start_date ?? now()->toDateString(),
-                    'period_end_date' => $leave->end_date,
-                    'transaction_type' => 'LEAVE_CANCELLED',
-                    'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
-                    'credit_vl' => floatval($applied['VL'] ?? 0),
-                    'credit_sl' => floatval($applied['SL'] ?? 0),
-                    'debit_vl' => 0,
-                    'debit_sl' => 0,
-                    'reference_id' => $leave->id,
-                    'reference_type' => 'leave_request',
-                    'created_by' => Auth::id(),
-                    'is_system' => false,
-                    'remarks' => $leave->cancellation_reason ?? null,
-                ]);
-            } catch (\Throwable $ledgerEx) {
-                Log::error('LeaveLedger write failed on cancellation', ['leave_id' => $leave->id, 'error' => $ledgerEx->getMessage()]);
-            }
+            DB::commit();
 
             // Log audit
             Log::info('Cancellation approved', [
@@ -628,28 +629,28 @@ class LeaveManagerController extends Controller
                 ],
             ]);
 
-            DB::commit();
+            app(LeaveLedgerService::class)->writeLedgerEntry([
+                'user_id' => $leave->user_id,
+                'transaction_date' => $dates->min('leave_date') ?? now()->toDateString(),
+                'period_end_date' => $dates->max('leave_date'),
+                'transaction_type' => 'LEAVE_CANCELLED',
+                'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
+                'credit_vl' => floatval($restored['VL'] ?? 0),
+                'credit_sl' => floatval($restored['SL'] ?? 0),
+                'credit_wlns' => floatval($restored['WLNS'] ?? 0),
+                'credit_spl' => floatval($restored['SPL'] ?? 0),
+                'credit_cto' => floatval($restored['CTO'] ?? 0),
+                'credit_sp' => floatval($restored['SP'] ?? 0),
+                'debit_vl' => 0,
+                'debit_sl' => 0,
+                'reference_id' => $leave->id,
+                'reference_type' => 'leave_request',
+                'created_by' => Auth::id(),
+                'is_system' => false,
+                'remarks' => 'Partial date cancellation',
+            ]);
 
-            try {
-                app(LeaveLedgerService::class)->writeLedgerEntry([
-                    'user_id' => $leave->user_id,
-                    'transaction_date' => $dates->min('leave_date') ?? now()->toDateString(),
-                    'period_end_date' => $dates->max('leave_date'),
-                    'transaction_type' => 'LEAVE_CANCELLED',
-                    'leave_type' => ! empty($restored) ? implode('+', array_keys($restored)) : 'VL',
-                    'credit_vl' => floatval($restored['VL'] ?? 0),
-                    'credit_sl' => floatval($restored['SL'] ?? 0),
-                    'debit_vl' => 0,
-                    'debit_sl' => 0,
-                    'reference_id' => $leave->id,
-                    'reference_type' => 'leave_request',
-                    'created_by' => Auth::id(),
-                    'is_system' => false,
-                    'remarks' => 'Partial date cancellation',
-                ]);
-            } catch (\Throwable $ledgerEx) {
-                Log::error('LeaveLedger write failed on partial cancellation', ['leave_id' => $leave->id, 'error' => $ledgerEx->getMessage()]);
-            }
+            DB::commit();
 
             Log::info('Partial cancellation approved', [
                 'leave_id' => $leave->id,
@@ -885,28 +886,28 @@ class LeaveManagerController extends Controller
                 $leave->cancellation_reviewed_at = now();
                 $leave->save();
 
-                DB::commit();
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $leave->user_id,
+                    'transaction_date' => $leave->start_date ?? now()->toDateString(),
+                    'period_end_date' => $leave->end_date,
+                    'transaction_type' => 'LEAVE_CANCELLED',
+                    'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
+                    'credit_vl' => floatval($applied['VL'] ?? 0),
+                    'credit_sl' => floatval($applied['SL'] ?? 0),
+                    'credit_wlns' => floatval($applied['WLNS'] ?? 0),
+                    'credit_spl' => floatval($applied['SPL'] ?? 0),
+                    'credit_cto' => floatval($applied['CTO'] ?? 0),
+                    'credit_sp' => floatval($applied['SP'] ?? 0),
+                    'debit_vl' => 0,
+                    'debit_sl' => 0,
+                    'reference_id' => $leave->id,
+                    'reference_type' => 'leave_request',
+                    'created_by' => Auth::id(),
+                    'is_system' => false,
+                    'remarks' => $leave->cancellation_reason ?? null,
+                ]);
 
-                try {
-                    app(LeaveLedgerService::class)->writeLedgerEntry([
-                        'user_id' => $leave->user_id,
-                        'transaction_date' => $leave->start_date ?? now()->toDateString(),
-                        'period_end_date' => $leave->end_date,
-                        'transaction_type' => 'LEAVE_CANCELLED',
-                        'leave_type' => ! empty($applied) ? implode('+', array_keys($applied)) : 'VL',
-                        'credit_vl' => floatval($applied['VL'] ?? 0),
-                        'credit_sl' => floatval($applied['SL'] ?? 0),
-                        'debit_vl' => 0,
-                        'debit_sl' => 0,
-                        'reference_id' => $leave->id,
-                        'reference_type' => 'leave_request',
-                        'created_by' => Auth::id(),
-                        'is_system' => false,
-                        'remarks' => $leave->cancellation_reason ?? null,
-                    ]);
-                } catch (\Throwable $ledgerEx) {
-                    Log::error('LeaveLedger write failed on bulk cancellation', ['leave_id' => $leave->id, 'error' => $ledgerEx->getMessage()]);
-                }
+                DB::commit();
 
                 $processed++;
             } catch (\Throwable $e) {
@@ -1063,22 +1064,57 @@ class LeaveManagerController extends Controller
             'deduct_from' => 'nullable|string|in:VL,SL,NONE',
         ]);
 
-        $balance = LeaveBalance::find($data['id']);
-        if (! $balance) {
+        if (! LeaveBalance::where('id', $data['id'])->exists()) {
             return response()->json(['message' => 'Balance not found'], 404);
         }
 
         $deduction = (float) ($data['deduction_days'] ?? 0);
         $deductFrom = $data['deduct_from'] ?? 'NONE';
 
-        if ($deduction > 0 && $deductFrom !== 'NONE') {
-            // subtract deduction from chosen field, keeping nulls handled as 0
-            $current = $balance->{$deductFrom} ?? 0;
-            $new = $current - $deduction;
-            // allow negative balances but round to 3 decimals
-            $balance->{$deductFrom} = round($new, 3);
-            $balance->save();
-        }
+        $balance = DB::transaction(function () use ($data, $deduction, $deductFrom, $request) {
+            $balance = LeaveBalance::where('id', $data['id'])->lockForUpdate()->firstOrFail();
+
+            if ($deduction > 0 && $deductFrom !== 'NONE') {
+                // subtract deduction from chosen field, keeping nulls handled as 0
+                $current = $balance->{$deductFrom} ?? 0;
+                $new = $current - $deduction;
+                // allow negative balances but round to 3 decimals
+                $balance->{$deductFrom} = round($new, 3);
+                $balance->save();
+
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $balance->user_id,
+                    'transaction_date' => now()->toDateString(),
+                    'transaction_type' => 'ATTENDANCE_DEDUCTION',
+                    'leave_type' => $deductFrom,
+                    'debit_vl' => $deductFrom === 'VL' ? $deduction : 0,
+                    'debit_sl' => $deductFrom === 'SL' ? $deduction : 0,
+                    'reference_id' => $balance->id,
+                    'reference_type' => 'leave_balance',
+                    'created_by' => Auth::id(),
+                    'is_system' => false,
+                    'remarks' => 'Tardiness/undertime deduction (tardiness: '.($data['tardiness'] ?? 0).'m, undertime: '.($data['undertime'] ?? 0).'m)',
+                ]);
+
+                HRAuditTrail::create([
+                    'actor_user_id' => Auth::id(),
+                    'module' => 'leave',
+                    'action' => 'apply_credits',
+                    'target_type' => 'leave_balance',
+                    'target_id' => $balance->id,
+                    'details' => [
+                        'user_id' => $balance->user_id,
+                        'tardiness_minutes' => $data['tardiness'] ?? 0,
+                        'undertime_minutes' => $data['undertime'] ?? 0,
+                        'deduction_days' => $deduction,
+                        'deduct_from' => $deductFrom,
+                        'timestamp' => now()->toDateTimeString(),
+                    ],
+                ]);
+            }
+
+            return $balance;
+        });
 
         return response()->json(['message' => 'Applied', 'balance' => $balance->fresh()]);
     }
@@ -1096,8 +1132,58 @@ class LeaveManagerController extends Controller
         $field = $validated['field'];
         $value = (float) $validated['value'];
 
-        $balance->{$field} = $value;
-        $balance->save();
+        $balance = DB::transaction(function () use ($balance, $field, $value) {
+            $balance = LeaveBalance::where('id', $balance->id)->lockForUpdate()->firstOrFail();
+
+            $old = (float) ($balance->{$field} ?? 0);
+            $delta = round($value - $old, 3);
+
+            $balance->{$field} = $value;
+            $balance->save();
+
+            if ($delta !== 0.0) {
+                $columnsByField = [
+                    'VL' => ['credit' => 'credit_vl', 'debit' => 'debit_vl'],
+                    'SL' => ['credit' => 'credit_sl', 'debit' => 'debit_sl'],
+                    'WLNS' => ['credit' => 'credit_wlns', 'debit' => 'debit_wlns'],
+                    'SPL' => ['credit' => 'credit_spl', 'debit' => 'debit_spl'],
+                    'CTO' => ['credit' => 'credit_cto', 'debit' => 'debit_cto'],
+                    'SP' => ['credit' => 'credit_sp', 'debit' => 'debit_sp'],
+                ];
+                $columns = $columnsByField[$field];
+
+                app(LeaveLedgerService::class)->writeLedgerEntry([
+                    'user_id' => $balance->user_id,
+                    'transaction_date' => now()->toDateString(),
+                    'transaction_type' => 'MANUAL_ADJUSTMENT',
+                    'leave_type' => $field,
+                    $columns['credit'] => $delta > 0 ? $delta : 0,
+                    $columns['debit'] => $delta < 0 ? abs($delta) : 0,
+                    'reference_id' => $balance->id,
+                    'reference_type' => 'leave_balance',
+                    'created_by' => Auth::id(),
+                    'is_system' => false,
+                    'remarks' => 'Manual balance correction via Manage Balance',
+                ]);
+
+                HRAuditTrail::create([
+                    'actor_user_id' => Auth::id(),
+                    'module' => 'leave',
+                    'action' => 'manual_balance_updated',
+                    'target_type' => 'leave_balance',
+                    'target_id' => $balance->id,
+                    'details' => [
+                        'user_id' => $balance->user_id,
+                        'field' => $field,
+                        'old_value' => $old,
+                        'new_value' => $value,
+                        'timestamp' => now()->toDateTimeString(),
+                    ],
+                ]);
+            }
+
+            return $balance;
+        });
 
         return response()->json(['message' => 'Updated', 'balance' => $balance->fresh()]);
     }
@@ -1501,6 +1587,11 @@ class LeaveManagerController extends Controller
     private function recomputeAttendanceMonth(User $user, MonthlyAttendance $attendance): array
     {
         return DB::transaction(function () use ($user, $attendance) {
+            // Re-fetch with a row lock so two concurrent recompute requests for the same
+            // employee-month can't both read the same stale computed_vl/computed_sl and
+            // each post their own CREDIT_CORRECTION for the same delta.
+            $attendance = MonthlyAttendance::where('id', $attendance->id)->lockForUpdate()->firstOrFail();
+
             $originalProcessedAt = $attendance->processed_at;
             $delta = $this->computeRecomputeDelta($user, $attendance);
 
@@ -1627,36 +1718,135 @@ class LeaveManagerController extends Controller
         if ($request->filled('year')) {
             $filters['year'] = (int) $request->input('year');
         }
+        if ($request->filled('month')) {
+            $filters['month'] = (int) $request->input('month');
+        }
         if ($request->filled('transaction_type')) {
             $filters['transaction_type'] = $request->input('transaction_type');
         }
 
         $entries = app(LeaveLedgerService::class)->getLedgerHistory($userId, $filters);
 
-        $data = $entries->map(function ($e) {
-            $date = $e->transaction_date?->toDateString();
+        // Each leave_ledger row is one immutable audit record for a whole transaction and
+        // can carry amounts across several leave types at once (e.g. a 3-date leave with
+        // a different type per date). The table displays that as one row per active type
+        // instead of one wide row with mostly-zero columns -- a display-only split, the
+        // underlying row/write path is untouched. Only VL and SL have a running-balance
+        // chain (vl_balance_after/sl_balance_after) -- the other types are plain
+        // record-keeping with no chain concept, so their split rows show '-' for balance.
+        $typeColumns = [
+            'VL' => ['credit_vl', 'debit_vl'],
+            'SL' => ['credit_sl', 'debit_sl'],
+            'WLNS' => ['credit_wlns', 'debit_wlns'],
+            'SPL' => ['credit_spl', 'debit_spl'],
+            'CTO' => ['credit_cto', 'debit_cto'],
+            'SP' => ['credit_sp', 'debit_sp'],
+        ];
+
+        // Preload the leave_dates linked to any leave_request-referencing entry, so a
+        // per-type split row can show the SPECIFIC date(s) that type actually covers
+        // instead of the whole transaction's aggregate period -- e.g. a 3-date request
+        // with a different type per date would otherwise show the same 3-day range on
+        // all three split rows, even though each type really only applies to one of them.
+        $leaveRequestIds = $entries->where('reference_type', 'leave_request')->pluck('reference_id')->filter()->unique();
+        $datesByLeaveRequest = LeaveDate::whereIn('leave_request_id', $leaveRequestIds)
+            ->get(['leave_request_id', 'leave_date', 'leave_type', 'is_cancelled'])
+            ->groupBy('leave_request_id');
+        $dateAggregateService = app(LeaveDateAggregateService::class);
+
+        $data = $entries->flatMap(function ($e) use ($typeColumns, $datesByLeaveRequest, $dateAggregateService) {
+            $aggregateDate = $e->transaction_date?->toDateString();
             if ($e->period_end_date && ! $e->period_end_date->equalTo($e->transaction_date)) {
-                $date .= ' – '.$e->period_end_date->toDateString();
+                $aggregateDate .= ' – '.$e->period_end_date->toDateString();
             }
 
-            return [
-                'date' => $date,
+            // Group this transaction's own linked leave_dates by resolved balance column,
+            // restricted to the ledger row's own [transaction_date, period_end_date] range
+            // and to the cancelled/active side matching this transaction type, so dates
+            // from an unrelated later edit of the same leave request aren't pulled in.
+            $datesByType = [];
+            if ($e->reference_type === 'leave_request' && $e->reference_id) {
+                $rangeStart = $e->transaction_date?->toDateString();
+                $rangeEnd = $e->period_end_date?->toDateString() ?? $rangeStart;
+
+                foreach ($datesByLeaveRequest->get($e->reference_id, collect()) as $ld) {
+                    if ($rangeStart && ($ld->leave_date < $rangeStart || $ld->leave_date > $rangeEnd)) {
+                        continue;
+                    }
+                    $wantsCancelled = $e->transaction_type === 'LEAVE_CANCELLED';
+                    if ((bool) $ld->is_cancelled !== $wantsCancelled) {
+                        continue;
+                    }
+                    $column = $dateAggregateService->resolveBalanceColumn((string) $ld->leave_type);
+                    if ($column) {
+                        $datesByType[$column][] = $ld->leave_date;
+                    }
+                }
+            }
+
+            $base = [
                 'type' => $e->transaction_type,
-                'leave_type' => $e->leave_type,
                 'days_present' => $e->days_present !== null ? number_format($e->days_present, 3) : '-',
                 'abs_wop_days' => $e->abs_wop_days !== null ? number_format($e->abs_wop_days, 3) : '-',
-                'credit_vl' => number_format($e->credit_vl ?? 0, 3),
-                'credit_sl' => number_format($e->credit_sl ?? 0, 3),
-                'debit_vl' => number_format($e->debit_vl ?? 0, 3),
-                'debit_sl' => number_format($e->debit_sl ?? 0, 3),
-                'vl_balance_after' => number_format($e->vl_balance_after, 3),
-                'sl_balance_after' => number_format($e->sl_balance_after, 3),
                 'remarks' => $e->remarks,
                 'posted_by' => $e->is_system ? 'System' : ($e->createdBy ? trim(($e->createdBy->last_name ?? '').', '.($e->createdBy->first_name ?? '')) : '-'),
             ];
+
+            $rows = [];
+            foreach ($typeColumns as $type => [$creditCol, $debitCol]) {
+                $credit = (float) ($e->{$creditCol} ?? 0);
+                $debit = (float) ($e->{$debitCol} ?? 0);
+                if ($credit == 0.0 && $debit == 0.0) {
+                    continue;
+                }
+
+                // Fall back to the transaction's own aggregate range when this type's
+                // specific date(s) can't be resolved (older data with no leave_dates rows,
+                // an unmapped type like CTO, or a range-filed leave with no per-date rows).
+                $typeDate = $aggregateDate;
+                if (! empty($datesByType[$type])) {
+                    $sortedDates = collect($datesByType[$type])->sort()->values();
+                    $typeDate = $sortedDates->first();
+                    if ($sortedDates->last() !== $sortedDates->first()) {
+                        $typeDate .= ' – '.$sortedDates->last();
+                    }
+                }
+
+                $rows[] = $base + [
+                    'date' => $typeDate,
+                    'leave_type' => $type,
+                    'credit' => number_format($credit, 3),
+                    'debit' => number_format($debit, 3),
+                    'balance_after' => $type === 'VL' ? number_format($e->vl_balance_after, 3)
+                        : ($type === 'SL' ? number_format($e->sl_balance_after, 3) : '-'),
+                ];
+            }
+
+            // No type had any nonzero amount (e.g. a non-deductible leave type's
+            // record-only entry) -- still show one row so the transaction isn't hidden.
+            if (empty($rows)) {
+                $rows[] = $base + [
+                    'date' => $aggregateDate,
+                    'leave_type' => $e->leave_type,
+                    'credit' => number_format(0, 3),
+                    'debit' => number_format(0, 3),
+                    'balance_after' => '-',
+                ];
+            }
+
+            return $rows;
         })->values();
 
-        return response()->json(['data' => $data]);
+        // The split-by-type rows above don't reliably surface the true current VL/SL
+        // balance in $data[0] (the most recent row could be a WLNS/SPL/CTO/SP-only split
+        // with no VL/SL balance_after at all), so resolve it directly for the summary cards.
+        [$currentVl, $currentSl] = app(LeaveLedgerService::class)->getCurrentBalance($userId);
+
+        return response()->json([
+            'data' => $data,
+            'current_vl' => number_format($currentVl, 3),
+            'current_sl' => number_format($currentSl, 3),
+        ]);
     }
 
     public function apiMonthlyCredits(Request $request): JsonResponse
