@@ -623,7 +623,7 @@ class MayorController extends Controller
         $dhHrUserIds = User::whereRaw("LOWER(REPLACE(REPLACE(access_level, '-', ' '), '_', ' ')) IN ('department head', 'hr manager')")
             ->pluck('id');
 
-        return LeaveRequest::with('user')
+        return LeaveRequest::with(['user', 'leaveDates'])
             ->whereIn('user_id', $dhHrUserIds);
     }
 

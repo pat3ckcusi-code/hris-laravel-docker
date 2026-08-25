@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'pnpki' => [
+        // Nothing PNPKI-identity-related lives here - the certificate, its
+        // password, and the trust chain (root + intermediate CAs) it validates
+        // against are all personal to whoever is signing, uploaded/typed
+        // per-submission on the form and passed directly into the queued job
+        // (see SignESignatureRequestPdfJob), never persisted in server config
+        // or on disk beyond a single signing attempt.
+        'tsa_url' => env('PNPKI_TSA_URL', 'https://govca.npki.gov.ph:8442/signserver/tsa?workerName=TimeStampSigner'),
+        // Must match the pyHanko venv path baked into the Dockerfile's app stage.
+        'pyhanko_bin' => env('PNPKI_PYHANKO_BIN', '/opt/pyhanko-venv/bin/pyhanko'),
+    ],
+
 ];

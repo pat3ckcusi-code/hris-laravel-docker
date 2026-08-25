@@ -28,9 +28,12 @@ use App\Http\Controllers\DocumentSettingsController;
 use App\Http\Controllers\Employee\EmployeePayslipController;
 use App\Http\Controllers\Employee\EtaController;
 use App\Http\Controllers\Employee\LocatorController;
+use App\Http\Controllers\ESignatureConfigController;
+use App\Http\Controllers\EsignatureSigningController;
 use App\Http\Controllers\ExportJobController;
 use App\Http\Controllers\FrontDeskController;
 use App\Http\Controllers\HRManagerController;
+use App\Http\Controllers\LeaveCertificationController;
 use App\Http\Controllers\LeaveManagerController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\MayorController;
@@ -138,6 +141,10 @@ Route::middleware('auth')->group(function () {
         ->name('employee.eta.request-cancellation');
     Route::get('/dashboard/employee/leave/{leave}/print', [LeaveRequestController::class, 'printSingle'])
         ->name('employee.leave.print.single');
+    Route::post('/dashboard/employee/leave/{leave}/esignature-print', [LeaveRequestController::class, 'startEsignaturePrint'])
+        ->name('employee.leave.esignature-print.start');
+    Route::get('/esignature-signings/{signing}/status', [EsignatureSigningController::class, 'status'])
+        ->name('esignature-signings.status');
     // API: check leave status (printing_allowed, status)
     Route::get('/api/leave/{leave}/status', [LeaveRequestController::class, 'apiStatus'])->name('api.leave.status');
     Route::get('/dashboard/employee/eta-locator/print', [EtaController::class, 'print'])
@@ -270,6 +277,35 @@ Route::middleware('auth')->group(function () {
     Route::post('/user/change-password', [UserController::class, 'changePassword'])
         ->name('user.change-password');
 
+    // E-Signature Config (all authenticated users)
+    Route::get('/esignature-config', [ESignatureConfigController::class, 'index'])
+        ->name('esignature-config.index');
+    Route::post('/esignature-config', [ESignatureConfigController::class, 'store'])
+        ->name('esignature-config.store');
+    Route::post('/esignature-config/verify-password', [ESignatureConfigController::class, 'verifyPassword'])
+        ->name('esignature-config.verify-password');
+    Route::post('/esignature-config/verify-saved-password', [ESignatureConfigController::class, 'verifySavedPassword'])
+        ->name('esignature-config.verify-saved-password');
+    Route::delete('/esignature-config', [ESignatureConfigController::class, 'destroy'])
+        ->name('esignature-config.destroy');
+
+    // Leave Credit Certification (HR Manager and Leave Manager - self-guarded in the
+    // controller via User::canAccessLeaveCertification(), see
+    // LeaveCertificationController's own docblock for why it isn't route-scoped to a
+    // single role group). Leave Manager reviews (forward/reject); HR Manager signs
+    // only what's been forwarded (batch-sign) - see the controller's own per-action
+    // role guards for the split.
+    Route::get('/leave-certification', [LeaveCertificationController::class, 'index'])
+        ->name('leave-certification.index');
+    Route::post('/leave-certification/batch-sign', [LeaveCertificationController::class, 'batchSign'])
+        ->name('leave-certification.batch-sign');
+    Route::post('/leave-certification/forward', [LeaveCertificationController::class, 'forward'])
+        ->name('leave-certification.forward');
+    Route::post('/leave-certification/{id}/reject', [LeaveCertificationController::class, 'reject'])
+        ->name('leave-certification.reject');
+    Route::post('/leave-certification/{id}/reopen', [LeaveCertificationController::class, 'reopen'])
+        ->name('leave-certification.reopen');
+
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 });
 
@@ -327,6 +363,7 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
 
     // Administrative Officer approval actions
     Route::post('/admin-officer/leave/{id}/approve', [AdministrativeOfficerController::class, 'approve'])->name('admin-officer.leave.approve');
+    Route::post('/admin-officer/leave/{id}/approve-esign', [AdministrativeOfficerController::class, 'approveWithEsign'])->name('admin-officer.leave.approve-esign');
     Route::post('/admin-officer/leave/{id}/reject', [AdministrativeOfficerController::class, 'reject'])->name('admin-officer.leave.reject');
     Route::post('/admin-officer/leave/{id}/allow-printing', [AdministrativeOfficerController::class, 'allowPrinting'])->name('admin-officer.leave.allow-printing');
     Route::post('/admin-officer/eta/{id}/approve', [AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
@@ -372,6 +409,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
 
     // Leave approval actions
     Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
+    Route::post('/department-head/leave/{id}/approve-esign', [DepartmentHeadController::class, 'approveWithEsign'])->name('department-head.leave.approve-esign');
     Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
     Route::post('/department-head/leave/{id}/allow-printing', [DepartmentHeadController::class, 'allowPrinting'])->name('department-head.leave.allow-printing');
 

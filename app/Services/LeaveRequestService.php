@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Jobs\SignESignatureRequestPdfJob;
 use App\Models\Department;
 use App\Models\EmployeeAssignment;
+use App\Models\EsignatureSigning;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
 use App\Models\LeaveDate;
@@ -16,13 +18,17 @@ use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Support\LeaveTypeResolver;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -83,10 +89,22 @@ class LeaveRequestService
     /**
      * Determine if the given user may print the provided leave request.
      */
-    public function canPrint(LeaveRequest $leave, User $user): bool
+    public function canPrint(LeaveRequest $leave, User $user, bool $requireCertification = true): bool
     {
         // do not allow printing for declined or cancelled requests
         if (in_array($leave->status, ['declined', 'cancelled', 'rejected'], true)) {
+            return false;
+        }
+
+        // A leave filed with e-signature intent must be certified in Leave Credit
+        // Certification before it can be printed - unconditional, same as the
+        // declined/cancelled check above, so it also closes the AO/HR-Manager/DH
+        // "approved leave, no printing_allowed needed" branches below, not just the
+        // printing_allowed-gated ones. $requireCertification is only ever false for
+        // startEsignaturePrint() (retrying the applicant's OWN signature - a different
+        // concern from HR/LM certifying the document, and the two may land in either
+        // order) - see LeaveRequestController::startEsignaturePrint().
+        if ($requireCertification && $this->needsCertificationBeforePrinting($leave)) {
             return false;
         }
 
@@ -138,6 +156,27 @@ class LeaveRequestService
         }
 
         return false;
+    }
+
+    /**
+     * True iff this leave was filed with e-signature intent but hasn't yet been
+     * certified in Leave Credit Certification - the print/allow-printing gate this
+     * feeds is deliberately independent of the leave's status (pending/approved/etc),
+     * unlike pendingCertificationQuery() (scoped to status='pending' for the
+     * certification queue listing itself) - see canPrint() and both
+     * DepartmentHeadController/AdministrativeOfficerController::allowPrinting().
+     */
+    public function needsCertificationBeforePrinting(LeaveRequest $leave): bool
+    {
+        if (! $leave->esignature_requested_at) {
+            return false;
+        }
+
+        return ! EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->where('signable_id', $leave->id)
+            ->where('field_name', 'CertifyingSignature')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->exists();
     }
 
     /**
@@ -1177,10 +1216,582 @@ class LeaveRequestService
     }
 
     /**
+     * Approves a leave exactly as approveLeave() does (same printing_allowed gate,
+     * balance deduction, ledger write, notification - reused unchanged), and, once
+     * that succeeds, kicks off an EsignatureSigning attempt for the approving
+     * officer's own saved PNPKI certificate. The officer is a genuine SECOND signer,
+     * not a replacement of the applicant's own signature: if the applicant already
+     * e-signed this leave at filing, the officer's signature is added on top of that
+     * already-signed PDF via a second pyHanko addsig pass (SignESignatureRequestPdfJob
+     * resolves the signer from EsignatureSigning.requested_by, and each addsig pass
+     * is a genuine incremental update that leaves an earlier signature intact and
+     * independently valid - confirmed empirically before this was built). Otherwise
+     * the officer's signature is the first one, signing a fresh render that now
+     * includes Section 7 (recommendation/approved days/balance), since buildEsignaturePdfBytes()
+     * fills those in based on $leave->status, which approveLeave() just flipped to
+     * 'approved'.
+     *
+     * A wrong password never touches approval state - verified against the officer's
+     * saved certificate before approveLeave() is even called. A password that's
+     * merely wrong but the officer does have a saved certificate is the normal,
+     * expected case this guards against; approveLeave() itself is left completely
+     * unmodified by this method.
+     */
+    public function approveLeaveWithEsignature(Request $request, int $id, string $password, ESignatureCredentialStore $credentialStore)
+    {
+        $leave = LeaveRequest::findOrFail($id);
+        $wasAlreadyApproved = $leave->status === 'approved';
+
+        $actor = auth()->user();
+        $setting = $actor->esignatureSetting;
+        if (! $setting) {
+            return response()->json(['success' => false, 'message' => 'You have not set up an e-signature yet.'], 422);
+        }
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Could not read your saved certificate. Please contact HR or re-save your e-signature setting.'], 422);
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $password)) {
+            return response()->json(['success' => false, 'message' => 'That password did not unlock your saved certificate. Please check the password and try again.'], 422);
+        }
+
+        $approvalResponse = $this->approveLeave($request, $id);
+
+        if ($wasAlreadyApproved || ! $this->isSuccessfulJsonResponse($approvalResponse)) {
+            return $approvalResponse;
+        }
+
+        $leave->refresh();
+
+        // If the applicant already has a completed signing, this is a co-signing pass:
+        // sign on top of their already-signed PDF (not a fresh render, which would
+        // invalidate their signature) with a distinct field name. Otherwise this is the
+        // first signature on the document - render fresh so Section 7 is included.
+        $priorSigning = $this->latestCompletedSigning($leave);
+        $fieldName = $priorSigning ? 'ApproverSignature' : null;
+
+        $mapping = $this->loadLeaveMapping();
+        $signing = $this->dispatchCoSigningPass($leave, $actor, $password, $fieldName, $mapping['approver_signature_field'] ?? null);
+
+        return response()->json([
+            'success' => true,
+            'signing_id' => $signing->id,
+            'status_url' => route('esignature-signings.status', $signing->id),
+            'message' => 'Leave approved. Signing in progress.',
+        ]);
+    }
+
+    /**
+     * Queues a real PNPKI co-signature for the "Certification of Leave Credits" line
+     * (leave_mapping.php's hr_certification_signature_field) from whichever HR Manager
+     * actually signs the certification batch queue
+     * (LeaveCertificationController::batchSign()) - see that controller, and
+     * forwardedForSigningQuery() below, for how the sign queue is derived. Always uses
+     * the fixed 'CertifyingSignature' field name regardless of whether it ends up being
+     * the first signature on the document or a later layer, unlike the DH/AO co-sign
+     * above - it must never fall back to the reserved null/'Signature' name reserved
+     * for the applicant's own filing signature.
+     */
+    public function certifyLeaveCredits(LeaveRequest $leave, User $signer, string $password): EsignatureSigning
+    {
+        $mapping = $this->loadLeaveMapping();
+
+        return $this->dispatchCoSigningPass($leave, $signer, $password, 'CertifyingSignature', $mapping['hr_certification_signature_field'] ?? null);
+    }
+
+    /**
+     * Query builder for leaves filed with e-signature intent that don't yet have an
+     * active or completed 'CertifyingSignature' EsignatureSigning row - a derived
+     * "queue" rather than a persisted one, so a failed attempt naturally reappears here
+     * on the next batch run with no separate retry bookkeeping. Only leaves filed with
+     * e-signature intent are eligible: buildEsignaturePdfBytes()/the whole PNPKI PDF
+     * only exists for those - everything else prints via the older Excel path instead.
+     *
+     * Scoped to status='pending' only (not 'approved'/'cancelled'/'declined'/
+     * 'disapproved') - certification is meant to happen right after filing, on the
+     * figures as filed. A first pass here left this unscoped by status entirely
+     * (matching the old static "HR Manager" printed text's unconditional behavior),
+     * which surfaced a one-time backlog dominated by already-cancelled leaves (74% of
+     * it, in practice) that will never become an official record worth certifying.
+     *
+     * Exposed as a query builder (not just pendingCertificationLeaves() below) so the
+     * sidebar's pending-count badge can reuse this exact definition via ->count()
+     * instead of duplicating the query inline - the ETA/Locator "pending" badge counts
+     * already drifted out of sync with their real page's own query once before by doing
+     * that (see CLAUDE.md's ETA/Locator "Gotcha" notes).
+     */
+    public function pendingCertificationQuery(): Builder
+    {
+        return LeaveRequest::where('status', 'pending')
+            ->whereNotNull('esignature_requested_at')
+            ->whereDoesntHave('esignatureSignings', fn ($q) => $q
+                ->where('field_name', 'CertifyingSignature')
+                ->whereIn('status', [EsignatureSigning::STATUS_PENDING, EsignatureSigning::STATUS_PROCESSING, EsignatureSigning::STATUS_COMPLETED]));
+    }
+
+    public function pendingCertificationLeaves(): Collection
+    {
+        return $this->pendingCertificationQuery()->with('user')->orderBy('date_filed')->get();
+    }
+
+    /**
+     * The Leave Manager's own review queue - eligible leaves that haven't been
+     * reviewed yet (certification_review_status is still null). Layered on top of
+     * pendingCertificationQuery() rather than folded into it, so that base query keeps
+     * meaning "eligible for certification, not yet signed" regardless of review state.
+     */
+    public function pendingReviewQuery(): Builder
+    {
+        return $this->pendingCertificationQuery()->whereNull('certification_review_status');
+    }
+
+    /**
+     * The HR Manager's sign queue - eligible leaves the Leave Manager has forwarded.
+     * batchCertifyPendingLeaves() only ever signs leaves out of this query, never a
+     * merely-pending, not-yet-reviewed one.
+     */
+    public function forwardedForSigningQuery(): Builder
+    {
+        return $this->pendingCertificationQuery()->where('certification_review_status', 'forwarded');
+    }
+
+    /**
+     * Leaves the Leave Manager has rejected with a reason - visible to both roles on
+     * the Rejected tab, where either an HR Manager or the Leave Manager can send one
+     * back to pendingReviewQuery() via reopenCertification().
+     */
+    public function rejectedCertificationQuery(): Builder
+    {
+        return $this->pendingCertificationQuery()->where('certification_review_status', 'rejected');
+    }
+
+    /**
+     * Department + employee name/EmpNo search, shared by the paginated pending and
+     * history views below so the two lists can't drift on what "matches the filter"
+     * means (the same class of drift CLAUDE.md warns about for the ETA/Locator badge
+     * counts) - both filter against the underlying LeaveRequest's owning user.
+     *
+     * @param  array{department?: int|string|null, search?: string|null}  $filters
+     */
+    private function applyCertificationFilters(Builder $query, array $filters): Builder
+    {
+        if (! empty($filters['department'])) {
+            $query->whereHas('user', fn ($q) => $q->where('Dept_id', $filters['department']));
+        }
+
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->whereHas('user', fn ($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('EmpNo', 'like', "%{$search}%");
+            }));
+        }
+
+        return $query;
+    }
+
+    /**
+     * Paginated, filterable view of pendingReviewQuery() for the Leave Manager's
+     * "Pending Review" tab - kept separate from pendingCertificationLeaves() above (an
+     * unfiltered/unpaginated collection, used elsewhere including tests) so adding
+     * filters/pagination here doesn't change that method's existing contract. Uses a
+     * named page parameter ('pending_page') since the same page also paginates
+     * forwarded/rejected/history lists independently - a shared plain 'page' param
+     * would collide.
+     *
+     * @param  array{department?: int|string|null, search?: string|null}  $filters
+     */
+    public function paginatedPendingCertificationLeaves(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        $query = $this->applyCertificationFilters($this->pendingReviewQuery(), $filters)
+            ->with(['user.department', 'leaveDates']);
+
+        return $query->orderBy('date_filed')->paginate($perPage, ['*'], 'pending_page')->withQueryString();
+    }
+
+    /**
+     * Paginated, filterable view of forwardedForSigningQuery() - the HR Manager's
+     * sign queue, and (read-only) the Leave Manager's own visibility into what they've
+     * already forwarded. Named page parameter 'forwarded_page', same reasoning as
+     * paginatedPendingCertificationLeaves() above.
+     *
+     * @param  array{department?: int|string|null, search?: string|null}  $filters
+     */
+    public function paginatedForwardedForSigning(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        $query = $this->applyCertificationFilters($this->forwardedForSigningQuery(), $filters)
+            ->with(['user.department', 'certificationReviewedBy', 'leaveDates']);
+
+        return $query->orderBy('certification_reviewed_at')->paginate($perPage, ['*'], 'forwarded_page')->withQueryString();
+    }
+
+    /**
+     * Paginated, filterable view of rejectedCertificationQuery() - the Rejected tab,
+     * visible to both roles. Named page parameter 'rejected_page', same reasoning as
+     * paginatedPendingCertificationLeaves() above.
+     *
+     * @param  array{department?: int|string|null, search?: string|null}  $filters
+     */
+    public function paginatedRejectedCertifications(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        $query = $this->applyCertificationFilters($this->rejectedCertificationQuery(), $filters)
+            ->with(['user.department', 'certificationReviewedBy']);
+
+        return $query->latest('certification_reviewed_at')->paginate($perPage, ['*'], 'rejected_page')->withQueryString();
+    }
+
+    /**
+     * Paginated, filterable list of completed 'CertifyingSignature' signings. Filters
+     * against a LeaveRequest subquery (applyCertificationFilters()) rather than a
+     * nested whereHas('signable.user', ...) - EsignatureSigning.signable is a genuine
+     * polymorphic morphTo, and Eloquent can't build a plain nested whereHas() through
+     * one without whereHasMorph()'s extra ceremony; a subquery sidesteps that entirely
+     * and reads the same either way since only LeaveRequest ever populates this table
+     * today (see EsignatureSigning's own class docblock).
+     *
+     * @param  array{department?: int|string|null, search?: string|null}  $filters
+     */
+    public function paginatedCertificationHistory(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        $leaveIdsQuery = $this->applyCertificationFilters(LeaveRequest::query(), $filters)->select('id');
+
+        $query = EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->whereIn('signable_id', $leaveIdsQuery)
+            ->where('field_name', 'CertifyingSignature')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->with(['signable.user.department', 'requestedBy']);
+
+        return $query->latest('completed_at')->paginate($perPage, ['*'], 'history_page')->withQueryString();
+    }
+
+    public function certificationFilterDepartments(): Collection
+    {
+        return Department::orderBy('Dept_name')->get(['Dept_id', 'Dept_name']);
+    }
+
+    /**
+     * Leave Manager review action: declines a leave's certification with a required
+     * reason. Only valid from pendingReviewQuery() - a leave already forwarded,
+     * rejected, or signed can't be rejected again. Terminal-but-reversible: the leave
+     * moves to rejectedCertificationQuery() rather than disappearing, and either role
+     * can send it back via reopenCertification() once the underlying issue is
+     * resolved. No employee notification is sent - this is internal HR/Leave Manager
+     * coordination, same as the rest of this queue.
+     */
+    public function rejectCertification(LeaveRequest $leave, User $actor, string $remarks): void
+    {
+        if (! $this->pendingReviewQuery()->whereKey($leave->id)->exists()) {
+            throw new \RuntimeException('This leave is no longer awaiting certification review.');
+        }
+
+        $leave->update([
+            'certification_review_status' => 'rejected',
+            'certification_reviewed_by' => $actor->id,
+            'certification_reviewed_at' => now(),
+            'certification_review_remarks' => $remarks,
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => $actor->id,
+            'module' => 'esignature',
+            'action' => 'leave_certification_rejected',
+            'target_type' => LeaveRequest::class,
+            'target_id' => $leave->id,
+            'details' => ['remarks' => $remarks],
+        ]);
+    }
+
+    /**
+     * Leave Manager review action: clears one or more leaves for the HR Manager to
+     * sign. $leaveIds follows the same "intersect with pendingReviewQuery(), never
+     * trust the client id list outright" convention as batchCertifyPendingLeaves()
+     * below - null forwards everything currently pending review, an empty array
+     * forwards nothing. Unlike reject, no reason is collected.
+     *
+     * @param  array<int, int>|null  $leaveIds
+     * @return array{processed: array<int, int>, errors: array<int, array{leave_id: int, message: string}>}
+     */
+    public function forwardCertifications(User $actor, ?array $leaveIds = null): array
+    {
+        $query = $this->pendingReviewQuery();
+        if ($leaveIds !== null) {
+            $query->whereIn('id', $leaveIds);
+        }
+
+        $processed = [];
+        $errors = [];
+
+        foreach ($query->get() as $leave) {
+            try {
+                $leave->update([
+                    'certification_review_status' => 'forwarded',
+                    'certification_reviewed_by' => $actor->id,
+                    'certification_reviewed_at' => now(),
+                    'certification_review_remarks' => null,
+                ]);
+                $processed[] = $leave->id;
+            } catch (\Throwable $e) {
+                $errors[] = ['leave_id' => $leave->id, 'message' => $e->getMessage()];
+            }
+        }
+
+        HRAuditTrail::create([
+            'actor_user_id' => $actor->id,
+            'module' => 'esignature',
+            'action' => 'leave_certification_forwarded',
+            'target_type' => 'leave_certification_batch',
+            'target_id' => null,
+            'details' => ['leave_ids' => $processed, 'error_count' => count($errors)],
+        ]);
+
+        return ['processed' => $processed, 'errors' => $errors];
+    }
+
+    /**
+     * Sends a rejected leave back to pendingReviewQuery() - available to either an
+     * HR Manager or the Leave Manager, since either may be the one to notice the
+     * underlying issue has been resolved. Resets all four review columns to null
+     * rather than keeping a history row (the row's own current state is single-slot,
+     * same as cancellation_status elsewhere on this model); the prior remarks are
+     * captured into the audit row before being cleared, so the reason isn't lost.
+     */
+    public function reopenCertification(LeaveRequest $leave, User $actor): void
+    {
+        if ($leave->certification_review_status !== 'rejected') {
+            throw new \RuntimeException('This leave is not currently rejected.');
+        }
+
+        $previousRemarks = $leave->certification_review_remarks;
+
+        $leave->update([
+            'certification_review_status' => null,
+            'certification_reviewed_by' => null,
+            'certification_reviewed_at' => null,
+            'certification_review_remarks' => null,
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => $actor->id,
+            'module' => 'esignature',
+            'action' => 'leave_certification_reopened',
+            'target_type' => LeaveRequest::class,
+            'target_id' => $leave->id,
+            'details' => ['previous_remarks' => $previousRemarks],
+        ]);
+    }
+
+    /**
+     * The certification signature is always $actor's own - whichever HR Manager is
+     * logged in signs with their own saved certificate, exactly like DH/AO co-signing
+     * (approveLeaveWithEsignature() above). Only ever signs leaves already forwarded
+     * by a Leave Manager (forwardedForSigningQuery()) - a merely-pending, not-yet-
+     * reviewed leave is never eligible here regardless of what $leaveIds requests.
+     *
+     * $leaveIds, when given, is always intersected with forwardedForSigningQuery()
+     * rather than trusted outright - a stale/already-signed/not-yet-forwarded/foreign
+     * id submitted by the client is silently dropped (it simply doesn't match the
+     * query) instead of erroring or being processed twice. Null signs everything
+     * currently forwarded, matching the original "Sign All Pending" behavior; an empty
+     * array signs nothing (e.g. the user unchecked every row), which is treated the
+     * same as an already-empty queue rather than an error.
+     *
+     * @param  array<int, int>|null  $leaveIds
+     * @return array{processed: array<int, int>, errors: array<int, array{leave_id: int, message: string}>}
+     */
+    public function batchCertifyPendingLeaves(User $actor, string $password, ESignatureCredentialStore $credentialStore, ?array $leaveIds = null): array
+    {
+        $setting = $actor->esignatureSetting;
+        if (! $setting) {
+            throw new \RuntimeException('You have not set up an e-signature yet.');
+        }
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Could not read your saved certificate. Please contact HR or re-save your e-signature setting.');
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $password)) {
+            throw new \RuntimeException('That password did not unlock your saved certificate. Please check the password and try again.');
+        }
+
+        $query = $this->forwardedForSigningQuery();
+        if ($leaveIds !== null) {
+            $query->whereIn('id', $leaveIds);
+        }
+
+        $processed = [];
+        $errors = [];
+
+        foreach ($query->with('user')->orderBy('date_filed')->get() as $leave) {
+            try {
+                $this->certifyLeaveCredits($leave, $actor, $password);
+                $processed[] = $leave->id;
+            } catch (\Throwable $e) {
+                $errors[] = ['leave_id' => $leave->id, 'message' => $e->getMessage()];
+            }
+        }
+
+        $this->logCertificationBatchTrigger($actor, $processed, $errors);
+
+        return ['processed' => $processed, 'errors' => $errors];
+    }
+
+    /**
+     * $actor is always the HR Manager who both triggered and signed the batch (see
+     * batchCertifyPendingLeaves()) - unlike the review-step audit rows above, there's
+     * no separate signer to distinguish here any more.
+     *
+     * @param  array<int, int>  $processedIds
+     * @param  array<int, array{leave_id: int, message: string}>  $errors
+     */
+    private function logCertificationBatchTrigger(User $actor, array $processedIds, array $errors): void
+    {
+        HRAuditTrail::create([
+            'actor_user_id' => $actor->id,
+            'module' => 'esignature',
+            'action' => 'leave_certification_batch_triggered',
+            'target_type' => 'leave_certification_batch',
+            'target_id' => null,
+            'details' => [
+                'leave_ids' => $processedIds,
+                'error_count' => count($errors),
+            ],
+        ]);
+    }
+
+    private function loadLeaveMapping(): array
+    {
+        $mappingFile = storage_path('app/templates/leave_mapping.php');
+
+        return file_exists($mappingFile) ? include $mappingFile : [];
+    }
+
+    private function latestCompletedSigning(LeaveRequest $leave): ?EsignatureSigning
+    {
+        return EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->where('signable_id', $leave->id)
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->latest()
+            ->first();
+    }
+
+    /**
+     * Shared co-signing mechanism behind approveLeaveWithEsignature() and
+     * certifyLeaveCredits(): resolves the latest completed signing (if any) and signs
+     * on top of it - a genuine incremental pyHanko addsig pass that leaves an earlier
+     * signature intact and independently valid - rather than re-rendering fresh, which
+     * would invalidate it. Only when no completed signing exists yet is a fresh render
+     * used, so Section 7 (recommendation/approved days/balance) is included for
+     * whichever pass happens to be the document's first signature.
+     */
+    private function dispatchCoSigningPass(LeaveRequest $leave, User $actor, string $password, ?string $fieldName, ?array $fieldRectOverride = null): EsignatureSigning
+    {
+        $priorSigning = $this->latestCompletedSigning($leave);
+
+        if ($priorSigning && $priorSigning->signed_path && Storage::disk('esignature')->exists($priorSigning->signed_path)) {
+            $basePdfBytes = Storage::disk('esignature')->get($priorSigning->signed_path);
+        } else {
+            $basePdfBytes = $this->buildEsignaturePdfBytes($leave);
+        }
+
+        $token = (string) Str::ulid();
+        $dir = "signings/{$token}";
+        Storage::disk('esignature')->put("{$dir}/unsigned.pdf", $basePdfBytes);
+
+        if ($fieldRectOverride) {
+            Storage::disk('esignature')->put("{$dir}/signature_field.json", json_encode($fieldRectOverride));
+        }
+
+        $signing = EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $actor->id,
+            'field_name' => $fieldName,
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => "{$dir}/unsigned.pdf",
+        ]);
+
+        SignESignatureRequestPdfJob::dispatch($signing, $password)->onQueue('exports');
+
+        return $signing;
+    }
+
+    private function isSuccessfulJsonResponse($response): bool
+    {
+        if (! $response instanceof JsonResponse) {
+            return false;
+        }
+
+        return ($response->getData(true)['success'] ?? false) === true;
+    }
+
+    /**
      * Generate an Excel file for a leave request using the LEAVE.xlsx template.
      * Saves the file to storage/app/leave/prints and returns it as a download.
      */
     public function generateExcelResponse(LeaveRequest $leave): StreamedResponse
+    {
+        [$spreadsheet, $officialLabel] = $this->buildFilledLeaveSpreadsheet($leave);
+        $employee = $leave->user;
+
+        // --- 9. Apply protection & Stream ---
+        $lockApplied = false;
+        try {
+            $this->protectAllSheets($spreadsheet, $employee);
+            $lockApplied = true;
+        } catch (\Exception $e) {
+            Log::warning('Leave sheet protection failed', [
+                'leave_request_id' => $leave->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $filename = "Leave_Form_{$leave->id}_".now()->format('Ymd_His').'.xlsx';
+
+        // Audit log
+        $user = auth()->user();
+        Log::info('Leave form printed (Excel)', [
+            'leave_request_id' => $leave->id,
+            'printed_by' => $user->id ?? null,
+            'role' => $user->access_level ?? null,
+            'timestamp' => now()->toDateTimeString(),
+            'filename' => $filename,
+            'lock_applied' => $lockApplied,
+            'format_preserved' => true,
+            'official_included' => $officialLabel ?: null,
+        ]);
+
+        // Stream directly to browser without persisting to disk
+        return response()->streamDownload(
+            function () use ($spreadsheet): void {
+                $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+                $writer->save('php://output');
+                $spreadsheet->disconnectWorksheets();
+            },
+            $filename,
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]
+        );
+    }
+
+    /**
+     * Builds the LEAVE.xlsx template filled with a leave's data - the exact same
+     * cell-by-cell fill this app has always used for the official Excel export
+     * (generateExcelResponse() above), extracted so buildEsignaturePdfBytes() can
+     * render the identical official form layout as a PDF instead of duplicating
+     * this fill logic in a second, hand-built view. Unprotected - protectAllSheets()
+     * is an Excel-specific concept the PDF path never applies (it gets a real
+     * cryptographic signature instead, a much stronger guarantee).
+     *
+     * @return array{0: Spreadsheet, 1: string} [filled spreadsheet, executive signatory label]
+     */
+    private function buildFilledLeaveSpreadsheet(LeaveRequest $leave): array
     {
         $templatePath = storage_path('app/templates/LEAVE.xlsx');
         if (! file_exists($templatePath)) {
@@ -1282,7 +1893,7 @@ class LeaveRequestService
             $row = $leaveTypeRowMap[$normalized] ?? null;
             if ($row) {
                 if ($row === 39 && ($normalized === 'wellness leave' || $normalized === 'wlns')) {
-                    $sheet->setCellValue('C40', 'Wellness');
+                    $sheet->setCellValue('C40', 'Wellness Leave');
                 } elseif ($row === 39 && $normalized === 'others') {
                     if (! empty($leave->details_others_type)) {
                         $sheet->setCellValue('C40', $leave->details_others_type);
@@ -1465,45 +2076,251 @@ class LeaveRequestService
             }
         }
 
-        // --- 9. Apply protection & Stream ---
-        $lockApplied = false;
-        try {
-            $this->protectAllSheets($spreadsheet, $employee);
-            $lockApplied = true;
-        } catch (\Exception $e) {
-            Log::warning('Leave sheet protection failed', [
-                'leave_request_id' => $leave->id,
-                'error' => $e->getMessage(),
-            ]);
+        return [$spreadsheet, $officialLabel ?? ''];
+    }
+
+    /**
+     * Stamps the real official CS Form 6 PDF (storage/app/templates/LEAVE.pdf,
+     * supplied directly by the office - a genuine 2-page export of the actual
+     * form, page 2 a static reference image, no AcroForm fields) with a
+     * leave's data via FPDI, returning PDF bytes - the source document
+     * SignESignatureRequestPdfJob signs. A prior version rendered the filled
+     * LEAVE.xlsx as HTML via Dompdf instead; that approach is gone now that a
+     * real PDF exists to stamp onto directly, which is unambiguously more
+     * faithful to the actual form than any re-rendering could be.
+     *
+     * Reuses buildFilledLeaveSpreadsheet()'s cell-by-cell business logic
+     * unchanged (balance snapshots, leave-type resolution, signatory lookups)
+     * by reading the values back out of the cells it already computed, rather
+     * than recomputing anything here - one source of truth for the data, two
+     * ways of placing it on a page.
+     *
+     * Coordinates live in storage/app/templates/leave_mapping.php, measured
+     * directly against this exact PDF's own content stream (not guessed) -
+     * see that file's docblock and the plan for the extraction method. Uses
+     * FPDI's 'pt' unit explicitly (FPDF defaults to millimeters, which would
+     * silently misplace every point-based coordinate in that mapping file by
+     * roughly a factor of ~2.83).
+     */
+    public function buildEsignaturePdfBytes(LeaveRequest $leave): string
+    {
+        [$spreadsheet] = $this->buildFilledLeaveSpreadsheet($leave);
+        $sheet = $spreadsheet->getSheet(0);
+        $cell = fn (string $ref): string => trim((string) ($sheet->getCell($ref)->getValue() ?? ''));
+
+        $templatePath = storage_path('app/templates/LEAVE.pdf');
+        if (! file_exists($templatePath)) {
+            abort(500, 'Leave PDF template not found.');
         }
 
-        $filename = "Leave_Form_{$leave->id}_".now()->format('Ymd_His').'.xlsx';
+        $mappingFile = storage_path('app/templates/leave_mapping.php');
+        $mapping = file_exists($mappingFile) ? include $mappingFile : [];
 
-        // Audit log
-        $user = auth()->user();
-        Log::info('Leave form printed (Excel)', [
-            'leave_request_id' => $leave->id,
-            'printed_by' => $user->id ?? null,
-            'role' => $user->access_level ?? null,
-            'timestamp' => now()->toDateTimeString(),
-            'filename' => $filename,
-            'lock_applied' => $lockApplied,
-            'format_preserved' => true,
-            'official_included' => $officialLabel ?: null,
-        ]);
+        $pdf = new Fpdi('P', 'pt');
+        $pageCount = $pdf->setSourceFile($templatePath);
+        $tplId = $pdf->importPage(1);
+        $size = $pdf->getTemplateSize($tplId);
+        $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+        $pdf->useTemplate($tplId);
 
-        // Stream directly to browser without persisting to disk
-        return response()->streamDownload(
-            function () use ($spreadsheet): void {
-                $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
-                $writer->save('php://output');
-                $spreadsheet->disconnectWorksheets();
-            },
-            $filename,
-            [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            ]
-        );
+        // leave_mapping.php's coordinates are true PDF points measured directly from the
+        // page's own content stream (bottom-left origin, matching PDF's real convention).
+        // FPDF's own SetXY() uses the opposite, GUI-style top-left origin - confirmed
+        // empirically (a value stamped at the mapping's raw y landed nowhere near its
+        // intended label). This is the one place that inversion happens, so the mapping
+        // file itself can stay in the more natural, directly-measured coordinate space.
+        $pageHeight = $size['height'];
+
+        // FPDF's Write()/Cell() position text by (roughly) the TOP of the line box, not by
+        // the glyph baseline - every $write() coordinate in leave_mapping.php is measured
+        // against the baseline (real Tm operators in the source content stream), so writing
+        // at the raw $toFpdfY($y) silently rendered every $write()-driven field low by a
+        // fixed, font-size-dependent amount. Confirmed empirically (not guessed) by comparing
+        // requested vs actually rendered glyph baselines (PyMuPDF rawdict text extraction)
+        // across four different fields/font sizes - it matches FPDF's own internal Cell()
+        // formula exactly every time: offset = 0.5*$h + 0.3*fontSize, where $h is the
+        // line-height argument passed to Write() (hardcoded to 5 everywhere in this method).
+        //   size 9 -> measured 5.20pt low  | formula: 0.5*5 + 0.3*9 = 5.20
+        //   size 8 -> measured 4.90pt low  | formula: 0.5*5 + 0.3*8 = 4.90
+        //   size 7 -> measured 4.60pt low  | formula: 0.5*5 + 0.3*7 = 4.60
+        // $toFpdfBaselineY bakes this compensation in once, here, so every $write() call below
+        // (and every $write()-driven entry in leave_mapping.php) can keep meaning exactly what
+        // its own comments already claim - "this is the real measured baseline" - without each
+        // field having to carry its own hand-tuned fudge factor.
+        //
+        // Deliberately NOT applied to $mark() below: a mark's stored (x,y) is a checkbox
+        // CENTER point (leave_mapping.php's own docblock: "its true center is consistently
+        // ~2.3pt above the row label's own baseline"), not a text baseline - a different
+        // semantic that this baseline formula doesn't fit. $mark()'s existing plain
+        // top-down flip was already correctly calibrated for that (an "X" glyph's own
+        // baseline naturally sits a bit below its visual center, close to what the old,
+        // uncompensated conversion produced) - applying this compensation there too was
+        // tried and reverted after it pushed every checkbox/purpose mark's "X" visibly
+        // above the box it's meant to sit inside.
+        $lineHeight = 5;
+        $toFpdfBaselineY = fn (float $y, float $fontSize): float => $pageHeight - ($y + 0.5 * $lineHeight + 0.3 * $fontSize);
+        $toFpdfY = fn (float $y): float => $pageHeight - $y;
+
+        $write = function (string $key, string $text) use ($pdf, $mapping, $toFpdfBaselineY): void {
+            $cfg = $mapping[$key] ?? null;
+            if (! $cfg || ! isset($cfg['x'], $cfg['y']) || $text === '') {
+                return;
+            }
+            $fontSize = $cfg['size'] ?? 9;
+            $pdf->SetFont($cfg['font'] ?? 'Arial', ($cfg['bold'] ?? false) ? 'B' : '', $fontSize);
+            $pdf->SetXY($cfg['x'], $toFpdfBaselineY($cfg['y'], $fontSize));
+            $pdf->Write(5, $text);
+        };
+
+        $mark = function (?array $xy) use ($pdf, $toFpdfY): void {
+            if (! $xy) {
+                return;
+            }
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->SetXY($xy[0], $toFpdfY($xy[1]));
+            $pdf->Write(5, 'X');
+        };
+
+        $write('full_name', $cell('E5'));
+        $write('department', $cell('B5'));
+        $write('date_filed', $cell('D6'));
+        $write('position', $cell('F6'));
+        $write('salary', $cell('K6'));
+
+        // Leave-type checkmarks - mirrors buildFilledLeaveSpreadsheet()'s own row map, but
+        // reads which B{row} cells it actually marked rather than re-deriving from leave_type.
+        $leaveTypeRows = [
+            11 => 'vacation leave', 13 => 'mandatory/forced leave', 15 => 'sick leave',
+            17 => 'maternity leave', 19 => 'paternity leave', 21 => 'special privilege leave',
+            23 => 'solo parent leave', 25 => 'study leave', 27 => '10-day vawc leave',
+            29 => 'rehabilitation privilege', 31 => 'special leave benefits for women',
+            33 => 'special emergency (calamity) leave', 35 => 'adoption leave', 39 => 'others',
+        ];
+        $leaveTypeCoords = $mapping['leave_type_coords'] ?? [];
+        foreach ($leaveTypeRows as $row => $key) {
+            if ($cell("B{$row}") !== '') {
+                $mark($leaveTypeCoords[$key] ?? null);
+            }
+        }
+        $othersText = $cell('C40');
+        if ($othersText !== '' && ($area = $mapping['others_area'] ?? null)) {
+            $pdf->SetFont('Arial', '', 9);
+            // MultiCell's own $y is the top of the wrapped text block, not a single glyph
+            // baseline like Write() - the $toFpdfBaselineY compensation above doesn't apply
+            // here, a plain top-down flip is correct for this call.
+            $pdf->SetXY($area['x'], $pageHeight - $area['y']);
+            $pdf->MultiCell($area['w'], $area['h'] ?? 5, $othersText);
+        }
+
+        // 6.B Details of Leave
+        $purposeMarks = $mapping['purpose_marks'] ?? [];
+        if ($cell('H13') !== '') {
+            $mark($purposeMarks['within_the_philippines'] ?? null);
+        }
+        if ($cell('H15') !== '') {
+            $mark($purposeMarks['abroad'] ?? null);
+        }
+        if ($cell('H19') !== '') {
+            $mark($purposeMarks['in_hospital'] ?? null);
+            $write('specify_illness_in_hospital', $cell('K19'));
+        }
+        if ($cell('H21') !== '') {
+            $mark($purposeMarks['out_patient'] ?? null);
+            $write('specify_illness_out_patient', $cell('K21'));
+        }
+
+        // 6.C / 6.D
+        $write('total_days', $cell('C44'));
+        $write('period', $cell('C48'));
+        if ($cell('H45') !== '') {
+            $mark($mapping['commutation_not_requested'] ?? null);
+        }
+
+        // 7.A Certification of Leave Credits
+        $write('approved_at', $cell('D53'));
+        $write('vl_total_earned', $cell('D56'));
+        $write('sl_total_earned', $cell('E56'));
+        $write('vl_requested', $cell('D57'));
+        $write('sl_requested', $cell('E57'));
+        $write('vl_balance', $cell('D58'));
+        $write('sl_balance', $cell('E58'));
+
+        $status = strtolower($leave->status ?? '');
+
+        // 7.B Recommendation
+        if ($cell('H53') !== '') {
+            $mark($mapping['recommend_approval'] ?? null);
+        }
+        if ($cell('H55') !== '') {
+            $mark($mapping['recommend_disapproval'] ?? null);
+        }
+        // Gated on the same rejected check buildFilledLeaveSpreadsheet() uses to set I56
+        // in the first place (line ~1556-1560 above) - I56 is only ever explicitly written
+        // for a rejected leave; for every other status it still holds the LEAVE.xlsx
+        // template's own raw unfilled placeholder text (a run of underscores), which,
+        // written unconditionally, stamped directly on top of this PDF's own static
+        // "For disapproval due to ________________________" line - visually doubling and
+        // extending it past the box's own right border. Confirmed via a real render.
+        if ($status === 'rejected') {
+            $write('disapproval_reason', $cell('I56'));
+        }
+
+        // 7.C / 7.D - sourced from the leave's own paid_days/lwop_days directly, not from
+        // C62/C63's already-underscore-substituted sentence (that phrasing is specific to
+        // the Excel template's own placeholder text, not this PDF's separate printed caption).
+        //
+        // Deliberately NOT gated on status === 'approved' (changed 2026-08-21): this PDF
+        // is only ever actually rendered once, at filing time (maybeStartEsignaturePrint()),
+        // while the leave is still 'pending' - a later Department Head/Administrative
+        // Officer co-sign (approveLeaveWithEsignature()) reuses those exact already-signed
+        // bytes unchanged rather than re-rendering, since pyHanko's own incremental-update
+        // signing is the only safe way to layer content onto an already-signed PDF (FPDI is
+        // not - confirmed empirically: running an already-signed PDF back through FPDI
+        // strips its signature/AcroForm/DSS entirely, since FPDI fully rebuilds the file
+        // rather than appending to it). So the old status==='approved' gate meant paid_days/
+        // lwop_days could never actually appear on a real leave's PDF - the one time this
+        // method runs, approval hadn't happened yet. paid_days/lwop_days are already fully
+        // computed and stored on the leave_requests row at filing (LeaveRequestController::
+        // store()), independent of approval, so showing them here is a pre-approval preview
+        // of the same split the DH/AO will actually approve, not a live "approved" claim -
+        // only suppressed once a rejection has actually happened, matching the mutually
+        // exclusive 7.C/7.D printed sections (a leave can't be both).
+        if ($status === 'rejected') {
+            $write('disapproved_due_to', (string) ($leave->rejection_notes ?? ''));
+        } else {
+            if (($leave->paid_days ?? 0) > 0) {
+                $write('paid_days', $this->formatBalance($leave->paid_days));
+            }
+            if (($leave->lwop_days ?? 0) > 0) {
+                $write('lwop_days', $this->formatBalance($leave->lwop_days));
+            }
+        }
+
+        // Signatories
+        $write('department_head', $cell('I59'));
+        $write('signatory_name', $cell('D66'));
+        $write('signatory_designation', $cell('D67'));
+
+        $siteSettings = Setting::first();
+        if ($siteSettings) {
+            if (! empty($siteSettings->hr_manager_name)) {
+                $write('hr_manager_name', $siteSettings->hr_manager_name);
+            }
+            $write('hr_manager_designation', $siteSettings->hr_manager_designation ?? 'OIC-CHRMD');
+        }
+
+        // Remaining page(s) - just the template's own static content (page 2 is a plain
+        // reference image), added as-is with no stamping.
+        for ($pageNo = 2; $pageNo <= $pageCount; $pageNo++) {
+            $tpl = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tpl);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tpl);
+        }
+
+        $spreadsheet->disconnectWorksheets();
+
+        return $pdf->Output('S');
     }
 
     /**

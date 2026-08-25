@@ -179,7 +179,7 @@
                     </td>
                     <td><span class="chip">{{ $emp->access_level ?? 'N/A' }}</span></td>
                     <td>{{ $lr->leave_type }}</td>
-                    <td>{{ \Carbon\Carbon::parse($lr->start_date)->format('M d, Y') }} - {{ \Carbon\Carbon::parse($lr->end_date)->format('M d, Y') }}</td>
+                    <td>{{ $lr->formattedPeriod() }}</td>
                     <td>{{ $lr->total_days ?? '-' }}</td>
                     <td><x-hris.status-badge :status="$lr->status" /></td>
                     <td>
@@ -345,9 +345,9 @@ document.addEventListener('DOMContentLoaded', function() {
             'role' => $emp->access_level ?? 'N/A',
             'department' => $deptName,
             'leave_type' => $lr->leave_type,
+            'leave_dates' => $lr->leaveDatesBreakdown(),
             'date_filed' => \Carbon\Carbon::parse($lr->created_at)->format('M d, Y'),
-            'start_date' => \Carbon\Carbon::parse($lr->start_date)->format('M d, Y'),
-            'end_date' => \Carbon\Carbon::parse($lr->end_date)->format('M d, Y'),
+            'period' => $lr->formattedPeriod(),
             'total_days' => $lr->total_days ?? '-',
             'paid_days' => $lr->paid_days ?? '-',
             'lwop_days' => $lr->lwop_days ?? '-',
@@ -380,6 +380,26 @@ function lrdStat(label, value, tone) {
         + '</div>';
 }
 
+// Renders either the flat comma-joined leave_type string (via lrdItem, same as any
+// other field), or - when a multi-date filing assigned more than one distinct type
+// across its dates - a small per-date table (Date | Type | Days) so it's clear which
+// date got which type. lrdItem() HTML-escapes its value, so it can't hold a <table>;
+// this builds its own markup instead.
+function lrdLeaveType(flatType, dates) {
+    var types = (dates || []).map(function (d) { return d.leave_type; })
+        .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+    if (!dates || !dates.length || types.length <= 1) {
+        return lrdItem('Leave Type', flatType);
+    }
+    var rows = dates.map(function (d) {
+        return '<tr><td>' + escapeHtml(d.label) + '</td><td>' + escapeHtml(d.leave_type) + '</td><td style="text-align:right">' + d.days + '</td></tr>';
+    }).join('');
+    return '<div class="lrd-item lrd-item-wide"><div class="lrd-label">Leave Type (by date)</div>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:4px">'
+        + '<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Type</th><th style="text-align:right">Days</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table></div>';
+}
+
 var LRD_STATUS_META = {
     pending: { icon: 'fa-hourglass-half', label: 'Pending Approval', cls: 'lrd-banner-pending' },
     approved: { icon: 'fa-circle-check', label: 'Approved', cls: 'lrd-banner-approved' },
@@ -409,7 +429,7 @@ function viewLeaveDetails(id) {
         + '<div class="lrd-section">'
         +   '<div class="lrd-section-title">Leave Information</div>'
         +   '<div class="lrd-grid">'
-        +     lrdItem('Leave Type', data.leave_type)
+        +     lrdLeaveType(data.leave_type, data.leave_dates)
         +     lrdItem('Date Filed', data.date_filed)
         +     lrdItem('Reason', data.reason, true)
         +   '</div>'
@@ -417,8 +437,7 @@ function viewLeaveDetails(id) {
         + '<div class="lrd-section">'
         +   '<div class="lrd-section-title">Duration</div>'
         +   '<div class="lrd-grid lrd-grid-3">'
-        +     lrdStat('Start Date', data.start_date)
-        +     lrdStat('End Date', data.end_date)
+        +     lrdStat('Period', data.period)
         +     lrdStat('Total Days', data.total_days)
         +   '</div>'
         + '</div>'

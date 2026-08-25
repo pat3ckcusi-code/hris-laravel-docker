@@ -84,6 +84,7 @@
 
         // Administration
         'settings'            => 'fas fa-cog fa-fw',
+        'esignature'          => 'fas fa-signature fa-fw',
         'policies'            => 'fas fa-gavel fa-fw',
         'events'              => 'fas fa-calendar-days fa-fw',
 
@@ -110,6 +111,9 @@
             ['section' => 'Records'],
             ['label' => 'Payslips',         'icon' => 'payslips',   'route' => 'dashboard.employee.payslips',   'active' => ['dashboard.employee.payslips'], 'permission' => 'hasPayslipAccess'],
             ['label' => 'My DTR',           'icon' => 'attendance', 'route' => 'attendance.dtr',                'active' => ['attendance.dtr', 'attendance.dtr.download']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Department Head ───────────────────────────────
@@ -138,6 +142,9 @@
             ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',                  'active' => ['attendance.schedules*'],        'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',       'active' => ['attendance.shift-schedule*'],   'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index',  'active' => ['attendance.workforce-calendar*']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Administrative Officer ────────────────────────
@@ -171,6 +178,9 @@
             ['label' => 'Shift Assignment',   'icon' => 'work_schedule',     'route' => 'attendance.schedules',              'active' => ['attendance.schedules*'],        'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Shift Schedule',     'icon' => 'work_schedule',     'route' => 'attendance.shift-schedule.index',   'active' => ['attendance.shift-schedule*'],   'permission' => 'hasShiftManagementAccess'],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── HR Manager ───────────────────────────────────
@@ -199,6 +209,8 @@
 
             ['section' => 'Administration'],
             ['label' => 'System Settings',    'icon' => 'settings',  'route' => 'hr-manager.settings',  'active' => ['hr-manager.settings']],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
+            ['label' => 'Leave Credit Certification', 'icon' => 'esignature', 'route' => 'leave-certification.index', 'active' => ['leave-certification.index'], 'permission' => 'canAccessLeaveCertification', 'badge' => 'pending_leave_certification'],
 
             ['section' => 'Self-Service'],
             ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',    'active' => ['dashboard.employee.pds']],
@@ -225,9 +237,13 @@
             ['label' => 'Employee Cancellation Requests',     'icon' => 'leave',              'route' => 'leave-manager.employee-cancellation-requests',    'active' => ['leave-manager.employee-cancellation-requests'], 'badge' => 'pending_employee_cancellation_requests'],
             ['label' => 'Attendance Deductions',               'icon' => 'leave_credits',      'route' => 'leave-manager.attendance-deductions',              'active' => ['leave-manager.attendance-deductions'], 'badge' => 'pending_attendance_deductions'],
             ['label' => 'Uniform Inspections',                'icon' => 'uniform_inspection', 'route' => 'leave-manager.uniform-inspections.index',         'active' => ['leave-manager.uniform-inspections.*']],
+            ['label' => 'Leave Credit Certification', 'icon' => 'esignature', 'route' => 'leave-certification.index', 'active' => ['leave-certification.index'], 'permission' => 'canAccessLeaveCertification', 'badge' => 'pending_leave_certification'],
 
             ['section' => 'Attendance'],
             ['label' => 'My DTR',            'icon' => 'attendance', 'route' => 'attendance.dtr', 'active' => ['attendance.dtr', 'attendance.dtr.download']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Payroll Manager ──────────────────────────────
@@ -257,6 +273,7 @@
 
             ['section' => 'System'],
             ['label' => 'Settings',            'icon' => 'settings',        'route' => 'payroll.settings.index',      'active' => ['payroll.settings.*']],
+            ['label' => 'E-Signature Config',  'icon' => 'esignature',      'route' => 'esignature-config.index',     'active' => ['esignature-config.index']],
         ],
 
         // ─── Records Manager ──────────────────────────────
@@ -269,6 +286,9 @@
             ['section' => 'Attendance'],
             ['label' => 'DTR Records', 'icon' => 'attendance',        'route' => 'attendance.dtr',               'active' => ['attendance.dtr', 'attendance.dtr.download']],
             ['label' => 'Import Logs', 'icon' => 'attendance_import', 'route' => 'hr-manager.attendance.import', 'active' => ['hr-manager.attendance.import*']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Time Keeper ──────────────────────────────────
@@ -298,6 +318,9 @@
             ['label' => 'Work Suspensions', 'icon' => 'attendance_import', 'route' => 'attendance.work-suspensions.index', 'active' => ['attendance.work-suspensions*']],
             ['label' => 'Frontline Personnel', 'icon' => 'access', 'route' => 'attendance.frontline-personnel.index', 'active' => ['attendance.frontline-personnel*']],
             ['label' => 'Workforce Calendar', 'icon' => 'workforce_calendar', 'route' => 'attendance.workforce-calendar.index', 'active' => ['attendance.workforce-calendar*']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Front Desk ───────────────────────────────────
@@ -316,6 +339,9 @@
             ['label' => 'Pending Requests', 'icon' => 'pending_requests', 'route' => 'employee.pending-requests', 'active' => ['employee.pending-requests'], 'badge' => 'pending_document_requests'],
             ['label' => 'Approved Requests', 'icon' => 'approved_requests', 'route' => 'employee.approved-requests', 'active' => ['employee.approved-requests'], 'badge' => 'approved_document_requests'],
             ['label' => 'Document Settings', 'icon' => 'settings', 'route' => 'employee.document-settings', 'active' => ['employee.document-settings']],
+
+            ['section' => 'System'],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
         ],
 
         // ─── Mayor ────────────────────────────────────────
@@ -339,6 +365,7 @@
 
             ['section' => 'System'],
             ['label' => 'Settings',                'icon' => 'settings',         'route' => 'mayor.settings',               'active' => ['mayor.settings']],
+            ['label' => 'E-Signature Config',      'icon' => 'esignature',       'route' => 'esignature-config.index',      'active' => ['esignature-config.index']],
         ],
     ];
 
@@ -427,6 +454,15 @@
         'pending_attendance_deductions' => fn () => \App\Models\AttendanceAdjustmentSubmissionItem::where('processed_status', 'pending')
             ->whereHas('submission', fn ($q) => $q->where('status', 'submitted'))
             ->count(),
+        'pending_leave_certification' => function () {
+            $user = auth()->user();
+            if (!$user) return 0;
+            $role = strtolower(trim(str_replace(['_', '-'], ' ', (string) ($user->access_level ?? ''))));
+            $service = app(\App\Services\LeaveRequestService::class);
+            return $role === 'hr manager'
+                ? $service->forwardedForSigningQuery()->count()
+                : $service->pendingReviewQuery()->count();
+        },
         'pending_cancellation_dh' => function () {
             $user = auth()->user();
             if (!$user) return 0;

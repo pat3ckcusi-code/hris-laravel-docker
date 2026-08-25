@@ -70,6 +70,11 @@ class User extends Authenticatable
         return $this->hasOne(LeaveBalance::class, 'user_id', 'id');
     }
 
+    public function esignatureSetting()
+    {
+        return $this->hasOne(ESignatureSetting::class, 'user_id', 'id');
+    }
+
     public function department()
     {
         return $this->belongsTo(Department::class, 'Dept_id', 'Dept_id');
@@ -230,6 +235,24 @@ class User extends Authenticatable
             : $departmentService->resolveAllDepartmentsForUser($this);
 
         return ShiftManagementGrant::active()->whereIn('dept_id', $depts->pluck('Dept_id'))->exists();
+    }
+
+    /**
+     * Both HR Manager and Leave Manager can access the leave-credit certification
+     * screen (LeaveCertificationController), but with different capabilities: the
+     * Leave Manager reviews the pending queue (forward/reject), while the HR Manager
+     * signs whatever's been forwarded, always with their own saved ESignatureSetting -
+     * exactly like Department Head/Administrative Officer co-signing at approval time.
+     * See LeaveCertificationController::ensureLeaveManagerAccess()/
+     * ensureHrManagerAccess() for the per-action role split. Shared by the
+     * controller's own page-level access check and the sidebar's 'permission' gate so
+     * the two can't drift apart.
+     */
+    public function canAccessLeaveCertification(): bool
+    {
+        $role = RoleNormalizer::normalize((string) ($this->access_level ?? ''));
+
+        return in_array($role, ['hr manager', 'leave manager'], true);
     }
 
     /**

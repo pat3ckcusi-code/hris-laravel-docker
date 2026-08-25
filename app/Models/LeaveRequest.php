@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Contracts\Signable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -34,6 +37,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $approved_by
  * @property string|null $approved_role
  * @property Carbon|null $approved_at
+ * @property Carbon|null $esignature_requested_at
+ * @property string|null $certification_review_status
+ * @property int|null $certification_reviewed_by
+ * @property Carbon|null $certification_reviewed_at
+ * @property string|null $certification_review_remarks
  * @property string|null $remarks
  * @property string|null $action_remarks
  * @property Carbon|null $created_at
@@ -43,7 +51,7 @@ use Illuminate\Support\Carbon;
  *
  * @mixin Builder
  */
-class LeaveRequest extends Model
+class LeaveRequest extends Model implements Signable
 {
     use HasFactory;
 
@@ -109,11 +117,20 @@ class LeaveRequest extends Model
         // reschedule tracking
         'reschedule_status',
         'rescheduled_from_id',
+        // e-signature filing intent (prep only, see CLAUDE.md)
+        'esignature_requested_at',
+        // Leave Credit Certification review (Leave Manager reject/forward, see CLAUDE.md)
+        'certification_review_status',
+        'certification_reviewed_by',
+        'certification_reviewed_at',
+        'certification_review_remarks',
     ];
 
     protected $casts = [
         'print_count' => 'integer',
         'last_printed_at' => 'datetime',
+        'esignature_requested_at' => 'datetime',
+        'certification_reviewed_at' => 'datetime',
     ];
 
     public function user()
@@ -124,6 +141,26 @@ class LeaveRequest extends Model
     public function leaveDates()
     {
         return $this->hasMany(LeaveDate::class);
+    }
+
+    public function latestEsignatureSigning(): MorphOne
+    {
+        return $this->morphOne(EsignatureSigning::class, 'signable')->latestOfMany();
+    }
+
+    public function esignatureSignings(): MorphMany
+    {
+        return $this->morphMany(EsignatureSigning::class, 'signable');
+    }
+
+    public function esignatureOwner(): User
+    {
+        return $this->user;
+    }
+
+    public function esignaturePrintUrl(): string
+    {
+        return route('employee.leave.print.single', $this->id);
     }
 
     /**
@@ -196,6 +233,37 @@ class LeaveRequest extends Model
     }
 
     /**
+     * Per-date leave-type breakdown, e.g. for a multi-date individually-picked filing where
+     * different dates were assigned different types - the flat leave_type column is a
+     * comma-joined string baked in at filing time (LeaveRequestController::store()) with no
+     * indication of which date got which type. Scoped to active (non-cancelled) dates, same
+     * as formattedPeriod(), so the two describe the same date set.
+     */
+    public function leaveDatesBreakdown(): \Illuminate\Support\Collection
+    {
+        $dates = $this->relationLoaded('leaveDates')
+            ? $this->leaveDates->where('is_cancelled', false)
+            : $this->leaveDates()->where('is_cancelled', false)->get();
+
+        return $dates->sortBy('leave_date')->values()->map(fn ($ld) => [
+            'date' => (string) $ld->leave_date,
+            'label' => Carbon::parse($ld->leave_date)->format('M j, Y'),
+            'leave_type' => $ld->leave_type,
+            'days' => (float) $ld->days,
+        ]);
+    }
+
+    /**
+     * True when this leave's dates carry more than one distinct leave type - the case where
+     * the flat leave_type column's comma-joined summary is ambiguous about which date is
+     * which type, and callers should render leaveDatesBreakdown() instead of the flat string.
+     */
+    public function hasMixedLeaveTypes(): bool
+    {
+        return $this->leaveDatesBreakdown()->pluck('leave_type')->unique()->count() > 1;
+    }
+
+    /**
      * Dates with an active per-date cancellation request (see requestPartialCancellation).
      * Distinct from the whole-row cancellation_status column on this model, which stays
      * null for a partial cancellation - the employee's leave list needs this relation to
@@ -248,6 +316,11 @@ class LeaveRequest extends Model
     public function cancellationReviewedBy()
     {
         return $this->belongsTo(User::class, 'cancellation_reviewed_by');
+    }
+
+    public function certificationReviewedBy()
+    {
+        return $this->belongsTo(User::class, 'certification_reviewed_by');
     }
 
     public function approver()

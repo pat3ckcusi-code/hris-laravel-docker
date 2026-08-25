@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SignESignatureRequestPdfJob;
 use App\Models\AttendanceLog;
 use App\Models\Department;
+use App\Models\EsignatureSigning;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
+use App\Services\ESignatureCredentialStore;
 use App\Services\LeaveRequestService;
 use App\Support\LeaveTypeResolver;
 use Carbon\Carbon;
@@ -19,6 +22,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class LeaveRequestController extends Controller
 {
@@ -35,6 +40,7 @@ class LeaveRequestController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $hasEsignatureConfigured = (bool) $user->esignatureSetting;
         $query = LeaveRequest::where('user_id', $user->id);
 
         $month = $request->query('month', '');
@@ -63,16 +69,16 @@ class LeaveRequestController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        $leaveRequests = $query->with(['lastPrintedBy', 'pendingCancellationDates', 'originalDatesReplaced', 'leaveDates' => function ($q) {
+        $leaveRequests = $query->with(['lastPrintedBy', 'pendingCancellationDates', 'originalDatesReplaced', 'latestEsignatureSigning', 'leaveDates' => function ($q) {
             $q->where('is_cancelled', false)->whereNull('cancellation_status')->whereNull('rescheduled_to_leave_request_id')->orderBy('leave_date');
         }])->paginate(10)->withQueryString();
 
-        return view('employee.leave-management', compact('leaveRequests', 'user'));
+        return view('employee.leave-management', compact('leaveRequests', 'user', 'hasEsignatureConfigured'));
     }
 
     public function show($id)
     {
-        $leave = LeaveRequest::findOrFail($id);
+        $leave = LeaveRequest::with('leaveDates')->findOrFail($id);
         $user = Auth::user();
 
         // Only allow owner to view this page from the employee area
@@ -107,7 +113,155 @@ class LeaveRequestController extends Controller
             $leave->save();
         }
 
+        // Once a leave filed with e-signature intent has a completed signing, the
+        // signed PDF is the more authoritative artifact - serve it instead of the
+        // Excel export, to anyone who already passed canPrint() above (not just
+        // the owner). This doesn't widen who can access the leave - canPrint()
+        // already gated that identically either way - it only serves the better
+        // document to the same already-authorized audience.
+        if ($leave->esignature_requested_at) {
+            $signing = EsignatureSigning::where('signable_type', LeaveRequest::class)
+                ->where('signable_id', $leave->id)
+                ->where('status', EsignatureSigning::STATUS_COMPLETED)
+                ->latest()
+                ->first();
+
+            if ($signing && $signing->signed_path && Storage::disk('esignature')->exists($signing->signed_path)) {
+                $path = Storage::disk('esignature')->path($signing->signed_path);
+
+                return response()->streamDownload(function () use ($path): void {
+                    $stream = fopen($path, 'rb');
+                    fpassthru($stream);
+                    fclose($stream);
+                }, "Leave_Form_{$leave->id}_signed.pdf", ['Content-Type' => 'application/pdf']);
+            }
+        }
+
         return $this->leaveRequestService->generateExcelResponse($leave);
+    }
+
+    /**
+     * Kicks off async PDF generation + PNPKI signing for a leave filed with
+     * e-signature intent. Only the leave's own owner may call this - they're
+     * the only one who can supply the certificate password, which is
+     * verified here (against their ALREADY-SAVED ESignatureSetting, never
+     * persisted) before any signing work is queued. Returns {signing_id,
+     * status_url} for the frontend's existing async-export polling helper
+     * (window.startExport(), resources/js/export-job.js) to consume.
+     */
+    public function startEsignaturePrint(Request $request, LeaveRequest $leave, ESignatureCredentialStore $credentialStore)
+    {
+        $user = Auth::user();
+
+        // requireCertification=false: this retries the applicant's OWN signature, a
+        // different concern from HR/LM certifying the document in Leave Credit
+        // Certification - the two may land in either order, so this must not be
+        // blocked just because certification hasn't happened yet.
+        abort_unless($this->leaveRequestService->canPrint($leave, $user, false), 403);
+        abort_unless($leave->user_id === $user->id, 403, 'Only the leave owner may sign this document.');
+        abort_unless($leave->esignature_requested_at, 422, 'This leave was not filed with e-signature.');
+
+        $data = $request->validate([
+            'pnpki_password' => ['required', 'string'],
+        ]);
+
+        $setting = $user->esignatureSetting;
+        abort_unless($setting, 422, 'You have not set up an e-signature yet.');
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not read your saved certificate. Please contact HR or re-save your e-signature setting.'], 422);
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $data['pnpki_password'])) {
+            return response()->json(['message' => 'That password did not unlock your saved certificate. Please check the password and try again.'], 422);
+        }
+
+        // Idempotent against double-clicks/two tabs - reuse an attempt already in flight
+        // rather than queuing a second one for the same leave.
+        $existing = EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->where('signable_id', $leave->id)
+            ->whereIn('status', [EsignatureSigning::STATUS_PENDING, EsignatureSigning::STATUS_PROCESSING])
+            ->latest()
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'signing_id' => $existing->id,
+                'status_url' => route('esignature-signings.status', $existing->id),
+            ]);
+        }
+
+        $signing = $this->dispatchEsignatureSigning($leave, $data['pnpki_password']);
+
+        return response()->json([
+            'signing_id' => $signing->id,
+            'status_url' => route('esignature-signings.status', $signing->id),
+        ]);
+    }
+
+    /**
+     * Renders the unsigned PDF, records an EsignatureSigning attempt, and queues the
+     * actual PNPKI signing. Shared by two callers: store() (the normal path - kicks this
+     * off automatically right after filing, using the password already verified
+     * client-side before submit) and startEsignaturePrint() (a manual retry, for when the
+     * automatic attempt failed or was skipped - e.g. the password check below didn't
+     * pass, which store() treats as "don't sign," never as "don't file the leave").
+     */
+    private function dispatchEsignatureSigning(LeaveRequest $leave, string $password): EsignatureSigning
+    {
+        $pdfBytes = $this->leaveRequestService->buildEsignaturePdfBytes($leave);
+
+        $token = (string) Str::ulid();
+        $unsignedRelativePath = "signings/{$token}/unsigned.pdf";
+        Storage::disk('esignature')->put($unsignedRelativePath, $pdfBytes);
+
+        $signing = EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $leave->user_id,
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => $unsignedRelativePath,
+        ]);
+
+        SignESignatureRequestPdfJob::dispatch($signing, $password)->onQueue('exports');
+
+        return $signing;
+    }
+
+    /**
+     * Called from store() right after a leave filed with e-signature intent is created,
+     * using the password the filing form already collected and verified client-side.
+     * Deliberately fails silently (never throws, never blocks the leave from being
+     * filed) - an e-signature hiccup here just leaves the leave without a signing
+     * attempt, and startEsignaturePrint() remains available as a manual retry the next
+     * time the owner tries to print. A wrong password at this point should be rare
+     * (the client already verified it moments earlier), not something worth failing
+     * an otherwise-successful leave filing over.
+     */
+    private function maybeStartEsignatureSigning(LeaveRequest $leave, ?string $password, ESignatureCredentialStore $credentialStore): void
+    {
+        if (! $leave->esignature_requested_at || ! $password) {
+            return;
+        }
+
+        $setting = $leave->user->esignatureSetting;
+        if (! $setting) {
+            return;
+        }
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $password)) {
+            return;
+        }
+
+        $this->dispatchEsignatureSigning($leave, $password);
     }
 
     /**
@@ -136,8 +290,15 @@ class LeaveRequestController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ESignatureCredentialStore $credentialStore)
     {
+        // Captured and scrubbed from the request immediately, before any validation or
+        // withInput() call runs anywhere below - store() has 30+ withInput() call sites
+        // across its three filing branches, and none of them should ever flash a raw
+        // password into the session. $pnpkiPassword is used later, once, by
+        // maybeStartEsignatureSigning(); the password itself is never persisted.
+        $pnpkiPassword = $request->input('pnpki_password');
+        $request->request->remove('pnpki_password');
 
         // Extended leave types use a date-range path instead of individual-date allocation
         if ($request->boolean('extended_leave_mode')) {
@@ -222,6 +383,7 @@ class LeaveRequestController extends Controller
                 'printing_deduction_applied' => false,
                 'status' => 'pending',
                 'date_filed' => now()->toDateString(),
+                'esignature_requested_at' => $request->boolean('submitted_via_esignature') ? now() : null,
             ]);
 
             LeaveDate::insert(array_map(fn ($d) => [
@@ -271,6 +433,8 @@ class LeaveRequestController extends Controller
             } catch (\Exception $ex) {
                 // swallow notification errors
             }
+
+            $this->maybeStartEsignatureSigning($leave, $pnpkiPassword, $credentialStore);
 
             return redirect()->route('employee.leave.management')
                 ->with('success', 'Leave application submitted successfully.');
@@ -661,6 +825,7 @@ class LeaveRequestController extends Controller
                     'balance_solo_parent_leave' => $snap_sp,
                     'balance_special_leave_privilege' => $snap_spl,
                     'printing_deduction_details' => null,
+                    'esignature_requested_at' => $request->boolean('submitted_via_esignature') ? now() : null,
                 ]);
             });
 
@@ -861,6 +1026,7 @@ class LeaveRequestController extends Controller
                 'details_sick_illness' => $request->input('details_sick_illness'),
                 'details_sick_treatment' => $request->input('details_sick_treatment'),
                 'status' => 'pending',
+                'esignature_requested_at' => $request->boolean('submitted_via_esignature') ? now() : null,
             ]);
 
             $this->autoAllowPrintingForSelfFiledLeave($leave, Auth::user());
@@ -947,6 +1113,8 @@ class LeaveRequestController extends Controller
                 // swallow mail errors to avoid blocking the request flow; consider logging
             }
         }
+
+        $this->maybeStartEsignatureSigning($leave, $pnpkiPassword, $credentialStore);
 
         return redirect()->back()->with('success', 'Leave request submitted.');
     }

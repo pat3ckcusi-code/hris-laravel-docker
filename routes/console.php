@@ -25,6 +25,11 @@ Schedule::command('attendance:auto-import')->everyMinute();
 // Clean up export jobs stuck in processing/pending beyond the 6-minute window.
 Schedule::command('export:prune')->everyFiveMinutes();
 
+// Clean up PNPKI e-signature signings stuck in-flight beyond the 6-minute
+// window, and delete old failed attempts (never completed ones - see the
+// command's own docblock).
+Schedule::command('esignature-signing:prune')->everyFiveMinutes();
+
 // Delete already-expired database cache rows, which otherwise accumulate
 // indefinitely (the database cache driver never garbage-collects them itself).
 Schedule::command('cache:prune-expired')->daily();

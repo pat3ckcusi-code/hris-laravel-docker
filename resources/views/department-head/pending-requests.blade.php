@@ -226,15 +226,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     if (row.status === 'pending') {
                         if (!row.printing_allowed) {
-                            btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>'
-                                  + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')"><i class="fa fa-unlock"></i> Allow Printing</button>';
+                            if (row.needs_certification) {
+                                btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Awaiting Leave Credit Certification."><i class="fa fa-print"></i> Print</button>'
+                                      + '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="This leave must be certified in Leave Credit Certification before printing can be allowed."><i class="fa fa-unlock"></i> Allow Printing</button>';
+                            } else {
+                                btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing enabled after Allow Printing."><i class="fa fa-print"></i> Print</button>'
+                                      + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')"><i class="fa fa-unlock"></i> Allow Printing</button>';
+                            }
                         } else {
                             btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>'
                                   + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApprove(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
+                                  + '<button class="hris-btn hris-btn-success hris-btn-sm" onclick="confirmApproveEsign(' + row.id + ')"><i class="fa fa-signature"></i> Approve using e-sign</button>'
                                   + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>';
                         }
                     } else if (row.status === 'approved') {
-                        if (row.printing_allowed) {
+                        if (row.needs_certification) {
+                            btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Awaiting Leave Credit Certification."><i class="fa fa-print"></i> Print</button>';
+                        } else if (row.printing_allowed) {
                             btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>';
                         } else {
                             btns += '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Printing not allowed until approved."><i class="fa fa-print"></i> Print</button>';
@@ -360,6 +368,23 @@ document.addEventListener('DOMContentLoaded', function () {
 }); // end DOMContentLoaded
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
+// Renders either the flat comma-joined leave_type string, or - when a multi-date
+// filing assigned more than one distinct type across its dates - a small per-date
+// table (Date | Type | Days) so it's clear which date got which type.
+function leaveTypeCellHtml(flatType, dates) {
+    var types = (dates || []).map(function (d) { return d.leave_type; })
+        .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+    if (!dates || !dates.length || types.length <= 1) {
+        return flatType || '-';
+    }
+    var rows = dates.map(function (d) {
+        return '<tr><td style="padding:2px 6px">' + d.label + '</td><td style="padding:2px 6px">' + d.leave_type + '</td><td style="padding:2px 6px;text-align:right">' + d.days + '</td></tr>';
+    }).join('');
+    return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+        + '<thead><tr><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:left;padding:2px 6px">Type</th><th style="text-align:right;padding:2px 6px">Days</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>';
+}
+
 function openPendingLeaveModal(id) {
     var r = leaveRows[id];
     if (!r) return;
@@ -367,7 +392,7 @@ function openPendingLeaveModal(id) {
     document.getElementById('pending-modal-body').innerHTML =
         '<table style="width:100%;border-collapse:collapse"><tbody>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.employee + '</td></tr>'
-        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.leave_type + '</td></tr>'
+        + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + leaveTypeCellHtml(r.leave_type, r.leave_dates) + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Reason</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.reason + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Period</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.period + '</td></tr>'
         + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.total_days + '</td></tr>'
@@ -477,6 +502,46 @@ function confirmApprove(id) {
                 .then(function () { leaveTable.ajax.reload(null, false); });
         }
     }
+}
+
+// Approves the leave and cryptographically countersigns it with the approving
+// officer's own saved PNPKI certificate (see LeaveRequestService::approveLeaveWithEsignature()).
+// Approval itself is synchronous (reflected in the fetch response below), so the
+// table reloads immediately; signing continues in the background and is tracked
+// via the same generic poller (window.pollJobStatus, resources/js/export-job.js)
+// the employee's own filing-time e-signature retry flow already uses.
+function confirmApproveEsign(id) {
+    var token = csrfToken();
+    var url   = '/' + APPROVER_PREFIX + '/leave/' + id + '/approve-esign';
+    Swal.fire({
+        title: 'Approve using e-sign',
+        html: 'This approves the leave application and cryptographically signs it with your saved PNPKI certificate.<br><br>Enter your certificate password to continue.',
+        input: 'password',
+        inputPlaceholder: 'Certificate password',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Approve & Sign',
+        confirmButtonColor: '#16a34a',
+        inputValidator: function (v) { if (!v) return 'Please enter your certificate password.'; },
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: new URLSearchParams({ pnpki_password: result.value, _token: token }),
+        }).then(function (r) {
+            return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+        }).then(function (res) {
+            leaveTable.ajax.reload(null, false);
+            if (!res.ok || !res.data.success) {
+                Swal.fire({ icon: 'error', title: 'Could Not Approve', text: res.data.message || 'Something went wrong.' });
+                return;
+            }
+            window.pollJobStatus(res.data.status_url, 'Signing the approved leave document…', 'Signing Failed');
+        }).catch(function () {
+            Swal.fire({ icon: 'error', text: 'Failed to approve leave.' });
+        });
+    });
 }
 
 function promptReject(id) {

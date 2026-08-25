@@ -525,6 +525,14 @@
                                 return;
                             }
 
+                            const esigFlag = document.getElementById('submittedViaEsignatureInput');
+                            if (esigFlag && esigFlag.value === '1') {
+                                // Password verification (submitViaEsignatureBtn's own handler)
+                                // already served as this submission's confirmation.
+                                form.submit();
+                                return;
+                            }
+
                             if (window.Swal) {
                                 window.Swal.fire({
                                     title: 'Are you sure you want to file this application?',
@@ -647,10 +655,108 @@
                     <label style="font-weight:600; margin-bottom: 4px;">REASON / PURPOSE</label>
                     <textarea id="reasonInput" name="reason" rows="3" style="width:100%; resize:vertical; padding:10px; border-radius:8px; border:1.5px solid #cbd5e1; font-size:1em; text-transform:uppercase;" placeholder="State the main reason or purpose for your leave (e.g. 'Family emergency', 'Personal business', 'Medical appointment', etc.)"></textarea>
                 </div>
-                <div class="actions" style="grid-column:1/-1;">
-                    <button type="submit" class="btn" style="min-width:200px;">Submit Leave Request</button>
+                <div class="actions" style="grid-column:1/-1; display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+                    <input type="hidden" name="submitted_via_esignature" id="submittedViaEsignatureInput" value="0">
+                    <input type="hidden" name="pnpki_password" id="pnpkiPasswordForSubmitInput" value="" autocomplete="off">
+                    <button type="submit" id="submitLeaveRequestBtn" class="btn" style="min-width:200px;">Submit Leave Request</button>
+                    <button type="button" id="submitViaEsignatureBtn" class="btn" style="min-width:220px; background:linear-gradient(120deg,#0f766e,#14b8a6);">
+                        <i class="fas fa-signature"></i> Submit using e-signature
+                    </button>
                 </div>
             </form>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    const esigBtn = document.getElementById('submitViaEsignatureBtn');
+                    const esigFlagInput = document.getElementById('submittedViaEsignatureInput');
+                    const esigPasswordInput = document.getElementById('pnpkiPasswordForSubmitInput');
+                    const plainSubmitBtn = document.getElementById('submitLeaveRequestBtn');
+                    if (esigBtn && esigFlagInput) {
+                        const hasEsignature = @json($hasEsignatureConfigured ?? false);
+                        const esigForm = esigBtn.form;
+
+                        if (plainSubmitBtn) {
+                            plainSubmitBtn.addEventListener('click', function () {
+                                esigFlagInput.value = '0';
+                                if (esigPasswordInput) esigPasswordInput.value = '';
+                            });
+                        }
+
+                        esigBtn.addEventListener('click', function () {
+                            if (!hasEsignature) {
+                                const msg = 'You need to set up your e-signature before you can use this option.';
+                                if (window.Swal) {
+                                    window.Swal.fire({
+                                        title: 'E-Signature Not Set Up',
+                                        text: msg,
+                                        icon: 'warning',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Set Up E-Signature',
+                                        cancelButtonText: 'Cancel'
+                                    }).then((result) => {
+                                        if (result.isConfirmed) {
+                                            window.location.href = '{{ route('esignature-config.index') }}';
+                                        }
+                                    });
+                                } else if (confirm(msg + ' Go to E-Signature Setup now?')) {
+                                    window.location.href = '{{ route('esignature-config.index') }}';
+                                }
+                                return;
+                            }
+
+                            if (!window.Swal) {
+                                alert('E-signature submission requires this browser feature (SweetAlert2) to be available.');
+                                return;
+                            }
+
+                            window.Swal.fire({
+                                title: 'Confirm E-Signature Submission',
+                                text: 'Enter your PNPKI certificate password. Your leave will be signed with your e-signature right after it\'s submitted,  no password needed again when you print it.',
+                                icon: 'question',
+                                input: 'password',
+                                inputPlaceholder: 'Certificate password',
+                                inputAttributes: { autocapitalize: 'off', autocorrect: 'off' },
+                                showCancelButton: true,
+                                confirmButtonText: 'Verify & Submit',
+                                cancelButtonText: 'Cancel',
+                                showLoaderOnConfirm: true,
+                                preConfirm: async (password) => {
+                                    if (!password) {
+                                        window.Swal.showValidationMessage('Please enter your certificate password.');
+                                        return false;
+                                    }
+                                    try {
+                                        const response = await fetch('{{ route('esignature-config.verify-saved-password') }}', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'Accept': 'application/json',
+                                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                                            },
+                                            body: JSON.stringify({ pnpki_password: password })
+                                        });
+                                        const result = await response.json();
+                                        if (!response.ok || !result.valid) {
+                                            window.Swal.showValidationMessage(result.message || 'That password did not unlock your saved certificate.');
+                                            return false;
+                                        }
+                                        return password;
+                                    } catch (err) {
+                                        window.Swal.showValidationMessage('Could not verify your password right now. Please try again.');
+                                        return false;
+                                    }
+                                },
+                                allowOutsideClick: () => !window.Swal.isLoading()
+                            }).then((result) => {
+                                if (result.isConfirmed) {
+                                    esigFlagInput.value = '1';
+                                    if (esigPasswordInput) esigPasswordInput.value = result.value;
+                                    if (esigForm) esigForm.requestSubmit();
+                                }
+                            });
+                        });
+                    }
+                });
+            </script>
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
                     const datePicker = document.getElementById('datePicker');
@@ -1021,6 +1127,7 @@
                                     'date' => (string) $ld->leave_date,
                                     'days' => (float) $ld->days,
                                     'label' => \Carbon\Carbon::parse($ld->leave_date)->format('D, M j, Y'),
+                                    'type' => $ld->leave_type,
                                 ])->values();
                             @endphp
                             <tr id="leave-row-{{ $leave->id }}"
@@ -1062,11 +1169,33 @@
                                                 $_printedAt = $leave->last_printed_at?->format('M d, Y');
                                                 $_printedBy = optional($leave->lastPrintedBy)->name;
                                             @endphp
+                                            @php
+                                                // Signing now starts automatically right after filing (see
+                                                // LeaveRequestController::maybeStartEsignatureSigning()), so by the
+                                                // time an employee reaches this list it's normally already
+                                                // 'completed' or still 'processing' - a password prompt at print
+                                                // time is only needed as a manual retry, when auto-signing never
+                                                // got a signing row at all (null) or ended in 'failed'.
+                                                $_esigSigning = $leave->esignature_requested_at ? $leave->latestEsignatureSigning : null;
+                                                $_esigStatus = optional($_esigSigning)->status;
+                                                $_esigStillWorking = in_array($_esigStatus, ['pending', 'processing'], true);
+                                                $_esigNeedsRetry = $leave->esignature_requested_at && ! $_esigStillWorking && $_esigStatus !== 'completed';
+                                            @endphp
                                             @if(!empty($leave->printing_allowed) || ($canPrintOnApproval && $leave->status === 'approved'))
-                                                <button class="hris-btn hris-btn-primary" id="print-btn-{{ $leave->id }}"
-                                                    onclick="confirmLeavePrint('{{ route('employee.leave.print.single', $leave->id) }}', {{ json_encode($_printedAt) }}, {{ json_encode($_printedBy) }})">Print</button>
+                                                @if($_esigStillWorking)
+                                                    <button class="hris-btn hris-btn-primary" id="print-btn-{{ $leave->id }}"
+                                                        onclick="pollLeaveEsignatureStatus('{{ route('esignature-signings.status', $_esigSigning->id) }}')">Print</button>
+                                                @elseif($_esigNeedsRetry)
+                                                    <button class="hris-btn hris-btn-primary" id="print-btn-{{ $leave->id }}"
+                                                        onclick="startLeaveEsignaturePrint('{{ route('employee.leave.esignature-print.start', $leave->id) }}')">Print</button>
+                                                @else
+                                                    <button class="hris-btn hris-btn-primary" id="print-btn-{{ $leave->id }}"
+                                                        onclick="confirmLeavePrint('{{ route('employee.leave.print.single', $leave->id) }}', {{ json_encode($_printedAt) }}, {{ json_encode($_printedBy) }})">Print</button>
+                                                @endif
                                             @else
-                                                <button class="hris-btn hris-btn-secondary" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}">Print</button>
+                                                <button class="hris-btn hris-btn-secondary" disabled title="Printing enabled after Allow Printing." id="print-btn-{{ $leave->id }}"
+                                                    data-esignature-start-url="{{ $leave->esignature_requested_at ? route('employee.leave.esignature-print.start', $leave->id) : '' }}"
+                                                    data-esignature-status-url="{{ $_esigStillWorking ? route('esignature-signings.status', $_esigSigning->id) : '' }}">Print</button>
                                             @endif
                                             @if($leave->status === 'pending')
                                                 <button type="button" class="hris-btn hris-btn-danger" onclick="openPendingCancelModal({{ $leave->id }})">Cancel</button>
@@ -1273,6 +1402,54 @@ function confirmLeavePrint(url, printedAt, printedBy) {
     });
 }
 
+// Signing normally already happened automatically right after filing (see
+// esigBtn's own handler above) - this only runs as a manual retry, when that
+// automatic attempt never produced a completed signing (failed, or was
+// skipped). Still needs the password since it was never stored anywhere.
+function startLeaveEsignaturePrint(startUrl) {
+    Swal.fire({
+        title: 'Retry E-Signature',
+        text: 'This leave wasn\'t signed automatically. Enter your PNPKI certificate password to sign and print it now.',
+        icon: 'question',
+        input: 'password',
+        inputPlaceholder: 'Certificate password',
+        inputAttributes: { autocapitalize: 'off', autocorrect: 'off' },
+        showCancelButton: true,
+        confirmButtonText: 'Sign & Print',
+        cancelButtonText: 'Cancel',
+        inputValidator: function (value) {
+            if (!value) return 'Please enter your certificate password.';
+        }
+    }).then(function (result) {
+        if (result.isConfirmed) {
+            window.startExport(startUrl, { pnpki_password: result.value }, 'Signing your leave document…');
+        }
+    });
+}
+
+// The common case: signing already started automatically at filing time and
+// is still in flight. No password needed - just wait for it to finish.
+function pollLeaveEsignatureStatus(statusUrl) {
+    window.pollJobStatus(statusUrl, 'Finishing your e-signature…', 'E-Signature Failed');
+}
+
+// Renders either the flat comma-joined leave_type string, or - when a multi-date
+// filing assigned more than one distinct type across its dates - a small per-date
+// table (Date | Type | Days) so it's clear which date got which type.
+function leaveTypeCellHtml(flatType, dates) {
+    var types = (dates || []).map(function (d) { return d.type; })
+        .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+    if (!dates || !dates.length || types.length <= 1) {
+        return flatType || '-';
+    }
+    var rows = dates.map(function (d) {
+        return '<tr><td style="padding:2px 6px">' + d.label + '</td><td style="padding:2px 6px">' + d.type + '</td><td style="padding:2px 6px;text-align:right">' + d.days + '</td></tr>';
+    }).join('');
+    return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+        + '<thead><tr><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:left;padding:2px 6px">Type</th><th style="text-align:right;padding:2px 6px">Days</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>';
+}
+
 function openLeaveModal(id) {
     const row = document.getElementById(`leave-row-${id}`);
     if (!row) return alert('Details not available');
@@ -1289,10 +1466,12 @@ function openLeaveModal(id) {
     const reason = row.getAttribute('data-reason') || '';
     const status = row.getAttribute('data-status') || '';
     const remarks = row.getAttribute('data-remarks') || '';
+    let leaveDates = [];
+    try { leaveDates = JSON.parse(row.getAttribute('data-dates') || '[]'); } catch (e) { leaveDates = []; }
 
     body.innerHTML = `<table style="width:100%;border-collapse:collapse"><tbody>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${employee}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${typeLabel}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${leaveTypeCellHtml(typeLabel, leaveDates)}</td></tr>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Period</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${period}</td></tr>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${total}</td></tr>
         <tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Filed At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">${filed}</td></tr>
@@ -1746,10 +1925,18 @@ function rsUpdateTotal() {
                             btn.className = old.className.replace(/btn-secondary|btn-disabled-print/, 'btn-primary');
                             btn.id = old.id;
                             btn.innerHTML = 'Print';
-                            const url = `/dashboard/employee/leave/${id}/print`;
-                            const printedAt = data.last_printed_at || null;
-                            const printedBy = data.last_printed_by_name || null;
-                            btn.onclick = function () { confirmLeavePrint(url, printedAt, printedBy); };
+                            const esigStatusUrl = old.dataset.esignatureStatusUrl;
+                            const esigStartUrl = old.dataset.esignatureStartUrl;
+                            if (esigStatusUrl) {
+                                btn.onclick = function () { pollLeaveEsignatureStatus(esigStatusUrl); };
+                            } else if (esigStartUrl) {
+                                btn.onclick = function () { startLeaveEsignaturePrint(esigStartUrl); };
+                            } else {
+                                const url = `/dashboard/employee/leave/${id}/print`;
+                                const printedAt = data.last_printed_at || null;
+                                const printedBy = data.last_printed_by_name || null;
+                                btn.onclick = function () { confirmLeavePrint(url, printedAt, printedBy); };
+                            }
                             old.replaceWith(btn);
                         }
                         watches.delete(id);

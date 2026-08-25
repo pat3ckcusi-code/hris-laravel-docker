@@ -200,9 +200,12 @@ document.addEventListener('DOMContentLoaded', function () {
             {
                 data: null, title: 'Action', orderable: false, searchable: false,
                 render: function (data, type, row) {
+                    var printBtn = row.needs_certification
+                        ? '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Awaiting Leave Credit Certification."><i class="fa fa-print"></i> Print</button>'
+                        : '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>';
                     return '<div class="action-btns">'
                         + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLeaveModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
-                        + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>'
+                        + printBtn
                         + '</div>';
                 },
             },
@@ -304,6 +307,23 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ── Modal helpers ────────────────────────────────────────────────────
+    // Renders either the flat comma-joined leave_type string, or - when a multi-date
+    // filing assigned more than one distinct type across its dates - a small per-date
+    // table (Date | Type | Days) so it's clear which date got which type.
+    function leaveTypeCellHtml(flatType, dates) {
+        var types = (dates || []).map(function (d) { return d.leave_type; })
+            .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+        if (!dates || !dates.length || types.length <= 1) {
+            return flatType || '-';
+        }
+        var rows = dates.map(function (d) {
+            return '<tr><td style="padding:2px 6px">' + d.label + '</td><td style="padding:2px 6px">' + d.leave_type + '</td><td style="padding:2px 6px;text-align:right">' + d.days + '</td></tr>';
+        }).join('');
+        return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+            + '<thead><tr><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:left;padding:2px 6px">Type</th><th style="text-align:right;padding:2px 6px">Days</th></tr></thead>'
+            + '<tbody>' + rows + '</tbody></table>';
+    }
+
     window.openLeaveModal = function (id) {
         var r = leaveRows[id];
         if (!r) return;
@@ -311,14 +331,17 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('approved-modal-body').innerHTML =
             '<table style="width:100%;border-collapse:collapse"><tbody>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Employee</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.employee + '</td></tr>'
-            + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.leave_type + '</td></tr>'
+            + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Leave Type</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + leaveTypeCellHtml(r.leave_type, r.leave_dates) + '</td></tr>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Period</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.period + '</td></tr>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Total Days</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.total_days + '</td></tr>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Approved At</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.approved_at + '</td></tr>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Vacation Leave Balance</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.vl + '</td></tr>'
             + '<tr><td style="padding:8px;border:1px solid #f1f5f9"><strong>Sick Leave Balance</strong></td><td style="padding:8px;border:1px solid #f1f5f9">' + r.sl + '</td></tr>'
             + '</tbody></table>';
-        document.getElementById('approved-modal-print').onclick = function () { printLeave(id); };
+        var printBtn = document.getElementById('approved-modal-print');
+        printBtn.onclick = function () { printLeave(id); };
+        printBtn.disabled = !!r.needs_certification;
+        printBtn.title = r.needs_certification ? 'Awaiting Leave Credit Certification.' : '';
         document.getElementById('approvedModal').showModal();
     };
 

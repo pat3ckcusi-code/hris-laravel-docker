@@ -16,6 +16,7 @@
         "phpoffice/phpspreadsheet": "^5.3",
         "phpoffice/phpword": "^1.4",
         "setasign/fpdi-fpdf": "^2.3",
+        "tecnickcom/tcpdf": "^6.11",
         "tijsverkoyen/css-to-inline-styles": "^2.4"
     },
     "require-dev": {

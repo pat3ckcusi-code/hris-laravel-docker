@@ -90,6 +90,7 @@
                                     ? $departments[$leave->user->Dept_id]
                                     : '-';
                                 $period   = $leave->formattedPeriod();
+                                $leaveDatesBreakdown = $leave->leaveDatesBreakdown();
                                 // Whole-row status takes priority; a partial (per-date) cancellation
                                 // has no whole-row status of its own, so fall back to whichever
                                 // stage its pending dates are at.
@@ -99,6 +100,7 @@
                                 data-id="{{ $leave->id }}"
                                 data-employee="{{ $empName }}"
                                 data-leave-type="{{ strtoupper($leave->leave_type ?? '') }}"
+                                data-leave-dates="{{ $leaveDatesBreakdown->toJson() }}"
                                 data-period="{{ $period }}"
                                 data-days="{{ $leave->total_days ?? '-' }}"
                                 data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '-' }}"
@@ -163,11 +165,29 @@ $(function () {
     });
 
     // ── View details ───────────────────────────────────────────────────
+    // Renders either the flat comma-joined leave_type string, or - when a multi-date
+    // filing assigned more than one distinct type across its dates - a small per-date
+    // table (Date | Type | Days) so it's clear which date got which type.
+    function leaveTypeCellHtml(flatType, dates) {
+        var types = (dates || []).map(function (d) { return d.leave_type; })
+            .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+        if (!dates || !dates.length || types.length <= 1) {
+            return flatType || '-';
+        }
+        var rows = dates.map(function (d) {
+            return '<tr><td style="padding:2px 6px">' + d.label + '</td><td style="padding:2px 6px">' + d.leave_type + '</td><td style="padding:2px 6px;text-align:right">' + d.days + '</td></tr>';
+        }).join('');
+        return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+            + '<thead><tr><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:left;padding:2px 6px">Type</th><th style="text-align:right;padding:2px 6px">Days</th></tr></thead>'
+            + '<tbody>' + rows + '</tbody></table>';
+    }
+
     $(document).on('click', '.view-leave-btn', function () {
         var row     = $(this).closest('tr');
         var id      = row.data('id');
         var emp     = row.data('employee');
         var type    = row.data('leave-type');
+        var dates   = row.data('leave-dates');
         var period  = row.data('period');
         var days    = row.data('days');
         var filed   = row.data('filed');
@@ -179,7 +199,7 @@ $(function () {
             html:
                 '<table style="width:100%;text-align:left;border-collapse:collapse;font-size:0.92rem">' +
                 '<tr><td style="padding:5px 8px;color:#64748b;width:40%">Employee</td><td style="padding:5px 8px;font-weight:600">' + emp + '</td></tr>' +
-                '<tr style="background:#f8fafc"><td style="padding:5px 8px;color:#64748b">Leave Type</td><td style="padding:5px 8px">' + type + '</td></tr>' +
+                '<tr style="background:#f8fafc"><td style="padding:5px 8px;color:#64748b">Leave Type</td><td style="padding:5px 8px">' + leaveTypeCellHtml(type, dates) + '</td></tr>' +
                 '<tr><td style="padding:5px 8px;color:#64748b">Period</td><td style="padding:5px 8px">' + period + '</td></tr>' +
                 '<tr style="background:#f8fafc"><td style="padding:5px 8px;color:#64748b">Total Days</td><td style="padding:5px 8px">' + days + '</td></tr>' +
                 '<tr><td style="padding:5px 8px;color:#64748b">Filed On</td><td style="padding:5px 8px">' + filed + '</td></tr>' +

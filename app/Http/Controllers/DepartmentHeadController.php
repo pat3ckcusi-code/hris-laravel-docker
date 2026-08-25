@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\EsignatureSigning;
 use App\Models\Eta;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveDate;
@@ -14,6 +15,7 @@ use App\Notifications\HrisTransactionNotification;
 use App\Services\ApprovalNotificationService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
+use App\Services\ESignatureCredentialStore;
 use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use App\Services\PersonnelLogImportService;
@@ -174,7 +176,10 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->with(['lastPrintedBy', 'originalDatesReplaced'])->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $records = $query->with(['lastPrintedBy', 'originalDatesReplaced', 'esignatureSignings' => fn ($q) => $q
+            ->where('field_name', 'CertifyingSignature')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)])
+            ->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(function ($r) {
             $leaveTypeLabel = $r->leave_type ?? '';
@@ -185,12 +190,14 @@ class DepartmentHeadController extends Controller
                 'id' => $r->id,
                 'employee' => $r->user->name ?? '-',
                 'leave_type' => $r->leave_type,
+                'leave_dates' => $r->leaveDatesBreakdown(),
                 'reason' => $reason,
                 'period' => $r->formattedPeriod(),
                 'total_days' => $r->total_days ?? '-',
                 'filed_at' => $r->created_at ? $r->created_at->format('M d, Y') : '-',
                 'status' => $r->status,
                 'printing_allowed' => (bool) $r->printing_allowed,
+                'needs_certification' => (bool) $r->esignature_requested_at && $r->esignatureSignings->isEmpty(),
                 'rescheduled_from_id' => $r->rescheduled_from_id,
                 'original_dates_replaced' => $r->originalDatesReplaced->map(fn ($d) => Carbon::parse($d->leave_date)->format('M d, Y'))->implode(', '),
                 'print_count' => (int) ($r->print_count ?? 0),
@@ -708,17 +715,22 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->with('lastPrintedBy')->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $records = $query->with(['lastPrintedBy', 'esignatureSignings' => fn ($q) => $q
+            ->where('field_name', 'CertifyingSignature')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)])
+            ->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $records->map(fn ($r) => [
             'id' => $r->id,
             'employee' => $r->user->name ?? '-',
             'leave_type' => $r->leave_type,
+            'leave_dates' => $r->leaveDatesBreakdown(),
             'period' => $r->formattedPeriod(),
             'total_days' => $r->total_days ?? '-',
             'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
             'vl' => optional($r->user->leaveBalance)->VL ?? '0',
             'sl' => optional($r->user->leaveBalance)->SL ?? '0',
+            'needs_certification' => (bool) $r->esignature_requested_at && $r->esignatureSignings->isEmpty(),
             'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
             'last_printed_by_name' => optional($r->lastPrintedBy)->name,
         ]);
@@ -1307,6 +1319,35 @@ class DepartmentHeadController extends Controller
     }
 
     /**
+     * Approves a leave and cryptographically countersigns it with the Department
+     * Head's own saved PNPKI certificate - see LeaveRequestService::approveLeaveWithEsignature().
+     * Same department-scoping authorization as approve() above; always returns
+     * JSON, since this endpoint is only ever driven by the "Approve using e-sign"
+     * button's own fetch() call, unlike approve() which is also reachable non-AJAX.
+     */
+    public function approveWithEsign(Request $request, $id, ESignatureCredentialStore $credentialStore)
+    {
+        $user = Auth::user();
+        $depts = $this->departmentService->resolveAllDepartmentsForUser($user);
+        $leave = LeaveRequest::findOrFail($id);
+
+        if ($depts->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'Department not found for your account.'], 422);
+        }
+
+        $employee = $leave->user;
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+            return response()->json(['success' => false, 'message' => 'You are not authorized to approve this request.'], 403);
+        }
+
+        $data = $request->validate([
+            'pnpki_password' => ['required', 'string'],
+        ]);
+
+        return $this->leaveRequestService->approveLeaveWithEsignature($request, $id, $data['pnpki_password'], $credentialStore);
+    }
+
+    /**
      * Allow printing for a pending leave request (pre-approval).
      */
     public function allowPrinting(Request $request, $id)
@@ -1326,6 +1367,10 @@ class DepartmentHeadController extends Controller
 
         if ($leave->printing_allowed) {
             return response()->json(['success' => true, 'message' => 'Printing already allowed.']);
+        }
+
+        if ($this->leaveRequestService->needsCertificationBeforePrinting($leave)) {
+            return response()->json(['error' => 'This leave must be certified in Leave Credit Certification before printing can be allowed.'], 422);
         }
 
         $leave->printing_allowed = true;

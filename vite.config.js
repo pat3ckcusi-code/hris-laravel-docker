@@ -23,6 +23,8 @@ export default defineConfig({
                 'resources/js/hris-table.js',
                 'resources/js/export-job.js',
                 'resources/js/uniform_inspection.js',
+                'resources/css/esignature_config.css',
+                'resources/js/esignature_config.js',
             ],
             refresh: true,
         }),

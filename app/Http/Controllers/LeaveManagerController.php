@@ -121,6 +121,7 @@ class LeaveManagerController extends Controller
                     ? $departments[$item->user->Dept_id]
                     : '-',
                 'leave_type' => strtoupper($item->leave_type ?? ''),
+                'leave_dates' => $item->leaveDatesBreakdown(),
                 'start_date' => $item->start_date
                     ? Carbon::parse($item->start_date)->format('M d, Y') : '-',
                 'end_date' => $item->end_date

@@ -17,9 +17,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
         libonig-dev libxml2-dev libzip-dev libicu-dev \
         zip build-essential pkg-config \
+        python3 python3-venv \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) pdo_mysql mbstring gd zip bcmath pcntl intl opcache \
     && rm -rf /var/lib/apt/lists/*
+
+# pyHanko's CLI ships as the separate "pyhanko-cli" package (pulls in the
+# "pyhanko" library itself as a dependency) - plain "pip install pyhanko"
+# only installs the library and has no `pyhanko` executable at all. Pillow is
+# needed separately - pyHanko's stamp-style "background" config only imports
+# PIL lazily when an image background is actually used, so its absence isn't
+# caught until a real signing attempt fails with ModuleNotFoundError. Placed
+# before the composer/app-source layers below since it's pure OS tooling with
+# no dependency on either, so it stays cached across app-code-only rebuilds.
+RUN python3 -m venv /opt/pyhanko-venv \
+    && /opt/pyhanko-venv/bin/pip install --no-cache-dir pyhanko-cli pillow
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
