@@ -69,7 +69,7 @@ class LeaveRequestController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        $leaveRequests = $query->with(['lastPrintedBy', 'pendingCancellationDates', 'originalDatesReplaced', 'latestEsignatureSigning', 'leaveDates' => function ($q) {
+        $leaveRequests = $query->with(['lastPrintedBy', 'pendingCancellationDates', 'originalDatesReplaced', 'latestEsignatureSigning', 'esignatureSignings', 'leaveDates' => function ($q) {
             $q->where('is_cancelled', false)->whereNull('cancellation_status')->whereNull('rescheduled_to_leave_request_id')->orderBy('leave_date');
         }])->paginate(10)->withQueryString();
 
@@ -160,6 +160,17 @@ class LeaveRequestController extends Controller
         abort_unless($this->leaveRequestService->canPrint($leave, $user, false), 403);
         abort_unless($leave->user_id === $user->id, 403, 'Only the leave owner may sign this document.');
         abort_unless($leave->esignature_requested_at, 422, 'This leave was not filed with e-signature.');
+
+        // A signed PDF is permanently immutable (see LeaveRequestService::dispatchCoSigningPass()) -
+        // once any signing (the applicant's own, or a DH/AO/HR co-signature) has completed, this
+        // endpoint must never fire again. It renders a brand-new blank PDF from scratch, which would
+        // silently discard every signature already embedded in the existing signed chain.
+        $alreadySigned = EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->where('signable_id', $leave->id)
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->exists();
+
+        abort_if($alreadySigned, 422, 'This leave has already been signed. Use Print to download the signed document.');
 
         $data = $request->validate([
             'pnpki_password' => ['required', 'string'],

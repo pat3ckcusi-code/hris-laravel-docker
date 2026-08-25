@@ -7,6 +7,7 @@ use App\Models\ESignatureSetting;
 use App\Models\EsignatureSigning;
 use App\Models\LeaveRequest;
 use App\Services\ESignatureCredentialStore;
+use App\Services\LeaveRequestService;
 use App\Support\Rfc3161TimestampClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
@@ -280,6 +281,43 @@ class EsignatureSigningTest extends TestCase
         Queue::assertNotPushed(SignESignatureRequestPdfJob::class);
     }
 
+    public function test_start_esignature_print_refuses_when_leave_already_has_completed_signing(): void
+    {
+        Queue::fake();
+
+        $owner = $this->createEmployee();
+        $leave = $this->createEsignatureLeave($owner);
+        $this->createEsignatureSetting($owner, 'correct-password');
+
+        // Simulates the applicant's own signature plus a DH/AO co-signature already
+        // having completed successfully - the exact state that must never be
+        // overwritten by a fresh blank re-render.
+        EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $owner->id,
+            'status' => EsignatureSigning::STATUS_COMPLETED,
+            'unsigned_path' => 'signings/own/unsigned.pdf',
+            'signed_path' => 'signings/own/signed.pdf',
+        ]);
+        EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $owner->id,
+            'field_name' => 'ApproverSignature',
+            'status' => EsignatureSigning::STATUS_COMPLETED,
+            'unsigned_path' => 'signings/approver/unsigned.pdf',
+            'signed_path' => 'signings/approver/signed.pdf',
+        ]);
+
+        $response = $this->actingAs($owner)
+            ->postJson(route('employee.leave.esignature-print.start', $leave->id), ['pnpki_password' => 'correct-password']);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('esignature_signings', 2);
+        Queue::assertNotPushed(SignESignatureRequestPdfJob::class);
+    }
+
     // ── EsignatureSigningController::status() ──────────────────────────
 
     public function test_esignature_signing_status_requires_ownership(): void
@@ -345,7 +383,7 @@ class EsignatureSigningTest extends TestCase
         Http::fake(['*' => Http::response(self::TSA_GRANTED_DER, 200)]);
 
         $job = new SignESignatureRequestPdfJob($signing, 'correct-password');
-        $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class));
+        $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class), app(LeaveRequestService::class));
 
         $signing->refresh();
         $this->assertSame(EsignatureSigning::STATUS_COMPLETED, $signing->status);
@@ -384,7 +422,7 @@ class EsignatureSigningTest extends TestCase
 
         $caught = null;
         try {
-            $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class));
+            $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class), app(LeaveRequestService::class));
         } catch (RuntimeException $e) {
             $caught = $e;
         }
@@ -404,6 +442,123 @@ class EsignatureSigningTest extends TestCase
             'target_type' => EsignatureSigning::class,
             'target_id' => $signing->id,
         ]);
+    }
+
+    // ── resolveCoSigningBasePdf() - closes the leave #2606 race condition ─
+
+    public function test_job_throws_when_a_sibling_signing_is_still_in_flight_for_a_cosigning_pass(): void
+    {
+        $owner = $this->createEmployee();
+        $leave = $this->createEsignatureLeave($owner);
+        $dh = $this->createDepartmentHead();
+        $this->createEsignatureSetting($dh, 'correct-password');
+
+        // Sibling still in flight - e.g. the employee's own auto-dispatched base signing
+        // hasn't finished its pyHanko/TSA round trip yet.
+        EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $owner->id,
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => 'signings/sibling/unsigned.pdf',
+        ]);
+
+        $signing = EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $dh->id,
+            'field_name' => 'ApproverSignature',
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => 'signings/cosign/unsigned.pdf',
+        ]);
+
+        $job = new SignESignatureRequestPdfJob($signing, 'correct-password');
+
+        $caught = null;
+        try {
+            $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class), app(LeaveRequestService::class));
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertNotNull($caught, 'Expected resolveCoSigningBasePdf() to throw while a sibling signing is still in flight.');
+        $this->assertStringContainsString('still in progress', $caught->getMessage());
+        $this->assertFalse(Storage::disk('esignature')->exists('signings/cosign/unsigned.pdf'));
+    }
+
+    public function test_job_builds_on_top_of_latest_completed_signing_for_a_cosigning_pass(): void
+    {
+        $owner = $this->createEmployee();
+        $leave = $this->createEsignatureLeave($owner);
+        $dh = $this->createDepartmentHead();
+        $this->createEsignatureSetting($dh, 'correct-password');
+
+        Storage::disk('esignature')->put('signings/prior/signed.pdf', '%PDF-1.4 already-signed-by-applicant-marker');
+
+        EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $owner->id,
+            'status' => EsignatureSigning::STATUS_COMPLETED,
+            'unsigned_path' => 'signings/prior/unsigned.pdf',
+            'signed_path' => 'signings/prior/signed.pdf',
+        ]);
+
+        $signing = EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $dh->id,
+            'field_name' => 'ApproverSignature',
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => 'signings/cosign/unsigned.pdf',
+        ]);
+
+        // Captured from inside the fake Process call, before the job's own post-success
+        // cleanup deletes unsigned.pdf - proves resolveCoSigningBasePdf() copied the
+        // prior's bytes rather than rendering fresh.
+        $capturedUnsignedContent = null;
+        Process::fake(function () use (&$capturedUnsignedContent, $signing) {
+            $capturedUnsignedContent = Storage::disk('esignature')->get($signing->unsigned_path);
+
+            return Process::result(output: 'ok', exitCode: 0);
+        });
+        Http::fake(['*' => Http::response(self::TSA_GRANTED_DER, 200)]);
+
+        $job = new SignESignatureRequestPdfJob($signing, 'correct-password');
+        $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class), app(LeaveRequestService::class));
+
+        $signing->refresh();
+        $this->assertSame(EsignatureSigning::STATUS_COMPLETED, $signing->status);
+        $this->assertSame('%PDF-1.4 already-signed-by-applicant-marker', $capturedUnsignedContent);
+    }
+
+    public function test_job_falls_back_to_fresh_render_for_a_cosigning_pass_with_no_prior_completed_signing(): void
+    {
+        $owner = $this->createEmployee();
+        $leave = $this->createEsignatureLeave($owner);
+        $dh = $this->createDepartmentHead();
+        $this->createEsignatureSetting($dh, 'correct-password');
+
+        // No prior signing at all for this leave - the applicant's own auto-sign either
+        // never fired (no ESignatureSetting) or was never dispatched.
+        $signing = EsignatureSigning::create([
+            'signable_type' => LeaveRequest::class,
+            'signable_id' => $leave->id,
+            'requested_by' => $dh->id,
+            'field_name' => 'ApproverSignature',
+            'status' => EsignatureSigning::STATUS_PENDING,
+            'unsigned_path' => 'signings/cosign/unsigned.pdf',
+        ]);
+
+        Process::fake(fn () => Process::result(output: 'ok', exitCode: 0));
+        Http::fake(['*' => Http::response(self::TSA_GRANTED_DER, 200)]);
+
+        $job = new SignESignatureRequestPdfJob($signing, 'correct-password');
+        $job->handle(app(Rfc3161TimestampClient::class), app(ESignatureCredentialStore::class), app(LeaveRequestService::class));
+
+        $signing->refresh();
+        $this->assertSame(EsignatureSigning::STATUS_COMPLETED, $signing->status);
+        $this->assertSame('ApproverSignature', $signing->field_name, 'field_name stays the caller\'s fixed intent even when this ends up being the document\'s only signature.');
     }
 
     /**

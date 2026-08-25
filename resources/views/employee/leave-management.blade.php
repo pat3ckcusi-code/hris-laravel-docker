@@ -1176,10 +1176,21 @@
                                                 // 'completed' or still 'processing' - a password prompt at print
                                                 // time is only needed as a manual retry, when auto-signing never
                                                 // got a signing row at all (null) or ended in 'failed'.
+                                                //
+                                                // "Needs retry" must be judged against whether the leave has EVER
+                                                // had a completed signing, not just whether the single most-recent
+                                                // row is completed - a later, unrelated co-signing pass (DH/AO
+                                                // approval, HR certification) can fail after the applicant's own
+                                                // signature already succeeded, and that failure must never make
+                                                // this button re-trigger dispatchEsignatureSigning(), which renders
+                                                // a brand-new blank PDF and would silently discard every signature
+                                                // already embedded in the existing signed chain.
                                                 $_esigSigning = $leave->esignature_requested_at ? $leave->latestEsignatureSigning : null;
                                                 $_esigStatus = optional($_esigSigning)->status;
                                                 $_esigStillWorking = in_array($_esigStatus, ['pending', 'processing'], true);
-                                                $_esigNeedsRetry = $leave->esignature_requested_at && ! $_esigStillWorking && $_esigStatus !== 'completed';
+                                                $_esigHasCompletedSigning = $leave->esignature_requested_at
+                                                    && $leave->esignatureSignings->contains(fn ($s) => $s->status === 'completed');
+                                                $_esigNeedsRetry = $leave->esignature_requested_at && ! $_esigStillWorking && ! $_esigHasCompletedSigning;
                                             @endphp
                                             @if(!empty($leave->printing_allowed) || ($canPrintOnApproval && $leave->status === 'approved'))
                                                 @if($_esigStillWorking)

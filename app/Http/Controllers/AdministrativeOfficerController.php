@@ -15,7 +15,6 @@ use App\Services\ApprovalNotificationService;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DepartmentHeadService;
 use App\Services\DepartmentService;
-use App\Services\ESignatureCredentialStore;
 use App\Services\LeaveDateAggregateService;
 use App\Services\LeaveRequestService;
 use App\Services\PersonnelLogImportService;
@@ -1095,38 +1094,6 @@ class AdministrativeOfficerController extends Controller
         }
 
         return $this->leaveRequestService->approveLeave($request, $id);
-    }
-
-    /**
-     * Approves a leave and cryptographically countersigns it with the
-     * Administrative Officer's own saved PNPKI certificate - see
-     * LeaveRequestService::approveLeaveWithEsignature(). Same department-scoping
-     * authorization as approve() above (resolveAllDepartmentsForAdminOfficer(),
-     * not resolveAllDepartmentsForUser() - see CLAUDE.md's Async exports section
-     * for why that distinction matters for this role specifically). Always
-     * returns JSON, since this endpoint is only ever driven by the "Approve
-     * using e-sign" button's own fetch() call.
-     */
-    public function approveWithEsign(Request $request, $id, ESignatureCredentialStore $credentialStore)
-    {
-        $user = Auth::user();
-        $depts = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
-        $leave = LeaveRequest::findOrFail($id);
-
-        if ($depts->isEmpty()) {
-            return response()->json(['success' => false, 'message' => 'Department not found for your account.'], 422);
-        }
-
-        $employee = $leave->user;
-        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
-            return response()->json(['success' => false, 'message' => 'You are not authorized to approve this request.'], 403);
-        }
-
-        $data = $request->validate([
-            'pnpki_password' => ['required', 'string'],
-        ]);
-
-        return $this->leaveRequestService->approveLeaveWithEsignature($request, $id, $data['pnpki_password'], $credentialStore);
     }
 
     public function approveEta(Request $request, $id)

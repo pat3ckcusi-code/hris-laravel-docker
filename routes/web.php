@@ -363,7 +363,6 @@ Route::middleware(['auth', 'role:administrative-officer'])->group(function () {
 
     // Administrative Officer approval actions
     Route::post('/admin-officer/leave/{id}/approve', [AdministrativeOfficerController::class, 'approve'])->name('admin-officer.leave.approve');
-    Route::post('/admin-officer/leave/{id}/approve-esign', [AdministrativeOfficerController::class, 'approveWithEsign'])->name('admin-officer.leave.approve-esign');
     Route::post('/admin-officer/leave/{id}/reject', [AdministrativeOfficerController::class, 'reject'])->name('admin-officer.leave.reject');
     Route::post('/admin-officer/leave/{id}/allow-printing', [AdministrativeOfficerController::class, 'allowPrinting'])->name('admin-officer.leave.allow-printing');
     Route::post('/admin-officer/eta/{id}/approve', [AdministrativeOfficerController::class, 'approveEta'])->name('admin-officer.eta.approve');
@@ -410,6 +409,7 @@ Route::middleware(['auth', 'role:department-head,administrative-officer'])->grou
     // Leave approval actions
     Route::post('/department-head/leave/{id}/approve', [DepartmentHeadController::class, 'approve'])->name('department-head.leave.approve');
     Route::post('/department-head/leave/{id}/approve-esign', [DepartmentHeadController::class, 'approveWithEsign'])->name('department-head.leave.approve-esign');
+    Route::post('/department-head/leave/{id}/retry-esign-cosign', [DepartmentHeadController::class, 'retryEsignCoSign'])->name('department-head.leave.retry-esign-cosign');
     Route::post('/department-head/leave/{id}/reject', [DepartmentHeadController::class, 'reject'])->name('department-head.leave.reject');
     Route::post('/department-head/leave/{id}/allow-printing', [DepartmentHeadController::class, 'allowPrinting'])->name('department-head.leave.allow-printing');
 

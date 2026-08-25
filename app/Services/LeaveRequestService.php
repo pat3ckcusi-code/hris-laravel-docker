@@ -1266,21 +1266,69 @@ class LeaveRequestService
 
         $leave->refresh();
 
-        // If the applicant already has a completed signing, this is a co-signing pass:
-        // sign on top of their already-signed PDF (not a fresh render, which would
-        // invalidate their signature) with a distinct field name. Otherwise this is the
-        // first signature on the document - render fresh so Section 7 is included.
-        $priorSigning = $this->latestCompletedSigning($leave);
-        $fieldName = $priorSigning ? 'ApproverSignature' : null;
-
+        // Always dispatched as a genuine co-signing pass (field name 'ApproverSignature'),
+        // regardless of whether the applicant's own signature has completed yet -
+        // SignESignatureRequestPdfJob resolves what to build on top of (or falls back to
+        // a fresh render) at job-execution time, not here, to avoid racing the
+        // applicant's own signing job. See dispatchCoSigningPass()'s docblock.
         $mapping = $this->loadLeaveMapping();
-        $signing = $this->dispatchCoSigningPass($leave, $actor, $password, $fieldName, $mapping['approver_signature_field'] ?? null);
+        $signing = $this->dispatchCoSigningPass($leave, $actor, $password, 'ApproverSignature', $mapping['approver_signature_field'] ?? null);
 
         return response()->json([
             'success' => true,
             'signing_id' => $signing->id,
             'status_url' => route('esignature-signings.status', $signing->id),
             'message' => 'Leave approved. Signing in progress.',
+        ]);
+    }
+
+    /**
+     * Redoes the Department Head's own co-signature for an already-approved leave,
+     * without re-running approveLeave() itself - for recovering a co-signing pass
+     * that ended up orphaned (see dispatchCoSigningPass()'s race-condition fix) or
+     * genuinely failed, since approveLeaveWithEsignature() only ever dispatches a
+     * co-sign once, at the moment the leave transitions to approved (it returns
+     * early via $wasAlreadyApproved otherwise, with no other recovery path).
+     */
+    public function retryApproverCoSignature(LeaveRequest $leave, User $actor, string $password, ESignatureCredentialStore $credentialStore)
+    {
+        if ($leave->status !== 'approved' || ! $leave->esignature_requested_at) {
+            return response()->json(['success' => false, 'message' => 'This leave is not in a state that can be co-signed.'], 422);
+        }
+
+        $alreadyCoSigned = EsignatureSigning::where('signable_type', LeaveRequest::class)
+            ->where('signable_id', $leave->id)
+            ->where('field_name', 'ApproverSignature')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->exists();
+
+        if ($alreadyCoSigned) {
+            return response()->json(['success' => false, 'message' => 'This leave already has a completed Department Head co-signature.'], 422);
+        }
+
+        $setting = $actor->esignatureSetting;
+        if (! $setting) {
+            return response()->json(['success' => false, 'message' => 'You have not set up an e-signature yet.'], 422);
+        }
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Could not read your saved certificate. Please contact HR or re-save your e-signature setting.'], 422);
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $password)) {
+            return response()->json(['success' => false, 'message' => 'That password did not unlock your saved certificate. Please check the password and try again.'], 422);
+        }
+
+        $mapping = $this->loadLeaveMapping();
+        $signing = $this->dispatchCoSigningPass($leave, $actor, $password, 'ApproverSignature', $mapping['approver_signature_field'] ?? null);
+
+        return response()->json([
+            'success' => true,
+            'signing_id' => $signing->id,
+            'status_url' => route('esignature-signings.status', $signing->id),
+            'message' => 'Co-signing in progress.',
         ]);
     }
 
@@ -1671,37 +1719,28 @@ class LeaveRequestService
         return file_exists($mappingFile) ? include $mappingFile : [];
     }
 
-    private function latestCompletedSigning(LeaveRequest $leave): ?EsignatureSigning
-    {
-        return EsignatureSigning::where('signable_type', LeaveRequest::class)
-            ->where('signable_id', $leave->id)
-            ->where('status', EsignatureSigning::STATUS_COMPLETED)
-            ->latest()
-            ->first();
-    }
-
     /**
-     * Shared co-signing mechanism behind approveLeaveWithEsignature() and
-     * certifyLeaveCredits(): resolves the latest completed signing (if any) and signs
-     * on top of it - a genuine incremental pyHanko addsig pass that leaves an earlier
-     * signature intact and independently valid - rather than re-rendering fresh, which
-     * would invalidate it. Only when no completed signing exists yet is a fresh render
-     * used, so Section 7 (recommendation/approved days/balance) is included for
-     * whichever pass happens to be the document's first signature.
+     * Shared co-signing mechanism behind approveLeaveWithEsignature(),
+     * certifyLeaveCredits(), and retryApproverCoSignature(): creates a pending
+     * signing row for a genuine co-signing pass (field name always a real,
+     * caller-fixed value - never conditional/null - since which document to build
+     * on top of can no longer be safely resolved here).
+     *
+     * Deliberately does NOT resolve "is there a prior completed signing" or write
+     * any unsigned.pdf content at this point - doing so eagerly, at HTTP-request
+     * time, raced the applicant's own auto-dispatched signing (or an earlier
+     * co-signing pass) whenever it hadn't finished its pyHanko/TSA round trip yet:
+     * the eager check would find "no completed signing exists yet" and silently
+     * render a fresh, blank-based PDF, discarding every already-completed
+     * signature. That's a real incident that happened in production (leave
+     * #2606). SignESignatureRequestPdfJob::resolveCoSigningBasePdf() now resolves
+     * this at job-execution time instead, using the job's own retry/backoff to
+     * give an in-flight sibling signing real wall-clock time to finish first.
      */
-    private function dispatchCoSigningPass(LeaveRequest $leave, User $actor, string $password, ?string $fieldName, ?array $fieldRectOverride = null): EsignatureSigning
+    private function dispatchCoSigningPass(LeaveRequest $leave, User $actor, string $password, string $fieldName, ?array $fieldRectOverride = null): EsignatureSigning
     {
-        $priorSigning = $this->latestCompletedSigning($leave);
-
-        if ($priorSigning && $priorSigning->signed_path && Storage::disk('esignature')->exists($priorSigning->signed_path)) {
-            $basePdfBytes = Storage::disk('esignature')->get($priorSigning->signed_path);
-        } else {
-            $basePdfBytes = $this->buildEsignaturePdfBytes($leave);
-        }
-
         $token = (string) Str::ulid();
         $dir = "signings/{$token}";
-        Storage::disk('esignature')->put("{$dir}/unsigned.pdf", $basePdfBytes);
 
         if ($fieldRectOverride) {
             Storage::disk('esignature')->put("{$dir}/signature_field.json", json_encode($fieldRectOverride));

@@ -669,8 +669,9 @@ class DepartmentHeadController extends Controller
         $etaDataUrl = route('department-head.approved-requests.eta-data');
         $locatorDataUrl = route('department-head.approved-requests.locator-data');
         $locatorRecordArrivalBaseUrl = url('department-head/locator');
+        $retryCoSignBaseUrl = url('department-head/leave');
 
-        return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl', 'locatorRecordArrivalBaseUrl'));
+        return view('department-head.approved-requests', compact('dept', 'month', 'year', 'leaveDataUrl', 'etaDataUrl', 'locatorDataUrl', 'locatorRecordArrivalBaseUrl', 'retryCoSignBaseUrl'));
     }
 
     public function approvedRequestsLeaveData(Request $request)
@@ -715,25 +716,38 @@ class DepartmentHeadController extends Controller
         $start = max(0, $request->integer('start', 0));
         $length = min(100, max(1, $request->integer('length', 10)));
 
-        $records = $query->with(['lastPrintedBy', 'esignatureSignings' => fn ($q) => $q
-            ->where('field_name', 'CertifyingSignature')
-            ->where('status', EsignatureSigning::STATUS_COMPLETED)])
+        // Broadened from the old field_name='CertifyingSignature'-only constraint so
+        // needs_approver_cosign (below) can also be computed from the same eager load,
+        // in-memory, instead of a second differently-scoped relation load.
+        $records = $query->with(['lastPrintedBy', 'esignatureSignings'])
             ->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
-        $data = $records->map(fn ($r) => [
-            'id' => $r->id,
-            'employee' => $r->user->name ?? '-',
-            'leave_type' => $r->leave_type,
-            'leave_dates' => $r->leaveDatesBreakdown(),
-            'period' => $r->formattedPeriod(),
-            'total_days' => $r->total_days ?? '-',
-            'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
-            'vl' => optional($r->user->leaveBalance)->VL ?? '0',
-            'sl' => optional($r->user->leaveBalance)->SL ?? '0',
-            'needs_certification' => (bool) $r->esignature_requested_at && $r->esignatureSignings->isEmpty(),
-            'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
-            'last_printed_by_name' => optional($r->lastPrintedBy)->name,
-        ]);
+        $data = $records->map(function ($r) {
+            $completedSignings = $r->esignatureSignings->where('status', EsignatureSigning::STATUS_COMPLETED);
+
+            return [
+                'id' => $r->id,
+                'employee' => $r->user->name ?? '-',
+                'leave_type' => $r->leave_type,
+                'leave_dates' => $r->leaveDatesBreakdown(),
+                'period' => $r->formattedPeriod(),
+                'total_days' => $r->total_days ?? '-',
+                'approved_at' => $r->updated_at ? $r->updated_at->format('M d, Y') : '-',
+                'vl' => optional($r->user->leaveBalance)->VL ?? '0',
+                'sl' => optional($r->user->leaveBalance)->SL ?? '0',
+                'needs_certification' => (bool) $r->esignature_requested_at && $completedSignings->where('field_name', 'CertifyingSignature')->isEmpty(),
+                // Only the Department Head signs the leave form (see pending-requests.blade.php's
+                // esignBtn gate) - this flag only makes sense on this controller's copy of
+                // approvedRequestsLeaveData(), not AdministrativeOfficerController's, so a
+                // "Retry Co-Signature" button can never be shown on the AO's pages even though
+                // both share the same approved-requests.blade.php view.
+                'needs_approver_cosign' => (bool) $r->esignature_requested_at
+                    && $completedSignings->isNotEmpty()
+                    && $completedSignings->where('field_name', 'ApproverSignature')->isEmpty(),
+                'last_printed_at' => $r->last_printed_at ? $r->last_printed_at->format('M d, Y') : null,
+                'last_printed_by_name' => optional($r->lastPrintedBy)->name,
+            ];
+        });
 
         return response()->json(['draw' => $request->integer('draw'), 'recordsTotal' => $recordsTotal, 'recordsFiltered' => $recordsFiltered, 'data' => $data]);
     }
@@ -1345,6 +1359,36 @@ class DepartmentHeadController extends Controller
         ]);
 
         return $this->leaveRequestService->approveLeaveWithEsignature($request, $id, $data['pnpki_password'], $credentialStore);
+    }
+
+    /**
+     * Redoes the Department Head's own co-signature for a leave that's already
+     * approved - see LeaveRequestService::retryApproverCoSignature(). Needed
+     * because approveWithEsign() only ever dispatches a co-sign once, at the
+     * moment the leave transitions to approved; there is otherwise no way to
+     * recover a co-signing pass that ended up orphaned or genuinely failed.
+     * Same department-scoping authorization as approveWithEsign() above.
+     */
+    public function retryEsignCoSign(Request $request, $id, ESignatureCredentialStore $credentialStore)
+    {
+        $user = Auth::user();
+        $depts = $this->departmentService->resolveAllDepartmentsForUser($user);
+        $leave = LeaveRequest::findOrFail($id);
+
+        if ($depts->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'Department not found for your account.'], 422);
+        }
+
+        $employee = $leave->user;
+        if (! $employee || ! in_array($employee->Dept_id, $depts->pluck('Dept_id')->toArray())) {
+            return response()->json(['success' => false, 'message' => 'You are not authorized to act on this request.'], 403);
+        }
+
+        $data = $request->validate([
+            'pnpki_password' => ['required', 'string'],
+        ]);
+
+        return $this->leaveRequestService->retryApproverCoSignature($leave, $user, $data['pnpki_password'], $credentialStore);
     }
 
     /**

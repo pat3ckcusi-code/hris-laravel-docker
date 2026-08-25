@@ -234,9 +234,17 @@ document.addEventListener('DOMContentLoaded', function () {
                                       + '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="allowPrinting(' + row.id + ')"><i class="fa fa-unlock"></i> Allow Printing</button>';
                             }
                         } else {
+                            // Only the Department Head signs the leave form - the Administrative
+                            // Officer's role is print-authorization only (see Allow Printing above),
+                            // never a signature on the document. This view is shared by both roles
+                            // (APPROVER_PREFIX distinguishes them), so the e-sign option is hidden
+                            // entirely for AO rather than just relying on the route being gone.
+                            var esignBtn = (APPROVER_PREFIX === 'department-head')
+                                ? '<button class="hris-btn hris-btn-success hris-btn-sm" onclick="confirmApproveEsign(' + row.id + ')"><i class="fa fa-signature"></i> Approve using e-sign</button>'
+                                : '';
                             btns += '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>'
                                   + '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="confirmApprove(' + row.id + ')"><i class="fa fa-check"></i> Approve</button>'
-                                  + '<button class="hris-btn hris-btn-success hris-btn-sm" onclick="confirmApproveEsign(' + row.id + ')"><i class="fa fa-signature"></i> Approve using e-sign</button>'
+                                  + esignBtn
                                   + '<button class="hris-btn hris-btn-danger hris-btn-sm" onclick="promptReject(' + row.id + ')"><i class="fa fa-times"></i> Reject</button>';
                         }
                     } else if (row.status === 'approved') {

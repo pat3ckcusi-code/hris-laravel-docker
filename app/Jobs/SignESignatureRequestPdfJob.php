@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\EsignatureSigning;
 use App\Models\HRAuditTrail;
 use App\Services\ESignatureCredentialStore;
+use App\Services\LeaveRequestService;
 use App\Support\Rfc3161TimestampClient;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -163,7 +164,7 @@ class SignESignatureRequestPdfJob implements ShouldBeEncrypted, ShouldQueue
         public string $password,
     ) {}
 
-    public function handle(Rfc3161TimestampClient $tsaClient, ESignatureCredentialStore $credentialStore): void
+    public function handle(Rfc3161TimestampClient $tsaClient, ESignatureCredentialStore $credentialStore, LeaveRequestService $leaveRequestService): void
     {
         $signable = $this->signing->signable;
         abort_if(! $signable, 404, 'Signable record no longer exists.');
@@ -172,8 +173,8 @@ class SignESignatureRequestPdfJob implements ShouldBeEncrypted, ShouldQueue
         // document's own fixed owner (Signable::esignatureOwner()) - for the original
         // self-service flow those are the same person (dispatchEsignatureSigning() sets
         // requested_by to the leave's own applicant), but a co-signing pass (e.g. a
-        // Department Head/Administrative Officer countersigning at approval) requests a
-        // signature with their own certificate, not the applicant's.
+        // Department Head countersigning at approval) requests a signature with their
+        // own certificate, not the applicant's.
         $signer = $this->signing->requestedBy;
         abort_if(! $signer, 404, 'Signing requester no longer exists.');
 
@@ -183,6 +184,10 @@ class SignESignatureRequestPdfJob implements ShouldBeEncrypted, ShouldQueue
         }
 
         $this->signing->markProcessing();
+
+        if ($this->signing->field_name !== null) {
+            $this->resolveCoSigningBasePdf($leaveRequestService);
+        }
 
         $this->certificate = $credentialStore->retrieveDecrypted($setting->certificate_path);
         $this->chainRootCa = Storage::disk('esignature')->get($setting->root_ca_path);
@@ -224,6 +229,48 @@ class SignESignatureRequestPdfJob implements ShouldBeEncrypted, ShouldQueue
         ]);
 
         Log::info('PNPKI: LTV signing succeeded.', ['esignature_signing_id' => $this->signing->id]);
+    }
+
+    /**
+     * A co-signing pass (field_name set - Department Head approval, HR
+     * certification) must build on top of whichever signing is genuinely the
+     * latest COMPLETED one at the moment this job actually RUNS, not at the
+     * moment it was dispatched - LeaveRequestService::dispatchCoSigningPass()
+     * deliberately no longer resolves this eagerly, since doing so raced the
+     * applicant's own auto-dispatched base signing (or an earlier co-signing
+     * pass) whenever it hadn't finished its pyHanko/TSA round trip yet: the eager
+     * check would find "no completed signing exists" and silently render a
+     * fresh, blank-based PDF, discarding every already-completed signature -
+     * a real incident that happened in production (leave #2606). If a sibling
+     * signing for the same document is still pending/processing, this throws so
+     * the job's own retry/backoff ($tries/$backoff above) gives it real
+     * wall-clock time (~100s across 3 attempts) to resolve before this attempt
+     * is marked genuinely failed, recoverable via a manual retry action.
+     */
+    private function resolveCoSigningBasePdf(LeaveRequestService $leaveRequestService): void
+    {
+        $siblingInFlight = EsignatureSigning::where('signable_type', $this->signing->signable_type)
+            ->where('signable_id', $this->signing->signable_id)
+            ->where('id', '!=', $this->signing->id)
+            ->whereIn('status', [EsignatureSigning::STATUS_PENDING, EsignatureSigning::STATUS_PROCESSING])
+            ->exists();
+
+        if ($siblingInFlight) {
+            throw new RuntimeException('A prior signing on this document is still in progress. Please try co-signing again shortly.');
+        }
+
+        $priorSigning = EsignatureSigning::where('signable_type', $this->signing->signable_type)
+            ->where('signable_id', $this->signing->signable_id)
+            ->where('id', '!=', $this->signing->id)
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->latest()
+            ->first();
+
+        $basePdfBytes = ($priorSigning && $priorSigning->signed_path && Storage::disk('esignature')->exists($priorSigning->signed_path))
+            ? Storage::disk('esignature')->get($priorSigning->signed_path)
+            : $leaveRequestService->buildEsignaturePdfBytes($this->signing->signable);
+
+        Storage::disk('esignature')->put($this->signing->unsigned_path, $basePdfBytes);
     }
 
     /**

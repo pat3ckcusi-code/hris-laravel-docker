@@ -640,7 +640,13 @@ class LeaveCertificationBatchSignTest extends TestCase
             $this->assertSame($hr->id, $signing->requested_by);
             $this->assertSame('CertifyingSignature', $signing->field_name);
             $this->assertSame(EsignatureSigning::STATUS_PENDING, $signing->status);
-            $this->assertStringStartsWith('%PDF', Storage::disk('esignature')->get($signing->unsigned_path));
+            // Content resolution (the actual fresh PDF render, since neither leave has a
+            // prior signing) is now deferred to SignESignatureRequestPdfJob::resolveCoSigningBasePdf()
+            // at job-execution time - see that method's docblock for why (closes a race
+            // condition). Queue::fake() means the job never actually runs in this test, so
+            // unsigned.pdf must not exist yet; the real fresh-render behavior is covered by
+            // EsignatureSigningTest's job-level tests.
+            $this->assertFalse(Storage::disk('esignature')->exists($signing->unsigned_path));
         }
 
         Queue::assertPushed(SignESignatureRequestPdfJob::class, 2);
@@ -744,11 +750,13 @@ class LeaveCertificationBatchSignTest extends TestCase
         $this->assertNotNull($newSigning);
         $this->assertSame($hr->id, $newSigning->requested_by);
         $this->assertSame('CertifyingSignature', $newSigning->field_name);
-        $this->assertSame(
-            Storage::disk('esignature')->get($priorSigning->signed_path),
-            Storage::disk('esignature')->get($newSigning->unsigned_path),
-            'The certification pass must start from the already-signed PDF, not a fresh render.'
-        );
+        // Content resolution ("build on top of the already-signed PDF, not a fresh render")
+        // is now deferred to SignESignatureRequestPdfJob::resolveCoSigningBasePdf() at
+        // job-execution time, not written here at dispatch time - see that method's docblock
+        // for why (closes a race condition). Queue::fake() means the job never actually runs
+        // in this test, so unsigned.pdf must not exist yet; the deferred behavior itself is
+        // covered by EsignatureSigningTest's job-level tests.
+        $this->assertFalse(Storage::disk('esignature')->exists($newSigning->unsigned_path));
 
         Queue::assertPushed(SignESignatureRequestPdfJob::class, fn ($job) => $job->signing->is($newSigning));
     }

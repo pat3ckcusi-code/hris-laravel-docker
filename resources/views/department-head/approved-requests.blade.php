@@ -157,6 +157,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const etaDataUrl     = @json($etaDataUrl);
     const locatorDataUrl = @json($locatorDataUrl);
     const locatorRecordArrivalBaseUrl = @json($locatorRecordArrivalBaseUrl);
+    // Only DepartmentHeadController's approvedRequests() passes this - AdministrativeOfficerController's
+    // doesn't (the AO never signs the leave form), so it's null when this shared view renders for AO.
+    const retryCoSignBaseUrl = @json($retryCoSignBaseUrl ?? null);
 
     // Tab switching
     document.querySelectorAll('.tab-card').forEach(function (card) {
@@ -203,9 +206,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     var printBtn = row.needs_certification
                         ? '<button class="hris-btn hris-btn-secondary hris-btn-sm" disabled title="Awaiting Leave Credit Certification."><i class="fa fa-print"></i> Print</button>'
                         : '<button class="hris-btn hris-btn-primary hris-btn-sm" onclick="printLeave(' + row.id + ')"><i class="fa fa-print"></i> Print</button>';
+                    var cosignBtn = (retryCoSignBaseUrl && row.needs_approver_cosign)
+                        ? '<button class="hris-btn hris-btn-warning hris-btn-sm" onclick="confirmRetryCoSign(' + row.id + ')"><i class="fa fa-signature"></i> Retry Co-Signature</button>'
+                        : '';
                     return '<div class="action-btns">'
                         + '<button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="openLeaveModal(' + row.id + ')"><i class="fa fa-eye"></i> View</button>'
                         + printBtn
+                        + cosignBtn
                         + '</div>';
                 },
             },
@@ -411,6 +418,44 @@ document.addEventListener('DOMContentLoaded', function () {
         var row = leaveRows[id];
         var url = '{{ url('dashboard/employee/leave') }}/' + id + '/print';
         confirmLeavePrint(url, row ? (row.last_printed_at || null) : null, row ? (row.last_printed_by_name || null) : null);
+    };
+
+    // Redoes the Department Head's own co-signature on an already-approved leave -
+    // see LeaveRequestService::retryApproverCoSignature(). Only ever shown when
+    // retryCoSignBaseUrl is set (department-head, not admin-officer - see
+    // needs_approver_cosign's own docblock in DepartmentHeadController).
+    window.confirmRetryCoSign = function (id) {
+        var token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        var url = retryCoSignBaseUrl + '/' + id + '/retry-esign-cosign';
+        Swal.fire({
+            title: 'Retry Co-Signature',
+            html: 'This adds your Department Head co-signature to this already-approved leave.<br><br>Enter your certificate password to continue.',
+            input: 'password',
+            inputPlaceholder: 'Certificate password',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sign',
+            confirmButtonColor: '#16a34a',
+            inputValidator: function (v) { if (!v) return 'Please enter your certificate password.'; },
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: new URLSearchParams({ pnpki_password: result.value, _token: token }),
+            }).then(function (r) {
+                return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+            }).then(function (res) {
+                leaveTable.ajax.reload(null, false);
+                if (!res.ok || !res.data.success) {
+                    Swal.fire({ icon: 'error', title: 'Could Not Co-Sign', text: res.data.message || 'Something went wrong.' });
+                    return;
+                }
+                window.pollJobStatus(res.data.status_url, 'Co-signing the leave document…', 'Signing Failed');
+            }).catch(function () {
+                Swal.fire({ icon: 'error', text: 'Failed to retry co-signature.' });
+            });
+        });
     };
 
     window.recordLocatorArrival = function (id) {
