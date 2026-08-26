@@ -223,8 +223,59 @@ class PersonnelLogImportService
             ->when($deptId !== null, fn ($q) => $q->where('Dept_id', $deptId))
             ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
 
+        // Batch-fetch everything upsertDtrRecords() needs for the whole set of
+        // users up front (one query each) instead of letting it re-query per
+        // user below - with 1000+ employees that was ~6 queries x N every
+        // single import cycle (this method runs every minute via
+        // attendance:auto-import). recomputeDtr()/recomputeFullRange() still
+        // call upsertDtrRecords() with no preloaded data for their single-user
+        // case, so nothing here changes that path.
+        $userIds = $usersToRecompute->pluck('id');
+        $recomputeFetchFrom = Carbon::parse($from)->subDay()->toDateString();
+        $recomputeFetchTo = Carbon::parse($to)->addDay()->toDateString();
+
+        WorkSchedule::preloadShiftAssignments($userIds->all());
+
+        $assignmentsByUser = EmployeeShiftSchedule::whereIn('user_id', $userIds)
+            ->whereBetween('date', [$recomputeFetchFrom, $recomputeFetchTo])
+            ->with('shift')
+            ->get()
+            ->groupBy('user_id');
+
+        $logsByUser = AttendanceLog::whereIn('user_id', $userIds)
+            ->whereBetween('logdate', [$recomputeFetchFrom, $recomputeFetchTo])
+            ->orderBy('logdate')
+            ->orderBy('logtime')
+            ->get()
+            ->groupBy('user_id');
+
+        $excusesByUser = DtrExcuse::whereIn('user_id', $userIds)
+            ->whereBetween('date', [$recomputeFetchFrom, $recomputeFetchTo])
+            ->get()
+            ->groupBy('user_id');
+
+        $locatorsByUser = Locator::whereIn('user_id', $userIds)
+            ->where('status', 'approved')
+            ->whereBetween('travel_date', [$recomputeFetchFrom, $recomputeFetchTo])
+            ->get(['user_id', 'travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->groupBy('user_id');
+
+        // Suspensions were never user-scoped to begin with - one query, shared
+        // by every user in this batch instead of re-fetched identically per user.
+        $suspensionsForBatch = WorkSuspension::whereBetween('suspension_date', [$recomputeFetchFrom, $recomputeFetchTo])->get();
+
         foreach ($usersToRecompute as $user) {
-            $this->upsertDtrRecords($user, $from, $to);
+            $this->upsertDtrRecords(
+                $user,
+                $from,
+                $to,
+                assignmentsPreloaded: true,
+                preloadedAssignmentRows: $assignmentsByUser->get($user->id) ?? collect(),
+                preloadedLogs: $logsByUser->get($user->id) ?? collect(),
+                preloadedExcuses: $excusesByUser->get($user->id) ?? collect(),
+                preloadedLocators: $locatorsByUser->get($user->id) ?? collect(),
+                preloadedSuspensions: $suspensionsForBatch,
+            );
             $messages[] = "Updated DTR for EmpNo {$user->EmpNo}";
         }
 
@@ -288,8 +339,17 @@ class PersonnelLogImportService
         );
     }
 
-    private function upsertDtrRecords(User $user, string $from, string $to): void
-    {
+    private function upsertDtrRecords(
+        User $user,
+        string $from,
+        string $to,
+        bool $assignmentsPreloaded = false,
+        ?Collection $preloadedAssignmentRows = null,
+        ?Collection $preloadedLogs = null,
+        ?Collection $preloadedExcuses = null,
+        ?Collection $preloadedLocators = null,
+        ?Collection $preloadedSuspensions = null,
+    ): void {
         // Exempt employees keep no DTR rows regardless of imported punches.
         if ($user->dtr_exempt) {
             return;
@@ -303,17 +363,25 @@ class PersonnelLogImportService
 
         // Pre-load per-date shift assignments for the padded range so every
         // downstream call (grouper, resolver) is O(1) - no per-date DB queries.
-        $assignments = EmployeeShiftSchedule::where('user_id', $user->id)
+        // A batch caller (see importForDateRange()) passes these in already
+        // fetched for the whole run instead of one query per user.
+        $assignments = ($preloadedAssignmentRows ?? EmployeeShiftSchedule::where('user_id', $user->id)
             ->whereBetween('date', [$fetchFrom, $fetchTo])
             ->with('shift')
-            ->get()
+            ->get())
             ->keyBy(fn ($a) => $a->date->toDateString());
 
         // Same reasoning as $assignments above: warm the shift-assignment-history
-        // memo once so the per-date WorkSchedule calls below stay O(1).
-        WorkSchedule::preloadShiftAssignments([$user->id]);
+        // memo once so the per-date WorkSchedule calls below stay O(1). Skipped
+        // when a batch caller already warmed it for the whole run - the memo is
+        // a single static property that gets wholesale replaced on every call,
+        // so calling this again here for just this one user would blow away
+        // every other user's already-warmed data instead of adding to it.
+        if (! $assignmentsPreloaded) {
+            WorkSchedule::preloadShiftAssignments([$user->id]);
+        }
 
-        $logs = AttendanceLog::where('user_id', $user->id)
+        $logs = $preloadedLogs ?? AttendanceLog::where('user_id', $user->id)
             ->whereBetween('logdate', [$fetchFrom, $fetchTo])
             ->orderBy('logdate')
             ->orderBy('logtime')
@@ -327,21 +395,21 @@ class PersonnelLogImportService
 
         // Excused slots have no real punch expected - the resolver uses this to
         // avoid mis-slotting a later punch into an excused slot.
-        $excuseMap = DtrExcuse::where('user_id', $user->id)
+        $excuseMap = ($preloadedExcuses ?? DtrExcuse::where('user_id', $user->id)
             ->whereBetween('date', [$fetchFrom, $fetchTo])
-            ->get()
+            ->get())
             ->keyBy(fn (DtrExcuse $e) => Carbon::parse($e->date)->format('Y-m-d'));
 
         // Approved-locator-covered slots also have no real punch expected -
         // merge their coverage in the same way, unioning multiple locators
         // on the same date into a single [earliest departure, latest arrival]
         // exclusion window per slot.
-        $locatorSlotMap = $this->buildLocatorSlotMap($user, $fetchFrom, $fetchTo, $assignments);
+        $locatorSlotMap = $this->buildLocatorSlotMap($user, $fetchFrom, $fetchTo, $assignments, $preloadedLocators);
 
         // Declared work suspensions (typhoon/urgent-event dismissal) also have
         // no real punch expected past their cutoff - see WorkSchedule::applySuspension().
-        $suspensionMap = WorkSuspension::whereBetween('suspension_date', [$fetchFrom, $fetchTo])
-            ->get()
+        $suspensionMap = ($preloadedSuspensions ?? WorkSuspension::whereBetween('suspension_date', [$fetchFrom, $fetchTo])
+            ->get())
             ->keyBy(fn (WorkSuspension $s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
 
         $producedDates = [];
@@ -429,14 +497,14 @@ class PersonnelLogImportService
      * @param  Collection<string, EmployeeShiftSchedule>|null  $assignments
      * @return array<string, array<string, array{0:string,1:string}>>
      */
-    private function buildLocatorSlotMap(User $user, string $from, string $to, ?Collection $assignments): array
+    private function buildLocatorSlotMap(User $user, string $from, string $to, ?Collection $assignments, ?Collection $preloadedLocators = null): array
     {
         $map = [];
 
-        Locator::where('user_id', $user->id)
+        ($preloadedLocators ?? Locator::where('user_id', $user->id)
             ->where('status', 'approved')
             ->whereBetween('travel_date', [$from, $to])
-            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->get(['travel_date', 'intended_departure_time', 'intended_arrival_time']))
             ->each(function (Locator $locator) use (&$map, $user, $assignments): void {
                 $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
                 $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($locator->travel_date), $assignments);
