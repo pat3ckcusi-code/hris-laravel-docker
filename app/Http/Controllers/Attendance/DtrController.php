@@ -463,14 +463,18 @@ class DtrController extends Controller
             // Matrix report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
             $amInImputed = false;
             $imputeAmInLate = function () use ($dtr, $rowSchedule, $dateStr, &$amInImputed): int {
-                $mins = $this->punchResolver->imputedLateMinutes($dtr->time_in_am, $dtr->time_out_am, $dateStr, $rowSchedule);
+                $mins = $this->punchResolver->imputedLateMinutes(
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule
+                );
                 $amInImputed = $mins > 0;
 
                 return $mins;
             };
             $pmOutImputed = false;
             $imputePmOutUndertime = function () use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
-                $mins = $this->punchResolver->imputedUndertimeMinutes($dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule);
+                $mins = $this->punchResolver->imputedUndertimeMinutes(
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule
+                );
                 $pmOutImputed = $mins > 0;
 
                 return $mins;

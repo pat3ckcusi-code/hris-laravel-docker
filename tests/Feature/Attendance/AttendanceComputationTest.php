@@ -60,6 +60,19 @@ class AttendanceComputationTest extends TestCase
         );
     }
 
+    /** No-break counterpart of assignEightToTwelveThirteenToFiveShift(): a real 08:00/17:00, 2-punch Shift. */
+    private function assignEightToFiveNoBreakShift(User $user): void
+    {
+        $shift = Shift::create([
+            'name' => 'Eight To Five No Break',
+            'time_in' => '08:00', 'break_out' => null, 'break_in' => null, 'time_out' => '17:00',
+            'crosses_midnight' => false, 'is_active' => true,
+        ]);
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse(self::DATE)->subDay(), null, null, null, [0, 1, 2, 3, 4, 5, 6], true
+        );
+    }
+
     /** @param  list<string>  $times  H:i on the shift date */
     private function resolve(array $times, ?WorkSchedule $schedule = null): array
     {
@@ -693,6 +706,218 @@ class AttendanceComputationTest extends TestCase
         $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
 
         $this->assertSame(0, $records[$day]['tardiness']);
+        $this->assertSame(0, $records[$day]['undertime']);
+    }
+
+    /**
+     * A no-break (2-punch: am_in + pm_out only) shift has no am_out/pm_in
+     * columns at all, so the with-break-only imputation logic could never
+     * fire for it - PM Out proving the day happened is the only possible
+     * sibling proof for a missing AM In, and the imputed block is the full
+     * workStart->workEnd span since there's no half-day midpoint to anchor to.
+     */
+    public function test_imputed_late_minutes_covers_a_missing_am_in_on_a_no_break_shift(): void
+    {
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            null, null, null, '17:00:00', self::DATE, $this->specDay(noBreak: true)
+        );
+
+        $this->assertSame(540, $mins); // 08:00 -> 17:00
+    }
+
+    public function test_imputed_undertime_minutes_stays_zero_before_a_no_break_shift_ends(): void
+    {
+        Carbon::setTestNow(self::DATE.' 16:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $this->specDay(noBreak: true)
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(0, $mins);
+    }
+
+    public function test_imputed_undertime_minutes_covers_a_missing_pm_out_on_a_no_break_shift_after_it_ends(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $this->specDay(noBreak: true)
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(540, $mins); // 08:00 -> 17:00
+    }
+
+    /**
+     * A Field Work Shift's in_only/out_only schedule expects exactly one
+     * punch for the date - there is no sibling-proves-presence concept to
+     * impute against, even if noBreak also happens to be true on the row.
+     * Its own absence logic belongs entirely to
+     * WeeklyPunchPairReconciliationService.
+     */
+    public function test_no_break_imputation_never_applies_to_a_field_work_pair_schedule(): void
+    {
+        $inOnly = new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, true, false, 'in_only');
+        $outOnly = new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, true, false, 'out_only');
+
+        $late = (new DtrPunchResolver)->imputedLateMinutes(null, null, null, '17:00:00', self::DATE, $inOnly);
+
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $undertime = (new DtrPunchResolver)->imputedUndertimeMinutes('08:00:00', null, null, null, self::DATE, $outOnly);
+        Carbon::setTestNow();
+
+        $this->assertSame(0, $late);
+        $this->assertSame(0, $undertime);
+    }
+
+    /** End-to-end: Form48ExportService must apply the same no-break imputation via its real call-site wiring. */
+    public function test_form48_export_imputes_late_minutes_for_a_missing_am_in_on_a_no_break_shift(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToFiveNoBreakShift($user);
+
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => null,
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'missing_in',
+            'source' => 'biometric',
+        ]);
+
+        $day = (int) Carbon::parse(self::DATE)->day;
+        $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
+
+        Carbon::setTestNow();
+
+        $this->assertSame(540, $records[$day]['tardiness']);
+        $this->assertSame(0, $records[$day]['undertime']);
+    }
+
+    /**
+     * Regression for a real reported case (BULAMBOT, FRANIE): PM In missing
+     * while PM Out is present (proving the day ended) is the mirror of the
+     * existing AM-in-missing case - an uncertain START of a segment, charged
+     * as late for the full fixed lunchReturn->workEnd block, not undertime.
+     */
+    public function test_imputed_late_minutes_covers_a_missing_pm_in_with_pm_out_present(): void
+    {
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:56:00', '12:02:00', null, '17:00:00', self::DATE, $this->specDay()
+        );
+
+        $this->assertSame(240, $mins); // 13:00 -> 17:00
+    }
+
+    public function test_imputed_undertime_minutes_stays_zero_for_a_missing_am_out_before_morning_end(): void
+    {
+        Carbon::setTestNow(self::DATE.' 10:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $this->specDay()
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(0, $mins);
+    }
+
+    /** Mirror of the existing PM-out-missing case: an uncertain END of the AM segment, charged as undertime. */
+    public function test_imputed_undertime_minutes_covers_a_missing_am_out_after_morning_end(): void
+    {
+        Carbon::setTestNow(self::DATE.' 12:30:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $this->specDay()
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $mins); // 08:00 -> 12:00 (specDay's morningEnd)
+    }
+
+    /**
+     * The "Incomplete Logs" shape (am_in + pm_out present, am_out + pm_in
+     * missing) now imputes both components independently and additively -
+     * confirms neither new check interferes with the other.
+     */
+    public function test_imputed_late_and_undertime_both_apply_independently_for_opposite_corner_gaps(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $late = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:27:00', null, null, '16:02:00', self::DATE, $this->specDay()
+        );
+        $undertime = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '07:27:00', null, null, '16:02:00', self::DATE, $this->specDay()
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $late);      // lunchReturn(13:00) -> workEnd(17:00), PM-in missing
+        $this->assertSame(240, $undertime); // workStart(08:00) -> morningEnd(12:00), AM-out missing
+    }
+
+    /**
+     * The new AM-out/PM-in checks must be guarded on punchRequirement itself,
+     * not just on which columns happen to be null - an out_only day
+     * genuinely populates time_out_pm while time_in_pm stays structurally
+     * null, which would otherwise false-positive the new PM-in-missing check.
+     */
+    public function test_new_imputation_shapes_never_apply_to_a_field_work_pair_schedule(): void
+    {
+        $inOnly = new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, false, false, 'in_only');
+        $outOnly = new WorkSchedule('08:00', '13:00', '17:00', '12:00', '14:00', false, false, false, 'out_only');
+
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        // in_only: am_in present, am_out genuinely absent - must not impute undertime.
+        $undertime = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $inOnly
+        );
+        // out_only: pm_out present, pm_in structurally always null - must not impute late.
+        $late = (new DtrPunchResolver)->imputedLateMinutes(
+            null, null, null, '17:00:00', self::DATE, $outOnly
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(0, $undertime);
+        $this->assertSame(0, $late);
+    }
+
+    /** End-to-end: Form48ExportService must apply the missing-PM-in imputation via its real call-site wiring. */
+    public function test_form48_export_imputes_late_minutes_for_a_missing_pm_in_dtr_row(): void
+    {
+        $user = $this->createEmployee();
+        $this->assignEightToTwelveThirteenToFiveShift($user);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => null,
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'status' => 'missing_in',
+            'source' => 'biometric',
+        ]);
+
+        $day = (int) Carbon::parse(self::DATE)->day;
+        $records = app(Form48ExportService::class)->buildRecords($user->id, self::DATE, self::DATE);
+
+        $this->assertSame(240, $records[$day]['tardiness']);
         $this->assertSame(0, $records[$day]['undertime']);
     }
 

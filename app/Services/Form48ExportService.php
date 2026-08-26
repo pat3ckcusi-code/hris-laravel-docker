@@ -100,10 +100,10 @@ class Form48ExportService
                 'pm_in' => $dtr->time_in_pm,
                 'pm_out' => $dtr->time_out_pm,
                 'tardiness' => $dtr->late_minutes ?: $this->punchResolver->imputedLateMinutes(
-                    $dtr->time_in_am, $dtr->time_out_am, $dateStr, $daySchedule
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $daySchedule
                 ),
                 'undertime' => $dtr->undertime_minutes ?: $this->punchResolver->imputedUndertimeMinutes(
-                    $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $daySchedule
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $daySchedule
                 ),
             ];
         }
@@ -173,10 +173,10 @@ class Form48ExportService
                 'pm_in' => $resolved['pm_in'],
                 'pm_out' => $resolved['pm_out'],
                 'tardiness' => $resolved['late_minutes'] ?: $this->punchResolver->imputedLateMinutes(
-                    $resolved['am_in'], $resolved['am_out'], $date, $daySchedule
+                    $resolved['am_in'], $resolved['am_out'], $resolved['pm_in'], $resolved['pm_out'], $date, $daySchedule
                 ),
                 'undertime' => $resolved['undertime_minutes'] ?: $this->punchResolver->imputedUndertimeMinutes(
-                    $resolved['pm_in'], $resolved['pm_out'], $date, $daySchedule
+                    $resolved['am_in'], $resolved['am_out'], $resolved['pm_in'], $resolved['pm_out'], $date, $daySchedule
                 ),
             ];
         }

@@ -93,49 +93,136 @@ class DtrPunchResolver
     }
 
     /**
-     * Display/reporting-only estimate for a missing arrival punch: when the
-     * AM Out punch exists (proving the employee was there that morning) but
-     * AM In never got recorded, charge the full workStart→morningEnd block as
-     * late rather than leaving it at 0. Unlike resolve(), this never runs at
-     * import time and is never persisted - the AM Out punch already existing
-     * is itself the "this half-day is over" signal, so no separate now()
-     * gate is needed the way imputedUndertimeMinutes() needs one.
+     * Display/reporting-only estimate for a missing arrival punch, covering
+     * both schedule shapes. An uncertain START of a segment (an IN punch
+     * missing while its OUT sibling proves the segment happened) is always
+     * charged here, as late - never as undertime, which is reserved for an
+     * uncertain END of a segment (see imputedUndertimeMinutes()).
+     *
+     *  - With-break (4-slot): sums two independent components, mirroring
+     *    LateCalculator's own additive am_in/pm_in formula -
+     *      AM In missing, AM Out present -> impute workStart→morningEnd.
+     *      PM In missing, PM Out present -> impute lunchReturn→workEnd.
+     *    Either, both, or neither may apply on a given day.
+     *  - No-break (2-slot, punchRequirement 'both'): there is no AM Out/PM In
+     *    at all, so the only possible sibling proof is PM Out - when it
+     *    exists but AM In never got recorded, charge the full
+     *    workStart→workEnd span (a 2-punch schedule has no half-day midpoint
+     *    to anchor to).
+     *
+     * Never applies to an in_only/out_only (Field Work Shift) schedule, even
+     * if noBreak also happens to be true on that row: that shape expects
+     * exactly ONE punch for the date, so there is no sibling-proves-presence
+     * concept - its own absence/confirmation logic belongs entirely to
+     * WeeklyPunchPairReconciliationService. Guarded explicitly rather than
+     * relying on those schedules' columns happening to stay null, since an
+     * out_only day genuinely populates time_out_pm.
+     *
+     * Unlike resolve(), this never runs at import time and is never
+     * persisted - each sibling punch already existing is itself the "this
+     * segment is over" signal, so no separate now() gate is needed the way
+     * imputedUndertimeMinutes() needs one.
      */
-    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, string $shiftDate, WorkSchedule $schedule): int
+    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
     {
-        if ($timeInAm || ! $timeOutAm) {
+        if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
 
-        $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
-        $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+        if ($schedule->noBreak) {
+            if ($timeInAm || ! $timeOutPm) {
+                return 0;
+            }
 
-        return (int) $startRef->diffInMinutes($breakOutRef);
+            $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+            $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+            return (int) $startRef->diffInMinutes($endRef);
+        }
+
+        $minutes = 0;
+
+        if (! $timeInAm && $timeOutAm) {
+            $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+            $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+            $minutes += (int) $startRef->diffInMinutes($breakOutRef);
+        }
+
+        if (! $timeInPm && $timeOutPm) {
+            $lunchReturnRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+            $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+            $minutes += (int) $lunchReturnRef->diffInMinutes($endRef);
+        }
+
+        return $minutes;
     }
 
     /**
-     * Display/reporting-only estimate for a missing departure punch: when PM
-     * In exists but PM Out never got recorded, charge the full
-     * lunchReturn→workEnd block as undertime rather than leaving it at 0.
-     * Gated on the shift having already ended, since (unlike resolve(), which
-     * only ever runs once punches exist) this may be evaluated mid-shift and
-     * can't assume a punch is "missing" before its window has passed.
+     * Display/reporting-only estimate for a missing departure punch,
+     * covering both schedule shapes. An uncertain END of a segment (an OUT
+     * punch missing while its IN sibling proves the segment started) is
+     * always charged here, as undertime - the mirror of
+     * imputedLateMinutes().
+     *
+     *  - With-break (4-slot): sums two independent components, mirroring
+     *    UndertimeCalculator's own additive am_out/pm_out formula -
+     *      AM Out missing, AM In present -> impute workStart→morningEnd,
+     *      once the AM half's own window (morningEnd) has passed - can't
+     *      assume "missing" before lunch would even have started.
+     *      PM Out missing, PM In present -> impute lunchReturn→workEnd,
+     *      once the shift's own end has passed.
+     *    Either, both, or neither may apply on a given day.
+     *  - No-break (2-slot, punchRequirement 'both'): there is no PM In/AM Out
+     *    at all, so the only possible sibling proof is AM In - when it
+     *    exists but PM Out never got recorded, charge the full
+     *    workStart→workEnd span.
+     *
+     * Never applies to an in_only/out_only schedule (see
+     * imputedLateMinutes()).
      */
-    public function imputedUndertimeMinutes(?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
+    public function imputedUndertimeMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
     {
-        if (! $timeInPm || $timeOutPm) {
+        if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
 
-        $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+        if ($schedule->noBreak) {
+            if (! $timeInAm || $timeOutPm) {
+                return 0;
+            }
 
-        if (Carbon::now()->lt($endRef)) {
-            return 0;
+            $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+            if (Carbon::now()->lt($endRef)) {
+                return 0;
+            }
+
+            $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+
+            return (int) $startRef->diffInMinutes($endRef);
         }
 
-        $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+        $minutes = 0;
 
-        return (int) $breakInRef->diffInMinutes($endRef);
+        if ($timeInAm && ! $timeOutAm) {
+            $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+
+            if (Carbon::now()->gte($breakOutRef)) {
+                $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+                $minutes += (int) $startRef->diffInMinutes($breakOutRef);
+            }
+        }
+
+        if ($timeInPm && ! $timeOutPm) {
+            $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+            if (Carbon::now()->gte($endRef)) {
+                $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+                $minutes += (int) $breakInRef->diffInMinutes($endRef);
+            }
+        }
+
+        return $minutes;
     }
 
     private function fmt(?Carbon $time): ?string

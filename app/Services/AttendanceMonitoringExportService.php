@@ -498,7 +498,7 @@ class AttendanceMonitoringExportService
                 if (($suspension = $suspensionsByDate->get($dateStr)) !== null && ! $empIsFrontlineExempt) {
                     [$schedule] = $schedule->applySuspension($suspension->suspension_time);
                 }
-                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_pm, $d->time_out_pm, $dateStr, $schedule);
+                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule);
 
                 if ($mins > 0) {
                     $phantomUndertimeByDate[$dateStr] = $mins;
