@@ -81,20 +81,46 @@ class LeaveManagerController extends Controller
         $query = LeaveRequest::with(['user', 'pendingCancellationDates', 'leaveDates'])
             ->where('status', 'approved');
 
-        $month = $request->query('month', date('Y-m'));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = date('Y-m');
-        }
-        $start = $month.'-01';
-        $end = date('Y-m-t', strtotime($start));
+        // A missing param (first load) defaults to the current year/month; the "All years"/
+        // "All months" filter options submit the literal string 'all' rather than an empty
+        // value, since this app's web middleware group (ConvertEmptyStringsToNull) collapses
+        // an explicit empty query value to null indistinguishably from the key being absent.
+        $yearParam = $request->query('year');
+        $monthParam = $request->query('month');
 
-        $query->where(function ($q) use ($start, $end) {
-            $q->whereBetween('start_date', [$start, $end])
-                ->orWhereBetween('end_date', [$start, $end])
-                ->orWhere(function ($q2) use ($start, $end) {
-                    $q2->where('start_date', '<=', $start)->where('end_date', '>=', $end);
-                });
-        });
+        $year = $yearParam === null
+            ? (int) now()->year
+            : (($yearParam !== 'all' && ctype_digit((string) $yearParam)) ? (int) $yearParam : null);
+
+        $month = $monthParam === null
+            ? (int) now()->month
+            : (($monthParam !== 'all' && ctype_digit((string) $monthParam) && (int) $monthParam >= 1 && (int) $monthParam <= 12) ? (int) $monthParam : null);
+
+        if ($year !== null && $month !== null) {
+            $start = sprintf('%04d-%02d-01', $year, $month);
+            $end = date('Y-m-t', strtotime($start));
+            $query->where(function ($q) use ($start, $end) {
+                $q->whereBetween('start_date', [$start, $end])
+                    ->orWhereBetween('end_date', [$start, $end])
+                    ->orWhere(function ($q2) use ($start, $end) {
+                        $q2->where('start_date', '<=', $start)->where('end_date', '>=', $end);
+                    });
+            });
+        } elseif ($year !== null) {
+            $start = sprintf('%04d-01-01', $year);
+            $end = sprintf('%04d-12-31', $year);
+            $query->where(function ($q) use ($start, $end) {
+                $q->whereBetween('start_date', [$start, $end])
+                    ->orWhereBetween('end_date', [$start, $end])
+                    ->orWhere(function ($q2) use ($start, $end) {
+                        $q2->where('start_date', '<=', $start)->where('end_date', '>=', $end);
+                    });
+            });
+        } elseif ($month !== null) {
+            $query->where(function ($q) use ($month) {
+                $q->whereMonth('start_date', $month)->orWhereMonth('end_date', $month);
+            });
+        }
 
         $emp = $request->query('emp');
         if ($emp) {
@@ -141,9 +167,14 @@ class LeaveManagerController extends Controller
 
         $leaves = $query->orderBy('date_filed', 'desc')->paginate(25);
 
+        $currentYearNow = (int) now()->year;
+        $years = range($currentYearNow, max(2020, $currentYearNow - 6));
+
         return view('leave-manager.approved-leaves', [
             'leaves' => $leaves,
             'departments' => $departments,
+            'years' => $years,
+            'currentYear' => $year,
             'currentMonth' => $month,
         ]);
     }
@@ -1072,7 +1103,7 @@ class LeaveManagerController extends Controller
         $deduction = (float) ($data['deduction_days'] ?? 0);
         $deductFrom = $data['deduct_from'] ?? 'NONE';
 
-        $balance = DB::transaction(function () use ($data, $deduction, $deductFrom, $request) {
+        $balance = DB::transaction(function () use ($data, $deduction, $deductFrom) {
             $balance = LeaveBalance::where('id', $data['id'])->lockForUpdate()->firstOrFail();
 
             if ($deduction > 0 && $deductFrom !== 'NONE') {

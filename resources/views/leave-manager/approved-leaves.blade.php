@@ -14,22 +14,25 @@
     </header>
 
     <div class="card-body">
-        <p class="ll-edit-hint"><i class="fas fa-circle-info fa-fw"></i> Use the filters below to narrow by month, leave type, or employee.</p>
+        <p class="ll-edit-hint"><i class="fas fa-circle-info fa-fw"></i> Use the filters below to narrow by year, month, leave type, or employee.</p>
 
         <div class="ll-filter-bar">
-            @php
-                $monthOptions = [];
-                for ($i = 0; $i < 12; $i++) {
-                    $m     = date('Y-m', strtotime("-{$i} months"));
-                    $label = date('F Y', strtotime($m . '-01'));
-                    $monthOptions[$m] = $label;
-                }
-            @endphp
+            <div class="ll-field">
+                <label for="filter-year">Year</label>
+                <select id="filter-year" class="ll-select">
+                    <option value="all" @selected($currentYear === null)>All years</option>
+                    @foreach($years as $y)
+                        <option value="{{ $y }}" @selected($y == $currentYear)>{{ $y }}</option>
+                    @endforeach
+                </select>
+            </div>
+
             <div class="ll-field">
                 <label for="filter-month">Month</label>
                 <select id="filter-month" class="ll-select">
-                    @foreach($monthOptions as $val => $lbl)
-                        <option value="{{ $val }}" @if($val === $currentMonth) selected @endif>{{ $lbl }}</option>
+                    <option value="all" @selected($currentMonth === null)>All months</option>
+                    @foreach(['January','February','March','April','May','June','July','August','September','October','November','December'] as $mi => $mn)
+                        <option value="{{ $mi + 1 }}" @selected($mi + 1 == $currentMonth)>{{ $mn }}</option>
                     @endforeach
                 </select>
             </div>
@@ -214,17 +217,19 @@ $(function () {
 
     // ── Filter navigation ──────────────────────────────────────────────
     function buildUrl() {
+        var year  = $('#filter-year').val()  || '';
         var month = $('#filter-month').val() || '';
         var type  = $('#filter-type').val()  || '';
         var emp   = $('#alEmployee').val()   || '';
         var parts = [];
-        if (month) parts.push('month=' + encodeURIComponent(month));
-        if (type)  parts.push('type='  + encodeURIComponent(type));
-        if (emp)   parts.push('emp='   + encodeURIComponent(emp));
+        parts.push('year='  + encodeURIComponent(year));
+        parts.push('month=' + encodeURIComponent(month));
+        if (type) parts.push('type=' + encodeURIComponent(type));
+        if (emp)  parts.push('emp='  + encodeURIComponent(emp));
         return '{{ route('leave-manager.approved-leaves') }}' + (parts.length ? '?' + parts.join('&') : '');
     }
 
-    $(document).on('change', '#filter-month, #filter-type', function () {
+    $(document).on('change', '#filter-year, #filter-month, #filter-type', function () {
         window.location.href = buildUrl();
     });
 
