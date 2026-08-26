@@ -5,8 +5,10 @@ namespace App\Providers;
 use App\Auth\ExpiringRememberTokenUserProvider;
 use App\Events\HolidayCreated;
 use App\Listeners\CancelLeavesOnHoliday;
+use App\Models\EsignatureSigning;
 use App\Models\Setting;
 use App\Models\User;
+use App\Observers\EsignatureSigningObserver;
 use App\Observers\UserObserver;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -50,6 +52,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         User::observe(UserObserver::class);
+        EsignatureSigning::observe(EsignatureSigningObserver::class);
 
         Event::listen(HolidayCreated::class, CancelLeavesOnHoliday::class);
 

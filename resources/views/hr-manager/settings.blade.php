@@ -107,7 +107,7 @@
                     <input type="hidden" name="frontdesk_enabled" value="0">
                     <input type="checkbox" id="frontdesk_enabled" name="frontdesk_enabled" value="1"
                            @checked($settings && $settings->frontdesk_enabled)>
-                    <label for="frontdesk_enabled">Front Desk / Document Requests Module</label>
+                    <label for="frontdesk_enabled">Document Signing Module</label>
                 </div>
                 <div class="toggle-row">
                     <input type="hidden" name="payroll_enabled" value="0">

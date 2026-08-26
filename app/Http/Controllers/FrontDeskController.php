@@ -3,16 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\DocumentRequest;
+use App\Models\EsignatureSigning;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DocumentPlaceholderResolver;
+use App\Services\DocumentRequestEsignatureService;
 use App\Services\DocumentWordExportService;
+use App\Support\RoleNormalizer;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FrontDeskController extends Controller
@@ -87,7 +91,14 @@ class FrontDeskController extends Controller
     {
         $this->ensureFrontDesk($request);
 
-        $docRequest = DocumentRequest::query()->findOrFail($id);
+        $docRequest = DocumentRequest::with('documentType')->findOrFail($id);
+
+        try {
+            $this->assertSignedIfRequired($docRequest);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
         $docRequest->status = 'Completed';
         $docRequest->save();
 
@@ -135,7 +146,7 @@ class FrontDeskController extends Controller
         ]);
     }
 
-    public function acceptRequest(Request $request): JsonResponse
+    public function acceptRequest(Request $request, DocumentRequestEsignatureService $esignatureService): JsonResponse
     {
         $this->ensureFrontDesk($request);
 
@@ -144,7 +155,7 @@ class FrontDeskController extends Controller
             'remarks' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $documentRequest = DocumentRequest::query()->findOrFail($validated['request_id']);
+        $documentRequest = DocumentRequest::with('documentType')->findOrFail($validated['request_id']);
         $actor = (string) ($request->user()->name ?: $request->user()->email ?: 'System');
 
         $documentRequest->status = 'Accepted';
@@ -155,9 +166,24 @@ class FrontDeskController extends Controller
 
         $this->sendStatusEmail($documentRequest, 'Document Request Accepted', 'Accepted');
 
+        $forwarded = false;
+        if ($documentRequest->documentType?->requires_esignature) {
+            try {
+                $esignatureService->forward($documentRequest, $request->user());
+                $forwarded = true;
+            } catch (\RuntimeException $e) {
+                // Never block acceptance on a forwarding hiccup - the manual
+                // "Forward for Signature" button on Approved Requests remains
+                // available as a retry, same as this codebase's other
+                // auto-attempt-silently e-signature dispatch points.
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Request accepted and employee has been notified.',
+            'message' => $forwarded
+                ? 'Request accepted and forwarded to the HR Manager for signature.'
+                : 'Request accepted and employee has been notified.',
         ]);
     }
 
@@ -196,7 +222,14 @@ class FrontDeskController extends Controller
             'remarks' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $documentRequest = DocumentRequest::query()->findOrFail($validated['request_id']);
+        $documentRequest = DocumentRequest::with('documentType')->findOrFail($validated['request_id']);
+
+        try {
+            $this->assertSignedIfRequired($documentRequest);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
         $actor = (string) ($request->user()->name ?: $request->user()->email ?: 'System');
 
         $documentRequest->status = 'Completed';
@@ -215,12 +248,86 @@ class FrontDeskController extends Controller
         ]);
     }
 
-    public function printRequest(Request $request, int $id): View
+    public function forwardForSignature(Request $request, DocumentRequestEsignatureService $esignatureService): JsonResponse
     {
         $this->ensureFrontDesk($request);
 
+        $validated = $request->validate([
+            'request_id' => ['required', 'integer', 'exists:document_requests,id'],
+        ]);
+
+        $documentRequest = DocumentRequest::query()->findOrFail($validated['request_id']);
+
+        try {
+            $esignatureService->forward($documentRequest, $request->user());
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $hrManagers = User::whereRaw(RoleNormalizer::rawExpression()." = 'hr manager'")->get();
+
+        foreach ($hrManagers as $hrManager) {
+            try {
+                $hrManager->notify(new HrisTransactionNotification(
+                    requestType: 'Document Request Signature',
+                    status: 'Forwarded',
+                    details: [
+                        'Document Type' => $documentRequest->document_type ?? 'N/A',
+                        'Employee' => $documentRequest->employee?->name ?? $documentRequest->EmpNo,
+                    ],
+                ));
+            } catch (\Exception $ex) {
+                // do not block on mail failure
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document forwarded to the HR Manager for signature.',
+        ]);
+    }
+
+    public function reopenSignatureRequest(Request $request, DocumentRequestEsignatureService $esignatureService): JsonResponse
+    {
+        $this->ensureFrontDesk($request);
+
+        $validated = $request->validate([
+            'request_id' => ['required', 'integer', 'exists:document_requests,id'],
+        ]);
+
+        $documentRequest = DocumentRequest::query()->findOrFail($validated['request_id']);
+
+        try {
+            $esignatureService->reopen($documentRequest, $request->user());
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document reopened. You may correct it and forward it again.',
+        ]);
+    }
+
+    public function printRequest(Request $request, int $id): View|StreamedResponse
+    {
+        $this->ensureFrontDeskOrSigningHrManager($request);
+
         $documentRequest = DocumentRequest::with(['employee.department', 'documentType'])
             ->findOrFail($id);
+
+        $signing = EsignatureSigning::where('signable_type', DocumentRequest::class)
+            ->where('signable_id', $documentRequest->id)
+            ->whereNull('field_name')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->latest()
+            ->first();
+
+        if ($signing && $signing->signed_path && Storage::disk('esignature')->exists($signing->signed_path)) {
+            return response()->streamDownload(function () use ($signing) {
+                fpassthru(fopen(Storage::disk('esignature')->path($signing->signed_path), 'rb'));
+            }, "document-request-{$documentRequest->id}-signed.pdf", ['Content-Type' => 'application/pdf']);
+        }
 
         $template = $documentRequest->documentType->parts ?? [];
 
@@ -254,9 +361,17 @@ class FrontDeskController extends Controller
             'remarks' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $documentRequest = DocumentRequest::query()->findOrFail($validated['request_id']);
+        $documentRequest = DocumentRequest::with('documentType')->findOrFail($validated['request_id']);
         $status = $validated['status'];
         $actor = (string) ($request->user()->name ?: $request->user()->email ?: 'System');
+
+        if ($status === 'Completed') {
+            try {
+                $this->assertSignedIfRequired($documentRequest);
+            } catch (\RuntimeException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+        }
 
         $documentRequest->status = $status;
         $documentRequest->hr_notes = $validated['remarks'] ?? $documentRequest->hr_notes;
@@ -343,7 +458,8 @@ class FrontDeskController extends Controller
                 'document_requests.*',
                 'users.name as employee_name',
                 'departments.Dept_name as department_name',
-            ]);
+            ])
+            ->with(['documentType', 'esignatureSignings']);
 
         if (! empty($filters['date'])) {
             $query->whereDate('document_requests.requested_on', $filters['date']);
@@ -395,6 +511,12 @@ class FrontDeskController extends Controller
 
     private function transformRequest(DocumentRequest $requestItem): array
     {
+        $requiresEsignature = (bool) $requestItem->documentType?->requires_esignature;
+
+        $isSigned = $requestItem->relationLoaded('esignatureSignings')
+            ? $requestItem->esignatureSignings->contains(fn (EsignatureSigning $s) => $s->field_name === null && $s->status === EsignatureSigning::STATUS_COMPLETED)
+            : false;
+
         return [
             'id' => $requestItem->id,
             'emp_no' => $requestItem->EmpNo,
@@ -405,6 +527,10 @@ class FrontDeskController extends Controller
             'requested_on' => optional($requestItem->requested_on)->format('M d, Y h:i A') ?: '-',
             'status' => (string) $requestItem->status,
             'remarks' => $requestItem->hr_notes ?: '-',
+            'requires_esignature' => $requiresEsignature,
+            'signature_status' => $requestItem->signature_status,
+            'is_signed' => $isSigned,
+            'signature_review_remarks' => $requestItem->signature_review_remarks,
         ];
     }
 
@@ -414,9 +540,46 @@ class FrontDeskController extends Controller
         abort_unless($role === 'front desk', 403, 'Only Front Desk users can access this section.');
     }
 
+    /**
+     * printRequest() is reachable by Front Desk (its usual reviewer) or any HR
+     * Manager (who needs to preview an e-signature-eligible document before
+     * signing it, and download the signed result afterward) - see
+     * DocumentRequestEsignatureService's "Document Signing" queue.
+     */
+    private function ensureFrontDeskOrSigningHrManager(Request $request): void
+    {
+        $role = $this->normalizeRole((string) $request->user()->access_level);
+        abort_unless(in_array($role, ['front desk', 'hr manager'], true), 403, 'You do not have access to this document.');
+    }
+
     private function normalizeRole(string $role): string
     {
         return strtolower(trim($role));
+    }
+
+    /**
+     * Blocks Completed transitions (completeRequest(), complete(), and
+     * updateStatus() when its status='Completed') for a document type that
+     * requires HR e-signature until a completed base signing actually
+     * exists - without this, updateStatus() in particular is a raw setter
+     * that could otherwise bypass the whole forward/sign flow with one
+     * request.
+     */
+    private function assertSignedIfRequired(DocumentRequest $documentRequest): void
+    {
+        if (! $documentRequest->documentType?->requires_esignature) {
+            return;
+        }
+
+        $isSigned = EsignatureSigning::where('signable_type', DocumentRequest::class)
+            ->where('signable_id', $documentRequest->id)
+            ->whereNull('field_name')
+            ->where('status', EsignatureSigning::STATUS_COMPLETED)
+            ->exists();
+
+        if (! $isSigned) {
+            throw new \RuntimeException('This document requires the HR Manager\'s e-signature before it can be completed.');
+        }
     }
 
     private function sendStatusEmail(DocumentRequest $documentRequest, string $subject, string $statusLabel): void

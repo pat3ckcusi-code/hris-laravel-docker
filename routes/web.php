@@ -201,6 +201,10 @@ Route::middleware('auth')->group(function () {
         ->name('front-desk.complete');
     Route::post('/requests/{id}/complete', [FrontDeskController::class, 'complete'])
         ->name('requests.complete');
+    Route::post('/dashboard/employee/front-desk/forward-for-signature', [FrontDeskController::class, 'forwardForSignature'])
+        ->name('front-desk.forward-for-signature');
+    Route::post('/dashboard/employee/front-desk/reopen-signature', [FrontDeskController::class, 'reopenSignatureRequest'])
+        ->name('front-desk.reopen-signature');
     Route::get('/dashboard/employee/front-desk/print/{id}', [FrontDeskController::class, 'printRequest'])
         ->name('front-desk.print-request');
     Route::get('/dashboard/employee/front-desk/word/{id}', [FrontDeskController::class, 'downloadWord'])
@@ -599,8 +603,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.frontdesk.data');
     Route::post('/dashboard/hr-manager/frontdesk/{documentRequest}/action', [HRManagerController::class, 'frontdeskAction'])
         ->name('hr-manager.frontdesk.action');
-    Route::post('/dashboard/hr-manager/frontdesk/{documentRequest}/complete', [HRManagerController::class, 'frontdeskComplete'])
-        ->name('hr-manager.frontdesk.complete');
     Route::get('/dashboard/hr-manager/audit/data', [HRManagerController::class, 'auditData'])
         ->name('hr-manager.audit.data');
     Route::get('/dashboard/hr-manager/employees/filter', [HRManagerController::class, 'getEmployeesByFilter'])

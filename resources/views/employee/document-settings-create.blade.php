@@ -41,6 +41,10 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
 .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
 .sub-label { font-size: .8em; color: #6b7280; display: block; margin-bottom: 4px; font-weight: 500; }
 .alert-danger { background: #fee2e2; border: 1px solid #fca5a5; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; }
+.esign-callout { background: #fffbeb; border: 2px solid #d97706; border-radius: 8px; padding: 16px 18px; margin-top: 18px; }
+.esign-callout-label { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1em; color: #92400e; cursor: pointer; margin: 0; }
+.esign-callout-label input[type=checkbox] { width: 20px; height: 20px; accent-color: #d97706; cursor: pointer; flex-shrink: 0; }
+.esign-callout-hint { margin: 8px 0 0 30px; font-size: .85em; color: #b45309; }
 </style>
 
 <div class="fc">
@@ -216,6 +220,18 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
             <button type="button" id="add-sig" class="btn btn-success btn-sm" style="margin-top:4px;">
                 + Add Signatory
             </button>
+
+            <div class="esign-callout">
+                <label for="requires_esignature" class="esign-callout-label">
+                    <input type="checkbox" id="requires_esignature" name="requires_esignature" value="1"
+                           {{ old('requires_esignature') ? 'checked' : '' }}>
+                    <span><i class="fas fa-signature"></i> Require HR Manager e-signature</span>
+                </label>
+                <p class="esign-callout-hint">
+                    When enabled, an Accepted request of this type must be forwarded to and digitally
+                    signed (PNPKI) by the HR Manager before Front Desk can print and complete it.
+                </p>
+            </div>
         </div>
 
         {{-- ── Footer ──────────────────────────────────── --}}

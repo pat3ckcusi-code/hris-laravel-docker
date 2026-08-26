@@ -189,6 +189,9 @@ function downloadWord() {
             return implode(';', $out);
         };
 
+        /* Guards a missing/moved upload from ever showing a broken-image icon */
+        $imageExists = fn (?string $path): bool => $path && file_exists(public_path('storage/' . ltrim($path, '/')));
+
         /* Extract parts with defaults */
         $headerImage = $documentRequest->documentType->header_image ?? ($parts['header_image'] ?? null);
         
@@ -245,7 +248,7 @@ function downloadWord() {
     @endphp
 
     {{-- Header Image --}}
-    @if ($headerImage)
+    @if ($headerImage && $imageExists($headerImage))
         <div class="doc-header-img">
             <img src="{{ asset('storage/' . ltrim($headerImage, '/')) }}" alt="Header Banner">
         </div>
@@ -301,11 +304,11 @@ function downloadWord() {
     @endif
 
     {{-- Footer --}}
-    @if (($footerD['text'] ?? '') !== '' || $footerImage)
+    @if (($footerD['text'] ?? '') !== '' || ($footerImage && $imageExists($footerImage)))
         <div class="footer" style="{{ $css($footerD) }}">
             {!! nl2br(e($footerD['text'] ?? '')) !!}
         </div>
-        @if ($footerImage)
+        @if ($footerImage && $imageExists($footerImage))
             <div class="doc-footer-img">
                 <img src="{{ asset('storage/' . ltrim($footerImage, '/')) }}" alt="Footer Logo">
             </div>

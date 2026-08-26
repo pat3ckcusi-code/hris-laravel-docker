@@ -191,7 +191,7 @@
             ['section' => 'Operations'],
             ['label' => 'Records Management', 'icon' => 'records',      'route' => 'hr-manager.records',              'active' => ['hr-manager.records']],
             ['label' => 'Leave Management',   'icon' => 'leave',        'route' => 'hr-manager.leave',                'active' => ['hr-manager.leave']],
-            ['label' => 'Front Desk',         'icon' => 'frontdesk',    'route' => 'hr-manager.frontdesk',            'active' => ['hr-manager.frontdesk']],
+            ['label' => 'Document Signing',   'icon' => 'frontdesk',    'route' => 'hr-manager.frontdesk',            'active' => ['hr-manager.frontdesk'], 'badge' => 'pending_document_signatures'],
             ['label' => 'Payroll Overview',   'icon' => 'payroll_runs', 'route' => 'hr-manager.payroll.overview',     'active' => ['hr-manager.payroll.overview*']],
 
             ['section' => 'Attendance'],
@@ -497,6 +497,7 @@
         },
         'pending_document_requests' => fn () => \App\Models\DocumentRequest::where('status', 'Requested')->count(),
         'approved_document_requests' => fn () => \App\Models\DocumentRequest::whereIn('status', ['Accepted', 'Completed'])->count(),
+        'pending_document_signatures' => fn () => app(\App\Services\DocumentRequestEsignatureService::class)->forwardedForSigningQuery()->count(),
     ];
 
     // ── OIC: merge Self-Service (employee) + Department Management (OIC role) ──

@@ -237,7 +237,8 @@
 }
 
 .status-approved,
-.status-completed {
+.status-completed,
+.status-signed {
     background: #e2f5e9;
     color: #1f7a38;
 }
@@ -249,9 +250,130 @@
 }
 
 .status-pending,
-.status-requested {
+.status-requested,
+.status-awaiting_signature {
     background: #fff4d9;
     color: #9c6b00;
+}
+
+/* ── Document Signing (HR Manager) ───────────────────────────── */
+
+.ds-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1rem 0 1.25rem;
+}
+
+.ds-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    box-shadow: 0 6px 18px rgba(13, 33, 62, 0.06);
+}
+
+.ds-stat-icon {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+}
+
+.ds-stat-card p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+}
+
+.ds-stat-card h3 {
+    margin: 0.2rem 0 0;
+    color: #1f2d3d;
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.ds-stat-pending .ds-stat-icon { background: #fff4d9; color: #9c6b00; }
+.ds-stat-signed .ds-stat-icon { background: #e2f5e9; color: #1f7a38; }
+.ds-stat-rejected .ds-stat-icon { background: #fde7e9; color: #9f2d3c; }
+
+[data-module="frontdesk"] .hrm-table-wrap {
+    box-shadow: 0 6px 18px rgba(13, 33, 62, 0.06);
+}
+
+[data-module="frontdesk"] .hrm-table tbody tr:nth-child(even) {
+    background: #fafbfd;
+}
+
+[data-module="frontdesk"] .hrm-table tbody tr:hover {
+    background: #f0f9f8;
+}
+
+[data-module="frontdesk"] .hrm-table td {
+    vertical-align: middle;
+}
+
+.hrm-frontdesk-preview,
+.hrm-frontdesk-sign,
+.hrm-frontdesk-reject {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.hrm-frontdesk-preview {
+    background: #eef2f7;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.hrm-frontdesk-sign {
+    background: linear-gradient(135deg, #0f766e, #2dd4bf);
+    color: #fff;
+    border-color: transparent;
+}
+
+.hrm-frontdesk-reject {
+    background: linear-gradient(135deg, #b91c1c, #ef4444);
+    color: #fff;
+    border-color: transparent;
+}
+
+.hrm-frontdesk-sign:hover,
+.hrm-frontdesk-reject:hover {
+    filter: brightness(1.06);
+}
+
+.ds-empty {
+    text-align: center;
+    padding: 2.75rem 1rem;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.ds-empty i {
+    font-size: 2rem;
+    color: #cbd5e1;
+    margin-bottom: 0.6rem;
+    display: block;
+}
+
+@media (max-width: 900px) {
+    .ds-stats {
+        grid-template-columns: 1fr;
+    }
 }
 
 .hrm-form-card {

@@ -410,6 +410,12 @@
     color: #991b1b;
 }
 
+.badge-pending {
+    background: #fef3c7;
+    color: #b45309;
+    font-size: 11px;
+}
+
 .badge-default {
     background: #e2e8f0;
     color: #334155;
@@ -462,6 +468,14 @@
 
 .fd-complete-btn {
     background: linear-gradient(135deg, #1d4ed8, #38bdf8);
+}
+
+.fd-forward-btn {
+    background: linear-gradient(135deg, #0f766e, #2dd4bf);
+}
+
+.fd-reopen-btn {
+    background: linear-gradient(135deg, #b45309, #f59e0b);
 }
 
 /* ── SweetAlert2 overrides ───────────────────────────────────── */

@@ -55,17 +55,49 @@
                                 <td>{{ $request['document_type'] }}</td>
                                 <td class="cell-truncate" title="{{ $request['purpose'] }}">{{ $request['purpose'] }}</td>
                                 <td>{{ $request['requested_on'] }}</td>
-                                <td><span class="request-badge badge-approved">{{ $request['status'] }}</span></td>
-                                <td class="cell-truncate" title="{{ $request['remarks'] }}">{{ $request['remarks'] }}</td>
+                                <td>
+                                    <span class="request-badge badge-approved">{{ $request['status'] }}</span>
+                                    @if ($request['requires_esignature'] && $request['signature_status'] === 'forwarded' && ! $request['is_signed'])
+                                        <br><span class="request-badge badge-pending">Awaiting HR Manager Signature</span>
+                                    @elseif ($request['requires_esignature'] && $request['signature_status'] === 'rejected')
+                                        <br><span class="request-badge badge-rejected">Signature Rejected</span>
+                                    @endif
+                                </td>
+                                <td class="cell-truncate" title="{{ $request['signature_status'] === 'rejected' ? $request['signature_review_remarks'] : $request['remarks'] }}">
+                                    {{ $request['signature_status'] === 'rejected' ? $request['signature_review_remarks'] : $request['remarks'] }}
+                                </td>
                                 <td>
                                     <div class="fd-actions">
-                                        <a href="{{ url('/dashboard/employee/front-desk/print/' . $request['id']) }}"
-                                           class="fd-action-btn fd-print-btn"
-                                           target="_blank"
-                                           rel="noopener noreferrer">
-                                            <i class="fas fa-print"></i> Print
-                                        </a>
-                                        @if ($request['status'] !== 'Completed')
+                                        @if (! $request['requires_esignature'] || $request['is_signed'])
+                                            <a href="{{ url('/dashboard/employee/front-desk/print/' . $request['id']) }}"
+                                               class="fd-action-btn fd-print-btn"
+                                               target="_blank"
+                                               rel="noopener noreferrer">
+                                                <i class="fas fa-print"></i> Print
+                                            </a>
+                                        @endif
+
+                                        @if (! $request['requires_esignature'])
+                                            @if ($request['status'] !== 'Completed')
+                                                <button type="button"
+                                                        class="fd-action-btn fd-complete-btn"
+                                                        onclick="completeRequest({{ $request['id'] }})">
+                                                    <i class="fas fa-box-open"></i> Complete
+                                                </button>
+                                            @endif
+                                        @elseif (is_null($request['signature_status']))
+                                            <button type="button"
+                                                    class="fd-action-btn fd-forward-btn"
+                                                    onclick="forwardForSignature({{ $request['id'] }})">
+                                                <i class="fas fa-paper-plane"></i> Forward for Signature
+                                            </button>
+                                        @elseif ($request['signature_status'] === 'rejected')
+                                            <button type="button"
+                                                    class="fd-action-btn fd-reopen-btn"
+                                                    onclick="reopenSignatureRequest({{ $request['id'] }})">
+                                                <i class="fas fa-rotate-left"></i> Reopen
+                                            </button>
+                                        @elseif ($request['is_signed'] && $request['status'] !== 'Completed')
                                             <button type="button"
                                                     class="fd-action-btn fd-complete-btn"
                                                     onclick="completeRequest({{ $request['id'] }})">
@@ -87,6 +119,92 @@
     </div>
 
     <script>
+        function postWithConfirm(url, requestId, confirmTitle, confirmText, successTitle, successText) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const hasSwal = window.Swal && typeof window.Swal.fire === 'function';
+
+            const confirmAndSubmit = function () {
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ request_id: requestId }),
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (response) {
+                        if (!response.success) {
+                            throw new Error(response.message || 'Request failed.');
+                        }
+
+                        if (hasSwal) {
+                            window.Swal.fire(successTitle, response.message || successText, 'success')
+                                .then(function () { window.location.reload(); });
+                            return;
+                        }
+
+                        window.alert(response.message || successText);
+                        window.location.reload();
+                    })
+                    .catch(function (error) {
+                        const message = error instanceof Error ? error.message : successText;
+                        if (hasSwal) {
+                            window.Swal.fire('Error', message, 'error');
+                            return;
+                        }
+
+                        window.alert(message);
+                    });
+            };
+
+            if (hasSwal) {
+                window.Swal.fire({
+                    title: confirmTitle,
+                    text: confirmText,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Confirm',
+                    cancelButtonText: 'Cancel',
+                }).then(function (result) {
+                    if (result.isConfirmed) {
+                        confirmAndSubmit();
+                    }
+                });
+
+                return;
+            }
+
+            if (window.confirm(confirmText)) {
+                confirmAndSubmit();
+            }
+        }
+
+        function forwardForSignature(id) {
+            postWithConfirm(
+                '/dashboard/employee/front-desk/forward-for-signature',
+                id,
+                'Forward for Signature',
+                'Send this document to the HR Manager for e-signature?',
+                'Forwarded!',
+                'Document forwarded for signature.'
+            );
+        }
+
+        function reopenSignatureRequest(id) {
+            postWithConfirm(
+                '/dashboard/employee/front-desk/reopen-signature',
+                id,
+                'Reopen Document',
+                'Send this document back to be corrected and re-forwarded?',
+                'Reopened!',
+                'Document reopened.'
+            );
+        }
+
         function completeRequest(id) {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const hasSwal = window.Swal && typeof window.Swal.fire === 'function';

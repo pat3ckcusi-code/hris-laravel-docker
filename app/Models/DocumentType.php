@@ -14,9 +14,11 @@ class DocumentType extends Model
         'parts',
         'header_image',
         'footer_image',
+        'requires_esignature',
     ];
 
     protected $casts = [
         'parts' => 'array',
+        'requires_esignature' => 'boolean',
     ];
 }

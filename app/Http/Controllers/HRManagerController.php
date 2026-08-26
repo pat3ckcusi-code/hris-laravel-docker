@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\DocumentRequest;
+use App\Models\EsignatureSigning;
 use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
@@ -12,7 +13,9 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
+use App\Services\DocumentRequestEsignatureService;
 use App\Services\EmployeeAssignmentService;
+use App\Services\ESignatureCredentialStore;
 use App\Services\HRDashboardService;
 use App\Services\LeaveCardExportService;
 use App\Services\LeaveDateAggregateService;
@@ -28,7 +31,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -432,7 +434,7 @@ class HRManagerController extends Controller
         ]);
     }
 
-    public function frontdesk(Request $request): View
+    public function frontdesk(Request $request, DocumentRequestEsignatureService $esignatureService): View
     {
         $this->ensureHrManager($request);
 
@@ -444,9 +446,10 @@ class HRManagerController extends Controller
             'frontdeskPagination' => $this->paginationPayload($frontdeskPage),
             'frontdeskDataUrl' => route('hr-manager.frontdesk.data'),
             'frontdeskActionBaseUrl' => route('hr-manager.frontdesk.action', ['documentRequest' => '__ID__']),
-            'frontdeskCompleteBaseUrl' => route('hr-manager.frontdesk.complete', ['documentRequest' => '__ID__']),
-            'headerImage' => asset('assets/login/mbs.jpg'),
-            'footerImage' => asset('assets/login/mbs.jpg'),
+            'frontdeskPreviewBaseUrl' => route('front-desk.print-request', ['id' => '__ID__']),
+            'awaitingCount' => $esignatureService->forwardedForSigningQuery()->count(),
+            'signedCount' => $esignatureService->signedHistoryQuery()->count(),
+            'rejectedCount' => $esignatureService->rejectedQuery()->count(),
         ]);
     }
 
@@ -462,81 +465,66 @@ class HRManagerController extends Controller
         ]);
     }
 
-    public function frontdeskAction(Request $request, DocumentRequest $documentRequest): JsonResponse
-    {
+    /**
+     * The HR Manager's Document Signing queue action: sign a forwarded
+     * document with the actor's own saved PNPKI certificate, or reject it
+     * back to Front Desk with a required reason. Front Desk's own former
+     * accept/approve capability on this page is retired - a document only
+     * ever reaches here after Front Desk has already accepted and forwarded
+     * it, via DocumentRequestEsignatureService::forwardedForSigningQuery().
+     */
+    public function frontdeskAction(
+        Request $request,
+        DocumentRequest $documentRequest,
+        DocumentRequestEsignatureService $esignatureService,
+        ESignatureCredentialStore $credentialStore
+    ): JsonResponse {
         $this->ensureHrManager($request);
 
         $payload = $request->validate([
-            'action' => ['required', 'in:accept,reject,approve'],
+            'action' => ['required', 'in:sign,reject'],
+            'pnpki_password' => ['required_if:action,sign', 'nullable', 'string'],
+            'remarks' => ['required_if:action,reject', 'nullable', 'string', 'max:2000'],
         ]);
 
-        $statusMap = [
-            'accept' => 'Accepted',
-            'reject' => 'Rejected',
-            'approve' => 'Approved',
-        ];
-
-        $documentRequest->status = $statusMap[$payload['action']];
-        $documentRequest->processed_by = (string) ($request->user()->name ?? 'HR Manager');
-        $documentRequest->processed_on = now();
-        $documentRequest->save();
-
-        $this->storeAuditTrail(
-            $request,
-            'frontdesk',
-            $payload['action'],
-            DocumentRequest::class,
-            (int) $documentRequest->id,
-            [
-                'document_type' => $documentRequest->document_type,
-                'status' => $documentRequest->status,
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Document request status updated.',
-        ]);
-    }
-
-    public function frontdeskComplete(Request $request, DocumentRequest $documentRequest): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $documentRequest->status = 'Completed';
-        $documentRequest->released_by = (string) ($request->user()->name ?? 'HR Manager');
-        $documentRequest->released_on = now();
-        $documentRequest->save();
-
-        $this->storeAuditTrail(
-            $request,
-            'frontdesk',
-            'complete',
-            DocumentRequest::class,
-            (int) $documentRequest->id,
-            [
-                'document_type' => $documentRequest->document_type,
-                'status' => $documentRequest->status,
-            ]
-        );
-
-        $employee = User::query()->where('EmpNo', $documentRequest->EmpNo)->first();
-        if ($employee && $employee->email) {
+        if ($payload['action'] === 'reject') {
             try {
-                Mail::raw(
-                    'Your requested document ('.$documentRequest->document_type.') is completed and ready for release.',
-                    static function ($message) use ($employee): void {
-                        $message->to($employee->email)->subject('HRIS Document Request Update');
-                    }
-                );
-            } catch (\Throwable) {
-                // Keep request completion successful when email transport is unavailable.
+                $esignatureService->reject($documentRequest, $request->user(), $payload['remarks']);
+            } catch (\RuntimeException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
             }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document rejected and sent back to Front Desk.',
+            ]);
+        }
+
+        $setting = $request->user()->esignatureSetting;
+        if (! $setting) {
+            return response()->json(['success' => false, 'message' => 'You have not set up an e-signature yet.'], 422);
+        }
+
+        try {
+            $certificateBytes = $credentialStore->retrieveDecrypted($setting->certificate_path);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Could not read your saved certificate. Please contact HR or re-save your e-signature setting.'], 422);
+        }
+
+        if (! $credentialStore->verifyPassword($certificateBytes, $payload['pnpki_password'])) {
+            return response()->json(['success' => false, 'message' => 'That password did not unlock your saved certificate. Please check the password and try again.'], 422);
+        }
+
+        try {
+            $signing = $esignatureService->dispatchHrManagerSigning($documentRequest, $request->user(), $payload['pnpki_password']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Request completed and employee notification queued.',
+            'signing_id' => $signing->id,
+            'status_url' => route('esignature-signings.status', $signing->id),
         ]);
     }
 
@@ -1174,31 +1162,60 @@ class HRManagerController extends Controller
     /**
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
+    /**
+     * This page only ever shows e-signature-required documents Front Desk
+     * has already accepted and forwarded (signature_status IS NOT NULL) -
+     * an Accepted-but-not-yet-forwarded document, or any document whose
+     * type doesn't require e-signature at all, never appears here; those
+     * stay entirely on Front Desk's own Approved Requests page. "Signed" is
+     * derived per row from a completed base EsignatureSigning, never a
+     * stored flag - see DocumentRequestEsignatureService's own docblock.
+     */
     private function frontdeskRows(Request $request): LengthAwarePaginator
     {
         $department = trim((string) $request->query('department', ''));
-        $status = trim((string) $request->query('status', ''));
+        $status = strtolower(trim((string) $request->query('status', '')));
+
+        $signedExists = function ($query): void {
+            $query->from('esignature_signings')
+                ->whereColumn('esignature_signings.signable_id', 'document_requests.id')
+                ->where('esignature_signings.signable_type', DocumentRequest::class)
+                ->whereNull('esignature_signings.field_name')
+                ->where('esignature_signings.status', EsignatureSigning::STATUS_COMPLETED);
+        };
 
         $query = DocumentRequest::query()
+            ->join('document_types', 'document_types.name', '=', 'document_requests.document_type')
             ->leftJoin('users', 'users.EmpNo', '=', 'document_requests.EmpNo')
             ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
+            ->where('document_requests.status', 'Accepted')
+            ->where('document_types.requires_esignature', true)
+            ->whereNotNull('document_requests.signature_status')
             ->select(
                 'document_requests.id',
                 'document_requests.EmpNo',
                 'document_requests.document_type',
                 'document_requests.purpose',
-                'document_requests.status',
+                'document_requests.signature_status',
                 'document_requests.requested_on',
                 'users.name as employee_name',
                 'departments.Dept_name'
-            );
+            )
+            ->addSelect(['is_signed' => DB::table('esignature_signings')
+                ->selectRaw('COUNT(*) > 0')
+                ->tap($signedExists),
+            ]);
 
         if ($department !== '') {
             $query->where('users.Dept_id', $department);
         }
 
-        if ($status !== '' && strtolower($status) !== 'all') {
-            $query->whereRaw('LOWER(document_requests.status) = ?', [strtolower($status)]);
+        if ($status === 'awaiting_signature') {
+            $query->where('document_requests.signature_status', 'forwarded')->whereNotExists($signedExists);
+        } elseif ($status === 'signed') {
+            $query->whereExists($signedExists);
+        } elseif ($status === 'rejected') {
+            $query->where('document_requests.signature_status', 'rejected');
         }
 
         return $query
@@ -1206,6 +1223,10 @@ class HRManagerController extends Controller
             ->paginate(10)
             ->withQueryString()
             ->through(function ($row): array {
+                $displayStatus = $row->signature_status === 'rejected'
+                    ? 'rejected'
+                    : ((bool) $row->is_signed ? 'signed' : 'awaiting_signature');
+
                 return [
                     'id' => $row->id,
                     'emp_no' => $row->EmpNo,
@@ -1213,7 +1234,7 @@ class HRManagerController extends Controller
                     'department' => $row->Dept_name,
                     'document_type' => $row->document_type,
                     'purpose' => $row->purpose,
-                    'status' => strtolower((string) $row->status),
+                    'status' => $displayStatus,
                     'requested_on' => $this->formatDateTime($row->requested_on),
                 ];
             });

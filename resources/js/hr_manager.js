@@ -478,26 +478,45 @@ const bindFrontdeskModule = (root) => {
     const paginationRoot = document.getElementById('frontdeskPagination');
     const csrf = root.dataset.csrf || '';
 
+    const rowActions = (row) => {
+        const buttons = ['<button class="hrm-btn-secondary hrm-frontdesk-preview" type="button"><i class="fas fa-eye"></i> Preview</button>'];
+
+        if (row.status === 'awaiting_signature') {
+            buttons.push('<button class="hrm-btn-secondary hrm-frontdesk-sign" type="button"><i class="fas fa-signature"></i> Sign</button>');
+            buttons.push('<button class="hrm-btn-secondary hrm-frontdesk-reject" type="button"><i class="fas fa-xmark"></i> Reject</button>');
+        }
+
+        return buttons.join(' ');
+    };
+
     const renderRows = (rows) => {
         if (!tableBody) return;
+
+        if (!rows.length) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7">
+                        <div class="ds-empty">
+                            <i class="fas fa-signature"></i>
+                            Nothing here yet — documents Front Desk forwards for signature will appear in this list.
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
         tableBody.innerHTML = rows
             .map(
                 (row) => `
-                    <tr data-id="${row.id}" data-empno="${row.emp_no ?? ''}" data-name="${row.employee_name ?? ''}" data-doc="${row.document_type ?? ''}">
+                    <tr data-id="${row.id}" data-empno="${row.emp_no ?? ''}" data-name="${row.employee_name ?? ''}" data-doc="${row.document_type ?? ''}" data-status="${row.status ?? ''}">
                         <td>${row.emp_no ?? ''}</td>
                         <td>${row.employee_name ?? ''}</td>
                         <td>${row.department ?? ''}</td>
                         <td>${row.document_type ?? ''}</td>
-                        <td><span class="status-chip status-${row.status}">${(row.status || '').toUpperCase()}</span></td>
+                        <td><span class="status-chip status-${row.status}">${(row.status || '').toUpperCase().replace('_', ' ')}</span></td>
                         <td>${row.requested_on ?? ''}</td>
-                        <td>
-                            <button class="hrm-btn-secondary hrm-frontdesk-accept" type="button">Accept</button>
-                            <button class="hrm-btn-secondary hrm-frontdesk-reject" type="button">Reject</button>
-                            <button class="hrm-btn-secondary hrm-frontdesk-approve" type="button">Approve</button>
-                            <button class="hrm-btn-secondary hrm-frontdesk-complete" type="button">Completed</button>
-                            <button class="hrm-btn-secondary hrm-frontdesk-print" type="button">Print Certificate</button>
-                        </td>
+                        <td>${rowActions(row)}</td>
                     </tr>
                 `
             )
@@ -523,9 +542,8 @@ const bindFrontdeskModule = (root) => {
         }
     };
 
-    const postAction = async (id, action, isComplete = false) => {
-        const base = isComplete ? root.dataset.completeUrl : root.dataset.actionUrl;
-        const actionUrl = (base || '').replace('__ID__', id);
+    const postAction = async (id, payload) => {
+        const actionUrl = (root.dataset.actionUrl || '').replace('__ID__', id);
 
         const response = await fetch(actionUrl, {
             method: 'POST',
@@ -533,32 +551,92 @@ const bindFrontdeskModule = (root) => {
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': csrf,
+                Accept: 'application/json',
             },
-            body: JSON.stringify({ action }),
+            body: JSON.stringify(payload),
         });
 
-        if (!response.ok) {
-            throw new Error('Status update failed.');
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Action failed.');
+        }
+
+        return data;
+    };
+
+    const previewDocument = (id) => {
+        const url = (root.dataset.previewUrl || '').replace('__ID__', id);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    const signDocument = async (id) => {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Sign Document',
+            text: 'Enter your PNPKI e-signature password to sign this document.',
+            input: 'password',
+            inputPlaceholder: 'PNPKI password',
+            inputValidator: (value) => {
+                if (!value || value.trim() === '') {
+                    return 'Password is required.';
+                }
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Sign',
+            cancelButtonText: 'Cancel',
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            const data = await postAction(id, { action: 'sign', pnpki_password: result.value });
+            const statusUrl = data.status_url;
+            window.pollJobStatus(statusUrl, 'Signing the document…', 'Signing Failed');
+
+            const poller = setInterval(async () => {
+                try {
+                    const check = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
+                    const checkData = await check.json();
+                    if (checkData.status === 'completed' || checkData.status === 'failed') {
+                        clearInterval(poller);
+                        fetchRows();
+                    }
+                } catch (error) {
+                    clearInterval(poller);
+                }
+            }, 2000);
+        } catch (error) {
+            await Swal.fire('Error', error.message || 'Failed to start signing.', 'error');
         }
     };
 
-    const printCertificate = (row) => {
-        const template = document.getElementById('certificateTemplate');
-        if (!(template instanceof HTMLTemplateElement)) return;
+    const rejectDocument = async (id) => {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Reject Document',
+            text: 'Please provide a reason for rejecting this document back to Front Desk:',
+            input: 'textarea',
+            inputPlaceholder: 'Enter rejection reason...',
+            inputValidator: (value) => {
+                if (!value || value.trim() === '') {
+                    return 'A reason is required.';
+                }
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Reject',
+            cancelButtonText: 'Cancel',
+        });
 
-        const html = template.innerHTML
-            .replace('<span data-print="name"></span>', `<span>${row.dataset.name || ''}</span>`)
-            .replace('<span data-print="empno"></span>', `<span>${row.dataset.empno || ''}</span>`)
-            .replace('<span data-print="document"></span>', `<span>${row.dataset.doc || ''}</span>`)
-            .replace('<span data-print="date"></span>', `<span>${new Date().toLocaleDateString()}</span>`);
+        if (!result.isConfirmed) return;
 
-        const printWindow = window.open('', '_blank', 'width=900,height=900');
-        if (!printWindow) return;
-
-        printWindow.document.write(`<html><head><title>Certificate</title></head><body>${html}</body></html>`);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
+        try {
+            await postAction(id, { action: 'reject', remarks: result.value });
+            await Swal.fire('Rejected', 'Document sent back to Front Desk.', 'success');
+            fetchRows();
+        } catch (error) {
+            await Swal.fire('Error', error.message || 'Failed to reject document.', 'error');
+        }
     };
 
     filterBtn?.addEventListener('click', () => fetchRows(1));
@@ -574,41 +652,18 @@ const bindFrontdeskModule = (root) => {
         const id = row.dataset.id;
         if (!id) return;
 
-        try {
-            if (button.classList.contains('hrm-frontdesk-print')) {
-                printCertificate(row);
-                return;
-            }
+        if (button.classList.contains('hrm-frontdesk-preview')) {
+            previewDocument(id);
+            return;
+        }
 
-            const confirm = await Swal.fire({
-                title: 'Confirm workflow action?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Yes',
-            });
+        if (button.classList.contains('hrm-frontdesk-sign')) {
+            await signDocument(id);
+            return;
+        }
 
-            if (!confirm.isConfirmed) return;
-
-            if (button.classList.contains('hrm-frontdesk-accept')) {
-                await postAction(id, 'accept');
-            }
-
-            if (button.classList.contains('hrm-frontdesk-reject')) {
-                await postAction(id, 'reject');
-            }
-
-            if (button.classList.contains('hrm-frontdesk-approve')) {
-                await postAction(id, 'approve');
-            }
-
-            if (button.classList.contains('hrm-frontdesk-complete')) {
-                await postAction(id, 'complete', true);
-            }
-
-            await Swal.fire('Success', 'Request workflow updated.', 'success');
-            fetchRows();
-        } catch (error) {
-            await Swal.fire('Error', 'Failed to process action.', 'error');
+        if (button.classList.contains('hrm-frontdesk-reject')) {
+            await rejectDocument(id);
         }
     });
 };
