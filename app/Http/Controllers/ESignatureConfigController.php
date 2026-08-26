@@ -43,6 +43,19 @@ class ESignatureConfigController extends Controller
             $request->file('chain_intermediates')
         );
 
+        // A genuine root CA is self-signed (issuer === subject) - catches the Root
+        // CA/Intermediate upload fields being swapped, which otherwise saves silently
+        // and only surfaces later as an opaque pyHanko chain-validation failure at
+        // actual signing time (real incident: an HR Manager's "Root CA" upload was
+        // actually their intermediate cert, breaking every signing attempt with
+        // InsufficientRevinfoError until the mistake was found in the queue logs).
+        $rootCaParsed = $this->parseCertificateBytes($rootCaBytes);
+        if ($rootCaParsed === false || ($rootCaParsed['issuer'] ?? null) !== ($rootCaParsed['subject'] ?? null)) {
+            return back()
+                ->withErrors(['chain_root_ca' => "The Root CA file must be a self-signed certificate (its issuer and subject must match). This looks like an intermediate certificate instead — check that the Root CA and Intermediate files weren't swapped."])
+                ->withInput($request->except(['pnpki_password', 'pnpki_certificate', 'chain_root_ca', 'chain_intermediates']));
+        }
+
         if (! $credentialStore->verifyPassword($certificateBytes, $data['pnpki_password'])) {
             return back()
                 ->withErrors(['pnpki_password' => 'That password did not unlock the certificate you uploaded. Please check the password and try again.'])
@@ -118,6 +131,27 @@ class ESignatureConfigController extends Controller
         ]);
 
         return redirect()->route('esignature-config.index')->with('status', 'Your e-signature setting has been saved.');
+    }
+
+    /**
+     * openssl_x509_parse() only accepts PEM-formatted input (or an already-loaded
+     * certificate resource) - it does not auto-detect raw DER, unlike the `openssl
+     * x509` CLI tool. PNPKI-issued CA certificates are commonly distributed as raw
+     * DER, which made the Root CA self-signed check below reject every genuine
+     * upload in that format (parse failure treated identically to "not
+     * self-signed"). Falls back to wrapping the bytes in a PEM envelope and
+     * retrying before giving up.
+     */
+    private function parseCertificateBytes(string $bytes): array|false
+    {
+        $parsed = @openssl_x509_parse($bytes);
+        if ($parsed !== false) {
+            return $parsed;
+        }
+
+        $pem = "-----BEGIN CERTIFICATE-----\n".chunk_split(base64_encode($bytes), 64, "\n")."-----END CERTIFICATE-----\n";
+
+        return @openssl_x509_parse($pem);
     }
 
     public function destroy()
