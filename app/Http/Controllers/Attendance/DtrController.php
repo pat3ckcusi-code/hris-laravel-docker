@@ -259,19 +259,27 @@ class DtrController extends Controller
                 'days' => (float) $r->days,
             ]);
 
+        // A crossing shift's checkout can land one calendar day past $to (e.g. a
+        // shift starting on the last day of the requested period) - widen just
+        // the upper bound of the ETA/Office Order/Travel Order lookups below by a
+        // day so the next-day coverage fallback further down can still find them,
+        // mirroring the exact crossesMidnight ? 1 : 0 padding convention
+        // Form48ExportService::buildRecords() already uses for the same problem.
+        $toNextDay = Carbon::parse($to)->addDay()->format('Y-m-d');
+
         // Build ETA date set: date string → true for all days covered by approved ETA.
         $etaDateSet = [];
         Eta::where('user_id', $employee->id)
             ->where('status', 'approved')
-            ->where('departure_date', '<=', $to)
+            ->where('departure_date', '<=', $toNextDay)
             ->where(function ($q) use ($from): void {
                 $q->whereNull('arrival_date')->orWhere('arrival_date', '>=', $from);
             })
             ->get(['departure_date', 'arrival_date'])
-            ->each(function ($eta) use (&$etaDateSet, $from, $to): void {
+            ->each(function ($eta) use (&$etaDateSet, $from, $toNextDay): void {
                 $start = Carbon::parse($eta->departure_date)->max(Carbon::parse($from));
                 $end = $eta->arrival_date
-                    ? Carbon::parse($eta->arrival_date)->min(Carbon::parse($to))
+                    ? Carbon::parse($eta->arrival_date)->min(Carbon::parse($toNextDay))
                     : Carbon::parse($eta->departure_date);
                 for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
                     $etaDateSet[$d->format('Y-m-d')] = true;
@@ -321,13 +329,13 @@ class DtrController extends Controller
         $officeOrderDateMap = [];
         if ($employee->EmpNo) {
             $rangeStart = Carbon::parse($from);
-            $rangeEnd = Carbon::parse($to);
+            $rangeEnd = Carbon::parse($toNextDay);
 
             DB::table('office_orders')
                 ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
                 ->where('office_order_employees.emp_no', $employee->EmpNo)
                 ->where('office_orders.status', '!=', 'Cancelled')
-                ->where('office_orders.issued_date', '<=', $to)
+                ->where('office_orders.issued_date', '<=', $toNextDay)
                 ->where(function ($q) use ($from): void {
                     $q->where('office_orders.effective_date', '>=', $from)
                         ->orWhere(function ($q2) use ($from): void {
@@ -358,13 +366,13 @@ class DtrController extends Controller
         $travelOrderDateMap = [];
         if ($employee->EmpNo) {
             $rangeStart = Carbon::parse($from);
-            $rangeEnd = Carbon::parse($to);
+            $rangeEnd = Carbon::parse($toNextDay);
 
             DB::table('travel_orders')
                 ->join('travel_order_employees', 'travel_orders.id', '=', 'travel_order_employees.travel_order_id')
                 ->where('travel_order_employees.emp_no', $employee->EmpNo)
                 ->where('travel_orders.status', 'Approved')
-                ->where('travel_orders.start_date', '<=', $to)
+                ->where('travel_orders.start_date', '<=', $toNextDay)
                 ->where('travel_orders.end_date', '>=', $from)
                 ->select('travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
                 ->get()
@@ -439,6 +447,45 @@ class DtrController extends Controller
             $suspension = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! empty($suspensionSlots)) ? $suspensionRow : null;
             $loc = (! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay && ! $excuse && ! $suspension) ? ($locatorDateMap[$dateStr] ?? null) : null;
 
+            // A crossing shift's checkout physically happens on the day AFTER
+            // $dateStr, but every coverage source above is keyed only by $dateStr
+            // itself - so a shift whose only explanation for a missing checkout is
+            // a whole-day authorization (ETA/Office Order/Travel Order/full-day
+            // Leave/full-day WorkSuspension) filed for the *next* calendar date was
+            // previously invisible here (e.g. a 24-on/24-off shift starting the day
+            // before an Office Order that pulled the employee straight into an
+            // all-day event instead of back to post to punch out). Only computed as
+            // a fallback - reachable only once none of leave/ETA/OO/TO already
+            // cover $dateStr itself - and only ever affects the pm_out slot, never
+            // am_in/$coversAmIn/$lateMin, so a real AM-in punch is never relabeled.
+            $pmOutCoveredNextDay = false;
+            $pmOutFallbackLabel = null;
+            $pmOutFallbackOoNum = null;
+            if ($rowSchedule->crossesMidnight && ! $leaveCode && ! $isEtaDay && ! $isOoDay && ! $isToDay) {
+                $pmOutNextDate = $rowSchedule->slotDate($dateStr, 'pm_out');
+                if ($pmOutNextDate !== $dateStr) {
+                    if (isset($etaDateSet[$pmOutNextDate])) {
+                        $pmOutCoveredNextDay = true;
+                        $pmOutFallbackLabel = 'ETA';
+                    } elseif (isset($officeOrderDateMap[$pmOutNextDate])) {
+                        $pmOutCoveredNextDay = true;
+                        $pmOutFallbackLabel = 'Office Order';
+                        $pmOutFallbackOoNum = $officeOrderDateMap[$pmOutNextDate];
+                    } elseif (isset($travelOrderDateMap[$pmOutNextDate])) {
+                        $pmOutCoveredNextDay = true;
+                        $pmOutFallbackLabel = 'Travel Order';
+                    } elseif (($leaveMap[$pmOutNextDate]['days'] ?? 0) >= 1.0) {
+                        $pmOutCoveredNextDay = true;
+                        $pmOutFallbackLabel = $leaveMap[$pmOutNextDate]['code'];
+                    } elseif (($suspensionMap[$pmOutNextDate] ?? null) !== null
+                        && $suspensionMap[$pmOutNextDate]->suspension_time === null
+                        && ! $employee->isFrontlineExempt()) {
+                        $pmOutCoveredNextDay = true;
+                        $pmOutFallbackLabel = 'SUSPENDED';
+                    }
+                }
+            }
+
             // Field Work/WFH: lowest priority of all - only when nothing else above
             // (leave/ETA/OO/TO/excuse/suspension/locator) already explains the date,
             // matching Form48ExportService's own field_work/wfh priority so the two
@@ -483,6 +530,17 @@ class DtrController extends Controller
 
             // Resolve effective display values for each slot.
             $coversAmIn = $coversAmOut = $coversPmIn = $coversPmOut = false;
+            // True only when pm_out's coverage comes solely from the next-day
+            // fallback above, not from this row's own excuse/suspension - keeps
+            // $decorateSlot below from wrongly wrapping a next-day Office
+            // Order/ETA/Travel Order/leave label in this date's excuse/suspension
+            // badge.
+            $pmOutFallbackOnly = false;
+            // True only when the plain (no other source) branch below actually
+            // swapped a "Missing" pm_out for the next-day fallback label - the
+            // precise signal for whether the row-level status badge needs to stop
+            // reading "Missing OUT" (see the new tier added to $statusBadge below).
+            $pmOutFallbackApplied = false;
             if ($leaveCode) {
                 // A full-day leave overrides every slot regardless of any incidental
                 // punch (deliberate - leave takes priority for the whole day, same as
@@ -540,11 +598,14 @@ class DtrController extends Controller
                 $coversAmIn = $excuse->excuse_am_in || $excuse->is_full_day;
                 $coversAmOut = $excuse->excuse_am_out || $excuse->is_full_day;
                 $coversPmIn = $excuse->excuse_pm_in || $excuse->is_full_day;
-                $coversPmOut = $excuse->excuse_pm_out || $excuse->is_full_day;
+                $coversPmOut = $excuse->excuse_pm_out || $excuse->is_full_day || $pmOutCoveredNextDay;
+                $pmOutFallbackOnly = $pmOutCoveredNextDay && ! ($excuse->excuse_pm_out || $excuse->is_full_day);
                 $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'EXCUSED') : ($dtr->time_in_am ?? '-');
                 $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
                 $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
-                $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'EXCUSED') : ($dtr->time_out_pm ?? '-');
+                $tPmOut = $coversPmOut
+                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : 'EXCUSED'))
+                    : ($dtr->time_out_pm ?? '-');
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
                 $storedUt = $dtr->undertime_minutes ?? 0;
@@ -553,11 +614,14 @@ class DtrController extends Controller
                 $coversAmIn = isset($suspensionSlots['am_in']);
                 $coversAmOut = isset($suspensionSlots['am_out']);
                 $coversPmIn = isset($suspensionSlots['pm_in']);
-                $coversPmOut = isset($suspensionSlots['pm_out']);
+                $coversPmOut = isset($suspensionSlots['pm_out']) || $pmOutCoveredNextDay;
+                $pmOutFallbackOnly = $pmOutCoveredNextDay && ! isset($suspensionSlots['pm_out']);
                 $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'SUSPENDED') : ($dtr->time_in_am ?? '-');
                 $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'SUSPENDED') : ($dtr->time_out_am ?? '-');
                 $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'SUSPENDED') : ($dtr->time_in_pm ?? '-');
-                $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: 'SUSPENDED') : ($dtr->time_out_pm ?? '-');
+                $tPmOut = $coversPmOut
+                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : 'SUSPENDED'))
+                    : ($dtr->time_out_pm ?? '-');
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
                 $storedUt = $dtr->undertime_minutes ?? 0;
@@ -571,7 +635,7 @@ class DtrController extends Controller
                 $tAmIn = $rawAmIn ?? '-';
                 $tAmOut = $rawAmOut ?? '-';
                 $tPmIn = $rawPmIn ?? '-';
-                $tPmOut = $rawPmOut ?? '-';
+                $tPmOut = $rawPmOut ?? ($pmOutCoveredNextDay ? $pmOutFallbackLabel : '-');
                 // Recompute per-slot: the old OR logic zeroed all tardiness whenever
                 // any covered slot was LOCATOR, hiding genuine late AM In punches.
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
@@ -580,7 +644,9 @@ class DtrController extends Controller
                 if ($lateMin === 0 && ! ($loc['covers_am_in'] ?? false)) {
                     $lateMin = $imputeAmInLate();
                 }
-                if ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
+                if ($pmOutCoveredNextDay) {
+                    $utMin = 0;
+                } elseif ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
                     $utMin = $imputePmOutUndertime();
                 }
             } elseif ($showFieldWorkWfh) {
@@ -611,10 +677,14 @@ class DtrController extends Controller
                 $tAmOut = $missing($dtr->time_out_am, $hasBreakSlots);
                 $tPmIn = $missing($dtr->time_in_pm, $hasBreakSlots);
                 $tPmOut = $missing($dtr->time_out_pm, $pmOutEligible);
+                if ($tPmOut === 'Missing' && $pmOutCoveredNextDay) {
+                    $tPmOut = $pmOutFallbackLabel;
+                    $pmOutFallbackApplied = true;
+                }
                 $storedLate = $dtr->late_minutes ?? 0;
                 $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate();
                 $storedUt = $dtr->undertime_minutes ?? 0;
-                $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime();
+                $utMin = $pmOutCoveredNextDay ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
             }
 
             // Display every punch as HH:MM - some branches above (e.g. Locator)
@@ -641,8 +711,8 @@ class DtrController extends Controller
 
             // Decorate excused/suspended slots with the reason so the cause is visible
             // without leaving this page; only applies to slots that are actually covered.
-            $decorateSlot = function (string $raw, bool $covered) use ($excuse, $suspension): string {
-                if ((! $excuse && ! $suspension) || ! $covered) {
+            $decorateSlot = function (string $raw, bool $covered, bool $isNextDayFallback = false) use ($excuse, $suspension): string {
+                if ((! $excuse && ! $suspension) || ! $covered || $isNextDayFallback) {
                     return $raw;
                 }
                 $cfg = $excuse
@@ -683,9 +753,11 @@ class DtrController extends Controller
                                             ? ($fieldWorkWfhAssignment->type === 'wfh'
                                                 ? '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>'
                                                 : '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>')
-                                            : ($dtr->is_absent
-                                                ? '<span class="hris-badge badge-rejected">Absent</span>'
-                                                : $this->punchStatusBadge($dtr->status)))))))));
+                                            : ($pmOutFallbackApplied
+                                                ? '<span class="hris-badge" style="background:#f3f4f6;color:#374151;" title="Checkout falls on the day covered by this next-day authorization">'.e($pmOutFallbackLabel).' (next day)</span>'
+                                                : ($dtr->is_absent
+                                                    ? '<span class="hris-badge badge-rejected">Absent</span>'
+                                                    : $this->punchStatusBadge($dtr->status))))))))));
 
             if (! empty($dtr->unmatched_logs)) {
                 $unmatchedTitle = e(implode(', ', array_map(fn ($t) => substr((string) $t, 0, 5), $dtr->unmatched_logs)));
@@ -697,7 +769,7 @@ class DtrController extends Controller
                 'time_in_am' => $decorateSlot($tAmIn, $coversAmIn),
                 'time_out_am' => $decorateSlot($tAmOut, $coversAmOut),
                 'time_in_pm' => $decorateSlot($tPmIn, $coversPmIn),
-                'time_out_pm' => $decorateSlot($tPmOut, $coversPmOut),
+                'time_out_pm' => $decorateSlot($tPmOut, $coversPmOut, $pmOutFallbackOnly),
                 'time_in_ot' => $dtr->time_in_ot ? substr($dtr->time_in_ot, 0, 5) : '-',
                 'time_out_ot' => $dtr->time_out_ot ? substr($dtr->time_out_ot, 0, 5) : '-',
                 'late_minutes' => $lateMin,
@@ -716,9 +788,11 @@ class DtrController extends Controller
                     default => '<span style="color:#9ca3af;">-</span>',
                 },
                 'status_badge' => $statusBadge,
-                'office_order_badge' => $ooNum
-                    ? '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">OO #'.e($ooNum).'</span>'
-                    : '',
+                'office_order_badge' => match (true) {
+                    (bool) $ooNum => '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">OO #'.e($ooNum).'</span>',
+                    $pmOutFallbackApplied && $pmOutFallbackOoNum !== null => '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;" title="Covers the checkout, which falls on the next day">OO #'.e($pmOutFallbackOoNum).'</span>',
+                    default => '',
+                },
             ]);
         }
 
