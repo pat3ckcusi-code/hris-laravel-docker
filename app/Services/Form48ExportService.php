@@ -880,6 +880,36 @@ class Form48ExportService
             $isWeekend = $dayDate->isSaturday() || $dayDate->isSunday();
             $leaveCode = $leaveMap[$day]['code'] ?? null;
 
+            // A crossing shift's checkout physically happens on the day AFTER
+            // $day - none of the leave/ETA/OO/excuse checks above (or below)
+            // look at the day after $day, only $day itself, so a shift whose
+            // only explanation for a missing checkout is a whole-day ETA/Office
+            // Order/full-day Leave filed for the *next* day was invisible here
+            // (e.g. a 24-on/24-off shift starting the day before an Office Order
+            // that pulled the employee straight into an all-day event instead of
+            // back to post to punch out). Travel Order/WorkSuspension aren't
+            // available at this layer (no map is built/passed for either), so
+            // only these three sources are checked - matches the equivalent fix
+            // in DtrController::data()/AttendanceMonitoringExportService. Since
+            // crossesMidnight always means workEnd's clock value is <= workStart's
+            // (that's the definition of a crossing shift), the checkout always
+            // resolves to exactly $day + 1 - no per-slot date math needed here.
+            $pmOutCoveredNextDay = false;
+            $pmOutFallbackLabel = null;
+            if ($schedule->crossesMidnight && $day < $daysInMonth) {
+                $nextDay = $day + 1;
+                if (isset($etaMap[$nextDay])) {
+                    $pmOutCoveredNextDay = true;
+                    $pmOutFallbackLabel = 'ETA';
+                } elseif (isset($officeOrderMap[$nextDay])) {
+                    $pmOutCoveredNextDay = true;
+                    $pmOutFallbackLabel = 'Office Order';
+                } elseif (($leaveMap[$nextDay]['days'] ?? 0) >= 1.0) {
+                    $pmOutCoveredNextDay = true;
+                    $pmOutFallbackLabel = $leaveMap[$nextDay]['code'];
+                }
+            }
+
             // Per-date shift rest day: always shows "Rest Day", even if a stale DTR record exists.
             if (isset($restDayMap[$day])) {
                 foreach (range(0, 3) as $i) {
@@ -1255,19 +1285,25 @@ class Form48ExportService
                 $amIn = $amIn ?? '';
                 $amOut = $amOut ?? '';
                 $pmIn = $pmIn ?? '';
-                $pmOut = $pmOut ?? '';
+                $pmOut = $pmOut ?? ($pmOutCoveredNextDay ? $pmOutFallbackLabel : '');
                 // Recompute per-slot penalties: the pre-stored DtrPunchResolver values
                 // are unreliable on locator days (sequential assignment mis-positions
                 // punches), and the old OR logic zeroed ALL tardiness even when only
                 // one slot was covered.
                 [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amIn, $pmIn, $pmOut, $schedule);
+                if ($pmOutCoveredNextDay) {
+                    $undertime = 0;
+                }
             } else {
                 $amIn = $fmt($rec['am_in']);
                 $amOut = $fmt($rec['am_out']);
                 $pmIn = $fmt($rec['pm_in']);
                 $pmOut = $fmt($rec['pm_out']);
+                if ($pmOut === '' && $pmOutCoveredNextDay) {
+                    $pmOut = $pmOutFallbackLabel;
+                }
                 $tardiness = $rec['tardiness'] ?? 0;
-                $undertime = $rec['undertime'] ?? 0;
+                $undertime = $pmOutCoveredNextDay ? 0 : ($rec['undertime'] ?? 0);
             }
 
             // The undertime columns always carry a number - 0 when clean, never blank.

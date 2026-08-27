@@ -598,6 +598,26 @@ class WorkSchedule
         return $date;
     }
 
+    /**
+     * Calendar date (Y-m-d) a given Form 48 slot's reference time actually falls
+     * on for a shift starting on $shiftDate. Always $shiftDate itself for am_in
+     * (the anchor, never rolls) and for every slot on a non-crossing shift; rolls
+     * to $shiftDate + 1 for am_out/pm_in/pm_out whenever this schedule
+     * crossesMidnight and that slot's time is in the post-midnight portion -
+     * mirrors referenceDateTime()'s own rule, just returning the date alone.
+     */
+    public function slotDate(string $shiftDate, string $slot): string
+    {
+        $time = match ($slot) {
+            'am_in' => $this->workStart,
+            'am_out' => $this->morningEnd,
+            'pm_in' => $this->lunchReturn,
+            'pm_out' => $this->workEnd,
+        };
+
+        return $this->referenceDateTime($shiftDate, $time, $slot === 'am_in')->toDateString();
+    }
+
     private static function toMinutes(string $hhmm): int
     {
         [$h, $m] = array_pad(explode(':', substr($hhmm, 0, 5)), 2, '0');

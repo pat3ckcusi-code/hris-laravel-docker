@@ -287,7 +287,7 @@ class AttendanceMonitoringExportService
             // covers the slot(s) with no real punch - "which half" isn't stored
             // anywhere, so it's inferred from the punch data itself, same convention
             // as DtrController/Form48ExportService use for the same half-day-leave case.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate): bool {
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $emp, $empAssignments): bool {
                 if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
                     || isset($travelOrderCoveredDates[$dateStr])) {
                     return true;
@@ -318,7 +318,37 @@ class AttendanceMonitoringExportService
                     $empSuspensionSlotMap[$dateStr] ?? []
                 ));
 
-                return in_array($slot, $coveredSlots, true);
+                if (in_array($slot, $coveredSlots, true)) {
+                    return true;
+                }
+
+                // A crossing shift's checkout (or, on a break-having crossing
+                // shift, its pm_in) physically happens on the day AFTER $dateStr -
+                // none of the same-day checks above can see a whole-day
+                // authorization (ETA/Office Order/Travel Order/full-day Leave/
+                // full-day WorkSuspension) filed only for that next date. This is
+                // a fallback only, reached solely once nothing above already
+                // covered this slot on $dateStr itself - DtrExcuse/Locator/a
+                // partial suspension are deliberately NOT re-checked here, since
+                // those are tied to that other date's own shift, not this shift's
+                // tail. slotDate() already resolves to $dateStr unchanged for
+                // am_in and for any non-crossing shift, so this naturally no-ops
+                // for every ordinary (non-crossing) day.
+                $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($dateStr), $empAssignments);
+                if (! $schedule->crossesMidnight) {
+                    return false;
+                }
+                $slotDate = $schedule->slotDate($dateStr, $slot);
+                if ($slotDate === $dateStr) {
+                    return false;
+                }
+
+                if (isset($etaCoveredDates[$slotDate]) || isset($officeOrderCoveredDates[$slotDate])
+                    || isset($travelOrderCoveredDates[$slotDate]) || isset($fullDaySuspensionDates[$slotDate])) {
+                    return true;
+                }
+
+                return $approvedLeaveDateStrings->has($slotDate) && $approvedLeaveDateStrings->get($slotDate) >= 1.0;
             };
 
             // Late/undertime-specific views of $isSlotCovered, checking the same slots
