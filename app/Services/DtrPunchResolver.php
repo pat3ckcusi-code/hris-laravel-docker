@@ -122,15 +122,23 @@ class DtrPunchResolver
      * persisted - each sibling punch already existing is itself the "this
      * segment is over" signal, so no separate now() gate is needed the way
      * imputedUndertimeMinutes() needs one.
+     *
+     * $coveredSlots lists slot keys ('am_in'|'pm_in') already known to be
+     * explained by something else (Locator/DtrExcuse/WorkSuspension) -
+     * callers must gate per-component this way rather than accepting or
+     * rejecting the whole return value based on a single slot's coverage,
+     * since the two components are independent and a source can explain
+     * only one of them (e.g. a Locator window covering only 'pm_in' must not
+     * suppress a genuine, unrelated 'am_in' lateness, and vice versa).
      */
-    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
+    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = []): int
     {
         if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
 
         if ($schedule->noBreak) {
-            if ($timeInAm || ! $timeOutPm) {
+            if ($timeInAm || ! $timeOutPm || in_array('am_in', $coveredSlots, true)) {
                 return 0;
             }
 
@@ -142,13 +150,13 @@ class DtrPunchResolver
 
         $minutes = 0;
 
-        if (! $timeInAm && $timeOutAm) {
+        if (! $timeInAm && $timeOutAm && ! in_array('am_in', $coveredSlots, true)) {
             $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
             $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
             $minutes += (int) $startRef->diffInMinutes($breakOutRef);
         }
 
-        if (! $timeInPm && $timeOutPm) {
+        if (! $timeInPm && $timeOutPm && ! in_array('pm_in', $coveredSlots, true)) {
             $lunchReturnRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
             $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
             $minutes += (int) $lunchReturnRef->diffInMinutes($endRef);
@@ -179,15 +187,26 @@ class DtrPunchResolver
      *
      * Never applies to an in_only/out_only schedule (see
      * imputedLateMinutes()).
+     *
+     * $coveredSlots lists slot keys ('am_out'|'pm_out') already known to be
+     * explained by something else - see imputedLateMinutes()'s docblock for
+     * why this must gate each component independently rather than accepting
+     * or rejecting the whole return value on a single slot's coverage. This
+     * is what a Locator/DtrExcuse/WorkSuspension covering only 'am_out'
+     * (e.g. a morning personal errand) must pass so a genuine, unrelated
+     * 'pm_out' undertime figure is never suppressed by it, and vice versa -
+     * previously a Locator covering only 'am_out' let this function's
+     * 'am_out' component through mislabeled as undertime on a day the
+     * employee's actual PM Out was on time.
      */
-    public function imputedUndertimeMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule): int
+    public function imputedUndertimeMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = []): int
     {
         if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
 
         if ($schedule->noBreak) {
-            if (! $timeInAm || $timeOutPm) {
+            if (! $timeInAm || $timeOutPm || in_array('pm_out', $coveredSlots, true)) {
                 return 0;
             }
 
@@ -204,7 +223,7 @@ class DtrPunchResolver
 
         $minutes = 0;
 
-        if ($timeInAm && ! $timeOutAm) {
+        if ($timeInAm && ! $timeOutAm && ! in_array('am_out', $coveredSlots, true)) {
             $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
 
             if (Carbon::now()->gte($breakOutRef)) {
@@ -213,7 +232,7 @@ class DtrPunchResolver
             }
         }
 
-        if ($timeInPm && ! $timeOutPm) {
+        if ($timeInPm && ! $timeOutPm && ! in_array('pm_out', $coveredSlots, true)) {
             $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
 
             if (Carbon::now()->gte($endRef)) {

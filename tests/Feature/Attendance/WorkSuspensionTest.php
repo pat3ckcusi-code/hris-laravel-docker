@@ -262,6 +262,57 @@ class WorkSuspensionTest extends TestCase
         $this->assertSame(30, $dtr->undertime_minutes, 'Left 30 minutes before the 3:00 PM suspension cutoff.');
     }
 
+    /**
+     * Regression test: DtrController::data()'s suspension branch read
+     * applySuspension()'s excluded-slot keys via isset($suspensionSlots[...]),
+     * but every value in that array is null (array_fill_keys(..., null)) -
+     * isset() on a null value is always false, so $coversAmIn/etc. were
+     * always false and the "SUSPENDED" label never actually rendered on the
+     * DTR page, regardless of any declared suspension. Fixed by switching to
+     * array_key_exists(), which checks key presence rather than truthiness.
+     */
+    public function test_dtr_page_shows_suspended_label_for_excluded_pm_slots_with_real_am_punches(): void
+    {
+        $emp = $this->createEmployee();
+        WorkSuspension::create([
+            'suspension_date' => self::DATE,
+            'suspension_time' => '12:00',
+            'reason' => 'Afternoon dismissal',
+            'type' => 'weather',
+        ]);
+
+        foreach (['08:00:00', '11:00:00'] as $time) {
+            AttendanceLog::create([
+                'user_id' => $emp->id,
+                'emp_no' => $emp->EmpNo,
+                'logdate' => self::DATE,
+                'logtime' => $time,
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($emp, self::DATE, self::DATE);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $emp->id,
+                'dtr_type' => 'monthly',
+                'month' => Carbon::parse(self::DATE)->format('Y-m'),
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse(self::DATE)->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('08:00', $row['time_in_am'], 'Real AM In punch must not be hidden behind the SUSPENDED label.');
+        $this->assertSame('11:00', $row['time_out_am'], 'Real AM Out punch must not be hidden behind the SUSPENDED label.');
+        // The DTR page wraps a covered EXCUSED/SUSPENDED slot in a styled
+        // badge ($decorateSlot()) rather than the raw string - assert on the
+        // badge's own label text (WorkSuspension::typeConfig('weather')).
+        $this->assertStringContainsString('Weather / Typhoon', $row['time_in_pm'], 'Excluded PM In slot must show the suspension badge.');
+        $this->assertStringContainsString('Weather / Typhoon', $row['time_out_pm'], 'Excluded PM Out slot must show the suspension badge.');
+    }
+
     public function test_declaring_a_suspension_recomputes_already_imported_punches(): void
     {
         $emp = $this->createEmployee();

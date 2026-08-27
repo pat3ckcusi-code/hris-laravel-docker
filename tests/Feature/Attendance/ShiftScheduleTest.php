@@ -2064,7 +2064,11 @@ class ShiftScheduleTest extends TestCase
             ->firstWhere('date', Carbon::parse('2026-06-15')->format('M d, Y (D)'));
 
         $this->assertNotNull($row);
-        $this->assertSame('VL', $row['time_in_am']);
+        // The real 08:00 AM In punch wins over the leave code (a real
+        // biometric punch always takes priority when present) - but the
+        // Leave *branch* still wins over Field Work as the priority source,
+        // which is what status_badge below actually verifies.
+        $this->assertSame('08:00', $row['time_in_am']);
         $this->assertStringContainsString('On Leave', $row['status_badge']);
         $this->assertStringNotContainsString('Field Work', $row['status_badge']);
     }

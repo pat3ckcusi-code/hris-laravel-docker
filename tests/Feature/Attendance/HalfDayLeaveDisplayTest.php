@@ -24,11 +24,17 @@ use Tests\Traits\CreatesTestUsers;
  * "SL", discarding her real punch times. DtrController::data(),
  * Form48ExportService, and AttendanceMonitoringExportService each
  * independently treated any approved leave as covering the whole day
- * regardless of its own 'days' value - only a full-day (days >= 1) leave is
- * meant to override every slot unconditionally. Since there is no AM/PM
- * column anywhere for a half-day leave, "which half" is inferred from the
- * punch data itself: a slot with a real punch always wins, a slot with none
- * is treated as leave-covered.
+ * regardless of its own 'days' value. Since there is no AM/PM column
+ * anywhere for a half-day leave, "which half" is inferred from the punch
+ * data itself: a slot with a real punch always wins, a slot with none is
+ * treated as leave-covered.
+ *
+ * A full-day (days >= 1) leave was originally meant to override every slot
+ * unconditionally regardless of any incidental punch - later changed so a
+ * real biometric punch always takes priority first, even on a full-day
+ * leave date (matching the stated rule: biometric punches are shown before
+ * any status label, including Leave). Late/undertime still stay zeroed on a
+ * full-day leave day regardless, since no work obligation exists that day.
  */
 class HalfDayLeaveDisplayTest extends TestCase
 {
@@ -143,13 +149,15 @@ class HalfDayLeaveDisplayTest extends TestCase
         $this->assertSame(0, $row['undertime_minutes'], 'PM half has no punch - nothing to be undertime for.');
     }
 
-    public function test_dtr_page_full_day_leave_still_overrides_every_slot(): void
+    public function test_dtr_page_full_day_leave_shows_real_punch_when_present(): void
     {
         $user = $this->createEmployee(['last_name' => 'Fulldayleave']);
         $this->assignEightToFiveShift($user);
 
-        // Incidental punches despite a full-day leave being on file - leave
-        // must still take priority over them, unchanged from before this fix.
+        // Incidental punches despite a full-day leave being on file - a real
+        // biometric punch always takes priority and must be shown, though the
+        // day still charges zero late/undertime since no work obligation
+        // exists on an approved full-day leave.
         Dtr::create([
             'employee_id' => $user->id,
             'date' => self::DATE,
@@ -175,7 +183,45 @@ class HalfDayLeaveDisplayTest extends TestCase
             ->firstWhere('date', Carbon::parse(self::DATE)->format('M d, Y (D)'));
 
         $this->assertNotNull($row);
-        $this->assertSame('VL', $row['time_in_am']);
+        $this->assertSame('08:20', $row['time_in_am'], 'A real punch must win over the leave code, even on a full-day leave date.');
+        $this->assertSame('12:00', $row['time_out_am']);
+        $this->assertSame('13:00', $row['time_in_pm']);
+        $this->assertSame('15:55', $row['time_out_pm']);
+        $this->assertSame(0, $row['late_minutes'], 'No work obligation exists on an approved full-day leave, so no penalty applies despite the incidental punch.');
+        $this->assertSame(0, $row['undertime_minutes']);
+    }
+
+    public function test_dtr_page_full_day_leave_with_no_punches_still_shows_leave_code(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Fulldayleaveempty']);
+        $this->assignEightToFiveShift($user);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => null,
+            'time_out_am' => null,
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+        $this->fileHalfDayLeave($user, 'Vacation Leave', 1.0);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->getJson(route('attendance.dtr.data', [
+                'employee_id' => $user->id,
+                'dtr_type' => 'monthly',
+                'month' => '2026-08',
+            ]));
+
+        $response->assertOk();
+        $row = collect($response->json('data'))
+            ->firstWhere('date', Carbon::parse(self::DATE)->format('M d, Y (D)'));
+
+        $this->assertNotNull($row);
+        $this->assertSame('VL', $row['time_in_am'], 'With no real punch to show, the leave code still fills the slot as before.');
         $this->assertSame('VL', $row['time_out_am']);
         $this->assertSame('VL', $row['time_in_pm']);
         $this->assertSame('VL', $row['time_out_pm']);
@@ -223,7 +269,7 @@ class HalfDayLeaveDisplayTest extends TestCase
         $this->assertSame(5, $sheet->getCell("H{$row}")->getValue());
     }
 
-    public function test_form48_export_full_day_leave_still_merges_and_overrides_every_slot(): void
+    public function test_form48_export_full_day_leave_shows_real_punch_when_present(): void
     {
         $user = $this->createEmployee(['last_name' => 'Fulldayleaveform48']);
         $this->assignEightToFiveShift($user);
@@ -251,9 +297,38 @@ class HalfDayLeaveDisplayTest extends TestCase
 
         $exportService->fill($sheet, $records, $user, 'August 2026', '2026-08-01', $leaveMap);
 
-        // C16:F16 are merged for a full-day leave (unchanged behavior) - only
-        // the anchor cell (C, the leftmost of the merged range) holds the
-        // value; PhpSpreadsheet nulls out the other cells in a merged range.
+        // A real punch always wins over the leave code, even on a full-day
+        // leave date - no merge happens once any real punch exists. Zero
+        // late/undertime still applies since no work obligation exists on an
+        // approved full-day leave.
+        $row = 16;
+        $this->assertSame('08:20', $sheet->getCell("C{$row}")->getValue(), 'A real punch must win over the leave code, even on a full-day leave date.');
+        $this->assertSame('12:00', $sheet->getCell("D{$row}")->getValue());
+        $this->assertSame('13:00', $sheet->getCell("E{$row}")->getValue());
+        $this->assertSame('15:55', $sheet->getCell("F{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
+    }
+
+    public function test_form48_export_full_day_leave_with_no_punches_still_merges_and_shows_leave_code(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Fulldayleaveform48empty']);
+        $this->assignEightToFiveShift($user);
+
+        $this->fileHalfDayLeave($user, 'Vacation Leave', 1.0);
+
+        $exportService = app(Form48ExportService::class);
+        $records = $exportService->buildRecords($user->id, '2026-08-01', '2026-08-31');
+        $leaveMap = $exportService->buildLeaveMap($user->id, '2026-08-01', '2026-08-31');
+
+        $templatePath = storage_path('app/templates/form48.xls');
+        $spreadsheet = IOFactory::load($templatePath);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $exportService->fill($sheet, $records, $user, 'August 2026', '2026-08-01', $leaveMap);
+
+        // With no real punch to preserve, C16:F16 still merge into a single
+        // leave-code cell exactly as before this fix.
         $row = 16;
         $this->assertTrue($sheet->getCell("C{$row}")->isMergeRangeValueCell());
         $this->assertSame('VL', $sheet->getCell("C{$row}")->getValue());

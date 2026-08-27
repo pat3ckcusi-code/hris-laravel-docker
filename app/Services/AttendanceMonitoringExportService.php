@@ -521,7 +521,16 @@ class AttendanceMonitoringExportService
             foreach ($workDtrs as $d) {
                 $dateStr = Carbon::parse($d->date)->toDateString();
 
-                if ($isSlotCovered($dateStr, 'pm_out')) {
+                // imputedUndertimeMinutes() sums two independent components
+                // (a missing am_out and a missing pm_out are scored
+                // separately) - checking only 'pm_out' coverage here let a
+                // source (Locator/DtrExcuse/WorkSuspension) that explains
+                // only 'am_out' through unfiltered, wrongly phantom-charging
+                // that component on a day the actual PM Out was fine. Skip
+                // entirely only once both are covered; otherwise pass the
+                // exact covered subset so the resolver suppresses only the
+                // component(s) actually explained.
+                if ($isSlotCovered($dateStr, 'am_out') && $isSlotCovered($dateStr, 'pm_out')) {
                     continue;
                 }
 
@@ -529,7 +538,11 @@ class AttendanceMonitoringExportService
                 if (($suspension = $suspensionsByDate->get($dateStr)) !== null && ! $empIsFrontlineExempt) {
                     [$schedule] = $schedule->applySuspension($suspension->suspension_time);
                 }
-                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule);
+                $coveredSlots = array_values(array_filter(
+                    ['am_out', 'pm_out'],
+                    fn (string $slot): bool => $isSlotCovered($dateStr, $slot)
+                ));
+                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule, $coveredSlots);
 
                 if ($mins > 0) {
                     $phantomUndertimeByDate[$dateStr] = $mins;

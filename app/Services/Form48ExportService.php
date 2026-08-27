@@ -12,6 +12,7 @@ use App\Models\Locator;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkSuspension;
+use App\Services\Attendance\ExcludedSlotPunchRecovery;
 use App\Services\Attendance\WeeklyPunchPairReconciliationService;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
@@ -25,6 +26,7 @@ class Form48ExportService
         private readonly DtrPunchResolver $punchResolver,
         private readonly ShiftPunchGrouper $punchGrouper,
         private readonly WeeklyPunchPairReconciliationService $punchPairReconciliation,
+        private readonly ExcludedSlotPunchRecovery $excludedSlotPunchRecovery,
     ) {}
 
     // Row where day 1 lives: 11 + 1 = 12.
@@ -307,6 +309,38 @@ class Form48ExportService
     }
 
     /**
+     * Build a day-of-month → excluded-slot-keys map for company-wide work
+     * suspensions that actually exclude at least one Form 48 slot. Mirrors
+     * DtrController::data()'s per-row applySuspension() resolution and its
+     * `!empty($suspensionSlots)` gate - a cutoff-only suspension (caps workEnd,
+     * excludes nothing) needs no label here, only the schedule adjustment
+     * buildRecords() already applies upstream.
+     *
+     * @return array<int, array<string, true>>
+     */
+    private function buildSuspensionSlotsMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+        $user = User::find($userId);
+        if (! $user || $user->isFrontlineExempt()) {
+            return $map;
+        }
+
+        WorkSuspension::whereBetween('suspension_date', [$from, $to])
+            ->get()
+            ->each(function (WorkSuspension $suspension) use (&$map, $user): void {
+                $date = Carbon::parse($suspension->suspension_date);
+                $schedule = WorkSchedule::forUserOnDate($user, $date);
+                [, $suspensionSlots] = $schedule->applySuspension($suspension->suspension_time);
+                if (! empty($suspensionSlots)) {
+                    $map[(int) $date->day] = $suspensionSlots;
+                }
+            });
+
+        return $map;
+    }
+
+    /**
      * Build a day-of-month → slot-coverage map for approved locators on each day.
      * Multiple locators on the same day are OR-merged; departure/arrival form the
      * union window (earliest departure, latest arrival) used for punch redistribution.
@@ -508,6 +542,46 @@ class Form48ExportService
     }
 
     /**
+     * Build a day-of-month → travel_order_num map for approved travel orders
+     * covering this user. Mirrors buildOfficeOrderMap()'s query shape and
+     * priority tier - Travel Order structurally mirrors Office Order elsewhere
+     * in this codebase (see DtrController::data()'s identical travelOrderDateMap).
+     *
+     * @return array<int, string> e.g. [15 => 'TO-2026-003']
+     */
+    public function buildTravelOrderMap(int $userId, string $from, string $to): array
+    {
+        $map = [];
+        $user = User::find($userId);
+        if (! $user || ! $user->EmpNo) {
+            return $map;
+        }
+
+        $rangeStart = Carbon::parse($from);
+        $rangeEnd = Carbon::parse($to);
+
+        DB::table('travel_orders')
+            ->join('travel_order_employees', 'travel_orders.id', '=', 'travel_order_employees.travel_order_id')
+            ->where('travel_order_employees.emp_no', $user->EmpNo)
+            ->where('travel_orders.status', 'Approved')
+            ->where('travel_orders.start_date', '<=', $to)
+            ->where('travel_orders.end_date', '>=', $from)
+            ->select('travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
+            ->get()
+            ->each(function ($o) use (&$map, $rangeStart, $rangeEnd): void {
+                $cursor = Carbon::parse($o->start_date)->startOfDay();
+                $until = Carbon::parse($o->end_date)->startOfDay();
+                $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
+                $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
+                for (; $cursor->lte($until); $cursor->addDay()) {
+                    $map[(int) $cursor->day] = $o->travel_order_num;
+                }
+            });
+
+        return $map;
+    }
+
+    /**
      * Resolve a day's display slots against a locator's coverage.
      *
      * Biometric punches always take priority: a slot shows its real punch when
@@ -568,21 +642,21 @@ class Form48ExportService
         $tardiness = 0;
         $undertime = 0;
 
-        if ($amIn !== '' && $amIn !== 'LOCATOR' && $amIn !== 'EXCUSED') {
+        if ($amIn !== '' && $amIn !== 'LOCATOR' && $amIn !== 'EXCUSED' && $amIn !== 'SUSPENDED') {
             $hm = substr($amIn, 0, 5);
             if ($hm > $schedule->workStart && $hm < $schedule->morningEnd) {
                 $tardiness += (int) Carbon::parse("$date $schedule->workStart")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
-        if ($pmIn !== '' && $pmIn !== 'LOCATOR' && $pmIn !== 'EXCUSED') {
+        if ($pmIn !== '' && $pmIn !== 'LOCATOR' && $pmIn !== 'EXCUSED' && $pmIn !== 'SUSPENDED') {
             $hm = substr($pmIn, 0, 5);
             if ($hm > $schedule->lunchReturn && $hm < $schedule->noonEnd) {
                 $tardiness += (int) Carbon::parse("$date $schedule->lunchReturn")->diffInMinutes(Carbon::parse("$date $hm"));
             }
         }
 
-        if ($pmOut !== '' && $pmOut !== 'LOCATOR' && $pmOut !== 'EXCUSED') {
+        if ($pmOut !== '' && $pmOut !== 'LOCATOR' && $pmOut !== 'EXCUSED' && $pmOut !== 'SUSPENDED') {
             $hm = substr($pmOut, 0, 5);
             $pmOutLower = $schedule->noBreak ? $schedule->workStart : $schedule->lunchReturn;
             if ($hm >= $pmOutLower && $hm < $schedule->workEnd) {
@@ -613,20 +687,50 @@ class Form48ExportService
         array $fieldWorkMap = [],
         array $excuseMap = [],
         array $officeOrderMap = [],
-        array $wfhMap = []
+        array $wfhMap = [],
+        array $travelOrderMap = []
     ): void {
         $name = $this->formatName($employee);
         $designation = trim($employee->designation ?? '');
         $schedule = WorkSchedule::forUser($employee);
+        // Mirrors fillDailyRows()'s own year/month derivation from $from - this is a
+        // monthly form, so the suspension lookup always spans that whole month.
+        $to = Carbon::parse($from)->endOfMonth()->toDateString();
+        $suspensionSlotsMap = $this->buildSuspensionSlotsMap($employee->id, $from, $to);
+
+        // Recover real biometric punches that a DtrExcuse/WorkSuspension's
+        // unconditional slot exclusion swallowed before they could ever reach
+        // the display fallback below - see ExcludedSlotPunchRecovery's own
+        // docblock for why this can't be done with a naive unmatched_logs
+        // sequential fill. $excuseMap/$suspensionSlotsMap are day-of-month
+        // indexed; the recovery service needs real dates.
+        $excludedSlotsByDate = [];
+        $periodStart = Carbon::parse($from);
+        $dayToDate = fn (int $day): string => Carbon::createFromDate((int) $periodStart->year, (int) $periodStart->month, $day)->format('Y-m-d');
+        foreach ($excuseMap as $day => $excuse) {
+            if (($keys = $excuse->excludedSlotKeys()) !== []) {
+                $excludedSlotsByDate[$dayToDate($day)] = array_fill_keys($keys, null);
+            }
+        }
+        foreach ($suspensionSlotsMap as $day => $slots) {
+            $dateStr = $dayToDate($day);
+            $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $slots);
+        }
+        $recoveredByDate = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate);
+        $recoveredMap = [];
+        foreach ($recoveredByDate as $dateStr => $slots) {
+            $recoveredMap[Carbon::parse($dateStr)->day] = $slots;
+        }
 
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap, $travelOrderMap, $suspensionSlotsMap, $recoveredMap);
 
-        // Exclude rest days, leave days, and field work/WFH/ETA/OO days with fewer than 4
-        // punches from the total (mirrors fillDailyRows()'s punch-count gating for those
-        // same day types - a day with all 4 slots punched counts like any normal day).
-        // For locator days, zero the penalty for each covered slot that lacks a punch.
-        // For excused slots, substitute 'EXCUSED' so computeSlotPenalties() skips them.
+        // Exclude rest days, leave days, and field work/WFH/ETA/OO/TO days with fewer
+        // than 4 punches from the total (mirrors fillDailyRows()'s punch-count gating
+        // for those same day types - a day with all 4 slots punched counts like any
+        // normal day). For locator days, zero the penalty for each covered slot that
+        // lacks a punch. For excused/suspended slots, substitute 'EXCUSED' so
+        // computeSlotPenalties() skips them.
         $totalMins = 0;
         foreach ($records as $day => $r) {
             if (isset($restDayMap[$day])) {
@@ -654,7 +758,8 @@ class Form48ExportService
                 continue;
             }
             if ((isset($fieldWorkMap[$day]) || isset($wfhMap[$day])) && ! isset($etaMap[$day])
-                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
+                && ! isset($officeOrderMap[$day]) && ! isset($travelOrderMap[$day])
+                && ! isset($excuseMap[$day]) && ! isset($suspensionSlotsMap[$day]) && ! isset($locatorMap[$day])) {
                 $fwPunches = count(array_filter([
                     $r['am_in'] ?? null, $r['am_out'] ?? null,
                     $r['pm_in'] ?? null, $r['pm_out'] ?? null,
@@ -681,12 +786,31 @@ class Form48ExportService
                     continue;
                 }
             }
+            if (isset($travelOrderMap[$day])) {
+                $toPunches = count(array_filter([
+                    $r['am_in'] ?? null, $r['am_out'] ?? null,
+                    $r['pm_in'] ?? null, $r['pm_out'] ?? null,
+                ], fn ($v) => $v !== null && $v !== ''));
+                if ($toPunches < 4) {
+                    continue;
+                }
+            }
             if (isset($excuseMap[$day])) {
                 $excuse = $excuseMap[$day];
                 $exAmIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? 'EXCUSED' : ($r['am_in'] ?? '');
                 $exPmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? 'EXCUSED' : ($r['pm_in'] ?? '');
                 $exPmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? 'EXCUSED' : ($r['pm_out'] ?? '');
                 [$tardiness, $undertime] = self::computeSlotPenalties($r['date'], $exAmIn, $exPmIn, $exPmOut, $schedule);
+                $totalMins += $tardiness + $undertime;
+
+                continue;
+            }
+            if (isset($suspensionSlotsMap[$day])) {
+                $slots = $suspensionSlotsMap[$day];
+                $sAmIn = array_key_exists('am_in', $slots) ? 'EXCUSED' : ($r['am_in'] ?? '');
+                $sPmIn = array_key_exists('pm_in', $slots) ? 'EXCUSED' : ($r['pm_in'] ?? '');
+                $sPmOut = array_key_exists('pm_out', $slots) ? 'EXCUSED' : ($r['pm_out'] ?? '');
+                [$tardiness, $undertime] = self::computeSlotPenalties($r['date'], $sAmIn, $sPmIn, $sPmOut, $schedule);
                 $totalMins += $tardiness + $undertime;
 
                 continue;
@@ -862,7 +986,10 @@ class Form48ExportService
         array $fieldWorkMap = [],
         array $excuseMap = [],
         array $officeOrderMap = [],
-        array $wfhMap = []
+        array $wfhMap = [],
+        array $travelOrderMap = [],
+        array $suspensionSlotsMap = [],
+        array $recoveredMap = []
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -887,8 +1014,9 @@ class Form48ExportService
             // Order/full-day Leave filed for the *next* day was invisible here
             // (e.g. a 24-on/24-off shift starting the day before an Office Order
             // that pulled the employee straight into an all-day event instead of
-            // back to post to punch out). Travel Order/WorkSuspension aren't
-            // available at this layer (no map is built/passed for either), so
+            // back to post to punch out). $travelOrderMap/$suspensionSlotsMap are
+            // now available at this layer for the regular per-day branches below,
+            // but this next-day fallback intentionally isn't extended to them -
             // only these three sources are checked - matches the equivalent fix
             // in DtrController::data()/AttendanceMonitoringExportService. Since
             // crossesMidnight always means workEnd's clock value is <= workStart's
@@ -931,12 +1059,13 @@ class Form48ExportService
             // Field work day: same sequential partial-punch merge pattern as Office Order
             // below - real times for filled slots, remaining empty slots merged into one
             // "Field Work" cell, so a real biometric punch is never discarded. Only when no
-            // real, approved event (leave/ETA/OO/excuse/locator) also covers this date -
-            // those take priority, same as the ordering already established below for
-            // ETA/OO/excuse/locator relative to each other. If all 4 slots are present,
-            // fall through to the normal write below.
+            // real, approved event (leave/ETA/OO/TO/excuse/suspension/locator) also covers
+            // this date - those take priority, same as the ordering already established
+            // below for ETA/OO/TO/excuse/suspension/locator relative to each other. If all
+            // 4 slots are present, fall through to the normal write below.
             if (isset($fieldWorkMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
-                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
+                && ! isset($officeOrderMap[$day]) && ! isset($travelOrderMap[$day])
+                && ! isset($excuseMap[$day]) && ! isset($suspensionSlotsMap[$day]) && ! isset($locatorMap[$day])) {
                 $punchCount = $rec ? count(array_filter([
                     $rec['am_in'] ?? null, $rec['am_out'] ?? null,
                     $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
@@ -951,11 +1080,12 @@ class Form48ExportService
             }
 
             // Work-from-home day: same sequential partial-punch merge pattern as field
-            // work above. Same priority rule - real events (leave/ETA/OO/excuse/locator)
-            // take precedence over this label when both cover the same date. If all 4
-            // slots are present, fall through to the normal write below.
+            // work above. Same priority rule - real events (leave/ETA/OO/TO/excuse/
+            // suspension/locator) take precedence over this label when both cover the
+            // same date. If all 4 slots are present, fall through to the normal write below.
             if (isset($wfhMap[$day]) && ! isset($leaveMap[$day]) && ! isset($etaMap[$day])
-                && ! isset($officeOrderMap[$day]) && ! isset($excuseMap[$day]) && ! isset($locatorMap[$day])) {
+                && ! isset($officeOrderMap[$day]) && ! isset($travelOrderMap[$day])
+                && ! isset($excuseMap[$day]) && ! isset($suspensionSlotsMap[$day]) && ! isset($locatorMap[$day])) {
                 $punchCount = $rec ? count(array_filter([
                     $rec['am_in'] ?? null, $rec['am_out'] ?? null,
                     $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
@@ -969,18 +1099,19 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
-            // Approved leave: a full-day leave (days >= 1) merges all four slots and
-            // writes the leave code, overriding any incidental punch - unchanged,
-            // deliberate priority. A half-day leave (days < 1) instead falls back
-            // per slot, the same convention as the Excuse branch below: a real
-            // punch time where one exists, the leave code only for a slot with no
-            // real punch - "which half" isn't stored anywhere, so it's inferred
-            // from the punch data itself. Tardiness/undertime are recomputed from
-            // only the slots without a real punch excluded, so the half actually
-            // worked still charges genuine lateness/undertime instead of being
-            // blanket-zeroed. A half-day leave with zero real punches at all falls
-            // back to the same merged, whole-day rendering as full-day leave, since
-            // there's no real data to preserve either way.
+            // Approved leave: a real punch always wins over the leave code, even on
+            // a full-day leave date - biometric attendance takes priority first, and
+            // the leave code only fills a slot with no real punch (same convention
+            // as the Excuse branch below). "Which half" isn't stored anywhere for a
+            // half-day leave, so it's inferred from the punch data itself. A
+            // half-day leave still recomputes tardiness/undertime from only the
+            // slots without a real punch excluded, so the half actually worked
+            // still charges genuine lateness/undertime instead of being
+            // blanket-zeroed - a full-day leave keeps zeroing both regardless of any
+            // incidental punch, since no work obligation exists that day at all. A
+            // leave with zero real punches at all (full- or half-day) falls back to
+            // the same merged, whole-day rendering, since there's no real data to
+            // preserve either way.
             if ($leaveCode !== null) {
                 $isFullDayLeave = ($leaveMap[$day]['days'] ?? 1.0) >= 1.0;
                 $punchCount = $rec ? count(array_filter([
@@ -988,7 +1119,7 @@ class Form48ExportService
                     $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
                 ], fn ($v) => $v !== null && $v !== '')) : 0;
 
-                if ($isFullDayLeave || $punchCount === 0) {
+                if ($punchCount === 0) {
                     foreach (range(0, 3) as $i) {
                         $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
                         try {
@@ -1011,13 +1142,20 @@ class Form48ExportService
                 $pmIn = $fmt($rec['pm_in'] ?? null) ?: $leaveCode;
                 $pmOut = $fmt($rec['pm_out'] ?? null) ?: $leaveCode;
 
-                [$tardiness, $undertime] = self::computeSlotPenalties(
-                    $rec['date'],
-                    $fmt($rec['am_in'] ?? null) ?: '',
-                    $fmt($rec['pm_in'] ?? null) ?: '',
-                    $fmt($rec['pm_out'] ?? null) ?: '',
-                    $schedule
-                );
+                if ($isFullDayLeave) {
+                    // Full-day leave still excuses the whole day even with an
+                    // incidental punch - no work obligation exists for any slot,
+                    // so no penalty applies.
+                    $tardiness = $undertime = 0;
+                } else {
+                    [$tardiness, $undertime] = self::computeSlotPenalties(
+                        $rec['date'],
+                        $fmt($rec['am_in'] ?? null) ?: '',
+                        $fmt($rec['pm_in'] ?? null) ?: '',
+                        $fmt($rec['pm_out'] ?? null) ?: '',
+                        $schedule
+                    );
+                }
                 $mins = $tardiness + $undertime;
                 $hVal = (int) floor($mins / 60);
                 $mVal = $mins % 60;
@@ -1170,14 +1308,43 @@ class Form48ExportService
                 // punchCount === 4: fall through to normal write below.
             }
 
-            // Approved excuse: suppress penalties for excused slots; show 'EXCUSED' for missing ones.
-            // Priority below ETA and OO, above locator.
-            if (isset($excuseMap[$day])) {
-                $excuse = $excuseMap[$day];
+            // Travel Order: same priority tier as Office Order, sitting right after
+            // it - mirrors DtrController::data()'s identical placement. Same
+            // sequential partial-punch merge pattern as Field Work/WFH above.
+            if (isset($travelOrderMap[$day])) {
                 $punchCount = $rec ? count(array_filter([
                     $rec['am_in'] ?? null, $rec['am_out'] ?? null,
                     $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
                 ], fn ($v) => $v !== null && $v !== '')) : 0;
+
+                if ($punchCount < 4) {
+                    $this->writeSequentialPartialPunchLabel($sheet, $row, $rec, $punchCount, 'Travel Order');
+
+                    continue;
+                }
+                // punchCount === 4: fall through to normal write below.
+            }
+
+            // Approved excuse: suppress penalties for excused slots; show 'EXCUSED' for missing ones.
+            // Priority below ETA, OO, and TO; above suspension and locator.
+            if (isset($excuseMap[$day])) {
+                $excuse = $excuseMap[$day];
+                // Effective values fold in any recovered punch (a real biometric
+                // punch a DtrExcuse's unconditional exclusion swallowed into
+                // unmatched_logs/time_in_ot/time_out_ot before it could ever reach
+                // $rec - see ExcludedSlotPunchRecovery) so a recovered-but-otherwise
+                // punchless day still routes into the per-slot branch below instead
+                // of the whole-day merge, which reads $rec alone and would
+                // otherwise never see the recovery.
+                $recovered = $recoveredMap[$day] ?? [];
+                $effAmIn = $rec['am_in'] ?? $recovered['am_in'] ?? null;
+                $effAmOut = $rec['am_out'] ?? $recovered['am_out'] ?? null;
+                $effPmIn = $rec['pm_in'] ?? $recovered['pm_in'] ?? null;
+                $effPmOut = $rec['pm_out'] ?? $recovered['pm_out'] ?? null;
+                $punchCount = count(array_filter(
+                    [$effAmIn, $effAmOut, $effPmIn, $effPmOut],
+                    fn ($v) => $v !== null && $v !== ''
+                ));
 
                 if ($punchCount === 0) {
                     // No punches at all - merge and label the row "EXCUSED".
@@ -1194,14 +1361,22 @@ class Form48ExportService
                         $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
                     }
                 } else {
-                    // Has some punches: show actual times where punched, 'EXCUSED' for missing excused slots.
-                    $amIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? ($fmt($rec['am_in'] ?? null) ?: 'EXCUSED') : $fmt($rec['am_in'] ?? null);
-                    $amOut = ($excuse->excuse_am_out || $excuse->is_full_day) ? ($fmt($rec['am_out'] ?? null) ?: 'EXCUSED') : $fmt($rec['am_out'] ?? null);
-                    $pmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? ($fmt($rec['pm_in'] ?? null) ?: 'EXCUSED') : $fmt($rec['pm_in'] ?? null);
-                    $pmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? ($fmt($rec['pm_out'] ?? null) ?: 'EXCUSED') : $fmt($rec['pm_out'] ?? null);
+                    // Has some punches (real or recovered): show the actual time
+                    // where one exists, 'EXCUSED' for a genuinely missing excused slot.
+                    $amIn = ($excuse->excuse_am_in || $excuse->is_full_day) ? ($fmt($effAmIn) ?: 'EXCUSED') : $fmt($effAmIn);
+                    $amOut = ($excuse->excuse_am_out || $excuse->is_full_day) ? ($fmt($effAmOut) ?: 'EXCUSED') : $fmt($effAmOut);
+                    $pmIn = ($excuse->excuse_pm_in || $excuse->is_full_day) ? ($fmt($effPmIn) ?: 'EXCUSED') : $fmt($effPmIn);
+                    $pmOut = ($excuse->excuse_pm_out || $excuse->is_full_day) ? ($fmt($effPmOut) ?: 'EXCUSED') : $fmt($effPmOut);
 
-                    // Recompute penalties with excused slots substituted to suppress their contribution.
-                    [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amIn, $pmIn, $pmOut, $schedule);
+                    // Penalty inputs are deliberately blind to any recovered value -
+                    // always the sentinel for an excused slot regardless of what's
+                    // displayed, so a recovered clock time can never feed a real
+                    // tardiness/undertime figure. No am_out shadow is needed since
+                    // computeSlotPenalties() never takes an am_out term at all.
+                    $amInPenalty = ($excuse->excuse_am_in || $excuse->is_full_day) ? 'EXCUSED' : $fmt($rec['am_in'] ?? null);
+                    $pmInPenalty = ($excuse->excuse_pm_in || $excuse->is_full_day) ? 'EXCUSED' : $fmt($rec['pm_in'] ?? null);
+                    $pmOutPenalty = ($excuse->excuse_pm_out || $excuse->is_full_day) ? 'EXCUSED' : $fmt($rec['pm_out'] ?? null);
+                    [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amInPenalty, $pmInPenalty, $pmOutPenalty, $schedule);
                     $mins = $tardiness + $undertime;
                     $hVal = (int) floor($mins / 60);
                     $mVal = $mins % 60;
@@ -1219,6 +1394,73 @@ class Form48ExportService
                         ] as $col) {
                             $sheet->getStyle($col.$row)->getAlignment()
                                 ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            // Work Suspension: priority below Excuse, above Locator - mirrors
+            // DtrController::data()'s identical placement. Only suspensions that
+            // actually exclude at least one slot reach $suspensionSlotsMap (see
+            // buildSuspensionSlotsMap()) - a cutoff-only suspension with no
+            // exclusion needs no label here, only the schedule adjustment already
+            // applied upstream in buildRecords().
+            if (isset($suspensionSlotsMap[$day])) {
+                $slots = $suspensionSlotsMap[$day];
+                // Same effective-values treatment as the Excuse branch above - see
+                // its comment for why this is required, not just a nicety.
+                $recovered = $recoveredMap[$day] ?? [];
+                $effAmIn = $rec['am_in'] ?? $recovered['am_in'] ?? null;
+                $effAmOut = $rec['am_out'] ?? $recovered['am_out'] ?? null;
+                $effPmIn = $rec['pm_in'] ?? $recovered['pm_in'] ?? null;
+                $effPmOut = $rec['pm_out'] ?? $recovered['pm_out'] ?? null;
+                $punchCount = count(array_filter(
+                    [$effAmIn, $effAmOut, $effPmIn, $effPmOut],
+                    fn ($v) => $v !== null && $v !== ''
+                ));
+
+                if ($punchCount === 0) {
+                    foreach (range(0, 3) as $i) {
+                        $range = self::WKND_FROM_COLS[$i].$row.':'.self::WKND_TO_COLS[$i].$row;
+                        try {
+                            $sheet->mergeCells($range);
+                        } catch (\Throwable) {
+                        }
+                        $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'SUSPENDED');
+                        $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
+                    }
+                } else {
+                    $amIn = array_key_exists('am_in', $slots) ? ($fmt($effAmIn) ?: 'SUSPENDED') : $fmt($effAmIn);
+                    $amOut = array_key_exists('am_out', $slots) ? ($fmt($effAmOut) ?: 'SUSPENDED') : $fmt($effAmOut);
+                    $pmIn = array_key_exists('pm_in', $slots) ? ($fmt($effPmIn) ?: 'SUSPENDED') : $fmt($effPmIn);
+                    $pmOut = array_key_exists('pm_out', $slots) ? ($fmt($effPmOut) ?: 'SUSPENDED') : $fmt($effPmOut);
+
+                    // Penalty inputs stay blind to any recovered value, same
+                    // reasoning as the Excuse branch above.
+                    $amInPenalty = array_key_exists('am_in', $slots) ? 'SUSPENDED' : $fmt($rec['am_in'] ?? null);
+                    $pmInPenalty = array_key_exists('pm_in', $slots) ? 'SUSPENDED' : $fmt($rec['pm_in'] ?? null);
+                    $pmOutPenalty = array_key_exists('pm_out', $slots) ? 'SUSPENDED' : $fmt($rec['pm_out'] ?? null);
+                    [$tardiness, $undertime] = self::computeSlotPenalties($rec['date'], $amInPenalty, $pmInPenalty, $pmOutPenalty, $schedule);
+                    $mins = $tardiness + $undertime;
+                    $hVal = (int) floor($mins / 60);
+                    $mVal = $mins % 60;
+
+                    foreach (range(0, 3) as $i) {
+                        $sheet->setCellValue(self::AM_IN_COLS[$i].$row, $amIn);
+                        $sheet->setCellValue(self::AM_OUT_COLS[$i].$row, $amOut);
+                        $sheet->setCellValue(self::PM_IN_COLS[$i].$row, $pmIn);
+                        $sheet->setCellValue(self::PM_OUT_COLS[$i].$row, $pmOut);
+                        $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, $hVal ?: '');
+                        $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, $mVal ?: '');
+                        foreach ([
+                            self::AM_IN_COLS[$i], self::AM_OUT_COLS[$i],
+                            self::PM_IN_COLS[$i], self::PM_OUT_COLS[$i],
+                        ] as $col) {
+                            $sheet->getStyle($col.$row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                         }
                     }
                 }

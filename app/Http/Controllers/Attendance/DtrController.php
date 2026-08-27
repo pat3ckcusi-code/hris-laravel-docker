@@ -12,6 +12,7 @@ use App\Models\LeaveDate;
 use App\Models\Locator;
 use App\Models\User;
 use App\Models\WorkSuspension;
+use App\Services\Attendance\ExcludedSlotPunchRecovery;
 use App\Services\DepartmentService;
 use App\Services\DtrPunchResolver;
 use App\Services\Form48ExportService;
@@ -33,6 +34,7 @@ class DtrController extends Controller
     public function __construct(
         private DepartmentService $departmentService,
         private DtrPunchResolver $punchResolver,
+        private ExcludedSlotPunchRecovery $excludedSlotPunchRecovery,
     ) {}
 
     // ── PERIOD HELPERS ────────────────────────────────────────────────────────
@@ -323,6 +325,29 @@ class DtrController extends Controller
             ->get()
             ->keyBy(fn ($s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
 
+        // Recover real biometric punches that a DtrExcuse/WorkSuspension's
+        // unconditional slot exclusion swallowed before they could ever reach
+        // the display fallback below (unmatched_logs / time_in_ot / time_out_ot
+        // instead of the named am/pm columns) - see ExcludedSlotPunchRecovery's
+        // own docblock for why this can't be done with a naive unmatched_logs
+        // sequential fill.
+        $excludedSlotsByDate = [];
+        foreach ($excuseMap as $dateStr => $excuse) {
+            if (($keys = $excuse->excludedSlotKeys()) !== []) {
+                $excludedSlotsByDate[$dateStr] = array_fill_keys($keys, null);
+            }
+        }
+        if (! $employee->isFrontlineExempt()) {
+            foreach ($suspensionMap as $dateStr => $suspensionRow) {
+                $dateSchedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dateStr), $shiftAssignments);
+                [, $slots] = $dateSchedule->applySuspension($suspensionRow->suspension_time);
+                if ($slots !== []) {
+                    $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $slots);
+                }
+            }
+        }
+        $recoveredMap = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate, $dtrRows);
+
         // Build office-order date map: 'Y-m-d' → office_order_num, expanding each
         // order to every day from issued_date through effective_date (or just
         // issued_date if effective_date isn't set), clamped to the period.
@@ -510,18 +535,24 @@ class DtrController extends Controller
             // full half-day block from the shift template, mirroring the Monitoring
             // Matrix report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
             $amInImputed = false;
-            $imputeAmInLate = function () use ($dtr, $rowSchedule, $dateStr, &$amInImputed): int {
+            // $coveredSlots: slot keys already explained by whichever source
+            // (Locator/DtrExcuse/WorkSuspension) is calling this - each
+            // caller must pass its own accurate per-slot coverage, never just
+            // gate on a single slot before accepting the whole combined
+            // result, since imputedLateMinutes()/imputedUndertimeMinutes()
+            // each sum two independent AM/PM components internally.
+            $imputeAmInLate = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$amInImputed): int {
                 $mins = $this->punchResolver->imputedLateMinutes(
-                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots
                 );
                 $amInImputed = $mins > 0;
 
                 return $mins;
             };
             $pmOutImputed = false;
-            $imputePmOutUndertime = function () use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
+            $imputePmOutUndertime = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
                 $mins = $this->punchResolver->imputedUndertimeMinutes(
-                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots
                 );
                 $pmOutImputed = $mins > 0;
 
@@ -542,22 +573,24 @@ class DtrController extends Controller
             // reading "Missing OUT" (see the new tier added to $statusBadge below).
             $pmOutFallbackApplied = false;
             if ($leaveCode) {
-                // A full-day leave overrides every slot regardless of any incidental
-                // punch (deliberate - leave takes priority for the whole day, same as
-                // Form48ExportService's own leave branch). A half-day leave (days < 1)
-                // only covers whichever slots have no real punch, so the half actually
-                // worked shows real times instead of being hidden behind the leave code
-                // - mirroring the per-slot fallback already used for ETA/OO/TO below,
-                // since "which half" isn't stored anywhere and is inferred from the
-                // punch data itself.
+                // A real punch always wins over the leave code, even on a full-day
+                // leave date - biometric attendance takes priority first, and the
+                // leave code only fills a slot with no real punch (same convention
+                // as ETA/OO/TO/Excuse/Suspension below). $coversAmIn/etc. still stay
+                // unconditionally true for a full-day leave for penalty purposes
+                // only: no work obligation exists that day, so late/undertime is
+                // still zeroed below even if the employee incidentally punched in.
+                // A half-day leave (days < 1) only covers whichever slots have no
+                // real punch to begin with, since "which half" isn't stored anywhere
+                // and is inferred from the punch data itself.
                 $coversAmIn = $isFullDayLeave || empty($dtr->time_in_am);
                 $coversAmOut = $isFullDayLeave || empty($dtr->time_out_am);
                 $coversPmIn = $isFullDayLeave || empty($dtr->time_in_pm);
                 $coversPmOut = $isFullDayLeave || empty($dtr->time_out_pm);
-                $tAmIn = $coversAmIn ? $leaveCode : $dtr->time_in_am;
-                $tAmOut = $coversAmOut ? $leaveCode : $dtr->time_out_am;
-                $tPmIn = $coversPmIn ? $leaveCode : $dtr->time_in_pm;
-                $tPmOut = $coversPmOut ? $leaveCode : $dtr->time_out_pm;
+                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: $leaveCode) : $dtr->time_in_am;
+                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: $leaveCode) : $dtr->time_out_am;
+                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: $leaveCode) : $dtr->time_in_pm;
+                $tPmOut = $coversPmOut ? ($dtr->time_out_pm ?: $leaveCode) : $dtr->time_out_pm;
 
                 // Recompute per-slot, same as the Locator branch below - a whole-day OR
                 // zero-out would hide genuine tardiness/undertime on the half actually
@@ -600,32 +633,60 @@ class DtrController extends Controller
                 $coversPmIn = $excuse->excuse_pm_in || $excuse->is_full_day;
                 $coversPmOut = $excuse->excuse_pm_out || $excuse->is_full_day || $pmOutCoveredNextDay;
                 $pmOutFallbackOnly = $pmOutCoveredNextDay && ! ($excuse->excuse_pm_out || $excuse->is_full_day);
-                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'EXCUSED') : ($dtr->time_in_am ?? '-');
-                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'EXCUSED') : ($dtr->time_out_am ?? '-');
-                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'EXCUSED') : ($dtr->time_in_pm ?? '-');
+                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: ($recoveredMap[$dateStr]['am_in'] ?? 'EXCUSED')) : ($dtr->time_in_am ?? '-');
+                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: ($recoveredMap[$dateStr]['am_out'] ?? 'EXCUSED')) : ($dtr->time_out_am ?? '-');
+                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: ($recoveredMap[$dateStr]['pm_in'] ?? 'EXCUSED')) : ($dtr->time_in_pm ?? '-');
                 $tPmOut = $coversPmOut
-                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : 'EXCUSED'))
+                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : ($recoveredMap[$dateStr]['pm_out'] ?? 'EXCUSED')))
                     : ($dtr->time_out_pm ?? '-');
+                // $storedLate/$storedUt are already correctly component-scoped
+                // at import time - filing/editing a DtrExcuse always triggers
+                // PersonnelLogImportService::recomputeDtr(), which re-derives
+                // excludedSlotKeys() fresh and recomputes with that exclusion
+                // already applied. Zeroing the stored value again here on top
+                // of that (the old `(coversAmIn || coversPmIn) ? 0 :`/
+                // `coversPmOut ? 0 :` gates) was redundant and could wrongly
+                // discard a genuine, unrelated, uncovered figure - trust it
+                // as-is. The imputed fallback (only reached when nothing was
+                // stored) is gated per-component by the resolver itself now,
+                // given this excuse's own real coverage set.
+                $excuseCoveredSlots = $excuse->excludedSlotKeys();
+                if ($pmOutCoveredNextDay && ! in_array('pm_out', $excuseCoveredSlots, true)) {
+                    $excuseCoveredSlots[] = 'pm_out';
+                }
                 $storedLate = $dtr->late_minutes ?? 0;
-                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
+                $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate($excuseCoveredSlots);
                 $storedUt = $dtr->undertime_minutes ?? 0;
-                $utMin = $coversPmOut ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
+                $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime($excuseCoveredSlots);
             } elseif ($suspension) {
-                $coversAmIn = isset($suspensionSlots['am_in']);
-                $coversAmOut = isset($suspensionSlots['am_out']);
-                $coversPmIn = isset($suspensionSlots['pm_in']);
-                $coversPmOut = isset($suspensionSlots['pm_out']) || $pmOutCoveredNextDay;
-                $pmOutFallbackOnly = $pmOutCoveredNextDay && ! isset($suspensionSlots['pm_out']);
-                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: 'SUSPENDED') : ($dtr->time_in_am ?? '-');
-                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: 'SUSPENDED') : ($dtr->time_out_am ?? '-');
-                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: 'SUSPENDED') : ($dtr->time_in_pm ?? '-');
+                // applySuspension() returns excluded slots as array_fill_keys(...,
+                // null) - isset() on a null-valued key is always false, so these
+                // must use array_key_exists() to actually detect an excluded slot.
+                $coversAmIn = array_key_exists('am_in', $suspensionSlots);
+                $coversAmOut = array_key_exists('am_out', $suspensionSlots);
+                $coversPmIn = array_key_exists('pm_in', $suspensionSlots);
+                $coversPmOut = array_key_exists('pm_out', $suspensionSlots) || $pmOutCoveredNextDay;
+                $pmOutFallbackOnly = $pmOutCoveredNextDay && ! array_key_exists('pm_out', $suspensionSlots);
+                $tAmIn = $coversAmIn ? ($dtr->time_in_am ?: ($recoveredMap[$dateStr]['am_in'] ?? 'SUSPENDED')) : ($dtr->time_in_am ?? '-');
+                $tAmOut = $coversAmOut ? ($dtr->time_out_am ?: ($recoveredMap[$dateStr]['am_out'] ?? 'SUSPENDED')) : ($dtr->time_out_am ?? '-');
+                $tPmIn = $coversPmIn ? ($dtr->time_in_pm ?: ($recoveredMap[$dateStr]['pm_in'] ?? 'SUSPENDED')) : ($dtr->time_in_pm ?? '-');
                 $tPmOut = $coversPmOut
-                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : 'SUSPENDED'))
+                    ? ($dtr->time_out_pm ?: ($pmOutFallbackOnly ? $pmOutFallbackLabel : ($recoveredMap[$dateStr]['pm_out'] ?? 'SUSPENDED')))
                     : ($dtr->time_out_pm ?? '-');
+                // Same reasoning as the Excuse branch above: $storedLate/
+                // $storedUt are already correctly component-scoped at import
+                // time (WorkSuspensionRecomputeJob recomputes with the
+                // suspension's own exclusion applied on declare/edit/delete),
+                // so the stored value is trusted as-is rather than blanket-
+                // zeroed, and the imputed fallback is gated per-component.
+                $suspensionCoveredSlots = array_keys($suspensionSlots);
+                if ($pmOutCoveredNextDay && ! in_array('pm_out', $suspensionCoveredSlots, true)) {
+                    $suspensionCoveredSlots[] = 'pm_out';
+                }
                 $storedLate = $dtr->late_minutes ?? 0;
-                $lateMin = ($coversAmIn || $coversPmIn) ? 0 : ($storedLate > 0 ? $storedLate : $imputeAmInLate());
+                $lateMin = $storedLate > 0 ? $storedLate : $imputeAmInLate($suspensionCoveredSlots);
                 $storedUt = $dtr->undertime_minutes ?? 0;
-                $utMin = $coversPmOut ? 0 : ($storedUt > 0 ? $storedUt : $imputePmOutUndertime());
+                $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime($suspensionCoveredSlots);
             } elseif ($loc) {
                 [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] = Form48ExportService::resolveLocatorSlots(
                     $dtr->time_in_am, $dtr->time_out_am,
@@ -641,13 +702,29 @@ class DtrController extends Controller
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
                     $dateStr, $rawAmIn ?? '', $rawPmIn ?? '', $rawPmOut ?? '', $rowSchedule
                 );
-                if ($lateMin === 0 && ! ($loc['covers_am_in'] ?? false)) {
-                    $lateMin = $imputeAmInLate();
+                // Pass the locator's full coverage set so the imputed fallback
+                // suppresses exactly the component(s) it actually explains -
+                // checking only covers_am_in/covers_pm_out here previously let
+                // a Locator covering just one of the other two slots (am_out
+                // or pm_in) through unfiltered, since imputedLateMinutes()/
+                // imputedUndertimeMinutes() each sum two independent AM/PM
+                // components internally (confirmed real case: a Locator
+                // covering only am_out let the am_out-missing component
+                // through mislabeled as PM Out undertime on an otherwise
+                // on-time day).
+                $locCoveredSlots = array_keys(array_filter([
+                    'am_in' => $loc['covers_am_in'] ?? false,
+                    'am_out' => $loc['covers_am_out'] ?? false,
+                    'pm_in' => $loc['covers_pm_in'] ?? false,
+                    'pm_out' => $loc['covers_pm_out'] ?? false,
+                ]));
+                if ($lateMin === 0) {
+                    $lateMin = $imputeAmInLate($locCoveredSlots);
                 }
                 if ($pmOutCoveredNextDay) {
                     $utMin = 0;
-                } elseif ($utMin === 0 && ! ($loc['covers_pm_out'] ?? false)) {
-                    $utMin = $imputePmOutUndertime();
+                } elseif ($utMin === 0) {
+                    $utMin = $imputePmOutUndertime($locCoveredSlots);
                 }
             } elseif ($showFieldWorkWfh) {
                 $label = $fieldWorkWfhAssignment->type === 'wfh' ? 'Work From Home' : 'Field Work';

@@ -868,6 +868,131 @@ class AttendanceComputationTest extends TestCase
     }
 
     /**
+     * $coveredSlots regression: each AM/PM component of both functions is an
+     * independent, additive calculation - a caller must be able to suppress
+     * exactly the component a Locator/DtrExcuse/WorkSuspension explains
+     * without also silently discarding the other, unrelated component's
+     * genuine result. Real incident that surfaced this: a Locator covering
+     * only 'am_out' let the am_out-missing undertime component through
+     * mislabeled as PM Out undertime on an otherwise on-time day.
+     */
+    public function test_imputed_undertime_minutes_suppresses_only_the_covered_am_out_component(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        // am_in/am_out present would normally be fine, but here am_out is
+        // missing (covered) while pm_out is also missing and genuinely
+        // uncovered - only the pm_out component should survive.
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, '13:05:00', null, self::DATE, $this->specDay(), ['am_out']
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $mins); // lunchReturn(13:00) -> workEnd(17:00) only, AM component suppressed
+    }
+
+    public function test_imputed_undertime_minutes_suppresses_only_the_covered_pm_out_component(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, '13:05:00', null, self::DATE, $this->specDay(), ['pm_out']
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $mins); // workStart(08:00) -> morningEnd(12:00) only, PM component suppressed
+    }
+
+    public function test_imputed_undertime_minutes_is_fully_zero_when_both_components_are_covered(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, '13:05:00', null, self::DATE, $this->specDay(), ['am_out', 'pm_out']
+        );
+
+        Carbon::setTestNow();
+
+        $this->assertSame(0, $mins);
+    }
+
+    public function test_imputed_late_minutes_suppresses_only_the_covered_am_in_component(): void
+    {
+        // am_in missing (am_out present proves the segment happened); PM half
+        // fully present, so only the AM component could ever fire.
+        $uncovered = (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', '13:05:00', '17:00:00', self::DATE, $this->specDay()
+        );
+        $covered = (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', '13:05:00', '17:00:00', self::DATE, $this->specDay(), ['am_in']
+        );
+
+        $this->assertSame(240, $uncovered); // workStart(08:00) -> morningEnd(12:00)
+        $this->assertSame(0, $covered);
+    }
+
+    public function test_imputed_late_minutes_suppresses_only_the_covered_pm_in_component(): void
+    {
+        // pm_in missing (pm_out present proves the segment happened); AM half
+        // fully present, so only the PM component could ever fire.
+        $uncovered = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:56:00', '12:02:00', null, '17:00:00', self::DATE, $this->specDay()
+        );
+        $covered = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:56:00', '12:02:00', null, '17:00:00', self::DATE, $this->specDay(), ['pm_in']
+        );
+
+        $this->assertSame(240, $uncovered); // lunchReturn(13:00) -> workEnd(17:00)
+        $this->assertSame(0, $covered);
+    }
+
+    public function test_imputed_late_minutes_covering_pm_in_does_not_suppress_a_genuine_am_in_gap(): void
+    {
+        // Both components' preconditions hold (am_in and pm_in both missing,
+        // both siblings present) - covering only pm_in must leave the
+        // unrelated am_in component intact rather than zeroing the whole result.
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', null, '17:00:00', self::DATE, $this->specDay(), ['pm_in']
+        );
+
+        $this->assertSame(240, $mins); // workStart(08:00) -> morningEnd(12:00), AM component only
+    }
+
+    public function test_imputed_undertime_minutes_covered_am_out_does_not_suppress_a_genuine_pm_out_gap(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', '12:00:00', '13:05:00', null, self::DATE, $this->specDay(), []
+        );
+        $minsWithUnrelatedCoverage = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', '12:00:00', '13:05:00', null, self::DATE, $this->specDay(), ['am_out']
+        );
+
+        Carbon::setTestNow();
+
+        // am_out is present (no AM component to begin with) - covering it must not
+        // touch the genuinely uncovered pm_out gap.
+        $this->assertSame($mins, $minsWithUnrelatedCoverage);
+        $this->assertSame(240, $mins); // lunchReturn(13:00) -> workEnd(17:00)
+    }
+
+    public function test_no_break_imputation_respects_covered_slots(): void
+    {
+        $noBreak = $this->specDay(noBreak: true);
+
+        $late = (new DtrPunchResolver)->imputedLateMinutes(null, null, null, '17:00:00', self::DATE, $noBreak, ['am_in']);
+        $this->assertSame(0, $late, 'A no-break schedule\'s single late block is anchored on am_in - covering it suppresses the whole block.');
+
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $undertime = (new DtrPunchResolver)->imputedUndertimeMinutes('08:00:00', null, null, null, self::DATE, $noBreak, ['pm_out']);
+        Carbon::setTestNow();
+        $this->assertSame(0, $undertime, 'A no-break schedule\'s single undertime block is anchored on pm_out - covering it suppresses the whole block.');
+    }
+
+    /**
      * The new AM-out/PM-in checks must be guarded on punchRequirement itself,
      * not just on which columns happen to be null - an out_only day
      * genuinely populates time_out_pm while time_in_pm stays structurally
