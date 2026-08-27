@@ -164,7 +164,10 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                 <code>{designation}</code> (from users.designation),
                 <code>{employee_type}</code> (Permanent / Job Order / Contractual / Elected Official),
                 <code>{department}</code>,
-                <code>{salary}</code> (monthly salary from latest payroll run)
+                <code>{salary}</code> (monthly salary from latest payroll run),
+                <code>{honorific}</code> (Mr./Ms., from the employee's PDS Sex answer - prints "Mr./Ms." if not yet set),
+                <code>{last_name}</code> (employee's last name only),
+                <code>{pronoun}</code> (He/She, from the same PDS Sex answer - prints "He/She" if not yet set)
             </span>
 
             <div style="margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:14px;">
@@ -177,6 +180,9 @@ label { display: block; margin-bottom: 5px; font-weight: 500; font-size: .92em; 
                     'employee_type' => ['{employee_type}', 'Employee Type'],
                     'department'    => ['{department}',    'Department'],
                     'salary'        => ['{salary}',        'Monthly Salary'],
+                    'honorific'     => ['{honorific}',      'Honorific/Title'],
+                    'last_name'     => ['{last_name}',      'Last Name'],
+                    'pronoun'       => ['{pronoun}',        'Pronoun (He/She)'],
                 ];
                 @endphp
                 @foreach($phLabels as $phKey => [$phToken, $phLabel])

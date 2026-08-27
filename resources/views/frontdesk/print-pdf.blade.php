@@ -221,6 +221,9 @@
     $department = $replacements['department'];
     $dateToday = $replacements['date'];
     $salaryFormatted = $replacements['salary'];
+    $honorific = $replacements['honorific'];
+    $lastName = $replacements['last_name'];
+    $pronoun = $replacements['pronoun'];
 
     $phStyles = $parts['placeholder_styles'] ?? [];
     $phMap = [
@@ -230,6 +233,9 @@
         '{department}' => ['department', $department],
         '{date}' => ['date', $dateToday],
         '{salary}' => ['salary', $salaryFormatted],
+        '{honorific}' => ['honorific', $honorific],
+        '{last_name}' => ['last_name', $lastName],
+        '{pronoun}' => ['pronoun', $pronoun],
     ];
     $bodyHtml = e($bodyD['text'] ?? '');
     foreach ($phMap as $token => [$key, $value]) {
@@ -242,8 +248,8 @@
 
     $closingText = $closingD['text'] ?? '';
     $closingText = str_replace(
-        ['{employee_name}', '{designation}', '{employee_type}', '{department}', '{date}'],
-        [$employeeName, $designation, $employeeType, $department, $dateToday],
+        ['{employee_name}', '{designation}', '{employee_type}', '{department}', '{date}', '{honorific}', '{last_name}', '{pronoun}'],
+        [$employeeName, $designation, $employeeType, $department, $dateToday, $honorific, $lastName, $pronoun],
         $closingText
     );
 @endphp

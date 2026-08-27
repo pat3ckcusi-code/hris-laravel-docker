@@ -218,6 +218,9 @@ function downloadWord() {
         $department = $replacements['department'];
         $dateToday = $replacements['date'];
         $salaryFormatted = $replacements['salary'];
+        $honorific = $replacements['honorific'];
+        $lastName = $replacements['last_name'];
+        $pronoun = $replacements['pronoun'];
 
         /* Replace placeholders in body text with optionally-styled spans */
         $phStyles = $parts['placeholder_styles'] ?? [];
@@ -228,6 +231,9 @@ function downloadWord() {
             '{department}'    => ['department',    $department],
             '{date}'          => ['date',          $dateToday],
             '{salary}'        => ['salary',        $salaryFormatted],
+            '{honorific}'     => ['honorific',      $honorific],
+            '{last_name}'     => ['last_name',      $lastName],
+            '{pronoun}'       => ['pronoun',        $pronoun],
         ];
         $bodyHtml = e($bodyD['text'] ?? '');
         foreach ($phMap as $token => [$key, $value]) {
@@ -241,8 +247,8 @@ function downloadWord() {
         /* Replace placeholders in closing text */
         $closingText = $closingD['text'] ?? '';
         $closingText = str_replace(
-            ['{employee_name}', '{designation}', '{employee_type}', '{department}', '{date}'],
-            [$employeeName, $designation, $employeeType, $department, $dateToday],
+            ['{employee_name}', '{designation}', '{employee_type}', '{department}', '{date}', '{honorific}', '{last_name}', '{pronoun}'],
+            [$employeeName, $designation, $employeeType, $department, $dateToday, $honorific, $lastName, $pronoun],
             $closingText
         );
     @endphp

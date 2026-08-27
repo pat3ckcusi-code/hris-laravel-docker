@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EmployeeAssignment;
 use App\Models\PayrollDetail;
+use App\Models\Pds;
 use App\Models\SalaryMatrix;
 use App\Models\User;
 
@@ -24,7 +25,54 @@ class DocumentPlaceholderResolver
             'department' => $employee?->department?->Dept_name ?? '',
             'date' => now()->format('F d, Y'),
             'salary' => self::resolveSalary($employee),
+            'honorific' => self::resolveHonorific($employee),
+            'last_name' => $employee->last_name ?? '',
+            'pronoun' => self::resolvePronoun($employee),
         ];
+    }
+
+    /**
+     * "Mr."/"Ms." from the employee's own PDS Sex answer (`personal[sex]` in
+     * the `pds-personal-info` section) - optional, employee-entered data, not
+     * a `users` column. Falls back to the literal "Mr./Ms." when unset so the
+     * gap is visible in the rendered document rather than silently blank.
+     */
+    private static function resolveHonorific(?User $employee): string
+    {
+        if (! $employee) {
+            return 'Mr./Ms.';
+        }
+
+        return match (self::resolveSex($employee)) {
+            'male' => 'Mr.',
+            'female' => 'Ms.',
+            default => 'Mr./Ms.',
+        };
+    }
+
+    /**
+     * "He"/"She" from the same PDS Sex answer as {honorific} - see that
+     * method's docblock. Falls back to the literal "He/She" when unset, for
+     * the same reason.
+     */
+    private static function resolvePronoun(?User $employee): string
+    {
+        if (! $employee) {
+            return 'He/She';
+        }
+
+        return match (self::resolveSex($employee)) {
+            'male' => 'He',
+            'female' => 'She',
+            default => 'He/She',
+        };
+    }
+
+    private static function resolveSex(User $employee): string
+    {
+        $pds = Pds::where('user_id', $employee->id)->first();
+
+        return strtolower(trim((string) ($pds?->getAllSectionData()['pds-personal-info']['personal[sex]'] ?? '')));
     }
 
     private static function resolveSalary(?User $employee): string

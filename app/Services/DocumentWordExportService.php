@@ -27,6 +27,9 @@ class DocumentWordExportService
             '{department}' => $resolved['department'],
             '{date}' => $resolved['date'],
             '{salary}' => $resolved['salary'],
+            '{honorific}' => $resolved['honorific'],
+            '{last_name}' => $resolved['last_name'],
+            '{pronoun}' => $resolved['pronoun'],
         ];
 
         $paperSize = match (strtolower($paper)) {
@@ -77,6 +80,9 @@ class DocumentWordExportService
                 '{department}' => 'department',
                 '{date}' => 'date',
                 '{salary}' => 'salary',
+                '{honorific}' => 'honorific',
+                '{last_name}' => 'last_name',
+                '{pronoun}' => 'pronoun',
             ];
             $tokenPattern = '/('.implode('|', array_map(fn ($t) => preg_quote($t, '/'), array_keys($tokenMap))).')/';
 

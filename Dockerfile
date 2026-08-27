@@ -68,3 +68,11 @@ CMD ["php-fpm"]
 FROM nginx:stable-alpine AS nginx
 COPY --from=assets /app/public /var/www/html/public
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# public/storage -> storage/app/public: this image has no PHP/artisan, so it
+# can't run `storage:link` itself. compose.yaml already mounts the same
+# storage_app volume read-only here at /var/www/html/storage/app - this
+# symlink is what makes that mounted data reachable via the /storage/* URL
+# nginx's catch-all location already falls through to. Without it every file
+# on the `public` disk (e.g. Document Settings header/footer images) 404s in
+# production while working fine in dev, where bind mounts paper over this.
+RUN ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
