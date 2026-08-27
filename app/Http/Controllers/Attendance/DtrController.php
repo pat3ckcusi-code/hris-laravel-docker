@@ -915,9 +915,24 @@ class DtrController extends Controller
                 || isset($excuseMap[$dateStr]) || isset($locatorDateMap[$dateStr])) {
                 continue; // already represented by a DTR, leave, ETA, office order, travel order, excuse, or locator row
             }
-            if (in_array($assignment->type, ['field_work', 'wfh'], true)
-                && isset($suspensionMap[$dateStr]) && ! $employee->isFrontlineExempt()) {
-                continue; // a declared suspension takes priority - let the catch-all loop below render it
+            $fieldWorkSuspensionNote = null;
+            if (in_array($assignment->type, ['field_work', 'wfh'], true)) {
+                $suspensionForDate = $suspensionMap[$dateStr] ?? null;
+                if ($suspensionForDate !== null && ! $employee->isFrontlineExempt()) {
+                    if ($suspensionForDate->isFullDay()) {
+                        continue; // a full-day suspension takes priority - let the catch-all loop below render it
+                    }
+
+                    // Half-day (PM-only, or workEnd-capped) suspension: field_work/wfh
+                    // still renders, but a note is appended so the suspension isn't
+                    // silently dropped - see WorkSchedule::applySuspension()'s buckets.
+                    $suspensionDateSchedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dateStr), $shiftAssignments);
+                    [, $suspendedSlotsForDate] = $suspensionDateSchedule->applySuspension($suspensionForDate->suspension_time);
+                    if (! empty($suspendedSlotsForDate)) {
+                        $cfg = WorkSuspension::typeConfig($suspensionForDate->type);
+                        $fieldWorkSuspensionNote = ' <span class="hris-badge" style="background:'.$cfg['bg'].';color:'.$cfg['color'].';font-size:.65rem;padding:.15rem .5rem;" title="'.e($suspensionForDate->reason ?: $cfg['label']).'"><i class="fas '.$cfg['icon'].'" style="font-size:.6rem;"></i> PM Suspended</span>';
+                    }
+                }
             }
 
             if ($assignment->type === 'field_work') {
@@ -930,7 +945,7 @@ class DtrController extends Controller
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
-                    'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>'.($fieldWorkSuspensionNote ?? ''),
                     'office_order_badge' => '',
                 ]);
             } elseif ($assignment->type === 'wfh') {
@@ -943,7 +958,7 @@ class DtrController extends Controller
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
                     'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
-                    'status_badge' => '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>',
+                    'status_badge' => '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>'.($fieldWorkSuspensionNote ?? ''),
                     'office_order_badge' => '',
                 ]);
             } elseif ($assignment->type === 'field_work_unconfirmed') {
@@ -1009,11 +1024,12 @@ class DtrController extends Controller
         }
         foreach ($shiftAssignments as $d => $assignment) {
             if ($assignment->shift_id === null && $assignment->type !== 'standard') {
+                $suspensionForCoveredCheck = $suspensionMap[$d] ?? null;
                 if (in_array($assignment->type, ['field_work', 'wfh'], true)
-                    && isset($suspensionMap[$d]) && ! $employee->isFrontlineExempt()) {
-                    continue; // left uncovered so the catch-all loop below renders the suspension
+                    && $suspensionForCoveredCheck !== null && $suspensionForCoveredCheck->isFullDay() && ! $employee->isFrontlineExempt()) {
+                    continue; // left uncovered so the catch-all loop below renders the full-day suspension
                 }
-                $coveredDates[$d] = true; // rest/field-work rows, already handled above
+                $coveredDates[$d] = true; // rest/field-work rows (including half-day-suspended field_work/wfh), already handled above
             }
         }
 
