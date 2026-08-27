@@ -119,6 +119,7 @@ class AttendanceMonitoringExportService
         $officeOrdersByEmpNo = empty($empNos) ? collect() : DB::table('office_orders')
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->whereIn('office_order_employees.emp_no', $empNos)
+            ->where('office_orders.status', '!=', 'Cancelled')
             ->where('office_orders.issued_date', '<=', $periodEnd)
             ->where(function ($q) use ($periodStart): void {
                 $q->where('office_orders.effective_date', '>=', $periodStart)

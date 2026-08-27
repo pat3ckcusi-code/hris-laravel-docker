@@ -165,6 +165,7 @@ class WorkforceCalendarService
         $rows = DB::table('office_orders')
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->whereIn('office_order_employees.emp_no', array_keys($idsByEmpNo))
+            ->where('office_orders.status', '!=', 'Cancelled')
             ->where('office_orders.issued_date', '<=', $end)
             ->where(function ($q) use ($start): void {
                 $q->where('office_orders.effective_date', '>=', $start)

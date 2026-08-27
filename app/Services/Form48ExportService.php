@@ -480,6 +480,7 @@ class Form48ExportService
         DB::table('office_orders')
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->where('office_order_employees.emp_no', $user->EmpNo)
+            ->where('office_orders.status', '!=', 'Cancelled')
             ->where('office_orders.issued_date', '<=', $to)
             ->where(function ($q) use ($from): void {
                 $q->where('office_orders.effective_date', '>=', $from)

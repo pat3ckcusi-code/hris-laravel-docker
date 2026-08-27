@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\OfficeOrderWordExportService;
@@ -86,6 +87,8 @@ class OfficeOrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
 
+        $canceller = $order->cancelled_by ? User::find($order->cancelled_by) : null;
+
         return response()->json(['success' => true, 'data' => [
             'id' => $order->id,
             'office_order_num' => $order->office_order_num,
@@ -98,6 +101,9 @@ class OfficeOrderController extends Controller
             'created_at' => $order->created_at,
             'employees' => $this->recipients($order),
             'issued_by' => $this->issuer($order),
+            'cancellation_reason' => $order->cancellation_reason ?? null,
+            'cancelled_at' => $order->cancelled_at ?? null,
+            'cancelled_by_name' => $canceller ? trim($canceller->first_name.' '.$canceller->last_name) : null,
         ]]);
     }
 
@@ -234,6 +240,9 @@ class OfficeOrderController extends Controller
         if (! $order) {
             abort(404);
         }
+        if ($order->status === 'Cancelled') {
+            abort(403, 'This office order has been cancelled and can no longer be edited.');
+        }
 
         $empNos = DB::table('office_order_employees')->where('office_order_id', $order->id)->pluck('emp_no')->toArray();
         $selectedIds = User::whereIn('EmpNo', $empNos)->pluck('id')->map(fn ($v) => (int) $v)->toArray();
@@ -267,6 +276,9 @@ class OfficeOrderController extends Controller
         if (! $order) {
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
+        if ($order->status === 'Cancelled') {
+            return response()->json(['success' => false, 'message' => 'This office order has been cancelled and can no longer be edited.'], 422);
+        }
 
         DB::table('office_orders')->where('id', $id)->update([
             'office_order_num' => $validated['office_order_num'],
@@ -284,6 +296,52 @@ class OfficeOrderController extends Controller
             'success' => true,
             'message' => 'Office order updated successfully.',
             'redirect' => route('department-head.filed-office-orders'),
+        ]);
+    }
+
+    // Cancel a filed office order, recording the reason and who/when.
+    public function cancel(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        $user = Auth::user();
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $order = DB::table('office_orders')->where('id', $id)->first();
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
+        if ($order->status === 'Cancelled') {
+            return response()->json(['success' => false, 'message' => 'This office order is already cancelled.'], 422);
+        }
+
+        DB::table('office_orders')->where('id', $id)->update([
+            'status' => 'Cancelled',
+            'cancellation_reason' => $validated['reason'],
+            'cancelled_by' => $user->id,
+            'cancelled_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => $user->id,
+            'module' => 'office_order',
+            'action' => 'office_order_cancelled',
+            'target_type' => 'office_order',
+            'target_id' => $order->id,
+            'details' => [
+                'office_order_num' => $order->office_order_num,
+                'reason' => $validated['reason'],
+            ],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Office order cancelled successfully.',
         ]);
     }
 

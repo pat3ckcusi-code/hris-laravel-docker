@@ -19,6 +19,14 @@
     /* KPI tiles double as quick status filters */
     button.kpi-card { text-align: left; width: 100%; font: inherit; }
     .kpi-card.active { border-color: var(--accent, #ea580c); box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15), 0 24px 48px rgba(2, 6, 23, 0.08); }
+
+    /* Cancelled office order rows */
+    .oo-cancelled-text { text-decoration: line-through; color: #94a3b8; }
+    .oo-cancellation-block {
+        margin-top: 24px; padding: 12px 14px; border: 1px solid #fecaca; background: #fef2f2;
+        border-radius: 8px; font-family: -apple-system, Segoe UI, Roboto, sans-serif; font-size: 0.85rem; color: #991b1b;
+    }
+    .oo-cancellation-block strong { color: #7f1d1d; }
 </style>
 @endsection
 
@@ -198,6 +206,13 @@ function effectiveBadge(row) {
         : '<span class="hris-badge badge-rejected">Expired</span>';
 }
 
+function statusBadge(row) {
+    if (row.status === 'Cancelled') {
+        return '<span class="hris-badge badge-cancelled">Cancelled</span>';
+    }
+    return effectiveBadge(row);
+}
+
 function updateOfficeOrderTileCounts() {
     const counts = { Total: 0, Active: 0, Expired: 0 };
     _ooAllRows.forEach(row => {
@@ -251,21 +266,26 @@ function renderOfficeOrdersTable() {
         const show = names.slice(0, 3).join('');
         const moreCount = (row.employees || []).length - 3;
         const more = moreCount > 0 ? `<div class="text-muted" style="font-size:0.85em">+${moreCount} more</div>` : '';
+        const isCancelled = row.status === 'Cancelled';
+        const textCls = isCancelled ? ' oo-cancelled-text' : '';
+        const editBtn = isCancelled ? '' : `<button class="hris-btn hris-btn-warning hris-btn-sm" type="button" onclick="window.location='/office-orders/' + ${row.id} + '/edit'"><i class="fas fa-edit"></i> Edit</button>`;
+        const cancelBtn = isCancelled ? '' : `<button class="hris-btn hris-btn-sm" type="button" style="background:#dc2626;color:#fff" onclick="promptCancelOfficeOrder(${row.id})"><i class="fas fa-ban"></i> Cancel</button>`;
         return `
             <tr>
                 <td>${idx + 1}</td>
-                <td class="td-ellipsis">${row.office_order_num || row.id}</td>
-                <td class="td-ellipsis">${row.subject || '-'}</td>
-                <td>${formatDate(row.issued_date)}</td>
-                <td>${row.effective_date ? formatDate(row.effective_date) : 'No expiry'}</td>
+                <td class="td-ellipsis${textCls}">${row.office_order_num || row.id}</td>
+                <td class="td-ellipsis${textCls}">${row.subject || '-'}</td>
+                <td class="${textCls}">${formatDate(row.issued_date)}</td>
+                <td class="${textCls}">${row.effective_date ? formatDate(row.effective_date) : 'No expiry'}</td>
                 <td class="employees-cell">${show}${more}</td>
-                <td>${effectiveBadge(row)}</td>
+                <td>${statusBadge(row)}</td>
                 <td>${formatDate(row.created_at)}</td>
                 <td>
                     <div class="action-btns">
                         <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openOfficeOrderModal(${row.id})"><i class="fa fa-eye"></i> View</button>
-                        <button class="hris-btn hris-btn-warning hris-btn-sm" type="button" onclick="window.location='/office-orders/' + ${row.id} + '/edit'"><i class="fas fa-edit"></i> Edit</button>
+                        ${editBtn}
                         <button class="hris-btn hris-btn-sm" type="button" style="background:#16a34a;color:#fff" onclick="window.open('/office-orders/' + ${row.id} + '/print', '_blank')"><i class="fas fa-print"></i> Print</button>
+                        ${cancelBtn}
                     </div>
                 </td>
             </tr>`;
@@ -310,6 +330,7 @@ async function openOfficeOrderModal(id) {
                 <div style="margin-bottom:28px">Conformed:</div>
                 ${conformed}
                 ${d.remarks ? `<div style="margin-top:24px;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:0.85em;color:#64748b"><strong>Internal remarks:</strong> ${esc(d.remarks)}</div>` : ''}
+                ${d.status === 'Cancelled' ? `<div class="oo-cancellation-block"><strong>Cancelled${d.cancelled_by_name ? ' by ' + esc(d.cancelled_by_name) : ''}${d.cancelled_at ? ' on ' + fmtDate(String(d.cancelled_at).slice(0, 10)) : ''}</strong><br>Reason: ${esc(d.cancellation_reason || '-')}</div>` : ''}
             </div>`;
         _currentOfficeOrderData = d;
     } catch (err) {
@@ -319,6 +340,67 @@ async function openOfficeOrderModal(id) {
 
 function closeOfficeOrderModal() {
     document.getElementById('officeOrderModalOverlay').classList.remove('active');
+}
+
+async function ensureSwal() {
+    if (window.Swal && typeof Swal.fire === 'function') return window.Swal;
+    return new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = '/js/app.js';
+        s.onload = () => resolve(window.Swal || null);
+        s.onerror = () => resolve(null);
+        document.head.appendChild(s);
+    });
+}
+
+async function promptCancelOfficeOrder(id) {
+    function doCancel(reason) {
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        fetch('/api/office-orders/' + id + '/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-TOKEN': token,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: new URLSearchParams({ reason: reason })
+        }).then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to cancel office order.');
+            }
+            const row = _ooAllRows.find(r => r.id === id);
+            if (row) row.status = 'Cancelled';
+            updateOfficeOrderTileCounts();
+            renderOfficeOrdersTable();
+            if (window.Swal) {
+                Swal.fire('Cancelled', data.message || 'Office order cancelled.', 'success');
+            }
+        }).catch(error => {
+            if (window.Swal) Swal.fire('Error', error.message || 'Failed to cancel office order.', 'error');
+            else alert(error.message || 'Failed to cancel office order.');
+        });
+    }
+
+    const SwalLib = await ensureSwal();
+    if (SwalLib) {
+        SwalLib.fire({
+            icon: 'warning',
+            title: 'Cancel Office Order',
+            input: 'textarea',
+            inputLabel: 'Reason for cancelling this office order',
+            showCancelButton: true,
+            confirmButtonText: 'Submit',
+            confirmButtonColor: '#dc2626',
+            preConfirm: (v) => { if (!v) SwalLib.showValidationMessage('A reason is required'); return v; }
+        }).then((result) => {
+            if (result.isConfirmed) doCancel(result.value);
+        });
+    } else {
+        const reason = prompt('Reason for cancelling this office order:');
+        if (reason) doCancel(reason);
+    }
 }
 </script>
 @endsection

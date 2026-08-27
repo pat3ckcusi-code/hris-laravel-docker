@@ -399,6 +399,7 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
     Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
     Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
     Route::put('/api/office-orders/{id}', [OfficeOrderController::class, 'update'])->name('api.office-orders.update');
+    Route::post('/api/office-orders/{id}/cancel', [OfficeOrderController::class, 'cancel'])->name('api.office-orders.cancel');
 });
 
 // Department Head and Administrative Officer shared actions
