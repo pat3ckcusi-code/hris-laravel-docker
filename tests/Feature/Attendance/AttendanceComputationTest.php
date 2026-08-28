@@ -992,6 +992,129 @@ class AttendanceComputationTest extends TestCase
         $this->assertSame(0, $undertime, 'A no-break schedule\'s single undertime block is anchored on pm_out - covering it suppresses the whole block.');
     }
 
+    // ── $firedComponents out-param: per-component attribution ──────────────────
+    //
+    // DtrController used to collapse imputedLateMinutes()/imputedUndertimeMinutes()'s
+    // whole return value into one blanket "something was imputed" flag hardcoded
+    // to a single cell (AM In / PM Out) - so a pm_in-only gap wrongly painted a
+    // genuinely on-time AM In cell red, and vice versa on the undertime side.
+    // $firedComponents reports precisely which slot(s) fired, closing that gap.
+
+    public function test_imputed_late_minutes_fired_components_reports_only_am_in_when_only_am_in_fires(): void
+    {
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', '13:05:00', '17:00:00', self::DATE, $this->specDay(), [], $fired
+        );
+
+        $this->assertSame(240, $mins);
+        $this->assertSame(['am_in'], $fired);
+    }
+
+    public function test_imputed_late_minutes_fired_components_reports_only_pm_in_when_only_pm_in_fires(): void
+    {
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:56:00', '12:02:00', null, '17:00:00', self::DATE, $this->specDay(), [], $fired
+        );
+
+        $this->assertSame(240, $mins);
+        $this->assertSame(['pm_in'], $fired);
+    }
+
+    public function test_imputed_late_minutes_fired_components_reports_both_when_both_fire(): void
+    {
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', null, '17:00:00', self::DATE, $this->specDay(), [], $fired
+        );
+
+        $this->assertSame(480, $mins);
+        $this->assertSame(['am_in', 'pm_in'], $fired);
+    }
+
+    public function test_imputed_late_minutes_fired_components_is_empty_when_nothing_fires(): void
+    {
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedLateMinutes(
+            '07:58:00', '12:00:00', '13:00:00', '17:00:00', self::DATE, $this->specDay(), [], $fired
+        );
+
+        $this->assertSame(0, $mins);
+        $this->assertSame([], $fired);
+    }
+
+    public function test_imputed_late_minutes_fired_components_excludes_a_covered_slot(): void
+    {
+        $fired = null;
+        (new DtrPunchResolver)->imputedLateMinutes(
+            null, '12:00:00', null, '17:00:00', self::DATE, $this->specDay(), ['am_in'], $fired
+        );
+
+        $this->assertSame(['pm_in'], $fired, 'Covering am_in must exclude it from $fired even though its precondition would otherwise hold.');
+    }
+
+    public function test_no_break_imputed_late_minutes_fired_components_reports_am_in(): void
+    {
+        $fired = null;
+        (new DtrPunchResolver)->imputedLateMinutes(
+            null, null, null, '17:00:00', self::DATE, $this->specDay(noBreak: true), [], $fired
+        );
+
+        $this->assertSame(['am_in'], $fired);
+    }
+
+    public function test_imputed_undertime_minutes_fired_components_reports_only_am_out_when_only_am_out_fires(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, '13:05:00', '17:00:00', self::DATE, $this->specDay(), [], $fired
+        );
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $mins);
+        $this->assertSame(['am_out'], $fired);
+    }
+
+    public function test_imputed_undertime_minutes_fired_components_reports_only_pm_out_when_only_pm_out_fires(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', '12:00:00', '13:05:00', null, self::DATE, $this->specDay(), [], $fired
+        );
+        Carbon::setTestNow();
+
+        $this->assertSame(240, $mins);
+        $this->assertSame(['pm_out'], $fired);
+    }
+
+    public function test_imputed_undertime_minutes_fired_components_reports_both_when_both_fire(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $fired = null;
+        $mins = (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, '13:05:00', null, self::DATE, $this->specDay(), [], $fired
+        );
+        Carbon::setTestNow();
+
+        $this->assertSame(480, $mins);
+        $this->assertSame(['am_out', 'pm_out'], $fired);
+    }
+
+    public function test_no_break_imputed_undertime_minutes_fired_components_reports_pm_out(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+        $fired = null;
+        (new DtrPunchResolver)->imputedUndertimeMinutes(
+            '08:00:00', null, null, null, self::DATE, $this->specDay(noBreak: true), [], $fired
+        );
+        Carbon::setTestNow();
+
+        $this->assertSame(['pm_out'], $fired);
+    }
+
     /**
      * The new AM-out/PM-in checks must be guarded on punchRequirement itself,
      * not just on which columns happen to be null - an out_only day

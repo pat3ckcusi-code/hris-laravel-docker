@@ -534,27 +534,41 @@ class DtrController extends Controller
             // Missing AM In / PM Out with nothing else explaining the gap - impute the
             // full half-day block from the shift template, mirroring the Monitoring
             // Matrix report's "unofficial exit" undertime rule (AttendanceMonitoringExportService).
+            // Four flags, not two: imputedLateMinutes()/imputedUndertimeMinutes() each
+            // sum two independent components (am_in/pm_in, am_out/pm_out), and a
+            // caller that collapsed both into one blanket "something was imputed"
+            // boolean ended up highlighting whichever cell it was hardcoded to (AM
+            // In / PM Out) even when only the OTHER, unrelated component actually
+            // fired - e.g. a missing PM In with a present PM Out wrongly painted a
+            // genuinely on-time AM In cell red. $firedComponents (the resolver
+            // methods' out-param) reports precisely which slot(s) fired this call.
             $amInImputed = false;
+            $pmInImputed = false;
             // $coveredSlots: slot keys already explained by whichever source
             // (Locator/DtrExcuse/WorkSuspension) is calling this - each
             // caller must pass its own accurate per-slot coverage, never just
             // gate on a single slot before accepting the whole combined
             // result, since imputedLateMinutes()/imputedUndertimeMinutes()
             // each sum two independent AM/PM components internally.
-            $imputeAmInLate = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$amInImputed): int {
+            $imputeAmInLate = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$amInImputed, &$pmInImputed): int {
+                $fired = [];
                 $mins = $this->punchResolver->imputedLateMinutes(
-                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots, $fired
                 );
-                $amInImputed = $mins > 0;
+                $amInImputed = in_array('am_in', $fired, true);
+                $pmInImputed = in_array('pm_in', $fired, true);
 
                 return $mins;
             };
+            $amOutImputed = false;
             $pmOutImputed = false;
-            $imputePmOutUndertime = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$pmOutImputed): int {
+            $imputePmOutUndertime = function (array $coveredSlots = []) use ($dtr, $rowSchedule, $dateStr, &$amOutImputed, &$pmOutImputed): int {
+                $fired = [];
                 $mins = $this->punchResolver->imputedUndertimeMinutes(
-                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots
+                    $dtr->time_in_am, $dtr->time_out_am, $dtr->time_in_pm, $dtr->time_out_pm, $dateStr, $rowSchedule, $coveredSlots, $fired
                 );
-                $pmOutImputed = $mins > 0;
+                $amOutImputed = in_array('am_out', $fired, true);
+                $pmOutImputed = in_array('pm_out', $fired, true);
 
                 return $mins;
             };
@@ -779,11 +793,16 @@ class DtrController extends Controller
                 ? substr($v, 0, 5)
                 : null;
             $amInHm = $slotHm($tAmIn);
+            $amOutHm = $slotHm($tAmOut);
             $pmInHm = $slotHm($tPmIn);
             $pmOutHm = $slotHm($tPmOut);
             $isAmInLate = $amInImputed || ($lateMin > 0 && $amInHm !== null && $amInHm > $rowSchedule->workStart && $amInHm < $rowSchedule->morningEnd);
-            $isPmInLate = $lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd;
+            $isPmInLate = $pmInImputed || ($lateMin > 0 && $pmInHm !== null && $pmInHm > $rowSchedule->lunchReturn && $pmInHm < $rowSchedule->noonEnd);
             $pmOutLower = $rowSchedule->noBreak ? $rowSchedule->workStart : $rowSchedule->lunchReturn;
+            // Mirrors UndertimeCalculator's own am_out real-punch term (leaving for
+            // lunch before morningEnd); guarded by !noBreak since a no-break row's
+            // AM Out is always '-' (never a real HH:MM), so $amOutHm is already null.
+            $isAmOutUndertime = $amOutImputed || (! $rowSchedule->noBreak && $utMin > 0 && $amOutHm !== null && $amOutHm >= $rowSchedule->workStart && $amOutHm < $rowSchedule->morningEnd);
             $isPmOutUndertime = $pmOutImputed || ($utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd);
 
             // Decorate excused/suspended slots with the reason so the cause is visible
@@ -858,6 +877,7 @@ class DtrController extends Controller
                 'is_overtime' => ($dtr->overtime_minutes ?? 0) > 0,
                 'is_am_in_late' => $isAmInLate,
                 'is_pm_in_late' => $isPmInLate,
+                'is_am_out_undertime' => $isAmOutUndertime,
                 'is_pm_out_undertime' => $isPmOutUndertime,
                 'source_badge' => match ($dtr->source) {
                     'biometric' => '<span class="hris-badge badge-approved">Biometric</span>',
@@ -898,6 +918,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">On Leave ('.$leaveCode.')</span>',
@@ -927,6 +948,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#dbeafe;color:#1e40af;">On Official Travel</span>',
@@ -956,6 +978,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#ede9fe;color:#5b21b6;">Office Order</span>',
@@ -986,6 +1009,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#cffafe;color:#155e75;">Travel Order</span>',
@@ -1018,6 +1042,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#fef3c7;color:#92400e;">Excused</span>',
@@ -1047,6 +1072,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '',
                 'status_badge' => '<span class="hris-badge" style="background:#d1fae5;color:#065f46;">Locator</span>',
@@ -1095,7 +1121,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#f0fdf4;color:#15803d;">Field Work</span>'.($fieldWorkSuspensionNote ?? ''),
                     'office_order_badge' => '',
@@ -1108,7 +1134,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#eff6ff;color:#1d4ed8;">Work From Home</span>'.($fieldWorkSuspensionNote ?? ''),
                     'office_order_badge' => '',
@@ -1127,7 +1153,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge badge-rejected">Absent (Unconfirmed Field Work)</span>',
                     'office_order_badge' => '',
@@ -1140,7 +1166,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:#f3f4f6;color:#6b7280;">Rest Day</span>',
                     'office_order_badge' => '',
@@ -1212,7 +1238,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => $statusBadge,
                     'office_order_badge' => '',
@@ -1251,6 +1277,7 @@ class DtrController extends Controller
                     'is_overtime' => false,
                     'is_am_in_late' => false,
                     'is_pm_in_late' => false,
+                    'is_am_out_undertime' => false,
                     'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span class="hris-badge" style="background:'.$uncoveredCfg['bg'].';color:'.$uncoveredCfg['color'].';"><i class="fas '.$uncoveredCfg['icon'].'" style="font-size:.65rem;"></i> '.$uncoveredCfg['label'].'</span>',
@@ -1276,7 +1303,7 @@ class DtrController extends Controller
                     'time_in_ot' => '-', 'time_out_ot' => '-',
                     'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
                     'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
-                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_pm_out_undertime' => false,
+                    'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
                     'source_badge' => '<span style="color:#9ca3af;">-</span>',
                     'status_badge' => '<span style="color:#9ca3af;">-</span>',
                     'office_order_badge' => '',
@@ -1310,6 +1337,7 @@ class DtrController extends Controller
                 'is_overtime' => false,
                 'is_am_in_late' => false,
                 'is_pm_in_late' => false,
+                'is_am_out_undertime' => false,
                 'is_pm_out_undertime' => false,
                 'source_badge' => '<span style="color:#9ca3af;">-</span>',
                 'status_badge' => '<span class="hris-badge badge-rejected">Absent</span>',

@@ -130,9 +130,21 @@ class DtrPunchResolver
      * since the two components are independent and a source can explain
      * only one of them (e.g. a Locator window covering only 'pm_in' must not
      * suppress a genuine, unrelated 'am_in' lateness, and vice versa).
+     *
+     * $firedComponents is an out-param: filled with whichever slot key(s)
+     * ('am_in'|'pm_in') actually contributed a non-zero component on this
+     * call, so a caller needing per-cell attribution (the DTR page) can
+     * highlight exactly the slot(s) responsible instead of collapsing the
+     * whole summed total into a single "something was imputed" flag - a
+     * caller that did that previously mislabeled a pm_in-only gap as an
+     * am_in problem. The no-break single-span case reports 'am_in' (its own
+     * semantic anchor, matching the return-0 guard's own coveredSlots check
+     * above). Always reset to [] at the top of this call.
      */
-    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = []): int
+    public function imputedLateMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = [], ?array &$firedComponents = null): int
     {
+        $firedComponents = [];
+
         if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
@@ -144,6 +156,7 @@ class DtrPunchResolver
 
             $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
             $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+            $firedComponents[] = 'am_in';
 
             return (int) $startRef->diffInMinutes($endRef);
         }
@@ -154,12 +167,14 @@ class DtrPunchResolver
             $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
             $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
             $minutes += (int) $startRef->diffInMinutes($breakOutRef);
+            $firedComponents[] = 'am_in';
         }
 
         if (! $timeInPm && $timeOutPm && ! in_array('pm_in', $coveredSlots, true)) {
             $lunchReturnRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
             $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
             $minutes += (int) $lunchReturnRef->diffInMinutes($endRef);
+            $firedComponents[] = 'pm_in';
         }
 
         return $minutes;
@@ -198,9 +213,17 @@ class DtrPunchResolver
      * previously a Locator covering only 'am_out' let this function's
      * 'am_out' component through mislabeled as undertime on a day the
      * employee's actual PM Out was on time.
+     *
+     * $firedComponents is an out-param, mirror of imputedLateMinutes()'s -
+     * filled with whichever slot key(s) ('am_out'|'pm_out') actually
+     * contributed a non-zero component on this call. The no-break single-span
+     * case reports 'pm_out' (its own semantic anchor). Always reset to []
+     * at the top of this call.
      */
-    public function imputedUndertimeMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = []): int
+    public function imputedUndertimeMinutes(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, array $coveredSlots = [], ?array &$firedComponents = null): int
     {
+        $firedComponents = [];
+
         if ($schedule->punchRequirement !== 'both') {
             return 0;
         }
@@ -217,6 +240,7 @@ class DtrPunchResolver
             }
 
             $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+            $firedComponents[] = 'pm_out';
 
             return (int) $startRef->diffInMinutes($endRef);
         }
@@ -229,6 +253,7 @@ class DtrPunchResolver
             if (Carbon::now()->gte($breakOutRef)) {
                 $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
                 $minutes += (int) $startRef->diffInMinutes($breakOutRef);
+                $firedComponents[] = 'am_out';
             }
         }
 
@@ -238,6 +263,7 @@ class DtrPunchResolver
             if (Carbon::now()->gte($endRef)) {
                 $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
                 $minutes += (int) $breakInRef->diffInMinutes($endRef);
+                $firedComponents[] = 'pm_out';
             }
         }
 

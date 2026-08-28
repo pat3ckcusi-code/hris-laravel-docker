@@ -623,12 +623,13 @@ if (typeof window.__dtrViewReady === 'undefined') {
                 { data: 'office_order_badge',  orderable: false, className: 'text-center', title: 'Office Order' },
             ],
             createdRow: function (row, data) {
-                if (data.is_late)           $(row).addClass('dtr-row-late');
-                if (data.is_undertime)      $(row).addClass('dtr-row-undertime');
-                if (data.is_overtime)       $(row).addClass('dtr-row-overtime');
-                if (data.is_am_in_late)     $('td:eq(1)', row).addClass('dtr-cell-late');
-                if (data.is_pm_in_late)     $('td:eq(3)', row).addClass('dtr-cell-late');
-                if (data.is_pm_out_undertime) $('td:eq(4)', row).addClass('dtr-cell-undertime');
+                if (data.is_late)              $(row).addClass('dtr-row-late');
+                if (data.is_undertime)         $(row).addClass('dtr-row-undertime');
+                if (data.is_overtime)          $(row).addClass('dtr-row-overtime');
+                if (data.is_am_in_late)        $('td:eq(1)', row).addClass('dtr-cell-late');
+                if (data.is_pm_in_late)        $('td:eq(3)', row).addClass('dtr-cell-late');
+                if (data.is_am_out_undertime)  $('td:eq(2)', row).addClass('dtr-cell-undertime');
+                if (data.is_pm_out_undertime)  $('td:eq(4)', row).addClass('dtr-cell-undertime');
             },
             language: {
                 processing:  'Loading…',

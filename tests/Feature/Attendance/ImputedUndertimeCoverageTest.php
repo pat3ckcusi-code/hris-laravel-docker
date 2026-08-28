@@ -213,4 +213,117 @@ class ImputedUndertimeCoverageTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(20, $row['late_minutes'], 'Excusing am_in must not silently zero a genuine, unrelated, already-stored pm_in lateness figure.');
     }
+
+    // ── Per-cell attribution (component mis-highlighting bug) ───────────────
+    //
+    // DtrController used to set is_am_in_late/is_pm_out_undertime from the
+    // WHOLE combined imputedLateMinutes()/imputedUndertimeMinutes() result,
+    // so a pm_in-only (or am_out-only) gap wrongly painted AM In (or PM Out)
+    // red instead of the actual cause. Real reported case: 07:58 AM In,
+    // 12:01 AM Out, PM In missing, 17:02 PM Out - the page highlighted the
+    // on-time AM In cell for a "240 late" that was entirely PM In's fault.
+
+    public function test_dtr_page_highlights_pm_in_not_am_in_when_only_pm_in_is_imputed_late(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'PmInMissingAttribution']);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '07:58:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => null,
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->dtrPageRow($user, self::DATE);
+
+        $this->assertNotNull($row);
+        $this->assertSame(240, $row['late_minutes']);
+        $this->assertTrue($row['is_late']);
+        $this->assertFalse($row['is_am_in_late'], 'AM In was on time (07:58) - the imputed lateness came entirely from the missing PM In, not AM In.');
+        $this->assertTrue($row['is_pm_in_late']);
+    }
+
+    public function test_dtr_page_highlights_am_out_not_pm_out_when_only_am_out_is_imputed_undertime(): void
+    {
+        Carbon::setTestNow(self::DATE.' 18:00:00');
+
+        $user = $this->createEmployee(['last_name' => 'AmOutMissingAttribution']);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '07:59:00',
+            'time_out_am' => null,
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:02:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->dtrPageRow($user, self::DATE);
+
+        Carbon::setTestNow();
+
+        $this->assertNotNull($row);
+        // Global default schedule: workStart 08:00 -> morningEnd 11:00 = 180 minutes.
+        $this->assertSame(180, $row['undertime_minutes']);
+        $this->assertTrue($row['is_undertime']);
+        $this->assertTrue($row['is_am_out_undertime']);
+        $this->assertFalse($row['is_pm_out_undertime'], 'PM Out was after the 17:00 shift end (17:02) - the imputed undertime came entirely from the missing AM Out, not PM Out.');
+    }
+
+    public function test_dtr_page_does_not_highlight_am_in_when_am_in_is_genuinely_late_and_pm_in_is_also_imputed(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'GenuineAmInLateWithImputedPmIn']);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:15:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => null,
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 15,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->dtrPageRow($user, self::DATE);
+
+        $this->assertNotNull($row);
+        $this->assertSame(15, $row['late_minutes'], 'The stored, genuine am_in lateness must win over imputation - the imputed closure never even runs.');
+        $this->assertTrue($row['is_am_in_late'], 'Real-punch attribution (08:15 falls in the late window) must survive unchanged.');
+        $this->assertFalse($row['is_pm_in_late'], 'No imputation ran (stored late_minutes was already > 0), so pm_in must not be flagged.');
+    }
+
+    public function test_dtr_page_am_in_and_pm_in_both_flagged_when_both_components_are_imputed(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'BothInSlotsImputed']);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => null,
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => null,
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->dtrPageRow($user, self::DATE);
+
+        $this->assertNotNull($row);
+        // Global default schedule: am_in component (08:00->11:00 = 180) + pm_in component (13:00->17:00 = 240) = 420.
+        $this->assertSame(420, $row['late_minutes']);
+        $this->assertTrue($row['is_am_in_late'], 'am_in genuinely fired - must be flagged.');
+        $this->assertTrue($row['is_pm_in_late'], 'pm_in genuinely fired too - neither component should suppress the other.');
+    }
 }
