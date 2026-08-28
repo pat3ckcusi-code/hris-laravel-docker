@@ -691,6 +691,10 @@ Route::middleware(['auth', 'role:time-keeper,hr-manager,administrative-officer,d
         ->name('attendance.schedules.update');
     Route::put('/attendance/schedules/{user}/exempt', [EmployeeScheduleController::class, 'toggleExempt'])
         ->name('attendance.schedules.exempt');
+    Route::get('/attendance/schedules/exempt-report', [EmployeeScheduleController::class, 'printExempt'])
+        ->name('attendance.schedules.exempt-report');
+    Route::get('/attendance/schedules/exempt-report/excel', [EmployeeScheduleController::class, 'exportExempt'])
+        ->name('attendance.schedules.exempt-report.excel');
 
     Route::get('/attendance/shift-schedule', [ShiftScheduleController::class, 'index'])
         ->name('attendance.shift-schedule.index');

@@ -42,6 +42,8 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
  * @property float|null $hours_per_day
  * @property int|null $shift_id
  * @property bool $dtr_exempt
+ * @property string|null $dtr_exempt_reason
+ * @property \Illuminate\Support\Carbon|null $dtr_exempt_effective_date
  * @property string|null $ContactNo
  * @property string|null $access_level
  * @property float|null $leave_balance
@@ -129,6 +131,8 @@ class User extends Authenticatable
         'salary_step',
         'shift_id',
         'dtr_exempt',
+        'dtr_exempt_reason',
+        'dtr_exempt_effective_date',
         'is_frontline',
         'is_solo_parent',
         'frontline_department_excluded',
@@ -282,6 +286,7 @@ class User extends Authenticatable
             'on_extended_service' => 'boolean',
             'hours_per_day' => 'float',
             'dtr_exempt' => 'boolean',
+            'dtr_exempt_effective_date' => 'date',
             'is_frontline' => 'boolean',
             'is_solo_parent' => 'boolean',
             'frontline_department_excluded' => 'boolean',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Attendance;
 
+use App\Exports\DtrExemptionListExport;
 use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkShiftRecomputeJob;
@@ -25,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * Time Keeper screen for assigning a work-shift template to each employee.
@@ -653,12 +655,26 @@ class EmployeeScheduleController extends Controller
         }
 
         $exempt = ! $user->dtr_exempt;
+
+        $reason = null;
+        $effectiveDate = null;
+        if ($exempt) {
+            $validated = $request->validate([
+                'reason' => ['required', 'string', 'max:2000'],
+                'effective_date' => ['nullable', 'date'],
+            ]);
+            $reason = $validated['reason'];
+            $effectiveDate = $validated['effective_date'] ?? Carbon::today()->toDateString();
+        }
+
         $user->update([
             'dtr_exempt' => $exempt,
             'shift_id' => $exempt ? null : $user->shift_id,
+            'dtr_exempt_reason' => $reason,
+            'dtr_exempt_effective_date' => $effectiveDate,
         ]);
 
-        $this->logExemptionToggled($actor, $user, $exempt);
+        $this->logExemptionToggled($actor, $user, $exempt, $reason, $effectiveDate);
 
         $name = trim("{$user->first_name} {$user->last_name}");
         $message = $exempt
@@ -668,7 +684,7 @@ class EmployeeScheduleController extends Controller
         return back()->with('schedule_status', $message);
     }
 
-    private function logExemptionToggled(User $actor, User $employee, bool $exempt): void
+    private function logExemptionToggled(User $actor, User $employee, bool $exempt, ?string $reason, ?string $effectiveDate): void
     {
         try {
             HRAuditTrail::create([
@@ -677,11 +693,48 @@ class EmployeeScheduleController extends Controller
                 'action' => 'dtr_exemption_toggled',
                 'target_type' => 'user',
                 'target_id' => $employee->id,
-                'details' => ['exempt' => $exempt],
+                'details' => ['exempt' => $exempt, 'reason' => $reason, 'effective_date' => $effectiveDate],
             ]);
         } catch (\Exception) {
             // audit failure must not block the toggle
         }
+    }
+
+    /**
+     * Filtered, unpaginated query of currently DTR-exempt employees, scoped the
+     * same way index()'s own $showExempt view already is - shared by the print
+     * view and the Excel export so the two can never disagree on which
+     * employees/columns they show.
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    private function exemptRosterQuery(Request $request)
+    {
+        $user = $request->user();
+        $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
+        $deptId = $request->integer('dept_id') ?: null;
+        $employeeType = $request->input('employee_type') ?: null;
+        $search = trim((string) $request->query('search', ''));
+
+        return $this->buildEmployeeQuery($accessibleIds, $deptId, null, $employeeType, $search, true)
+            ->with('department')
+            ->orderBy('last_name')->orderBy('first_name')
+            ->get(['id', 'EmpNo', 'first_name', 'last_name', 'Dept_id', 'designation', 'dtr_exempt_reason', 'dtr_exempt_effective_date']);
+    }
+
+    // Printable roster of currently DTR/biometric-exempt employees.
+    public function printExempt(Request $request): View
+    {
+        return view('attendance.schedules.exempt-print', ['employees' => $this->exemptRosterQuery($request)]);
+    }
+
+    // Excel download of the same roster printExempt() renders.
+    public function exportExempt(Request $request)
+    {
+        return Excel::download(
+            new DtrExemptionListExport($this->exemptRosterQuery($request)),
+            'dtr-exemption-list-'.now()->format('Y-m-d').'.xlsx'
+        );
     }
 
     /**

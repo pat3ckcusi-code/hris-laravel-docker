@@ -107,6 +107,19 @@
 .sched-add-dates input { flex:1; padding:.35rem .45rem; border:1px solid #cbd5e1; border-radius:.35rem; font-size:.78rem; }
 .sched-add-submit { align-self:flex-start; padding:.35rem .7rem !important; font-size:.78rem !important; }
 
+/* ── Exempt from DTR panel ── */
+.sched-exempt-details summary { cursor:pointer; list-style:none; }
+.sched-exempt-details summary::-webkit-details-marker { display:none; }
+.sched-exempt-new-form {
+    display:flex; flex-direction:column; gap:.4rem; margin-top:.5rem;
+    padding:.6rem; border:1px dashed #fcd34d; border-radius:.5rem; background:#fffbeb; min-width:14rem;
+}
+.sched-exempt-label { font-size:.72rem; font-weight:600; color:#475569; }
+.sched-exempt-textarea, .sched-exempt-date {
+    padding:.35rem .45rem; border:1px solid #cbd5e1; border-radius:.35rem; font-size:.78rem; font-family:inherit; resize:vertical;
+}
+.sched-exempt-confirm-btn { align-self:flex-start; padding:.35rem .7rem !important; font-size:.78rem !important; }
+
 /* ── Per-row Edit panel ── */
 .sched-edit-shift { display:inline-block; }
 .sched-edit-shift summary {
@@ -317,7 +330,13 @@
                 data-total="{{ $employees->total() }}" style="margin:0 1.25rem .5rem;">
             Select all {{ $employees->total() }} matching employees
         </button>
-    @endunless
+    @else
+        @php $exemptReportParams = request()->only(['dept_id', 'employee_type', 'search']); @endphp
+        <div style="margin:0 1.25rem .75rem;display:flex;gap:.5rem;">
+            <a href="{{ route('attendance.schedules.exempt-report', $exemptReportParams) }}" target="_blank" class="hris-btn hris-btn-secondary">Print list</a>
+            <a href="{{ route('attendance.schedules.exempt-report.excel', $exemptReportParams) }}" class="hris-btn hris-btn-secondary">Export Excel</a>
+        </div>
+    @endif
 
     <div style="overflow-x:auto;">
         <table class="hris-table sched-table" style="width:100%;">
@@ -483,22 +502,33 @@
                         <td>
                             <div class="sched-actions">
                                 @if ($canManageExemption)
-                                    <form method="POST" action="{{ route('attendance.schedules.exempt', $emp) }}" class="sched-exempt-form"
-                                          data-name="{{ $empName }}" data-exempt="{{ $emp->dtr_exempt ? '1' : '0' }}">
-                                        @csrf
-                                        @method('PUT')
-                                        @if ($emp->dtr_exempt)
+                                    @if ($emp->dtr_exempt)
+                                        <form method="POST" action="{{ route('attendance.schedules.exempt', $emp) }}" class="sched-exempt-form"
+                                              data-name="{{ $empName }}" data-exempt="1">
+                                            @csrf
+                                            @method('PUT')
                                             <button type="submit" class="sched-btn sched-btn-restore" title="Put this employee back on biometric/DTR tracking">
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
                                                 Restore to DTR
                                             </button>
-                                        @else
-                                            <button type="submit" class="sched-btn sched-btn-exempt" title="Exempt this employee from biometric/DTR (clears their shift)">
+                                        </form>
+                                    @else
+                                        <details class="sched-exempt-details">
+                                            <summary class="sched-btn sched-btn-exempt" title="Exempt this employee from biometric/DTR (clears their shift)">
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
                                                 Exempt from DTR
-                                            </button>
-                                        @endif
-                                    </form>
+                                            </summary>
+                                            <form method="POST" action="{{ route('attendance.schedules.exempt', $emp) }}" class="sched-exempt-new-form">
+                                                @csrf
+                                                @method('PUT')
+                                                <label class="sched-exempt-label">Reason</label>
+                                                <textarea name="reason" required rows="2" class="sched-exempt-textarea" placeholder="Why is this employee exempt from biometric/DTR?"></textarea>
+                                                <label class="sched-exempt-label">Effective Date</label>
+                                                <input type="date" name="effective_date" value="{{ now()->toDateString() }}" class="sched-exempt-date">
+                                                <button type="submit" class="hris-btn hris-btn-primary sched-exempt-confirm-btn">Confirm Exemption</button>
+                                            </form>
+                                        </details>
+                                    @endif
                                 @endif
                             </div>
                         </td>
