@@ -1221,6 +1221,67 @@ class ShiftScheduleTest extends TestCase
         $this->assertStringContainsString('30-Unofficial Exit (No Time Out)', $row['remarks']);
     }
 
+    public function test_no_undertime_charged_for_field_work_day_with_missing_pm_logout(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // Same punch shape as test_unofficial_exit_counted_for_partial_punch_missing_pm_logout
+        // (AM in/out + PM in, PM out missing), but the date is overridden as Field Work -
+        // still a working day, but a missing punch on it must never be charged
+        // Undertime/Tardy, mirroring DtrController's `$lateMin = $utMin = 0` and
+        // Form48ExportService's blanked UT columns for the same override.
+        $employee = $this->createEmployee(['last_name' => 'Fieldworknologout', 'date_hired' => '2026-06-30']);
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id, 'date' => '2026-06-30', 'shift_id' => null, 'type' => 'field_work',
+        ]);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-30',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringNotContainsString('Undertime', $row['remarks']);
+    }
+
+    public function test_no_undertime_charged_for_wfh_day_with_missing_pm_logout(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        $employee = $this->createEmployee(['last_name' => 'Wfhnologout', 'date_hired' => '2026-06-30']);
+        EmployeeShiftSchedule::create([
+            'user_id' => $employee->id, 'date' => '2026-06-30', 'shift_id' => null, 'type' => 'wfh',
+        ]);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-30',
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(0, $row['unofficial_exit_count']);
+        $this->assertSame(0, $row['undertime_count']);
+        $this->assertSame(0, $row['total_minutes']);
+        $this->assertStringNotContainsString('Undertime', $row['remarks']);
+    }
+
     public function test_unofficial_exit_counted_for_am_in_only_punch(): void
     {
         $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));

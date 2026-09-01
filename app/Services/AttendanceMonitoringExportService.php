@@ -279,17 +279,31 @@ class AttendanceMonitoringExportService
             }
 
             // Single source of truth for "is this slot explained by an approved Leave/ETA/
-            // Office Order/Travel Order (whole-day) or a Locator/DtrExcuse/WorkSuspension
-            // (per-slot)", shared by unofficialExitCount and the phantom-undertime
-            // computation below so the rules never disagree on what counts as covered.
-            // A full-day leave (days >= 1) still covers the whole day unconditionally,
-            // same as ETA/Office Order/Travel Order. A half-day leave (days < 1) only
-            // covers the slot(s) with no real punch - "which half" isn't stored
-            // anywhere, so it's inferred from the punch data itself, same convention
-            // as DtrController/Form48ExportService use for the same half-day-leave case.
+            // Office Order/Travel Order/WFH/Field Work (whole-day) or a Locator/DtrExcuse/
+            // WorkSuspension (per-slot)", shared by unofficialExitCount and the
+            // phantom-undertime computation below so the rules never disagree on what
+            // counts as covered. A full-day leave (days >= 1) still covers the whole day
+            // unconditionally, same as ETA/Office Order/Travel Order. A half-day leave
+            // (days < 1) only covers the slot(s) with no real punch - "which half" isn't
+            // stored anywhere, so it's inferred from the punch data itself, same
+            // convention as DtrController/Form48ExportService use for the same
+            // half-day-leave case.
             $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $emp, $empAssignments): bool {
                 if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
                     || isset($travelOrderCoveredDates[$dateStr])) {
+                    return true;
+                }
+
+                // A WFH/Field Work override day is already excluded from Unofficial Exit
+                // by the absence-scan loop below (its own isFieldWork()/isWfh() continue
+                // guard), but that loop is a separate code path from this closure - late/
+                // undertime and the phantom-undertime imputation both route through here
+                // instead, so without this check a missing punch on one of these days was
+                // still charged Undertime/Tardy even though it's never flagged Unofficial
+                // Exit. Mirrors DtrController::data()'s `$lateMin = $utMin = 0` and
+                // Form48ExportService's blanked UT_HRS_COLS/UT_MIN_COLS for these same days.
+                if (WorkSchedule::isFieldWork($emp, Carbon::parse($dateStr), $empAssignments)
+                    || WorkSchedule::isWfh($emp, Carbon::parse($dateStr), $empAssignments)) {
                     return true;
                 }
                 if ($approvedLeaveDateStrings->has($dateStr)) {
@@ -357,8 +371,9 @@ class AttendanceMonitoringExportService
             // DtrExcuse::excludedSlotKeys() into its per-slot check, this reproduces the
             // old excuse-only behavior unchanged while additionally suppressing
             // tardiness/undertime on any Office-Order/Travel-Order/ETA/approved-Leave/
-            // Locator/Suspension-covered day - closing the gap where those whole-day
-            // sources explained an absence but not a same-day late/undertime charge.
+            // Locator/Suspension/WFH/Field-Work-covered day - closing the gap where
+            // those whole-day sources explained an absence but not a same-day
+            // late/undertime charge.
             $isLateCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'am_in') || $isSlotCovered($dateStr, 'pm_in');
             $isUndertimeCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'pm_out');
 
