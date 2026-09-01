@@ -10,8 +10,11 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveBalance;
 use App\Models\Dtr;
 use App\Models\HRAuditTrail;
+use App\Models\EsignatureSigning;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Cross-Cutting: Database Performance Tests
@@ -294,5 +297,169 @@ class DatabasePerformanceTest extends TestCase
 
         $this->assertLessThanOrEqual(1000, $elapsed,
             "Audit log filtered query took {$elapsed}ms (max 1000ms)");
+    }
+
+    // ──────────────────────────────────────────────
+    // 6. E-Signature Signing Prune at Scale
+    // ──────────────────────────────────────────────
+
+    private function backdateSigningUpdatedAt(EsignatureSigning $signing, Carbon $when): void
+    {
+        $signing->timestamps = false;
+        $signing->updated_at = $when;
+        $signing->save();
+        $signing->timestamps = true;
+    }
+
+    public function test_esignature_prune_command_scales_to_thousands_of_signings(): void
+    {
+        Storage::fake('esignature');
+
+        $requesters = [$this->createEmployee(), $this->createDepartmentHead(), $this->createHRManager()];
+
+        $expectedSurvivingPaths = [];
+        $expectedDeletedPaths = [];
+        $fieldNames = [null, 'ApproverSignature', 'CertifyingSignature'];
+
+        // 1,000 signables, weighted 50/30/20% toward 1/2/3 completed stages -
+        // mirrors the real applicant -> DH -> HR co-signing progression and
+        // lands total completed rows around ~1,700, the same order of
+        // magnitude as years of real accumulated usage.
+        for ($i = 0; $i < 1000; $i++) {
+            $owner = $requesters[$i % 3];
+            $leave = LeaveRequest::create([
+                'user_id'    => $owner->id,
+                'leave_type' => 'Vacation Leave',
+                'start_date' => now()->addDays(10)->toDateString(),
+                'end_date'   => now()->addDays(10)->toDateString(),
+                'status'     => 'pending',
+            ]);
+
+            $roll = $i % 10;
+            $stageCount = $roll < 5 ? 1 : ($roll < 8 ? 2 : 3);
+
+            for ($stage = 0; $stage < $stageCount; $stage++) {
+                $path = "signings/scale-{$i}-{$stage}/signed.pdf";
+                Storage::disk('esignature')->put($path, 'x');
+
+                EsignatureSigning::create([
+                    'signable_type' => LeaveRequest::class,
+                    'signable_id'   => $leave->id,
+                    'requested_by'  => $requesters[$stage % 3]->id,
+                    'field_name'    => $fieldNames[$stage],
+                    'status'        => EsignatureSigning::STATUS_COMPLETED,
+                    'unsigned_path' => "signings/scale-{$i}-{$stage}/unsigned.pdf",
+                    'signed_path'   => $path,
+                ]);
+
+                if ($stage === $stageCount - 1) {
+                    $expectedSurvivingPaths[] = $path;
+                } else {
+                    $expectedDeletedPaths[] = $path;
+                }
+            }
+        }
+
+        // Fixed, small, non-scaling noise for passes 1 and 2 - deliberately
+        // NOT grown with the 1,000-signable scale above, so the query-count
+        // assertion below isolates pass 3's behavior specifically.
+        for ($i = 0; $i < 25; $i++) {
+            $stalePending = EsignatureSigning::create([
+                'signable_type' => LeaveRequest::class,
+                'signable_id'   => $i + 1,
+                'requested_by'  => $requesters[0]->id,
+                'status'        => EsignatureSigning::STATUS_PENDING,
+                'unsigned_path' => "signings/noise-stale-pending-{$i}/unsigned.pdf",
+            ]);
+            $this->backdateSigningUpdatedAt($stalePending, now()->subSeconds(400));
+
+            EsignatureSigning::create([
+                'signable_type' => LeaveRequest::class,
+                'signable_id'   => $i + 1,
+                'requested_by'  => $requesters[0]->id,
+                'status'        => EsignatureSigning::STATUS_PENDING,
+                'unsigned_path' => "signings/noise-fresh-pending-{$i}/unsigned.pdf",
+            ]);
+
+            $oldFailedDir = "signings/noise-old-failed-{$i}";
+            Storage::disk('esignature')->put("{$oldFailedDir}/unsigned.pdf", 'x');
+            $oldFailed = EsignatureSigning::create([
+                'signable_type' => LeaveRequest::class,
+                'signable_id'   => $i + 1,
+                'requested_by'  => $requesters[0]->id,
+                'status'        => EsignatureSigning::STATUS_FAILED,
+                'unsigned_path' => "{$oldFailedDir}/unsigned.pdf",
+                'error_message' => 'Some failure',
+                'failed_at'     => now()->subDays(31),
+            ]);
+            $this->backdateSigningUpdatedAt($oldFailed, now()->subDays(31));
+
+            $freshFailed = EsignatureSigning::create([
+                'signable_type' => LeaveRequest::class,
+                'signable_id'   => $i + 1,
+                'requested_by'  => $requesters[0]->id,
+                'status'        => EsignatureSigning::STATUS_FAILED,
+                'unsigned_path' => "signings/noise-fresh-failed-{$i}/unsigned.pdf",
+                'error_message' => 'Some failure',
+                'failed_at'     => now()->subDays(10),
+            ]);
+            $this->backdateSigningUpdatedAt($freshFailed, now()->subDays(10));
+        }
+
+        $totalRowsBefore = EsignatureSigning::count();
+
+        $this->startQueryLog();
+        $start = microtime(true);
+
+        $this->artisan('esignature-signing:prune')->assertSuccessful();
+
+        $elapsed = (microtime(true) - $start) * 1000;
+        $queryCount = $this->getQueryCount();
+        $this->stopQueryLog();
+
+        $this->assertLessThanOrEqual(5000, $elapsed,
+            "Prune command took {$elapsed}ms for ~1,800 signings (max 5000ms)");
+
+        // Bounded by the FIXED 100-row noise set (pass 1's one UPDATE, pass
+        // 2's one SELECT + up to 25 per-row DELETEs, pass 3's one SELECT) -
+        // NOT by the 1,000-signable/~1,700-completed-row scale above. This is
+        // the concrete proof that deleteSupersededSignedFiles() stays O(1) in
+        // DB queries regardless of how many signables/completed rows exist.
+        $this->assertLessThanOrEqual(40, $queryCount,
+            "Prune command used {$queryCount} queries at scale (max 40)");
+
+        // Full-population correctness - filesystem exists() checks only, no
+        // DB round trips, so checking all ~1,700 tracked paths is still cheap.
+        $stillExistingDeleted = collect($expectedDeletedPaths)
+            ->filter(fn ($path) => Storage::disk('esignature')->exists($path))
+            ->count();
+        $missingSurviving = collect($expectedSurvivingPaths)
+            ->filter(fn ($path) => ! Storage::disk('esignature')->exists($path))
+            ->count();
+
+        $this->assertSame(0, $stillExistingDeleted,
+            "{$stillExistingDeleted} superseded signed file(s) were not pruned");
+        $this->assertSame(0, $missingSurviving,
+            "{$missingSurviving} latest-signing file(s) were incorrectly deleted");
+
+        // No completed row is ever deleted, only its file - only the 25
+        // old-failed noise rows should actually disappear from the table.
+        $this->assertSame($totalRowsBefore - 25, EsignatureSigning::count());
+
+        // Pass 1/2 correctness still holds at this larger, mixed scale.
+        $this->assertSame(25,
+            EsignatureSigning::where('unsigned_path', 'like', 'signings/noise-stale-pending-%')
+                ->where('status', EsignatureSigning::STATUS_FAILED)
+                ->count());
+        $this->assertSame(25,
+            EsignatureSigning::where('unsigned_path', 'like', 'signings/noise-fresh-pending-%')
+                ->where('status', EsignatureSigning::STATUS_PENDING)
+                ->count());
+        $this->assertSame(0,
+            EsignatureSigning::where('unsigned_path', 'like', 'signings/noise-old-failed-%')->count());
+        $this->assertSame(25,
+            EsignatureSigning::where('unsigned_path', 'like', 'signings/noise-fresh-failed-%')
+                ->where('status', EsignatureSigning::STATUS_FAILED)
+                ->count());
     }
 }
