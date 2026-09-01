@@ -1487,7 +1487,7 @@ class LeaveRequestService
     public function paginatedRejectedCertifications(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
         $query = $this->applyCertificationFilters($this->rejectedCertificationQuery(), $filters)
-            ->with(['user.department', 'certificationReviewedBy']);
+            ->with(['user.department', 'certificationReviewedBy', 'leaveDates']);
 
         return $query->latest('certification_reviewed_at')->paginate($perPage, ['*'], 'rejected_page')->withQueryString();
     }
@@ -1511,7 +1511,7 @@ class LeaveRequestService
             ->whereIn('signable_id', $leaveIdsQuery)
             ->where('field_name', 'CertifyingSignature')
             ->where('status', EsignatureSigning::STATUS_COMPLETED)
-            ->with(['signable.user.department', 'requestedBy']);
+            ->with(['signable.user.department', 'signable.leaveDates', 'signable.certificationReviewedBy', 'requestedBy']);
 
         return $query->latest('completed_at')->paginate($perPage, ['*'], 'history_page')->withQueryString();
     }

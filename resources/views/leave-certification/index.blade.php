@@ -79,7 +79,7 @@
         </div>
         <div class="hris-table-header-actions">
             <span id="selected-count-label" style="align-self:center;font-size:0.85rem;color:#475569;margin-right:4px;"></span>
-            <button type="button" id="forward-selected-btn" class="hris-btn hris-btn-primary" disabled>
+            <button type="button" id="forward-selected-btn" class="hris-btn hris-btn-primary" style="opacity:.55;">
                 <i class="fa-solid fa-share"></i> Forward Selected
             </button>
         </div>
@@ -100,8 +100,11 @@
             </thead>
             <tbody>
                 @forelse($pending as $leave)
+                    @php $leaveDatesJson = $leave->leaveDatesBreakdown()->toJson(); @endphp
                     <tr>
-                        <td><input type="checkbox" class="cert-row-cb" value="{{ $leave->id }}"></td>
+                        <td><input type="checkbox" class="cert-row-cb" value="{{ $leave->id }}"
+                            data-employee="{{ $leave->user->full_name ?? '—' }}"
+                            data-leave-type="{{ $leave->leave_type ?? '—' }}"></td>
                         <td>{{ $leave->user->full_name ?? '—' }}</td>
                         <td>{{ optional($leave->user?->department)->Dept_name ?? '—' }}</td>
                         <td>
@@ -118,6 +121,18 @@
                         <td>{{ $leave->formattedPeriod() }}</td>
                         <td>{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '—' }}</td>
                         <td>
+                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm cert-view-btn"
+                                data-id="{{ $leave->id }}"
+                                data-employee="{{ $leave->user->full_name ?? '—' }}"
+                                data-department="{{ optional($leave->user?->department)->Dept_name ?? '—' }}"
+                                data-leave-type="{{ $leave->leave_type ?? '—' }}"
+                                data-leave-dates="{{ $leaveDatesJson }}"
+                                data-period="{{ $leave->formattedPeriod() }}"
+                                data-days="{{ $leave->total_days ?? '—' }}"
+                                data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '' }}"
+                                data-reason="{{ $leave->reason ?? '' }}">
+                                <i class="fa-solid fa-eye"></i> View
+                            </button>
                             <button type="button" class="hris-btn hris-btn-danger hris-btn-sm reject-btn" data-leave-id="{{ $leave->id }}">
                                 <i class="fa-solid fa-xmark"></i> Reject
                             </button>
@@ -160,10 +175,12 @@
                     <th>Leave Type</th>
                     <th>Forwarded By</th>
                     <th>Forwarded At</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($forwarded as $leave)
+                    @php $leaveDatesJson = $leave->leaveDatesBreakdown()->toJson(); @endphp
                     <tr>
                         <td>{{ $leave->user->full_name ?? '—' }}</td>
                         <td>{{ optional($leave->user?->department)->Dept_name ?? '—' }}</td>
@@ -180,10 +197,26 @@
                         </td>
                         <td>{{ $leave->certificationReviewedBy->full_name ?? '—' }}</td>
                         <td>{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                        <td>
+                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm cert-view-btn"
+                                data-id="{{ $leave->id }}"
+                                data-employee="{{ $leave->user->full_name ?? '—' }}"
+                                data-department="{{ optional($leave->user?->department)->Dept_name ?? '—' }}"
+                                data-leave-type="{{ $leave->leave_type ?? '—' }}"
+                                data-leave-dates="{{ $leaveDatesJson }}"
+                                data-period="{{ $leave->formattedPeriod() }}"
+                                data-days="{{ $leave->total_days ?? '—' }}"
+                                data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '' }}"
+                                data-reason="{{ $leave->reason ?? '' }}"
+                                data-forwarded-by="{{ $leave->certificationReviewedBy->full_name ?? '' }}"
+                                data-forwarded-at="{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '' }}">
+                                <i class="fa-solid fa-eye"></i> View
+                            </button>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="hris-empty-state">Nothing awaiting the HR Manager's signature.</td>
+                        <td colspan="6" class="hris-empty-state">Nothing awaiting the HR Manager's signature.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -209,7 +242,7 @@
         </div>
         <div class="hris-table-header-actions">
             <span id="selected-count-label" style="align-self:center;font-size:0.85rem;color:#475569;margin-right:4px;"></span>
-            <button type="button" id="sign-selected-btn" class="hris-btn hris-btn-primary" disabled>
+            <button type="button" id="sign-selected-btn" class="hris-btn hris-btn-primary" style="opacity:.55;">
                 <i class="fa-solid fa-pen-nib"></i> Sign Selected
             </button>
         </div>
@@ -225,10 +258,12 @@
                     <th>Leave Type</th>
                     <th>Period</th>
                     <th>Forwarded By</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($forwarded as $leave)
+                    @php $leaveDatesJson = $leave->leaveDatesBreakdown()->toJson(); @endphp
                     <tr>
                         <td><input type="checkbox" class="cert-row-cb" value="{{ $leave->id }}"></td>
                         <td>{{ $leave->user->full_name ?? '—' }}</td>
@@ -246,10 +281,26 @@
                         </td>
                         <td>{{ $leave->formattedPeriod() }}</td>
                         <td>{{ $leave->certificationReviewedBy->full_name ?? '—' }}</td>
+                        <td>
+                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm cert-view-btn"
+                                data-id="{{ $leave->id }}"
+                                data-employee="{{ $leave->user->full_name ?? '—' }}"
+                                data-department="{{ optional($leave->user?->department)->Dept_name ?? '—' }}"
+                                data-leave-type="{{ $leave->leave_type ?? '—' }}"
+                                data-leave-dates="{{ $leaveDatesJson }}"
+                                data-period="{{ $leave->formattedPeriod() }}"
+                                data-days="{{ $leave->total_days ?? '—' }}"
+                                data-filed="{{ $leave->date_filed ? \Carbon\Carbon::parse($leave->date_filed)->format('M d, Y') : '' }}"
+                                data-reason="{{ $leave->reason ?? '' }}"
+                                data-forwarded-by="{{ $leave->certificationReviewedBy->full_name ?? '' }}"
+                                data-forwarded-at="{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '' }}">
+                                <i class="fa-solid fa-eye"></i> View
+                            </button>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="hris-empty-state">Nothing awaiting your signature.</td>
+                        <td colspan="7" class="hris-empty-state">Nothing awaiting your signature.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -290,6 +341,7 @@
             </thead>
             <tbody>
                 @forelse($rejected as $leave)
+                    @php $leaveDatesJson = $leave->leaveDatesBreakdown()->toJson(); @endphp
                     <tr>
                         <td>{{ $leave->user->full_name ?? '—' }}</td>
                         <td>{{ optional($leave->user?->department)->Dept_name ?? '—' }}</td>
@@ -297,6 +349,20 @@
                         <td>{{ $leave->certificationReviewedBy->full_name ?? '—' }}</td>
                         <td>{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '—' }}</td>
                         <td>
+                            <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm cert-view-btn"
+                                data-id="{{ $leave->id }}"
+                                data-employee="{{ $leave->user->full_name ?? '—' }}"
+                                data-department="{{ optional($leave->user?->department)->Dept_name ?? '—' }}"
+                                data-leave-type="{{ $leave->leave_type ?? '—' }}"
+                                data-leave-dates="{{ $leaveDatesJson }}"
+                                data-period="{{ $leave->formattedPeriod() }}"
+                                data-days="{{ $leave->total_days ?? '—' }}"
+                                data-reason="{{ $leave->reason ?? '' }}"
+                                data-rejected-by="{{ $leave->certificationReviewedBy->full_name ?? '' }}"
+                                data-rejected-at="{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '' }}"
+                                data-rejected-reason="{{ $leave->certification_review_remarks ?? '' }}">
+                                <i class="fa-solid fa-eye"></i> View
+                            </button>
                             <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm reopen-btn" data-leave-id="{{ $leave->id }}">
                                 <i class="fa-solid fa-rotate-left"></i> Send Back to Pending
                             </button>
@@ -337,18 +403,40 @@
                     <th>Employee</th>
                     <th>Signed By</th>
                     <th>Signed At</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($history as $signing)
+                    @php $leave = $signing->signable; @endphp
                     <tr>
-                        <td>{{ optional($signing->signable?->user)->full_name ?? '—' }}</td>
+                        <td>{{ optional($leave?->user)->full_name ?? '—' }}</td>
                         <td>{{ $signing->requestedBy->full_name ?? '—' }}</td>
                         <td>{{ $signing->completed_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                        <td>
+                            @if($leave)
+                                @php $leaveDatesJson = $leave->leaveDatesBreakdown()->toJson(); @endphp
+                                <button type="button" class="hris-btn hris-btn-secondary hris-btn-sm cert-view-btn"
+                                    data-id="{{ $leave->id }}"
+                                    data-employee="{{ $leave->user->full_name ?? '—' }}"
+                                    data-department="{{ optional($leave->user?->department)->Dept_name ?? '—' }}"
+                                    data-leave-type="{{ $leave->leave_type ?? '—' }}"
+                                    data-leave-dates="{{ $leaveDatesJson }}"
+                                    data-period="{{ $leave->formattedPeriod() }}"
+                                    data-days="{{ $leave->total_days ?? '—' }}"
+                                    data-reason="{{ $leave->reason ?? '' }}"
+                                    data-forwarded-by="{{ $leave->certificationReviewedBy->full_name ?? '' }}"
+                                    data-forwarded-at="{{ $leave->certification_reviewed_at?->format('M d, Y g:i A') ?? '' }}"
+                                    data-signed-by="{{ $signing->requestedBy->full_name ?? '' }}"
+                                    data-signed-at="{{ $signing->completed_at?->format('M d, Y g:i A') ?? '' }}">
+                                    <i class="fa-solid fa-eye"></i> View
+                                </button>
+                            @endif
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="3" class="hris-empty-state">No certifications signed yet.</td>
+                        <td colspan="4" class="hris-empty-state">No certifications signed yet.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -366,6 +454,65 @@
 
 @section('page_scripts_after')
 <script>
+// ── View details ────────────────────────────────────────────────────────
+// Renders either the flat comma-joined leave_type string, or - when a multi-date
+// filing assigned more than one distinct type across its dates - a small per-date
+// table (Date | Type | Days) so it's clear which date got which type. Same helper
+// as leave-manager/approved-leaves.blade.php's own View action.
+function leaveTypeCellHtml(flatType, dates) {
+    var types = (dates || []).map(function (d) { return d.leave_type; })
+        .filter(function (v, i, arr) { return v && arr.indexOf(v) === i; });
+    if (!dates || !dates.length || types.length <= 1) {
+        return flatType || '-';
+    }
+    var rows = dates.map(function (d) {
+        return '<tr><td style="padding:2px 6px">' + d.label + '</td><td style="padding:2px 6px">' + d.leave_type + '</td><td style="padding:2px 6px;text-align:right">' + d.days + '</td></tr>';
+    }).join('');
+    return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+        + '<thead><tr><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:left;padding:2px 6px">Type</th><th style="text-align:right;padding:2px 6px">Days</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>';
+}
+
+// Renders one label/value row, or '' when value is empty - so a section's optional
+// fields (Forwarded/Rejected/Signed info) only show up on the rows that actually have
+// them, without needing a separate Swal template per tab.
+function certRow(label, value, shaded) {
+    if (!value) return '';
+    var bg = shaded ? ' style="background:#f8fafc"' : '';
+    return '<tr' + bg + '><td style="padding:5px 8px;color:#64748b;width:40%">' + label + '</td><td style="padding:5px 8px">' + value + '</td></tr>';
+}
+
+document.querySelectorAll('.cert-view-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        var dates = JSON.parse(btn.getAttribute('data-leave-dates') || '[]');
+        var rows = [
+            certRow('Employee', btn.getAttribute('data-employee'), false),
+            certRow('Department', btn.getAttribute('data-department'), true),
+            certRow('Leave Type', leaveTypeCellHtml(btn.getAttribute('data-leave-type'), dates), false),
+            certRow('Period', btn.getAttribute('data-period'), true),
+            certRow('Total Days', btn.getAttribute('data-days'), false),
+            certRow('Date Filed', btn.getAttribute('data-filed'), true),
+            certRow('Reason', btn.getAttribute('data-reason'), false),
+            certRow('Forwarded By', btn.getAttribute('data-forwarded-by'), true),
+            certRow('Forwarded At', btn.getAttribute('data-forwarded-at'), false),
+            certRow('Rejected By', btn.getAttribute('data-rejected-by'), true),
+            certRow('Rejected At', btn.getAttribute('data-rejected-at'), false),
+            certRow('Rejection Reason', btn.getAttribute('data-rejected-reason'), true),
+            certRow('Signed By', btn.getAttribute('data-signed-by'), false),
+            certRow('Signed At', btn.getAttribute('data-signed-at'), true),
+        ].join('');
+
+        Swal.fire({
+            title: 'Leave Request #' + id,
+            html: '<table style="width:100%;text-align:left;border-collapse:collapse;font-size:0.92rem">' + rows + '</table>',
+            confirmButtonText: 'Close',
+            confirmButtonColor: '#64748b',
+            width: 480,
+        });
+    });
+});
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 }
@@ -394,7 +541,7 @@ function updateSelectionUi() {
     var ids = getSelectedLeaveIds();
     var actionBtn = document.getElementById('sign-selected-btn') || document.getElementById('forward-selected-btn');
     var label = document.getElementById('selected-count-label');
-    if (actionBtn) actionBtn.disabled = ids.length === 0;
+    if (actionBtn) actionBtn.style.opacity = ids.length === 0 ? '.55' : '1';
     if (label) label.textContent = ids.length ? ids.length + ' selected' : '';
 
     var rowBoxes = document.querySelectorAll('.cert-row-cb');
@@ -418,7 +565,10 @@ document.querySelectorAll('.cert-row-cb').forEach(function (cb) {
 // ── HR Manager: Sign Selected (own password) ─────────────────────────
 document.getElementById('sign-selected-btn')?.addEventListener('click', function () {
     var ids = getSelectedLeaveIds();
-    if (!ids.length) return;
+    if (!ids.length) {
+        Swal.fire({ icon: 'warning', title: 'No Employee Selected', text: 'Please select at least one employee first.' });
+        return;
+    }
 
     Swal.fire({
         title: 'Sign Selected',
@@ -457,11 +607,24 @@ document.getElementById('sign-selected-btn')?.addEventListener('click', function
 // ── Leave Manager: Forward Selected (no password) ─────────────────────
 document.getElementById('forward-selected-btn')?.addEventListener('click', function () {
     var ids = getSelectedLeaveIds();
-    if (!ids.length) return;
+    if (!ids.length) {
+        Swal.fire({ icon: 'warning', title: 'No Employee Selected', text: 'Please select at least one employee first.' });
+        return;
+    }
+
+    var items = Array.prototype.map.call(
+        document.querySelectorAll('.cert-row-cb:checked'),
+        function (cb) {
+            var emp = cb.getAttribute('data-employee') || 'Unknown';
+            var type = cb.getAttribute('data-leave-type') || '';
+            return '<li>' + emp + (type ? ' — ' + type : '') + '</li>';
+        }
+    ).join('');
 
     Swal.fire({
         title: 'Forward Selected',
-        text: 'Forward the ' + ids.length + ' selected leave(s) to the HR Manager for signing?',
+        html: 'Forward the following ' + ids.length + ' leave(s) to the HR Manager for signing?'
+            + '<ul style="text-align:left;margin:10px 0 0;padding-left:20px;max-height:220px;overflow-y:auto;">' + items + '</ul>',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Forward',
