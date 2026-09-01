@@ -529,44 +529,65 @@ class AttendanceMonitoringExportService
             // logged their departure - since there's no punch proving they stayed later,
             // charge the shift's afternoon block (break-in -> shift end) as undertime,
             // unless something (Locator/ETA/Office Order/DtrExcuse) explains the gap.
-            // Mirrors DtrController's identical imputation for the DTR page so the two
-            // screens never disagree.
+            // Symmetrically, a day whose AM In/PM In is missing (but its sibling OUT
+            // punch exists) means there's no punch proving a late arrival didn't happen -
+            // charge the shift's morning/afternoon block as Tardy the same way. Mirrors
+            // DtrController's identical `$imputeAmInLate`/`$imputePmOutUndertime`
+            // imputation for the DTR page so the two screens never disagree - both
+            // directions are computed in one pass since they share the same per-date
+            // WorkSchedule resolution (including the suspension adjustment).
             $punchResolver = new DtrPunchResolver;
             $phantomUndertimeByDate = [];
+            $phantomLateByDate = [];
             foreach ($workDtrs as $d) {
                 $dateStr = Carbon::parse($d->date)->toDateString();
-
-                // imputedUndertimeMinutes() sums two independent components
-                // (a missing am_out and a missing pm_out are scored
-                // separately) - checking only 'pm_out' coverage here let a
-                // source (Locator/DtrExcuse/WorkSuspension) that explains
-                // only 'am_out' through unfiltered, wrongly phantom-charging
-                // that component on a day the actual PM Out was fine. Skip
-                // entirely only once both are covered; otherwise pass the
-                // exact covered subset so the resolver suppresses only the
-                // component(s) actually explained.
-                if ($isSlotCovered($dateStr, 'am_out') && $isSlotCovered($dateStr, 'pm_out')) {
-                    continue;
-                }
 
                 $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
                 if (($suspension = $suspensionsByDate->get($dateStr)) !== null && ! $empIsFrontlineExempt) {
                     [$schedule] = $schedule->applySuspension($suspension->suspension_time);
                 }
-                $coveredSlots = array_values(array_filter(
-                    ['am_out', 'pm_out'],
-                    fn (string $slot): bool => $isSlotCovered($dateStr, $slot)
-                ));
-                $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule, $coveredSlots);
 
-                if ($mins > 0) {
-                    $phantomUndertimeByDate[$dateStr] = $mins;
+                // imputedUndertimeMinutes()/imputedLateMinutes() each sum two
+                // independent components (a missing am_out and a missing pm_out are
+                // scored separately for undertime; am_in/pm_in likewise for late) -
+                // checking only one slot's coverage would let a source that
+                // explains just one component through unfiltered, wrongly
+                // phantom-charging the other. Skip a call entirely only once BOTH
+                // of its own slots are covered; otherwise pass the exact covered
+                // subset so the resolver suppresses only the component(s) actually
+                // explained.
+                if (! ($isSlotCovered($dateStr, 'am_out') && $isSlotCovered($dateStr, 'pm_out'))) {
+                    $coveredSlots = array_values(array_filter(
+                        ['am_out', 'pm_out'],
+                        fn (string $slot): bool => $isSlotCovered($dateStr, $slot)
+                    ));
+                    $mins = $punchResolver->imputedUndertimeMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule, $coveredSlots);
+
+                    if ($mins > 0) {
+                        $phantomUndertimeByDate[$dateStr] = $mins;
+                    }
+                }
+
+                if (! ($isSlotCovered($dateStr, 'am_in') && $isSlotCovered($dateStr, 'pm_in'))) {
+                    $coveredSlots = array_values(array_filter(
+                        ['am_in', 'pm_in'],
+                        fn (string $slot): bool => $isSlotCovered($dateStr, $slot)
+                    ));
+                    $mins = $punchResolver->imputedLateMinutes($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule, $coveredSlots);
+
+                    if ($mins > 0) {
+                        $phantomLateByDate[$dateStr] = $mins;
+                    }
                 }
             }
 
             $undertimeCount += count($phantomUndertimeByDate);
             $undertimeMinutes += array_sum($phantomUndertimeByDate);
             $totalMinutes += array_sum($phantomUndertimeByDate);
+
+            $tardinessCount += count($phantomLateByDate);
+            $tardinessMinutes += array_sum($phantomLateByDate);
+            $totalMinutes += array_sum($phantomLateByDate);
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
                 if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
@@ -593,6 +614,10 @@ class AttendanceMonitoringExportService
             foreach ($workDtrs->filter(fn ($d) => $d->late_minutes > 0 && ! $isLateCovered(Carbon::parse($d->date)->toDateString())) as $d) {
                 $day = Carbon::parse($d->date)->day;
                 $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$d->late_minutes.' mins)']);
+            }
+            foreach ($phantomLateByDate as $dateStr => $mins) {
+                $day = Carbon::parse($dateStr)->day;
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$mins.' mins)']);
             }
 
             // DTR: undertime days (including missing-PM-Out days charged as phantom

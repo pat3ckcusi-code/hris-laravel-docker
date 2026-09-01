@@ -1221,6 +1221,38 @@ class ShiftScheduleTest extends TestCase
         $this->assertStringContainsString('30-Unofficial Exit (No Time Out)', $row['remarks']);
     }
 
+    public function test_tardiness_charged_for_missing_am_logon_with_am_logout_present(): void
+    {
+        $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
+
+        // Mirror image of test_unofficial_exit_counted_for_partial_punch_missing_pm_logout:
+        // AM In missing (AM Out present, proving the AM segment happened), PM fully
+        // punched. Before this fix, AttendanceMonitoringExportService never called
+        // DtrPunchResolver::imputedLateMinutes() at all, so this always showed 0
+        // Tardiness even though the DTR page (which does call it) shows a nonzero
+        // imputed late charge for the same day.
+        $employee = $this->createEmployee(['last_name' => 'Noamin', 'date_hired' => '2026-06-30']);
+        Dtr::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-06-30',
+            'time_in_am' => null,
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => '13:00:00',
+            'time_out_pm' => '17:00:00',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $row = $this->unofficialExitRowFor($employee);
+
+        $this->assertSame(1, $row['unofficial_exit_count']);
+        $this->assertStringContainsString('30-Unofficial Exit (Incomplete Punches)', $row['remarks']);
+        $this->assertSame(1, $row['tardiness_count']);
+        $this->assertSame(180, $row['total_minutes']); // 08:00 -> 11:00 morning window
+        $this->assertStringContainsString('30-Tardy (180 mins)', $row['remarks']);
+    }
+
     public function test_no_undertime_charged_for_field_work_day_with_missing_pm_logout(): void
     {
         $this->travelTo(Carbon::parse('2026-07-15 08:00:00'));
