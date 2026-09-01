@@ -203,7 +203,10 @@ class ShiftLogTest extends TestCase
         $employee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
 
         $this->actingAs($tk)
-            ->put(route('attendance.schedules.exempt', $employee))
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Medical accommodation',
+                'until_date' => '2026-09-30',
+            ])
             ->assertRedirect();
 
         $this->assertDatabaseHas('hr_audit_trails', [
@@ -211,6 +214,31 @@ class ShiftLogTest extends TestCase
             'action' => 'dtr_exemption_toggled',
             'target_id' => $employee->id,
         ]);
+
+        $trail = HRAuditTrail::where('target_id', $employee->id)
+            ->where('action', 'dtr_exemption_toggled')
+            ->firstOrFail();
+        $this->assertSame('2026-09-30', $trail->details['until_date']);
+    }
+
+    public function test_expired_exemption_auto_restore_is_logged_with_null_actor(): void
+    {
+        $employee = $this->createEmployee([
+            'dtr_exempt' => true,
+            'dtr_exempt_reason' => 'Short field assignment',
+            'dtr_exempt_effective_date' => '2026-08-01',
+            'dtr_exempt_until_date' => '2026-08-15',
+        ]);
+
+        $this->artisan('dtr:restore-expired-exemptions')->assertExitCode(0);
+
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+
+        $trail = HRAuditTrail::where('target_id', $employee->id)
+            ->where('action', 'dtr_exemption_toggled')
+            ->firstOrFail();
+        $this->assertNull($trail->actor_user_id);
+        $this->assertTrue($trail->details['auto_expired']);
     }
 
     public function test_shift_template_crud_is_logged(): void

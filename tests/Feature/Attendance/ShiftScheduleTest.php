@@ -972,12 +972,13 @@ class ShiftScheduleTest extends TestCase
         $employee = $this->createEmployee(['shift_id' => $this->nightShiftModel()->id]);
 
         $this->actingAs($this->createTimeKeeper())
-            ->put(route('attendance.schedules.exempt', $employee))
+            ->put(route('attendance.schedules.exempt', $employee), ['reason' => 'Medical accommodation'])
             ->assertRedirect();
 
         $employee->refresh();
         $this->assertTrue($employee->dtr_exempt);
         $this->assertNull($employee->shift_id);
+        $this->assertNull($employee->dtr_exempt_until_date);
 
         // Toggling again removes the exemption.
         $this->actingAs($this->createTimeKeeper())
@@ -985,6 +986,92 @@ class ShiftScheduleTest extends TestCase
             ->assertRedirect();
 
         $this->assertFalse($employee->refresh()->dtr_exempt);
+    }
+
+    public function test_exemption_with_until_date_persists_it_and_is_optional(): void
+    {
+        $employee = $this->createEmployee();
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Short field assignment',
+                'effective_date' => '2026-09-01',
+                'until_date' => '2026-09-15',
+            ])
+            ->assertRedirect();
+
+        $employee->refresh();
+        $this->assertTrue($employee->dtr_exempt);
+        $this->assertSame('2026-09-15', $employee->dtr_exempt_until_date->toDateString());
+
+        // Restoring clears it again, mirroring reason/effective_date.
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee))
+            ->assertRedirect();
+
+        $this->assertNull($employee->refresh()->dtr_exempt_until_date);
+    }
+
+    public function test_exemption_rejects_until_date_before_today(): void
+    {
+        $employee = $this->createEmployee();
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Backdated by mistake',
+                'until_date' => '2020-01-01',
+            ])
+            ->assertSessionHasErrors('until_date');
+
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+    }
+
+    public function test_exemption_rejects_until_date_before_effective_date(): void
+    {
+        $employee = $this->createEmployee();
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Effective date is later than until date',
+                'effective_date' => '2026-09-20',
+                'until_date' => '2026-09-10',
+            ])
+            ->assertSessionHasErrors('until_date');
+
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+    }
+
+    public function test_restore_expired_exemptions_command_only_restores_past_until_dates(): void
+    {
+        $expired = $this->createEmployee([
+            'dtr_exempt' => true,
+            'dtr_exempt_reason' => 'Short field assignment',
+            'dtr_exempt_effective_date' => '2026-08-01',
+            'dtr_exempt_until_date' => '2026-08-15',
+        ]);
+        $indefinite = $this->createEmployee([
+            'dtr_exempt' => true,
+            'dtr_exempt_reason' => 'Ongoing accommodation',
+            'dtr_exempt_effective_date' => '2026-08-01',
+            'dtr_exempt_until_date' => null,
+        ]);
+        $notYetExpired = $this->createEmployee([
+            'dtr_exempt' => true,
+            'dtr_exempt_reason' => 'Still active',
+            'dtr_exempt_effective_date' => '2026-08-01',
+            'dtr_exempt_until_date' => now()->addDays(30)->toDateString(),
+        ]);
+
+        $this->artisan('dtr:restore-expired-exemptions')->assertExitCode(0);
+
+        $this->assertFalse($expired->refresh()->dtr_exempt);
+        $this->assertNull($expired->dtr_exempt_reason);
+        $this->assertNull($expired->dtr_exempt_effective_date);
+        $this->assertNull($expired->dtr_exempt_until_date);
+
+        $this->assertTrue($indefinite->refresh()->dtr_exempt);
+        $this->assertTrue($notYetExpired->refresh()->dtr_exempt);
+        $this->assertNotNull($notYetExpired->dtr_exempt_until_date);
     }
 
     public function test_recompute_writes_no_dtr_for_exempt_employee(): void
@@ -1002,6 +1089,28 @@ class ShiftScheduleTest extends TestCase
         app(PersonnelLogImportService::class)->recomputeDtr($employee, '2026-06-10', '2026-06-10');
 
         $this->assertDatabaseMissing('dtrs', ['employee_id' => $employee->id]);
+    }
+
+    public function test_exempt_roster_print_and_export_include_until_date_column(): void
+    {
+        $employee = $this->createEmployee([
+            'dtr_exempt' => true,
+            'dtr_exempt_reason' => 'Short field assignment',
+            'dtr_exempt_effective_date' => '2026-09-01',
+            'dtr_exempt_until_date' => '2026-09-15',
+        ]);
+
+        $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.schedules.exempt-report'))
+            ->assertOk()
+            ->assertSee('Date Until')
+            ->assertSee('Sep 15, 2026');
+
+        $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.schedules.exempt-report.excel'))
+            ->assertOk();
+
+        $this->assertTrue($employee->dtr_exempt);
     }
 
     public function test_exempt_employee_blocked_from_single_form48_download(): void

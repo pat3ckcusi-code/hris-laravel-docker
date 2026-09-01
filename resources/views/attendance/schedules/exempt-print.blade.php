@@ -75,6 +75,7 @@
                     <th>Department</th>
                     <th>Position</th>
                     <th>Effective Date</th>
+                    <th>Date Until</th>
                     <th>Reason</th>
                 </tr>
             </thead>
@@ -86,6 +87,7 @@
                         <td>{{ $emp->department?->Dept_name ?? '-' }}</td>
                         <td>{{ $emp->designation ?? '-' }}</td>
                         <td>{{ $emp->dtr_exempt_effective_date?->format('M d, Y') ?? '-' }}</td>
+                        <td>{{ $emp->dtr_exempt_until_date?->format('M d, Y') ?? '-' }}</td>
                         <td>{{ $emp->dtr_exempt_reason ?? '-' }}</td>
                     </tr>
                 @endforeach

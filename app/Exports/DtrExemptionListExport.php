@@ -24,7 +24,7 @@ class DtrExemptionListExport implements FromCollection, WithHeadings, WithMappin
 
     public function headings(): array
     {
-        return ['Name', 'EmpNo', 'Department', 'Position', 'Effective Date', 'Reason'];
+        return ['Name', 'EmpNo', 'Department', 'Position', 'Effective Date', 'Date Until', 'Reason'];
     }
 
     public function map($employee): array
@@ -35,6 +35,7 @@ class DtrExemptionListExport implements FromCollection, WithHeadings, WithMappin
             $employee->department?->Dept_name ?? '',
             $employee->designation ?? '',
             $employee->dtr_exempt_effective_date?->format('M d, Y') ?? '',
+            $employee->dtr_exempt_until_date?->format('M d, Y') ?? '',
             $employee->dtr_exempt_reason ?? '',
         ];
     }

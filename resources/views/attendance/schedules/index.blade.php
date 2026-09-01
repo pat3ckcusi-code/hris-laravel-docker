@@ -525,6 +525,8 @@
                                                 <textarea name="reason" required rows="2" class="sched-exempt-textarea" placeholder="Why is this employee exempt from biometric/DTR?"></textarea>
                                                 <label class="sched-exempt-label">Effective Date</label>
                                                 <input type="date" name="effective_date" value="{{ now()->toDateString() }}" class="sched-exempt-date">
+                                                <label class="sched-exempt-label">Date Until (optional)</label>
+                                                <input type="date" name="until_date" class="sched-exempt-date">
                                                 <button type="submit" class="hris-btn hris-btn-primary sched-exempt-confirm-btn">Confirm Exemption</button>
                                             </form>
                                         </details>

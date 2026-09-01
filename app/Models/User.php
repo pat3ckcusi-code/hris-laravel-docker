@@ -43,7 +43,8 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
  * @property int|null $shift_id
  * @property bool $dtr_exempt
  * @property string|null $dtr_exempt_reason
- * @property \Illuminate\Support\Carbon|null $dtr_exempt_effective_date
+ * @property Carbon|null $dtr_exempt_effective_date
+ * @property Carbon|null $dtr_exempt_until_date
  * @property string|null $ContactNo
  * @property string|null $access_level
  * @property float|null $leave_balance
@@ -133,6 +134,7 @@ class User extends Authenticatable
         'dtr_exempt',
         'dtr_exempt_reason',
         'dtr_exempt_effective_date',
+        'dtr_exempt_until_date',
         'is_frontline',
         'is_solo_parent',
         'frontline_department_excluded',
@@ -287,6 +289,7 @@ class User extends Authenticatable
             'hours_per_day' => 'float',
             'dtr_exempt' => 'boolean',
             'dtr_exempt_effective_date' => 'date',
+            'dtr_exempt_until_date' => 'date',
             'is_frontline' => 'boolean',
             'is_solo_parent' => 'boolean',
             'frontline_department_excluded' => 'boolean',

@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 /**
@@ -641,6 +642,9 @@ class EmployeeScheduleController extends Controller
      * Toggle an employee's biometric/DTR exemption. Exempt employees are skipped
      * by the import pipeline, excluded from Form 48/DTR exports, and hidden from
      * the shift-assignment list. Turning exemption on clears any assigned shift.
+     * An optional "until" date makes the exemption time-bounded - the
+     * dtr:restore-expired-exemptions scheduled command auto-restores the
+     * employee once it passes; omitting it keeps today's indefinite behavior.
      */
     public function toggleExempt(Request $request, User $user): RedirectResponse
     {
@@ -658,13 +662,27 @@ class EmployeeScheduleController extends Controller
 
         $reason = null;
         $effectiveDate = null;
+        $untilDate = null;
         if ($exempt) {
             $validated = $request->validate([
                 'reason' => ['required', 'string', 'max:2000'],
                 'effective_date' => ['nullable', 'date'],
+                // Validated against a fixed anchor rather than
+                // after_or_equal:effective_date - effective_date only gets
+                // its "defaults to today" fallback applied below, after
+                // validation runs, so a request that omits it would compare
+                // against a missing sibling field.
+                'until_date' => ['nullable', 'date', 'after_or_equal:today'],
             ]);
             $reason = $validated['reason'];
             $effectiveDate = $validated['effective_date'] ?? Carbon::today()->toDateString();
+            $untilDate = $validated['until_date'] ?? null;
+
+            if ($untilDate !== null && $untilDate < $effectiveDate) {
+                throw ValidationException::withMessages([
+                    'until_date' => 'Date Until must be on or after the Effective Date.',
+                ]);
+            }
         }
 
         $user->update([
@@ -672,9 +690,10 @@ class EmployeeScheduleController extends Controller
             'shift_id' => $exempt ? null : $user->shift_id,
             'dtr_exempt_reason' => $reason,
             'dtr_exempt_effective_date' => $effectiveDate,
+            'dtr_exempt_until_date' => $untilDate,
         ]);
 
-        $this->logExemptionToggled($actor, $user, $exempt, $reason, $effectiveDate);
+        $this->logExemptionToggled($actor, $user, $exempt, $reason, $effectiveDate, $untilDate);
 
         $name = trim("{$user->first_name} {$user->last_name}");
         $message = $exempt
@@ -684,7 +703,7 @@ class EmployeeScheduleController extends Controller
         return back()->with('schedule_status', $message);
     }
 
-    private function logExemptionToggled(User $actor, User $employee, bool $exempt, ?string $reason, ?string $effectiveDate): void
+    private function logExemptionToggled(User $actor, User $employee, bool $exempt, ?string $reason, ?string $effectiveDate, ?string $untilDate = null): void
     {
         try {
             HRAuditTrail::create([
@@ -693,7 +712,7 @@ class EmployeeScheduleController extends Controller
                 'action' => 'dtr_exemption_toggled',
                 'target_type' => 'user',
                 'target_id' => $employee->id,
-                'details' => ['exempt' => $exempt, 'reason' => $reason, 'effective_date' => $effectiveDate],
+                'details' => ['exempt' => $exempt, 'reason' => $reason, 'effective_date' => $effectiveDate, 'until_date' => $untilDate],
             ]);
         } catch (\Exception) {
             // audit failure must not block the toggle
@@ -706,7 +725,7 @@ class EmployeeScheduleController extends Controller
      * view and the Excel export so the two can never disagree on which
      * employees/columns they show.
      *
-     * @return \Illuminate\Support\Collection<int, User>
+     * @return Collection<int, User>
      */
     private function exemptRosterQuery(Request $request)
     {
@@ -719,7 +738,7 @@ class EmployeeScheduleController extends Controller
         return $this->buildEmployeeQuery($accessibleIds, $deptId, null, $employeeType, $search, true)
             ->with('department')
             ->orderBy('last_name')->orderBy('first_name')
-            ->get(['id', 'EmpNo', 'first_name', 'last_name', 'Dept_id', 'designation', 'dtr_exempt_reason', 'dtr_exempt_effective_date']);
+            ->get(['id', 'EmpNo', 'first_name', 'last_name', 'Dept_id', 'designation', 'dtr_exempt_reason', 'dtr_exempt_effective_date', 'dtr_exempt_until_date']);
     }
 
     // Printable roster of currently DTR/biometric-exempt employees.
@@ -883,7 +902,7 @@ class EmployeeScheduleController extends Controller
      * reconcileWeek()'s own gate check would no-op for any week outside a
      * recognized Field Work Pair pairing regardless.
      *
-     * @param  \Illuminate\Support\Collection<int, ShiftAssignment>  $assignments
+     * @param  Collection<int, ShiftAssignment>  $assignments
      */
     private function reconcileEagerlyIfNeeded(User $user, Collection $assignments): void
     {
