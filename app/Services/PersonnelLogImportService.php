@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Locator;
 use App\Models\User;
@@ -48,28 +49,33 @@ class PersonnelLogImportService
         // narrowing which department's DTRs get recomputed/reported. $deptId is
         // applied later, only to which users get their DTR recomputed and named
         // in this run's messages.
-        $users = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '')
-            ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
+        [$exactMap, $strippedMap] = $this->buildEmpNoLookupMaps();
 
-        if ($users->isEmpty()) {
+        if ($exactMap->isEmpty()) {
             return ['imported' => 0, 'skipped' => 0, 'messages' => [],
                 'error' => 'No HRIS users with EmpNo found. Set EmpNo on employee records before importing.'];
-        }
-
-        $exactMap = $users->keyBy('EmpNo');          // primary: exact string match
-
-        $strippedMap = [];                            // fallback: leading-zeros stripped
-        foreach ($users as $user) {
-            $stripped = ltrim((string) $user->EmpNo, '0') ?: '0';
-            if (! $exactMap->has($stripped)) {
-                $strippedMap[$stripped] = $user;
-            }
         }
 
         // Track personnelids with no HRIS match so the audit log can name them.
         $unmatchedNames = [];   // personnelid → "FIRSTNAME LASTNAME"
 
-        $pageSize = $pageSize ?? (int) config('integration.logs_page_size', 1000);
+        // The vendor's GetTimeLogsBulkData endpoint does not paginate its
+        // result set reliably when 'start' > 0 across multiple calls -
+        // confirmed 2026-09-02: a multi-page walk both silently dropped a
+        // real employee's punches entirely (invisible everywhere else in
+        // this method - no error, no unmatched-EmpNo report, nothing) and
+        // duplicated other employees' records across page boundaries. A
+        // record repeating across pages is the only detectable symptom of
+        // that instability from our side, so it's tracked here purely as an
+        // early-warning signal for a future day whose volume exceeds even a
+        // generously-sized $pageSize (see config/integration.php) - raising
+        // the page size high enough to avoid multi-page fetches on any
+        // realistic day is the actual fix; this is the safety net in case
+        // that assumption is ever wrong again.
+        $seenRecordKeys = [];
+        $duplicateRecordCount = 0;
+
+        $pageSize = $pageSize ?? (int) config('integration.logs_page_size', 20000);
         $start = 0;
 
         // Bulk fetch: one API call per page for ALL employees instead of one call
@@ -83,8 +89,11 @@ class PersonnelLogImportService
         // THIS run" specifically so that doesn't matter either way (see the
         // recompute step's own comment).
         $fatalError = null;
+        $pageCount = 0;
 
         do {
+            $pageCount++;
+
             try {
                 [$logsData, $httpStatus] = $this->integrationApi->fetchBulkLogs($token, $from, $to, $start, $pageSize);
             } catch (\Throwable $e) {
@@ -133,11 +142,16 @@ class PersonnelLogImportService
                     continue;
                 }
 
-                // Resolve to an HRIS user: exact EmpNo, then stripped-zeros fallback.
                 $pidStr = (string) $personnelId;
-                $resolvedUser = $exactMap->get($pidStr)
-                    ?? ($strippedMap[$pidStr] ?? null)
-                    ?? ($strippedMap[ltrim($pidStr, '0') ?: '0'] ?? null);
+
+                $recordKey = $pidStr.'|'.$logdate.'|'.$logtime;
+                if (isset($seenRecordKeys[$recordKey])) {
+                    $duplicateRecordCount++;
+                } else {
+                    $seenRecordKeys[$recordKey] = true;
+                }
+
+                $resolvedUser = $this->resolveUserForPersonnelId($pidStr, $exactMap, $strippedMap);
 
                 if ($resolvedUser === null) {
                     // Collect name for audit reporting (only need one record per personnelid).
@@ -254,6 +268,13 @@ class PersonnelLogImportService
             ->get()
             ->groupBy('user_id');
 
+        // All of each user's exemption periods (not range-scoped) - see
+        // upsertDtrRecords()'s own comment for why "all periods" rather than
+        // just ones overlapping the fetch window.
+        $exemptionsByUser = DtrExemptionPeriod::whereIn('user_id', $userIds)
+            ->get()
+            ->groupBy('user_id');
+
         $locatorsByUser = Locator::whereIn('user_id', $userIds)
             ->where('status', 'approved')
             ->whereBetween('travel_date', [$recomputeFetchFrom, $recomputeFetchTo])
@@ -263,6 +284,52 @@ class PersonnelLogImportService
         // Suspensions were never user-scoped to begin with - one query, shared
         // by every user in this batch instead of re-fetched identically per user.
         $suspensionsForBatch = WorkSuspension::whereBetween('suspension_date', [$recomputeFetchFrom, $recomputeFetchTo])->get();
+
+        // Report biometric employees with no HRIS match so admin can fix EmpNo.
+        // Pushed BEFORE the per-user "Updated DTR" messages below (rather than
+        // after, where they used to sit) so this diagnostic survives
+        // ImportAttendanceLogsJob's cap on stored messages (array_slice to the
+        // first 100) on a large run with 100+ recomputed employees - otherwise
+        // the one message that would actually explain a matching failure could
+        // get silently truncated out of the Recent Import Results panel.
+        if (! empty($unmatchedNames)) {
+            $messages[] = count($unmatchedNames).' biometric personnelid(s) have no matching HRIS EmpNo - update the employee\'s EmpNo to import their records:';
+            foreach ($unmatchedNames as $pid => $name) {
+                $messages[] = "  personnelid={$pid} ({$name})";
+            }
+        }
+
+        // Confirmed 2026-09-02: the vendor's own dataset can contain duplicate
+        // rows for the same punch even within a SINGLE page (harmless - the
+        // full day's data was already captured in that one response, nothing
+        // else to miss). A duplicate that crosses a PAGE BOUNDARY is a
+        // different, much more serious signal: it's the only detectable
+        // symptom of the vendor's pagination silently dropping OTHER records
+        // elsewhere in the same multi-page walk the same way (confirmed
+        // happening in practice - a real employee's entire day of punches
+        // vanished with no other trace). Both are surfaced, but only the
+        // multi-page case is treated as an actionable, urgent warning.
+        if ($duplicateRecordCount > 0) {
+            if ($pageCount > 1) {
+                $messages[] = "WARNING: {$duplicateRecordCount} duplicate record(s) detected ACROSS PAGES for [{$from} to {$to}] ({$pageCount} pages fetched) - the biometric API's pagination may be unstable and some employees' punches for this range could be silently missing. Consider re-running this range with a larger page size, or check individual employees via the raw-feed diagnostic tool.";
+                Log::error('Attendance bulk import: unstable multi-page pagination detected', [
+                    'from' => $from,
+                    'to' => $to,
+                    'dept_id' => $deptId,
+                    'duplicate_record_count' => $duplicateRecordCount,
+                    'page_count' => $pageCount,
+                    'page_size' => $pageSize,
+                ]);
+            } else {
+                $messages[] = "{$duplicateRecordCount} duplicate record(s) noted in the biometric feed for [{$from} to {$to}] - harmless, the full day fetched in a single page so nothing else should be missing.";
+                Log::info('Attendance bulk import: duplicate records within a single page (harmless)', [
+                    'from' => $from,
+                    'to' => $to,
+                    'dept_id' => $deptId,
+                    'duplicate_record_count' => $duplicateRecordCount,
+                ]);
+            }
+        }
 
         foreach ($usersToRecompute as $user) {
             $this->upsertDtrRecords(
@@ -275,16 +342,9 @@ class PersonnelLogImportService
                 preloadedExcuses: $excusesByUser->get($user->id) ?? collect(),
                 preloadedLocators: $locatorsByUser->get($user->id) ?? collect(),
                 preloadedSuspensions: $suspensionsForBatch,
+                preloadedExemptions: $exemptionsByUser->get($user->id) ?? collect(),
             );
             $messages[] = "Updated DTR for EmpNo {$user->EmpNo}";
-        }
-
-        // Report biometric employees with no HRIS match so admin can fix EmpNo.
-        if (! empty($unmatchedNames)) {
-            $messages[] = count($unmatchedNames).' biometric personnelid(s) have no matching HRIS EmpNo - update the employee\'s EmpNo to import their records:';
-            foreach ($unmatchedNames as $pid => $name) {
-                $messages[] = "  personnelid={$pid} ({$name})";
-            }
         }
 
         // Recompute above already ran for whatever was imported before the
@@ -304,6 +364,58 @@ class PersonnelLogImportService
         ]);
 
         return ['imported' => $imported, 'skipped' => $skipped, 'messages' => $messages, 'error' => null];
+    }
+
+    /**
+     * Build the two EmpNo → User lookup layers used to resolve a biometric
+     * personnelid to an HRIS user, so O(1) match works even when the
+     * biometric system uses non-padded personnelid ('2009') but HRIS stores
+     * the EmpNo zero-padded ('02009'), or vice-versa.
+     *
+     * Exposed publicly (rather than kept private/inline) so diagnostic
+     * tooling (see AttendanceImportController::checkEmployeeOnDate()) can
+     * resolve a personnelid using this exact production logic - including
+     * its collision-avoidance guard below - instead of a separate
+     * reimplementation that could silently drift out of sync with it.
+     *
+     * @return array{0: Collection<string, User>, 1: array<string, User>}
+     */
+    public function buildEmpNoLookupMaps(): array
+    {
+        $users = User::whereNotNull('EmpNo')->where('EmpNo', '!=', '')
+            ->get(['id', 'EmpNo', 'Dept_id', 'dtr_exempt']);
+
+        $exactMap = $users->keyBy('EmpNo');          // primary: exact string match
+
+        $strippedMap = [];                            // fallback: leading-zeros stripped
+        foreach ($users as $user) {
+            $stripped = ltrim((string) $user->EmpNo, '0') ?: '0';
+            if (! $exactMap->has($stripped)) {
+                $strippedMap[$stripped] = $user;
+            }
+        }
+
+        return [$exactMap, $strippedMap];
+    }
+
+    /**
+     * Resolve a single biometric personnelid to an HRIS user using the maps
+     * from buildEmpNoLookupMaps(): exact EmpNo, then stripped-zeros fallback
+     * in both directions (HRIS padded/device unpadded via $strippedMap, or
+     * HRIS unpadded/device padded via the final exact-on-stripped-id check -
+     * e.g. HRIS EmpNo '300858' vs a device personnelid '0300858').
+     *
+     * @param  Collection<string, User>  $exactMap
+     * @param  array<string, User>  $strippedMap
+     */
+    public function resolveUserForPersonnelId(string $pidStr, Collection $exactMap, array $strippedMap): ?User
+    {
+        $strippedPid = ltrim($pidStr, '0');
+
+        return $exactMap->get($pidStr)
+            ?? ($strippedMap[$pidStr] ?? null)
+            ?? ($strippedMap[$strippedPid ?: '0'] ?? null)
+            ?? ($strippedPid !== '' ? $exactMap->get($strippedPid) : null);
     }
 
     // ── DTR COMPUTATION ───────────────────────────────────────────────────────
@@ -349,11 +461,27 @@ class PersonnelLogImportService
         ?Collection $preloadedExcuses = null,
         ?Collection $preloadedLocators = null,
         ?Collection $preloadedSuspensions = null,
+        ?Collection $preloadedExemptions = null,
     ): void {
-        // Exempt employees keep no DTR rows regardless of imported punches.
-        if ($user->dtr_exempt) {
+        // All of this user's dtr_exemption_periods rows, not just ones
+        // overlapping this call's own [from, to] - deliberately unbounded so
+        // "has this user EVER had a real period" can be told apart from "no
+        // period happens to cover this specific range" a few lines below.
+        $exemptions = $preloadedExemptions ?? DtrExemptionPeriod::where('user_id', $user->id)->get();
+
+        // Legacy fallback: a user with dtr_exempt=true but zero
+        // dtr_exemption_periods rows ever (pre-migration data not yet run
+        // through dtr:backfill-exemption-periods, or a manually-constructed
+        // row) keeps no DTR rows at all, exactly like this method's original
+        // unconditional guard - there's no period history to check dates
+        // against, only the live flag. A user WITH real period history is
+        // instead checked per-date below, since dtr_exempt only ever answers
+        // "exempt today", not "exempt on this specific requested date".
+        if ($exemptions->isEmpty() && $user->dtr_exempt) {
             return;
         }
+
+        $isDateExempt = fn (string $date): bool => $exemptions->contains(fn (DtrExemptionPeriod $p) => $p->coversDate($date));
 
         // Always pad by 1 day: night shifts and per-date schedule variations can
         // place a punch from calendar day N onto shift date N-1, so we need one
@@ -417,6 +545,15 @@ class PersonnelLogImportService
         foreach ($this->punchGrouper->group($user, $logs, $assignments) as $date => $punches) {
             // Only write shifts whose logical date falls inside the requested range.
             if ($date < $from || $date > $to) {
+                continue;
+            }
+
+            // A date covered by a real exemption period keeps no DTR row -
+            // deliberately NOT added to $producedDates, so deleteOrphanedBiometricDtrRows()
+            // below clears out any row that already existed here from before
+            // the exemption was recorded (this is what makes a backdated
+            // exemption actually retroactive).
+            if ($isDateExempt($date)) {
                 continue;
             }
 

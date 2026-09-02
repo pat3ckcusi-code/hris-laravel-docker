@@ -647,6 +647,14 @@ Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {
         ->name('hr-manager.attendance.import');
     Route::post('/dashboard/hr-manager/attendance/import', [AttendanceImportController::class, 'store'])
         ->name('hr-manager.attendance.import.store');
+    Route::post('/dashboard/hr-manager/attendance/import/check-employee', [AttendanceImportController::class, 'checkEmployeeOnDate'])
+        ->name('hr-manager.attendance.import.check-employee');
+    // Reuses LeaveManagerController::employeeSearch() as-is under a second
+    // route name scoped to this role group, rather than widening the
+    // original role:leave-manager-only /api/employee-search route - same
+    // tested code, no new security surface on the existing endpoint.
+    Route::get('/api/attendance-import/employee-search', [LeaveManagerController::class, 'employeeSearch'])
+        ->name('api.attendance-import.employee-search');
 });
 
 // DTR Excuse management (Time Keeper, HR Manager, Administrative Officer, Department Head)

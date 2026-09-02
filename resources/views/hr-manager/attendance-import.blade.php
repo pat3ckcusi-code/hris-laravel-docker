@@ -222,6 +222,30 @@
         @media (max-width: 480px) {
             .import-date-grid { grid-template-columns: 1fr; }
         }
+        /* Employee search dropdown (raw-feed diagnostic tool) */
+        .check-emp-suggestion {
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: #fff;
+            padding: 0.5rem 0.7rem;
+            font-size: 0.85rem;
+            color: #1f2d3d;
+            cursor: pointer;
+        }
+        .check-emp-suggestion:hover { background: #eef9fb; }
+        .check-emp-suggestion small { display: block; color: #6c757d; font-size: 0.75rem; }
+        .check-result-box {
+            border-radius: 8px;
+            padding: 0.75rem 0.9rem;
+            line-height: 1.6;
+        }
+        .check-result-found { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+        .check-result-warning { background: #fffbeb; border: 1px solid #fde68a; color: #78350f; }
+        .check-result-notfound { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
+        .check-result-error { background: #fde7e9; border: 1px solid #f5a0a8; color: #7f1d1d; }
+        .check-punch-list { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
     </style>
 @endsection
 
@@ -373,6 +397,7 @@
                             $skipped  = $d['skipped'] ?? 0;
                             $err      = $d['error'] ?? null;
                             $msgs     = array_slice($d['messages'] ?? [], 0, 3);
+                            $hasUnmatched = collect($d['messages'] ?? [])->contains(fn ($m) => str_contains($m, 'no matching HRIS EmpNo'));
                         @endphp
                         <div style="font-size:0.78rem;padding:0.45rem 0.65rem;border-radius:6px;
                             background:{{ ($ok && $imported > 0) ? '#f0fdf4' : ($ok ? '#f8fafc' : '#fef2f2') }};
@@ -388,9 +413,14 @@
                             @foreach($msgs as $msg)
                                 <div style="color:#475569;margin-top:0.15rem;">{{ $msg }}</div>
                             @endforeach
+                            @if($hasUnmatched)
+                                <div style="color:#94a3b8;margin-top:0.15rem;font-style:italic;">
+                                    Unmatched EmpNo checks run company-wide and are not limited to the scope below.
+                                </div>
+                            @endif
                             <div style="color:#94a3b8;margin-top:0.2rem;">
                                 {{ $entry->created_at->diffForHumans() }}
-                                &middot; {{ $d['dept_name'] ?? 'ALL' }}
+                                &middot; Scope: {{ $d['dept_name'] ?? 'ALL' }}
                             </div>
                         </div>
                     @endforeach
@@ -444,6 +474,37 @@
 
         </aside>
     </div>
+
+    {{-- ── DIAGNOSTIC: check raw biometric feed for one employee/date ── --}}
+    <div class="import-form-card" style="margin-top:1.5rem;max-width:640px;position:relative;">
+        <h3><i class="fa-solid fa-magnifying-glass"></i> Check Raw Biometric Feed</h3>
+        <p class="import-subtitle">
+            For one employee on one date: check the biometric API directly (skipping our own
+            import) to tell "our app missed this" apart from "the biometric system genuinely
+            has nothing for this person that day."
+        </p>
+
+        <div class="form-group" style="position:relative;">
+            <label class="import-label" for="check-emp-search">Employee</label>
+            <input type="text" id="check-emp-search" autocomplete="off" placeholder="Search by name or EmpNo…">
+            <input type="hidden" id="check-emp-id">
+            <div id="check-emp-suggestions" style="display:none;position:absolute;z-index:20;width:100%;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #cdd9e5;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 14px rgba(31,45,61,0.08);"></div>
+        </div>
+
+        <div class="form-group" style="margin-top:0.75rem;">
+            <label class="import-label" for="check-date">Date</label>
+            <input type="date" id="check-date">
+        </div>
+
+        <div style="margin-top:1rem;">
+            <button type="button" id="check-employee-btn" class="hrm-btn" disabled>
+                <i class="fa-solid fa-satellite-dish" style="margin-right:0.35rem;"></i>
+                Check Biometric Feed
+            </button>
+        </div>
+
+        <div id="check-employee-result" style="margin-top:1rem;font-size:0.85rem;"></div>
+    </div>
 @endsection
 
 @section('page_scripts')
@@ -493,6 +554,145 @@
                     fromEl.value = fmt(from);
                     toEl.value   = fmt(to);
                 });
+            });
+        })();
+
+        (function () {
+            const searchInput = document.getElementById('check-emp-search');
+            const hiddenId    = document.getElementById('check-emp-id');
+            const suggestions = document.getElementById('check-emp-suggestions');
+            const dateInput   = document.getElementById('check-date');
+            const checkBtn    = document.getElementById('check-employee-btn');
+            const resultBox   = document.getElementById('check-employee-result');
+
+            if (!searchInput) return;
+
+            function escHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = String(str ?? '');
+
+                return div.innerHTML;
+            }
+
+            let debounceTimer = null;
+
+            searchInput.addEventListener('input', function () {
+                clearTimeout(debounceTimer);
+                const q = this.value.trim();
+                hiddenId.value = '';
+                checkBtn.disabled = true;
+
+                if (q.length < 2) {
+                    suggestions.style.display = 'none';
+
+                    return;
+                }
+
+                debounceTimer = setTimeout(() => {
+                    fetch('{{ route("api.attendance-import.employee-search") }}?q=' + encodeURIComponent(q))
+                        .then(r => r.json())
+                        .then(items => {
+                            if (!Array.isArray(items) || !items.length) {
+                                suggestions.innerHTML = '<div class="check-emp-suggestion" style="cursor:default;color:#94a3b8;">No employees found.</div>';
+                                suggestions.style.display = 'block';
+
+                                return;
+                            }
+
+                            suggestions.innerHTML = items.map(emp => `
+                                <button type="button" class="check-emp-suggestion" data-id="${emp.id}"
+                                        data-name="${escHtml(emp.last_name + ', ' + emp.first_name)} (${escHtml(emp.EmpNo ?? '')})">
+                                    ${escHtml(emp.last_name + ', ' + emp.first_name)}
+                                    <small>${escHtml(emp.EmpNo ?? '')}${emp.department?.Dept_name ? ' &middot; ' + escHtml(emp.department.Dept_name) : ''}</small>
+                                </button>
+                            `).join('');
+                            suggestions.style.display = 'block';
+                        })
+                        .catch(() => { suggestions.style.display = 'none'; });
+                }, 250);
+            });
+
+            suggestions.addEventListener('click', function (e) {
+                const btn = e.target.closest('[data-id]');
+                if (!btn) return;
+
+                hiddenId.value    = btn.dataset.id;
+                searchInput.value = btn.dataset.name;
+                suggestions.style.display = 'none';
+                checkBtn.disabled = false;
+            });
+
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('#check-emp-search') && !e.target.closest('#check-emp-suggestions')) {
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            function renderPunchList(items) {
+                if (!items.length) return '';
+
+                return '<ul class="check-punch-list">' + items.map(item =>
+                    `<li>${escHtml(item.logtime ?? '?')} ${escHtml(item.in_out ?? '')}</li>`
+                ).join('') + '</ul>';
+            }
+
+            checkBtn.addEventListener('click', function () {
+                if (!hiddenId.value || !dateInput.value) {
+                    resultBox.innerHTML = '<div class="check-result-box check-result-error">Pick an employee and a date first.</div>';
+
+                    return;
+                }
+
+                checkBtn.disabled = true;
+                resultBox.innerHTML = '<div class="check-result-box check-result-notfound"><i class="fa-solid fa-spinner fa-spin"></i> Checking the biometric feed - this calls the external API directly and can take a few seconds…</div>';
+
+                fetch('{{ route("hr-manager.attendance.import.check-employee") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({ user_id: hiddenId.value, date: dateInput.value }),
+                })
+                    .then(async r => {
+                        const data = await r.json();
+                        if (!r.ok) throw new Error(data.error || 'Something went wrong.');
+
+                        return data;
+                    })
+                    .then(data => {
+                        const dbNote = data.already_in_attendance_logs.length
+                            ? `Already in our database: ${data.already_in_attendance_logs.length} punch(es) for this date.`
+                            : 'Not yet in our database for this date.';
+
+                        if (data.matched_by_id.length) {
+                            resultBox.innerHTML = `
+                                <div class="check-result-box check-result-found">
+                                    <strong><i class="fa-solid fa-circle-check"></i> Found under ${escHtml(data.emp_no)}'s own EmpNo.</strong>
+                                    ${renderPunchList(data.matched_by_id)}
+                                    <div style="margin-top:0.4rem;font-size:0.78rem;">${escHtml(dbNote)}</div>
+                                </div>`;
+                        } else if (data.matched_by_name_different_id.length) {
+                            const foundIds = [...new Set(data.matched_by_name_different_id.map(i => i.personnelid))].join(', ');
+                            resultBox.innerHTML = `
+                                <div class="check-result-box check-result-warning">
+                                    <strong><i class="fa-solid fa-triangle-exclamation"></i> Found under a DIFFERENT personnelid: ${escHtml(foundIds)}</strong>
+                                    <div style="margin-top:0.3rem;">A name match was found in the feed, but not under ${escHtml(data.emp_no)}. This employee's EmpNo may be wrong in HRIS - double-check it against the biometric device's own roster.</div>
+                                    ${renderPunchList(data.matched_by_name_different_id)}
+                                </div>`;
+                        } else {
+                            resultBox.innerHTML = `
+                                <div class="check-result-box check-result-notfound">
+                                    <strong><i class="fa-solid fa-circle-info"></i> No record found for this employee on this date.</strong>
+                                    <div style="margin-top:0.3rem;">Checked ${data.pages_checked} page(s), ${data.total_records_that_day} total company-wide punch record(s) that day - not under their EmpNo or their name. This is a gap in the source biometric data, not an import issue.</div>
+                                    <div style="margin-top:0.4rem;font-size:0.78rem;">${escHtml(dbNote)}</div>
+                                </div>`;
+                        }
+                    })
+                    .catch(err => {
+                        resultBox.innerHTML = `<div class="check-result-box check-result-error"><i class="fa-solid fa-circle-exclamation"></i> ${escHtml(err.message)}</div>`;
+                    })
+                    .finally(() => { checkBtn.disabled = false; });
             });
         })();
     </script>
