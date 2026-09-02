@@ -18,10 +18,11 @@ Artisan::command('inspire', function () {
 // day's DTR processing sees the correct shift from the start.
 Schedule::command('shift:sync-cache')->dailyAt('00:05');
 
-// Restore any employee whose DTR exemption's optional Date Until has passed
-// back onto biometric/DTR tracking, mirroring job-order:deactivate-expired's
-// auto-expiry pattern. Runs after shift:sync-cache but before the per-minute
-// import so a same-day restoration is picked up immediately.
+// Sync users.dtr_exempt* to whichever dtr_exemption_periods row covers today
+// (restoring an employee whose Date Until has passed, and activating one
+// whose Effective Date has just arrived), mirroring shift:sync-cache's own
+// history-to-cache sync. Runs after shift:sync-cache but before the
+// per-minute import so a same-day change is picked up immediately.
 Schedule::command('dtr:restore-expired-exemptions')->dailyAt('00:07');
 
 // Auto-import biometric punch logs. The command self-throttles via cache

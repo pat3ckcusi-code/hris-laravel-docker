@@ -1091,6 +1091,96 @@ class ShiftScheduleTest extends TestCase
         $this->assertDatabaseMissing('dtrs', ['employee_id' => $employee->id]);
     }
 
+    /**
+     * Regression for the real bug report: a fully-past backdated exemption
+     * window (e.g. Effective Aug 1 / Until Aug 31, submitted Sept 2) must
+     * actually clear whatever dtrs rows already exist in that window - not
+     * just flip the live dtr_exempt flag, which has zero retroactive effect
+     * on its own (see DtrExemptionService/PersonnelLogImportService).
+     */
+    public function test_backdated_exemption_retroactively_clears_existing_dtr_rows(): void
+    {
+        $employee = $this->createEmployee();
+
+        Dtr::create([
+            'employee_id' => $employee->id, 'date' => '2026-08-05',
+            'time_in_am' => '08:00:00', 'time_out_pm' => '17:00:00',
+            'late_minutes' => 15, 'undertime_minutes' => 0, 'is_absent' => false, 'source' => 'biometric',
+        ]);
+        Dtr::create([
+            'employee_id' => $employee->id, 'date' => '2026-09-01',
+            'time_in_am' => '08:00:00', 'time_out_pm' => '17:00:00',
+            'late_minutes' => 0, 'undertime_minutes' => 0, 'is_absent' => false, 'source' => 'biometric',
+        ]);
+        foreach (['2026-08-05 08:00:00', '2026-08-05 17:00:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $employee->id, 'emp_no' => $employee->EmpNo,
+                'logdate' => $d, 'logtime' => $t, 'in_out' => 'IN',
+            ]);
+        }
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Retroactive medical leave',
+                'effective_date' => '2026-08-01',
+                'until_date' => '2026-08-31',
+            ])
+            ->assertRedirect();
+
+        // The window already ended before today, so it's never applied live.
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+
+        // But the retroactive recompute cleared the in-window Dtr row...
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $employee->id, 'date' => '2026-08-05']);
+        // ...and left the out-of-window one untouched.
+        $this->assertDatabaseHas('dtrs', ['employee_id' => $employee->id, 'date' => '2026-09-01']);
+
+        // Raw punches are never deleted - only the resolved dtrs row - so a
+        // later exemption removal could regenerate it from attendance_logs.
+        $this->assertDatabaseHas('attendance_logs', ['user_id' => $employee->id, 'logdate' => '2026-08-05']);
+
+        $this->assertTrue(
+            \App\Models\DtrExemptionPeriod::where('user_id', $employee->id)
+                ->where('effective_date', '2026-08-01')
+                ->where('until_date', '2026-08-31')
+                ->exists()
+        );
+    }
+
+    /**
+     * LwopAggregationService/AttendanceMonitoringExportService must also
+     * honor the retroactive window per-date, not just the (now-false)
+     * dtr_exempt cache - see the legacy-fallback comment in each service.
+     */
+    public function test_backdated_exemption_excludes_the_window_from_awol_classification(): void
+    {
+        $employee = $this->createEmployee();
+
+        $this->actingAs($this->createTimeKeeper())
+            ->put(route('attendance.schedules.exempt', $employee), [
+                'reason' => 'Retroactive medical leave',
+                'effective_date' => '2026-08-01',
+                'until_date' => '2026-08-15',
+            ])
+            ->assertRedirect();
+
+        $this->assertFalse($employee->refresh()->dtr_exempt);
+
+        $classified = app(\App\Services\LwopAggregationService::class)->classifyWorkdays(
+            $employee, Carbon::parse('2026-08-03'), Carbon::parse('2026-08-20')
+        );
+
+        // 2026-08-03 (Monday) falls inside the exempt window and must never
+        // be classified at all (not even as "not AWOL") - it's excluded
+        // from the collection entirely, same as a holiday/rest day.
+        $this->assertFalse($classified->has('2026-08-03'));
+
+        // 2026-08-17 (Monday) is outside the window and, with no Dtr row and
+        // nothing else explaining the absence, is flagged AWOL normally.
+        $this->assertTrue($classified->get('2026-08-17'));
+    }
+
     public function test_exempt_roster_print_and_export_include_until_date_column(): void
     {
         $employee = $this->createEmployee([

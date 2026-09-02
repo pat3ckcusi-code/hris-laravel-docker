@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\Holiday;
@@ -102,6 +103,12 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id');
 
+        // All of each employee's exemption periods ever (not month-scoped) -
+        // see the per-employee legacy-fallback comment below for why.
+        $exemptionsByUser = DtrExemptionPeriod::whereIn('user_id', $employeeIds)
+            ->get()
+            ->groupBy('user_id');
+
         $periodStart = Carbon::createFromDate($year, $month, 1)->toDateString();
         $periodEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
 
@@ -159,13 +166,25 @@ class AttendanceMonitoringExportService
             ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->flip();
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $suspensions, $fullDaySuspensionDates, $periodStart, $periodEnd) {
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $exemptionsByUser, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $suspensions, $fullDaySuspensionDates, $periodStart, $periodEnd) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
             $empEtas = $etas->get($emp->id, collect());
             $empViolations = $uniformViolations->get($emp->id, collect());
             $empAssignments = $allAssignments->get($emp->id, collect());
+
+            // Legacy fallback, same reasoning as PersonnelLogImportService/
+            // LwopAggregationService: a dtr_exempt=true employee with zero
+            // real dtr_exemption_periods rows (pre-migration/un-backfilled
+            // data) has no period history to check dates against, so
+            // $empIsExemptOnDate below always answers true for them
+            // (reproducing the old whole-employee guard). An employee WITH
+            // period history is judged per-date instead.
+            $empExemptionPeriods = $exemptionsByUser->get($emp->id, collect());
+            $empLegacyExempt = $empExemptionPeriods->isEmpty() && $emp->dtr_exempt;
+            $empIsExemptOnDate = fn (string $dateStr): bool => $empLegacyExempt
+                || $empExemptionPeriods->contains(fn (DtrExemptionPeriod $p) => $p->coversDate($dateStr));
 
             // Keyed by date string for O(1) excuse lookup.
             $empExcusesByDate = $dtrExcuses->get($emp->id, collect())
@@ -288,7 +307,13 @@ class AttendanceMonitoringExportService
             // stored anywhere, so it's inferred from the punch data itself, same
             // convention as DtrController/Form48ExportService use for the same
             // half-day-leave case.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $emp, $empAssignments): bool {
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $emp, $empAssignments, $empIsExemptOnDate): bool {
+                // Highest priority of all: an exempt date was never meant to be
+                // tracked, so nothing else here should even be evaluated for it.
+                if ($empIsExemptOnDate($dateStr)) {
+                    return true;
+                }
+
                 if (isset($etaCoveredDates[$dateStr]) || isset($officeOrderCoveredDates[$dateStr])
                     || isset($travelOrderCoveredDates[$dateStr])) {
                     return true;
@@ -402,13 +427,22 @@ class AttendanceMonitoringExportService
             // Unofficial Exit rather than Unfiled Leave.
             $exemptFromUnfiledLeave = in_array($emp->employee_type, ['Elected Officials', 'Job Orders'], true);
 
-            if (! $emp->dtr_exempt) {
+            // Skips the whole loop only for a legacy-exempt employee (no real
+            // dtr_exemption_periods history) - reproduces the original
+            // whole-employee guard for that case. An employee WITH period
+            // history always runs the loop; the per-date $empIsExemptOnDate()
+            // check just below excludes only the dates a period actually covers.
+            if (! $empLegacyExempt) {
                 $serviceStart = ($emp->date_hired && $emp->date_hired->gt($periodStartDate))
                     ? $emp->date_hired->copy()->startOfDay()
                     : $periodStartDate->copy();
 
                 for ($date = $serviceStart->copy(); $date->lte($periodEndDate); $date->addDay()) {
                     $dateStr = $date->toDateString();
+
+                    if ($empIsExemptOnDate($dateStr)) {
+                        continue;
+                    }
 
                     if (WorkSchedule::isFieldWork($emp, $date, $empAssignments) || WorkSchedule::isWfh($emp, $date, $empAssignments)) {
                         continue;

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\Holiday;
@@ -123,10 +124,18 @@ class LwopAggregationService
      */
     public function classifyWorkdays(User $user, Carbon $rangeStart, Carbon $rangeEnd): Collection
     {
-        // DTR-exempt employees never punch a biometric device, so "no Dtr row" carries
-        // no signal for them -- mirrors AttendanceMonitoringExportService's identical
-        // dtr_exempt guard around its own per-day classification loop.
-        if ($user->dtr_exempt) {
+        // All of this user's exemption periods ever (not range-scoped) - lets
+        // the legacy fallback below tell "never had real period history" apart
+        // from "has history, just none covering this particular range".
+        $exemptionPeriods = DtrExemptionPeriod::where('user_id', $user->id)->get();
+
+        // Legacy fallback, same reasoning as PersonnelLogImportService::
+        // upsertDtrRecords(): a dtr_exempt=true user with zero real period
+        // history (pre-migration/un-backfilled data) is excluded from AWOL
+        // classification entirely, exactly like this method's original
+        // unconditional guard. A user WITH period history is instead judged
+        // per-date below, since dtr_exempt only answers "exempt today".
+        if ($exemptionPeriods->isEmpty() && $user->dtr_exempt) {
             return collect();
         }
 
@@ -201,7 +210,8 @@ class LwopAggregationService
 
             $isWorkday = WorkSchedule::isWorkday($user, $cursor, $shiftSchedules)
                 && ! isset($holidays[$dateStr])
-                && (! isset($fullDaySuspensions[$dateStr]) || $isFrontlineExempt);
+                && (! isset($fullDaySuspensions[$dateStr]) || $isFrontlineExempt)
+                && ! $exemptionPeriods->contains(fn (DtrExemptionPeriod $p) => $p->coversDate($dateStr));
 
             if (! $isWorkday) {
                 $cursor->addDay();

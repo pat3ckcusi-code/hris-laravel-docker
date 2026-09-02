@@ -14,6 +14,7 @@ use App\Models\ShiftAssignment;
 use App\Models\User;
 use App\Services\Attendance\WeeklyPunchPairReconciliationService;
 use App\Services\DepartmentService;
+use App\Services\DtrExemptionService;
 use App\Services\PersonnelLogImportService;
 use App\Services\ResolvedScheduleService;
 use App\Services\ShiftAssignmentService;
@@ -26,7 +27,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 /**
@@ -52,6 +52,7 @@ class EmployeeScheduleController extends Controller
         private readonly ShiftAssignmentService $shiftAssignmentService,
         private readonly ResolvedScheduleService $resolvedScheduleService,
         private readonly WeeklyPunchPairReconciliationService $weeklyReconciliation,
+        private readonly DtrExemptionService $dtrExemptionService,
     ) {}
 
     private function authorizeManager(User $user): void
@@ -643,8 +644,14 @@ class EmployeeScheduleController extends Controller
      * by the import pipeline, excluded from Form 48/DTR exports, and hidden from
      * the shift-assignment list. Turning exemption on clears any assigned shift.
      * An optional "until" date makes the exemption time-bounded - the
-     * dtr:restore-expired-exemptions scheduled command auto-restores the
-     * employee once it passes; omitting it keeps today's indefinite behavior.
+     * dtr:sync-exemption-cache scheduled command auto-restores the employee
+     * once it passes; omitting it keeps today's indefinite behavior.
+     *
+     * The actual read/write for both directions is DtrExemptionService, which
+     * records this as a real dtr_exemption_periods row (not just a live flag) -
+     * see that class's docblock for why a backdated window needs history, not
+     * a single mutable column set, to actually exclude those dates from DTR
+     * retroactively.
      */
     public function toggleExempt(Request $request, User $user): RedirectResponse
     {
@@ -660,40 +667,18 @@ class EmployeeScheduleController extends Controller
 
         $exempt = ! $user->dtr_exempt;
 
-        $reason = null;
-        $effectiveDate = null;
-        $untilDate = null;
         if ($exempt) {
             $validated = $request->validate([
                 'reason' => ['required', 'string', 'max:2000'],
                 'effective_date' => ['nullable', 'date'],
-                // Validated against a fixed anchor rather than
-                // after_or_equal:effective_date - effective_date only gets
-                // its "defaults to today" fallback applied below, after
-                // validation runs, so a request that omits it would compare
-                // against a missing sibling field.
-                'until_date' => ['nullable', 'date', 'after_or_equal:today'],
+                'until_date' => ['nullable', 'date'],
             ]);
-            $reason = $validated['reason'];
             $effectiveDate = $validated['effective_date'] ?? Carbon::today()->toDateString();
-            $untilDate = $validated['until_date'] ?? null;
 
-            if ($untilDate !== null && $untilDate < $effectiveDate) {
-                throw ValidationException::withMessages([
-                    'until_date' => 'Date Until must be on or after the Effective Date.',
-                ]);
-            }
+            $this->dtrExemptionService->create($user, $actor, $validated['reason'], $effectiveDate, $validated['until_date'] ?? null);
+        } else {
+            $this->dtrExemptionService->restore($user, $actor);
         }
-
-        $user->update([
-            'dtr_exempt' => $exempt,
-            'shift_id' => $exempt ? null : $user->shift_id,
-            'dtr_exempt_reason' => $reason,
-            'dtr_exempt_effective_date' => $effectiveDate,
-            'dtr_exempt_until_date' => $untilDate,
-        ]);
-
-        $this->logExemptionToggled($actor, $user, $exempt, $reason, $effectiveDate, $untilDate);
 
         $name = trim("{$user->first_name} {$user->last_name}");
         $message = $exempt
@@ -701,22 +686,6 @@ class EmployeeScheduleController extends Controller
             : "{$name} is no longer exempt from biometric/DTR.";
 
         return back()->with('schedule_status', $message);
-    }
-
-    private function logExemptionToggled(User $actor, User $employee, bool $exempt, ?string $reason, ?string $effectiveDate, ?string $untilDate = null): void
-    {
-        try {
-            HRAuditTrail::create([
-                'actor_user_id' => $actor->id,
-                'module' => 'shift_management',
-                'action' => 'dtr_exemption_toggled',
-                'target_type' => 'user',
-                'target_id' => $employee->id,
-                'details' => ['exempt' => $exempt, 'reason' => $reason, 'effective_date' => $effectiveDate, 'until_date' => $untilDate],
-            ]);
-        } catch (\Exception) {
-            // audit failure must not block the toggle
-        }
     }
 
     /**

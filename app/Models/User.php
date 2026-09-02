@@ -337,6 +337,12 @@ class User extends Authenticatable
         return $this->hasMany(ShiftAssignment::class);
     }
 
+    /** Full DTR/biometric exemption history (past, current, and future-dated). */
+    public function dtrExemptionPeriods(): HasMany
+    {
+        return $this->hasMany(DtrExemptionPeriod::class);
+    }
+
     /** Full Job Order appointment history (past, current, and future-dated). */
     public function jobOrderAppointments(): HasMany
     {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\LeaveDate;
@@ -411,6 +412,30 @@ class DtrController extends Controller
                     }
                 });
         }
+
+        // Build DTR-exemption date map: 'Y-m-d' → true for every day covered by
+        // a dtr_exemption_periods row - distinct from $employee->dtr_exempt
+        // above, which only ever answers "is this employee exempt TODAY", not
+        // "was this specific requested date exempt". No legacy-fallback needed
+        // here (unlike the other consumers of this model): the early return
+        // above already covers a currently-exempt employee for the whole
+        // request, legacy or not, so by the time this runs dtr_exempt is
+        // guaranteed false and only real period history is relevant.
+        $exemptionDateMap = [];
+        DtrExemptionPeriod::where('user_id', $employee->id)
+            ->overlappingRange($from, $toNextDay)
+            ->get(['effective_date', 'until_date'])
+            ->each(function (DtrExemptionPeriod $period) use (&$exemptionDateMap, $from, $toNextDay): void {
+                $rangeStart = Carbon::parse($from);
+                $rangeEnd = Carbon::parse($toNextDay);
+                $cursor = $period->effective_date->copy();
+                $until = $period->until_date?->copy() ?? $rangeEnd->copy();
+                $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
+                $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
+                for (; $cursor->lte($until); $cursor->addDay()) {
+                    $exemptionDateMap[$cursor->format('Y-m-d')] = true;
+                }
+            });
 
         // Dates already covered by a DTR row.
         $dtrDates = $dtrRows->map(fn (Dtr $d) => Carbon::parse($d->date)->format('Y-m-d'))->flip()->toArray();
@@ -893,11 +918,35 @@ class DtrController extends Controller
             ]);
         }
 
+        // Add exemption-only rows: dates covered by a (possibly historical/
+        // backdated) DTR exemption period with no biometric record for that
+        // day - highest priority of all, since an exempt date was never
+        // meant to be tracked. In practice a dtrs row should never coexist
+        // with an exempt date (PersonnelLogImportService clears them on
+        // create()), but the dtrDates check is kept for defense in depth.
+        foreach ($exemptionDateMap as $dateStr => $_) {
+            if (isset($dtrDates[$dateStr])) {
+                continue;
+            }
+            $data->push([
+                'date' => Carbon::parse($dateStr)->format('M d, Y (D)'),
+                'time_in_am' => 'Exempt', 'time_out_am' => 'Exempt',
+                'time_in_pm' => 'Exempt', 'time_out_pm' => 'Exempt',
+                'time_in_ot' => '-', 'time_out_ot' => '-',
+                'late_minutes' => 0, 'undertime_minutes' => 0, 'hours_worked' => '-', 'overtime_minutes' => 0,
+                'is_late' => false, 'is_undertime' => false, 'is_overtime' => false,
+                'is_am_in_late' => false, 'is_pm_in_late' => false, 'is_am_out_undertime' => false, 'is_pm_out_undertime' => false,
+                'source_badge' => '',
+                'status_badge' => '<span class="hris-badge" style="background:#e0e7ff;color:#3730a3;">Exempt from DTR</span>',
+                'office_order_badge' => '',
+            ]);
+        }
+
         // Add pure leave-only rows (approved leave, no biometric record for that day).
         // No real punch data exists for these dates either way, so there's nothing
         // for a half-day leave to hide here - always shown as the leave code.
         foreach ($leaveMap as $dateStr => $leaveEntry) {
-            if (isset($dtrDates[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr])) {
                 continue;
             }
             $leaveCode = $leaveEntry['code'];
@@ -928,7 +977,7 @@ class DtrController extends Controller
 
         // Add ETA-only rows: approved ETA days with no biometric record and no leave.
         foreach ($etaDateSet as $dateStr => $_) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr)) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr)) {
                 continue;
             }
             $data->push([
@@ -958,7 +1007,7 @@ class DtrController extends Controller
 
         // Add OO-only rows: office-order days with no biometric record, no leave, and no ETA.
         foreach ($officeOrderDateMap as $dateStr => $ooNum) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])) {
                 continue;
             }
             $data->push([
@@ -989,7 +1038,7 @@ class DtrController extends Controller
         // Add TO-only rows: travel-order days with no biometric record, no leave,
         // no ETA, and no OO (OO outranks Travel Order in the priority waterfall).
         foreach ($travelOrderDateMap as $dateStr => $toNum) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr])) {
                 continue;
             }
             $data->push([
@@ -1019,7 +1068,7 @@ class DtrController extends Controller
 
         // Add excuse-only rows: excused days with no biometric/leave/ETA/OO/TO record.
         foreach ($excuseMap as $dateStr => $excuse) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
                 continue;
             }
             $excuseCfg = DtrExcuse::typeConfig($excuse->excuse_type);
@@ -1052,7 +1101,7 @@ class DtrController extends Controller
 
         // Add locator-only rows: approved locator days with no biometric/leave/ETA/OO/TO record.
         foreach ($locatorDateMap as $dateStr => $loc) {
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr]) || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])) {
                 continue;
             }
             $data->push([
@@ -1088,10 +1137,10 @@ class DtrController extends Controller
             if ($assignment->type === 'standard') {
                 continue; // forced Standard Day is a normal working day, not a rest/field-work special row
             }
-            if (isset($dtrDates[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])
+            if (isset($dtrDates[$dateStr]) || isset($exemptionDateMap[$dateStr]) || $leaveMap->has($dateStr) || isset($etaDateSet[$dateStr])
                 || isset($officeOrderDateMap[$dateStr]) || isset($travelOrderDateMap[$dateStr])
                 || isset($excuseMap[$dateStr]) || isset($locatorDateMap[$dateStr])) {
-                continue; // already represented by a DTR, leave, ETA, office order, travel order, excuse, or locator row
+                continue; // already represented by a DTR, exemption, leave, ETA, office order, travel order, excuse, or locator row
             }
             $fieldWorkSuspensionNote = null;
             if (in_array($assignment->type, ['field_work', 'wfh'], true)) {
@@ -1182,6 +1231,9 @@ class DtrController extends Controller
         // / Absent / not-yet-due placeholder) so the table renders as a
         // complete calendar.
         $coveredDates = $dtrDates;
+        foreach (array_keys($exemptionDateMap) as $d) {
+            $coveredDates[$d] = true;
+        }
         foreach ($leaveMap->keys() as $d) {
             $coveredDates[$d] = true;
         }

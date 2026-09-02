@@ -526,7 +526,7 @@
                                                 <label class="sched-exempt-label">Effective Date</label>
                                                 <input type="date" name="effective_date" value="{{ now()->toDateString() }}" class="sched-exempt-date">
                                                 <label class="sched-exempt-label">Date Until (optional)</label>
-                                                <input type="date" name="until_date" class="sched-exempt-date">
+                                                <input type="date" name="until_date" class="sched-exempt-date" min="{{ now()->toDateString() }}">
                                                 <button type="submit" class="hris-btn hris-btn-primary sched-exempt-confirm-btn">Confirm Exemption</button>
                                             </form>
                                         </details>
@@ -662,6 +662,20 @@ document.querySelectorAll('.sched-exempt-form').forEach(function (form) {
             confirmButtonColor: isExempt ? '#047857' : '#b45309',
             cancelButtonColor: '#6b7280',
         }).then(function (res) { if (res.isConfirmed) form.submit(); });
+    });
+});
+
+// ── Exempt from DTR: keep Date Until's min in sync with Effective Date ──
+// Date Until only has to be on/after the resolved Effective Date now (server
+// no longer floors it at today), so backdating Effective Date must relax
+// Date Until's own min too, or a valid fully-past window couldn't be picked.
+document.querySelectorAll('.sched-exempt-new-form').forEach(function (form) {
+    var effectiveInput = form.querySelector('input[name="effective_date"]');
+    var untilInput = form.querySelector('input[name="until_date"]');
+    if (!effectiveInput || !untilInput) return;
+
+    effectiveInput.addEventListener('change', function () {
+        untilInput.min = effectiveInput.value || '{{ now()->toDateString() }}';
     });
 });
 
