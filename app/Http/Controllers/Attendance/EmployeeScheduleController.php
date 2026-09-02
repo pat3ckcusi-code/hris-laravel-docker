@@ -7,6 +7,7 @@ use App\Http\Controllers\Attendance\Concerns\ScopesEmployeesByDepartment;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkShiftRecomputeJob;
 use App\Models\Department;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\HRAuditTrail;
 use App\Models\Shift;
@@ -696,32 +697,60 @@ class EmployeeScheduleController extends Controller
      *
      * @return Collection<int, User>
      */
-    private function exemptRosterQuery(Request $request)
+    /**
+     * Every DtrExemptionPeriod on file (not just the currently-active one) -
+     * this is a log, not a live roster; the live "who's exempt right now"
+     * roster used by index()'s show_exempt=1 tab stays on
+     * buildEmployeeQuery()/users.dtr_exempt, since that's what the Restore-
+     * to-DTR action there actually acts on. $status narrows the log to
+     * currently-active or expired periods without dropping the rest.
+     */
+    private function exemptRosterQuery(Request $request): Collection
     {
         $user = $request->user();
         $accessibleIds = $this->resolveAccessibleEmployeeIds($user);
         $deptId = $request->integer('dept_id') ?: null;
         $employeeType = $request->input('employee_type') ?: null;
         $search = trim((string) $request->query('search', ''));
+        $status = $request->input('status', 'all'); // all | active | expired
+        $today = Carbon::today()->toDateString();
 
-        return $this->buildEmployeeQuery($accessibleIds, $deptId, null, $employeeType, $search, true)
-            ->with('department')
-            ->orderBy('last_name')->orderBy('first_name')
-            ->get(['id', 'EmpNo', 'first_name', 'last_name', 'Dept_id', 'designation', 'dtr_exempt_reason', 'dtr_exempt_effective_date', 'dtr_exempt_until_date']);
+        return DtrExemptionPeriod::query()
+            ->whereHas('user', function (Builder $q) use ($accessibleIds, $deptId, $employeeType, $search) {
+                $q->active()
+                    ->when($accessibleIds !== null, fn ($qq) => $qq->whereIn('id', $accessibleIds))
+                    ->when($deptId, fn ($qq) => $qq->where('Dept_id', $deptId))
+                    ->when($employeeType, fn ($qq) => $qq->where('employee_type', $employeeType))
+                    ->when($search !== '', fn ($qq) => $qq->where(fn ($sub) => $sub
+                        ->where('last_name', 'like', '%'.$search.'%')
+                        ->orWhere('first_name', 'like', '%'.$search.'%')
+                        ->orWhere('middle_name', 'like', '%'.$search.'%')
+                        ->orWhere('name', 'like', '%'.$search.'%')
+                        ->orWhere('EmpNo', 'like', '%'.$search.'%')));
+            })
+            ->when($status === 'active', fn ($q) => $q->coveringDate($today))
+            ->when($status === 'expired', fn ($q) => $q->whereNotNull('until_date')->where('until_date', '<', $today))
+            ->with(['user.department'])
+            ->orderByDesc('effective_date')
+            ->orderByDesc('id')
+            ->get();
     }
 
-    // Printable roster of currently DTR/biometric-exempt employees.
+    // Printable log of DTR/biometric exemption periods (all history by default).
     public function printExempt(Request $request): View
     {
-        return view('attendance.schedules.exempt-print', ['employees' => $this->exemptRosterQuery($request)]);
+        return view('attendance.schedules.exempt-print', [
+            'periods' => $this->exemptRosterQuery($request),
+            'status' => $request->input('status', 'all'),
+        ]);
     }
 
-    // Excel download of the same roster printExempt() renders.
+    // Excel download of the same log printExempt() renders.
     public function exportExempt(Request $request)
     {
         return Excel::download(
             new DtrExemptionListExport($this->exemptRosterQuery($request)),
-            'dtr-exemption-list-'.now()->format('Y-m-d').'.xlsx'
+            'dtr-exemption-log-'.now()->format('Y-m-d').'.xlsx'
         );
     }
 

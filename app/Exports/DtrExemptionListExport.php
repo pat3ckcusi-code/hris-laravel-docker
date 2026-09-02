@@ -2,7 +2,7 @@
 
 namespace App\Exports;
 
-use App\Models\User;
+use App\Models\DtrExemptionPeriod;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -13,13 +13,13 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 class DtrExemptionListExport implements FromCollection, WithHeadings, WithMapping, WithStyles
 {
     /**
-     * @param  Collection<int, User>  $employees
+     * @param  Collection<int, DtrExemptionPeriod>  $periods
      */
-    public function __construct(private readonly Collection $employees) {}
+    public function __construct(private readonly Collection $periods) {}
 
     public function collection(): Collection
     {
-        return $this->employees;
+        return $this->periods;
     }
 
     public function headings(): array
@@ -27,16 +27,16 @@ class DtrExemptionListExport implements FromCollection, WithHeadings, WithMappin
         return ['Name', 'EmpNo', 'Department', 'Position', 'Effective Date', 'Date Until', 'Reason'];
     }
 
-    public function map($employee): array
+    public function map($period): array
     {
         return [
-            trim("{$employee->last_name}, {$employee->first_name}"),
-            $employee->EmpNo,
-            $employee->department?->Dept_name ?? '',
-            $employee->designation ?? '',
-            $employee->dtr_exempt_effective_date?->format('M d, Y') ?? '',
-            $employee->dtr_exempt_until_date?->format('M d, Y') ?? '',
-            $employee->dtr_exempt_reason ?? '',
+            trim("{$period->user->last_name}, {$period->user->first_name}"),
+            $period->user->EmpNo,
+            $period->user->department?->Dept_name ?? '',
+            $period->user->designation ?? '',
+            $period->effective_date?->format('M d, Y') ?? '',
+            $period->until_date?->format('M d, Y') ?? '',
+            $period->reason ?? '',
         ];
     }
 

@@ -56,16 +56,19 @@
 
 <div class="no-print">
     <button class="btn-print" onclick="window.print()">Print</button>
-    <button class="btn-excel" onclick="window.location='{{ route('attendance.schedules.exempt-report.excel', request()->only(['dept_id', 'employee_type', 'search'])) }}'">Export Excel</button>
+    <button class="btn-excel" onclick="window.location='{{ route('attendance.schedules.exempt-report.excel', request()->only(['dept_id', 'employee_type', 'search', 'status'])) }}'">Export Excel</button>
     <button class="btn-close" onclick="window.close()">Close</button>
 </div>
 
 <div class="print-container">
-    <div class="list-title">DTR / Biometric Exemption List</div>
-    <div class="list-subtitle">As of {{ now()->toFormattedDateString() }}</div>
+    <div class="list-title">DTR / Biometric Exemption Log</div>
+    <div class="list-subtitle">
+        {{ ['all' => 'All records', 'active' => 'Currently active only', 'expired' => 'Expired only'][$status] ?? 'All records' }}
+        &middot; Generated {{ now()->toFormattedDateString() }}
+    </div>
 
-    @if ($employees->isEmpty())
-        <div class="empty-state">No employees are currently exempt from DTR.</div>
+    @if ($periods->isEmpty())
+        <div class="empty-state">No DTR exemption records found for the selected filters.</div>
     @else
         <table>
             <thead>
@@ -80,15 +83,15 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach ($employees as $emp)
+                @foreach ($periods as $period)
                     <tr>
-                        <td>{{ trim("{$emp->last_name}, {$emp->first_name}") }}</td>
-                        <td>{{ $emp->EmpNo }}</td>
-                        <td>{{ $emp->department?->Dept_name ?? '-' }}</td>
-                        <td>{{ $emp->designation ?? '-' }}</td>
-                        <td>{{ $emp->dtr_exempt_effective_date?->format('M d, Y') ?? '-' }}</td>
-                        <td>{{ $emp->dtr_exempt_until_date?->format('M d, Y') ?? '-' }}</td>
-                        <td>{{ $emp->dtr_exempt_reason ?? '-' }}</td>
+                        <td>{{ trim("{$period->user->last_name}, {$period->user->first_name}") }}</td>
+                        <td>{{ $period->user->EmpNo }}</td>
+                        <td>{{ $period->user->department?->Dept_name ?? '-' }}</td>
+                        <td>{{ $period->user->designation ?? '-' }}</td>
+                        <td>{{ $period->effective_date?->format('M d, Y') ?? '-' }}</td>
+                        <td>{{ $period->until_date?->format('M d, Y') ?? '-' }}</td>
+                        <td>{{ $period->reason ?? '-' }}</td>
                     </tr>
                 @endforeach
             </tbody>

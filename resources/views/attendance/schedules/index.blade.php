@@ -330,13 +330,27 @@
                 data-total="{{ $employees->total() }}" style="margin:0 1.25rem .5rem;">
             Select all {{ $employees->total() }} matching employees
         </button>
-    @else
-        @php $exemptReportParams = request()->only(['dept_id', 'employee_type', 'search']); @endphp
-        <div style="margin:0 1.25rem .75rem;display:flex;gap:.5rem;">
-            <a href="{{ route('attendance.schedules.exempt-report', $exemptReportParams) }}" target="_blank" class="hris-btn hris-btn-secondary">Print list</a>
-            <a href="{{ route('attendance.schedules.exempt-report.excel', $exemptReportParams) }}" class="hris-btn hris-btn-secondary">Export Excel</a>
-        </div>
-    @endif
+    @endunless
+
+    @php $exemptReportParams = request()->only(['dept_id', 'employee_type', 'search']); @endphp
+    <div style="margin:0 1.25rem .75rem;">
+        <form method="GET" action="{{ route('attendance.schedules.exempt-report') }}" target="_blank"
+              style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;">
+            @foreach ($exemptReportParams as $key => $value)
+                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+            @endforeach
+            <div>
+                <label class="hris-filter-label" for="exempt_status">Exemption Log Status</label>
+                <select name="status" id="exempt_status" class="hris-filter-select">
+                    <option value="all">All</option>
+                    <option value="active">Currently Active</option>
+                    <option value="expired">Expired</option>
+                </select>
+            </div>
+            <button type="submit" class="hris-btn hris-btn-secondary">Print Exemption Log</button>
+            <button type="submit" formaction="{{ route('attendance.schedules.exempt-report.excel') }}" formtarget="_self" class="hris-btn hris-btn-secondary">Export Exemption Log</button>
+        </form>
+    </div>
 
     <div style="overflow-x:auto;">
         <table class="hris-table sched-table" style="width:100%;">
