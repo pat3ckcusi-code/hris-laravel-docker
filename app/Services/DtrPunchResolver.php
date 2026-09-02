@@ -195,10 +195,25 @@ class DtrPunchResolver
      *      PM Out missing, PM In present -> impute lunchReturn→workEnd,
      *      once the shift's own end has passed.
      *    Either, both, or neither may apply on a given day.
+     *
+     *    A third shape, added later: the WHOLE am_in/am_out pair missing
+     *    while PM is fully punched, or the whole pm_in/pm_out pair missing
+     *    while AM is fully punched - AttendanceStatusResolver's half_day_pm/
+     *    half_day_am. Unlike the two shapes above there's no sibling punch
+     *    proving the segment happened, but none is needed: the OTHER half
+     *    being fully punched already proves the day is over, so the entire
+     *    missing half is charged as undertime for its full scheduled span
+     *    (same am_out/pm_out component keys and coveredSlots gate as above -
+     *    a half day is not itself a new kind of component, just a second way
+     *    to arrive at the same one).
      *  - No-break (2-slot, punchRequirement 'both'): there is no PM In/AM Out
      *    at all, so the only possible sibling proof is AM In - when it
      *    exists but PM Out never got recorded, charge the full
-     *    workStart→workEnd span.
+     *    workStart→workEnd span. A no-break schedule's own half-day-shaped
+     *    gap (am_in missing, pm_out present) is already fully handled by
+     *    imputedLateMinutes()'s no-break branch instead (charged as Late,
+     *    since a 2-slot day has no AM/PM split to anchor an Undertime
+     *    component to) - deliberately not duplicated here.
      *
      * Never applies to an in_only/out_only schedule (see
      * imputedLateMinutes()).
@@ -258,6 +273,31 @@ class DtrPunchResolver
         }
 
         if ($timeInPm && ! $timeOutPm && ! in_array('pm_out', $coveredSlots, true)) {
+            $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
+
+            if (Carbon::now()->gte($endRef)) {
+                $breakInRef = $schedule->referenceDateTime($shiftDate, $schedule->lunchReturn);
+                $minutes += (int) $breakInRef->diffInMinutes($endRef);
+                $firedComponents[] = 'pm_out';
+            }
+        }
+
+        // Half day: the whole AM pair missing, PM fully punched. Same
+        // morningEnd-passed guard as the am_out component above, for
+        // consistency, even though a fully punched PM already implies it.
+        if (! $timeInAm && ! $timeOutAm && $timeInPm && $timeOutPm && ! in_array('am_out', $coveredSlots, true)) {
+            $breakOutRef = $schedule->referenceDateTime($shiftDate, $schedule->morningEnd);
+
+            if (Carbon::now()->gte($breakOutRef)) {
+                $startRef = $schedule->referenceDateTime($shiftDate, $schedule->workStart, isShiftStart: true);
+                $minutes += (int) $startRef->diffInMinutes($breakOutRef);
+                $firedComponents[] = 'am_out';
+            }
+        }
+
+        // Half day: the whole PM pair missing, AM fully punched - mirror of
+        // the AM case above.
+        if (! $timeInPm && ! $timeOutPm && $timeInAm && $timeOutAm && ! in_array('pm_out', $coveredSlots, true)) {
             $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
 
             if (Carbon::now()->gte($endRef)) {

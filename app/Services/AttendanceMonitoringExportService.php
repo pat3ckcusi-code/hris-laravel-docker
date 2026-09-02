@@ -497,13 +497,28 @@ class AttendanceMonitoringExportService
                             ));
 
                             if ($missingRequired !== []) {
-                                // Keep the exact pre-existing reason/label for the
-                                // single "PM Out only" shape so existing remark-text
-                                // assertions are unaffected; any broader gap (e.g. an
-                                // AM-In-only day) gets a distinct, more accurate reason.
-                                $unofficialExitDays[$dateStr] = $missingRequired === ['pm_out']
-                                    ? 'no_time_out'
-                                    : 'incomplete_punches';
+                                // A genuine half day - the WHOLE other half missing
+                                // while this half is fully punched (AttendanceStatus
+                                // Resolver's half_day_am/half_day_pm) - is not an
+                                // unofficial exit: there's nothing ambiguous about it,
+                                // the employee simply wasn't present for that half.
+                                // Leave it unclassified here so it falls through to
+                                // the phantom-undertime pass below, which (via
+                                // DtrPunchResolver::imputedUndertimeMinutes()'s
+                                // matching half-day components) now charges the
+                                // missing half as real Undertime instead.
+                                $isHalfDayGap = $requiredSlots === ['am_in', 'am_out', 'pm_in', 'pm_out']
+                                    && ($missingRequired === ['am_in', 'am_out'] || $missingRequired === ['pm_in', 'pm_out']);
+
+                                if (! $isHalfDayGap) {
+                                    // Keep the exact pre-existing reason/label for the
+                                    // single "PM Out only" shape so existing remark-text
+                                    // assertions are unaffected; any broader gap (e.g. an
+                                    // AM-In-only day) gets a distinct, more accurate reason.
+                                    $unofficialExitDays[$dateStr] = $missingRequired === ['pm_out']
+                                        ? 'no_time_out'
+                                        : 'incomplete_punches';
+                                }
                             }
 
                             continue;
