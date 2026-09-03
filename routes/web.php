@@ -579,8 +579,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
 
     Route::get('/dashboard/hr-manager/records', [HRManagerController::class, 'records'])
         ->name('hr-manager.records');
-    Route::get('/dashboard/hr-manager/leave', [HRManagerController::class, 'leave'])
-        ->name('hr-manager.leave');
     Route::get('/dashboard/hr-manager/frontdesk', [HRManagerController::class, 'frontdesk'])
         ->name('hr-manager.frontdesk');
     Route::redirect('/dashboard/hr-manager/reports', '/dashboard/hr-manager');
@@ -602,10 +600,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
         ->name('hr-manager.records.action');
     Route::put('/dashboard/hr-manager/records/{user}', [HRManagerController::class, 'recordsUpdate'])
         ->name('hr-manager.records.update');
-    Route::get('/dashboard/hr-manager/leave/data', [HRManagerController::class, 'leaveData'])
-        ->name('hr-manager.leave.data');
-    Route::post('/dashboard/hr-manager/leave/{leaveRequest}/action', [HRManagerController::class, 'leaveAction'])
-        ->name('hr-manager.leave.action');
     Route::get('/dashboard/hr-manager/frontdesk/data', [HRManagerController::class, 'frontdeskData'])
         ->name('hr-manager.frontdesk.data');
     Route::post('/dashboard/hr-manager/frontdesk/{documentRequest}/action', [HRManagerController::class, 'frontdeskAction'])
@@ -618,12 +612,6 @@ Route::middleware(['auth', 'role:hr-manager'])->group(function () {
     // Enhancement 1: Alerts
     Route::get('/dashboard/hr-manager/alerts', [HRManagerController::class, 'getAlerts'])
         ->name('hr-manager.alerts');
-
-    // Enhancement 3: Leave Analytics
-    Route::get('/dashboard/hr-manager/leave/analytics', [HRManagerController::class, 'getLeaveAnalytics'])
-        ->name('hr-manager.leave.analytics');
-    Route::post('/dashboard/hr-manager/leave/notify-manager', [HRManagerController::class, 'notifyDeptManager'])
-        ->name('hr-manager.leave.notify-manager');
 
     // Enhancement 4: Payroll Overview
     Route::get('/dashboard/hr-manager/payroll-overview', [HRManagerController::class, 'payrollOverview'])

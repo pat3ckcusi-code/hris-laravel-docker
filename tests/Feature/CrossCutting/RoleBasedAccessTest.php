@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\CrossCutting;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /**
  * Cross-Cutting: Role-Based Access Control Tests
@@ -13,7 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
  */
 class RoleBasedAccessTest extends TestCase
 {
-    use RefreshDatabase, CreatesTestUsers;
+    use CreatesTestUsers, RefreshDatabase;
 
     /**
      * Map of role-restricted routes with their required roles.
@@ -24,14 +24,13 @@ class RoleBasedAccessTest extends TestCase
             // Department Head only
             ['route' => 'department-head.index',    'allowed' => ['Department Head'],              'method' => 'GET'],
             ['route' => 'department-head.pending-requests', 'allowed' => ['Department Head'],      'method' => 'GET'],
-            ['route' => 'department-head.statistics','allowed' => ['Department Head'],              'method' => 'GET'],
+            ['route' => 'department-head.statistics', 'allowed' => ['Department Head'],              'method' => 'GET'],
             // Administrative Officer only
             ['route' => 'admin-officer.index',       'allowed' => ['Administrative Officer'],      'method' => 'GET'],
             ['route' => 'admin-officer.pending-requests', 'allowed' => ['Administrative Officer'], 'method' => 'GET'],
             // HR Manager only
             ['route' => 'hr-manager.dashboard',      'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.records',        'allowed' => ['HR Manager'],                  'method' => 'GET'],
-            ['route' => 'hr-manager.leave',          'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.audit',          'allowed' => ['HR Manager'],                  'method' => 'GET'],
             ['route' => 'hr-manager.settings',       'allowed' => ['HR Manager'],                  'method' => 'GET'],
             // Leave Manager only
@@ -184,7 +183,7 @@ class RoleBasedAccessTest extends TestCase
         }
 
         $this->assertEmpty($violations,
-            "RBAC Violations found:\n" . implode("\n", $violations));
+            "RBAC Violations found:\n".implode("\n", $violations));
     }
 
     /**

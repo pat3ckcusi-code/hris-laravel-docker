@@ -426,48 +426,6 @@ const renderPagination = (container, pagination, onPage) => {
     });
 };
 
-const bindLeaveModule = (root) => {
-    if (!root || root.dataset.module !== 'leave') return;
-
-    const department = document.getElementById('leaveDepartment');
-    const status = document.getElementById('leaveStatus');
-    const filterBtn = document.getElementById('leaveFilterBtn');
-    const monthPicker = document.getElementById('leaveMonthPicker');
-
-    const initialChart = JSON.parse(root.dataset.initialChart || '{"labels":[],"values":[]}');
-    const leaveChart = createBarChart('leaveUsageChart', 'Leave Requests', initialChart, colorSet.orange);
-
-    const fetchChart = async () => {
-        const params = new URLSearchParams({
-            department: department?.value || '',
-            status: status?.value || 'pending',
-            month: monthPicker?.value || '',
-        });
-
-        try {
-            const response = await fetch(`${root.dataset.url}?${params.toString()}`);
-            if (!response.ok) throw new Error('Leave data load failed.');
-
-            const data = await response.json();
-            updateChart(leaveChart, data.chart || { labels: [], values: [] });
-        } catch (error) {
-            await Swal.fire('Error', 'Failed to load leave chart data.', 'error');
-        }
-    };
-
-    filterBtn?.addEventListener('click', fetchChart);
-
-    monthPicker?.addEventListener('change', () => {
-        const url = new URL(window.location.href);
-        if (monthPicker.value) {
-            url.searchParams.set('month', monthPicker.value);
-        } else {
-            url.searchParams.delete('month');
-        }
-        window.location.href = url.toString();
-    });
-};
-
 const bindFrontdeskModule = (root) => {
     if (!root || root.dataset.module !== 'frontdesk') return;
 
@@ -782,99 +740,6 @@ const bindAlertPanel = (root) => {
             strip.style.display = 'flex';
         })
         .catch(() => { /* Silently ignore alert fetch failures */ });
-};
-
-// ── Enhancement 3: Leave Analytics ───────────────────────────────────────
-
-const bindLeaveAnalytics = (root) => {
-    const analyticsUrl = root?.dataset?.analyticsUrl;
-    const notifyUrl = root?.dataset?.notifyUrl;
-    const csrf = root?.dataset?.csrf || '';
-    if (!analyticsUrl) return;
-
-    const trendArrow = (trend) => {
-        if (trend === 'down') return `<span style="color:#dc3545;font-weight:700;">&#x2193;</span>`;
-        if (trend === 'up') return `<span style="color:#28a745;font-weight:700;">&#x2191;</span>`;
-        return `<span style="color:#64748b;">&#x2013;</span>`;
-    };
-
-    let trendChart = null;
-
-    fetch(analyticsUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then((r) => r.json())
-        .then((data) => {
-            // Balance summary table
-            const balanceEl = document.getElementById('leaveBalanceTable');
-            if (balanceEl && data.balance_summary) {
-                const types = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
-                const rows = types.map((t) => {
-                    const b = data.balance_summary[t];
-                    if (!b) return '';
-                    return `<tr>
-                        <td><strong>${t}</strong></td>
-                        <td>${b.avg} days ${trendArrow(b.trend)}</td>
-                        <td><span style="color:#fd7e14;">${b.low_count}</span></td>
-                        <td><span style="color:#dc3545;">${b.zero_count}</span></td>
-                    </tr>`;
-                }).join('');
-
-                balanceEl.innerHTML = `<table class="hrm-table">
-                    <thead><tr><th>Type</th><th>Avg Balance (Trend)</th><th>Low (&lt;2d)</th><th>Exhausted</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;">No data</td></tr>'}</tbody>
-                </table>`;
-            }
-
-            // 6-month trend chart
-            if (data.trend) {
-                trendChart = new Chart(document.getElementById('leaveTrendChart')?.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: data.trend.labels,
-                        datasets: [
-                            { label: 'Submitted', data: data.trend.submitted, borderColor: colorSet.blue, backgroundColor: 'rgba(0,123,255,0.1)', tension: 0.3 },
-                            { label: 'Approved', data: data.trend.approved, borderColor: colorSet.green, backgroundColor: 'rgba(40,167,69,0.1)', tension: 0.3 },
-                        ],
-                    },
-                    options: { responsive: true, maintainAspectRatio: false },
-                });
-            }
-
-            // Department comparison table
-            const deptEl = document.getElementById('departmentComparisonTable');
-            if (deptEl && data.department_comparison) {
-                const rows = data.department_comparison.map((d) => `<tr>
-                    <td>${d.department}</td>
-                    <td>${d.employee_count}</td>
-                    <td>${d.days_used}</td>
-                    <td>${d.avg_vl}</td>
-                    <td>${d.avg_sl}</td>
-                </tr>`).join('');
-
-                deptEl.innerHTML = `<table class="hrm-table">
-                    <thead><tr><th>Department</th><th>Employees</th><th>Days Used</th><th>Avg VL</th><th>Avg SL</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">No data</td></tr>'}</tbody>
-                </table>`;
-            }
-
-            // AWOL / overuse risk table
-            const awolEl = document.getElementById('awolRiskTable');
-            if (awolEl && data.awol_risk) {
-                const rows = data.awol_risk.map((r) => `<tr>
-                    <td>${r.emp_no}</td>
-                    <td>${r.name}</td>
-                    <td>${r.department}</td>
-                    <td>${r.streak}</td>
-                    <td>${r.episodes_this_semester}</td>
-                    <td><span class="att-badge att-badge-${r.status}">${r.status}</span></td>
-                </tr>`).join('');
-
-                awolEl.innerHTML = `<table class="hrm-table">
-                    <thead><tr><th>EmpNo</th><th>Name</th><th>Department</th><th>Streak</th><th>Episodes (Semester)</th><th>Severity</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;">No employees currently accumulating unauthorized absence.</td></tr>'}</tbody>
-                </table>`;
-            }
-        })
-        .catch(() => { /* Silently ignore analytics load failure */ });
 };
 
 // ── Enhancement 5: Workforce Planning ────────────────────────────────────
@@ -1244,10 +1109,6 @@ if (dashboardRoot) {
     bindAlertPanel(dashboardRoot);
 }
 
-bindLeaveModule(moduleRoot);
-if (moduleRoot?.dataset?.module === 'leave') {
-    bindLeaveAnalytics(moduleRoot);
-}
 if (moduleRoot?.dataset?.module === 'records' || moduleRoot?.dataset?.module === 'mayor-workforce-insights') {
     bindWorkforcePlanning(moduleRoot);
 }

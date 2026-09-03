@@ -3,9 +3,7 @@
 namespace App\Services;
 
 use App\Models\Department;
-use App\Models\Holiday;
 use App\Models\HRAuditTrail;
-use App\Models\LeaveRequest;
 use App\Models\PayrollDetail;
 use App\Models\PayrollException;
 use App\Models\PayrollRun;
@@ -27,11 +25,6 @@ use Illuminate\Support\Facades\Schema;
  */
 class HRDashboardService
 {
-    public function __construct(
-        private LeaveRequestService $leaveRequestService,
-        private LwopAggregationService $lwopAggregationService,
-    ) {}
-
     // ── Summary cards ────────────────────────────────────────────────────────
 
     /** @return array<string, mixed> */
@@ -468,35 +461,6 @@ class HRDashboardService
 
     // ── Alerts ────────────────────────────────────────────────────────────────
 
-    /** @return array<int, array<string, mixed>> */
-    public function buildHolidayLeaveAlerts(): array
-    {
-        if (! Schema::hasTable('holidays') || ! Schema::hasTable('leave_requests')) {
-            return [];
-        }
-
-        $holidays = Holiday::query()
-            ->whereBetween('holiday_date', [today(), today()->addDays(30)])
-            ->orderBy('holiday_date')
-            ->get(['title', 'holiday_date', 'type']);
-
-        $alerts = [];
-        foreach ($holidays as $holiday) {
-            $date = $holiday->holiday_date->toDateString();
-            $count = (int) DB::table('leave_requests')
-                ->whereRaw('LOWER(status) = ?', ['pending'])
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->count();
-
-            if ($count > 0) {
-                $alerts[] = ['title' => $holiday->title, 'date' => $date, 'type' => $holiday->type, 'count' => $count];
-            }
-        }
-
-        return $alerts;
-    }
-
     /** @return array<string, mixed> */
     public function buildAlerts(): array
     {
@@ -538,175 +502,6 @@ class HRDashboardService
                 'days_away' => (int) today()->diffInDays($h->holiday_date),
             ])
             ->all();
-    }
-
-    // ── Leave analytics ────────────────────────────────────────────────────
-
-    /** @return array<string, mixed> */
-    public function buildLeaveAnalytics(?int $departmentId, string $month = ''): array
-    {
-        $types = ['VL', 'SL', 'WLNS', 'SPL', 'CTO', 'SP'];
-        $balanceSummary = [];
-
-        if (Schema::hasTable('leave_balances')) {
-            $query = DB::table('leave_balances')->leftJoin('users', 'users.id', '=', 'leave_balances.user_id');
-            if ($departmentId !== null) {
-                $query->where('users.Dept_id', $departmentId);
-            }
-            $rows = $query->select('leave_balances.*')->get();
-
-            $now = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month)) ? Carbon::parse($month)->endOfMonth() : now();
-            $prevMonth = $now->copy()->subMonth();
-
-            $consumptionQuery = fn (int $year, int $mon) => DB::table('leave_dates')
-                ->join('leave_requests', 'leave_requests.id', '=', 'leave_dates.leave_request_id')
-                ->when($departmentId !== null, fn ($q) => $q->join('users', 'users.id', '=', 'leave_requests.user_id')->where('users.Dept_id', $departmentId))
-                ->whereYear('leave_dates.leave_date', $year)
-                ->whereMonth('leave_dates.leave_date', $mon)
-                ->where('leave_dates.is_cancelled', false)
-                ->select('leave_requests.leave_type', DB::raw('COUNT(*) as cnt'))
-                ->groupBy('leave_requests.leave_type')
-                ->get()
-                ->pluck('cnt', 'leave_type');
-
-            $thisMonthConsumption = Schema::hasTable('leave_dates') ? $consumptionQuery($now->year, $now->month) : collect();
-            $lastMonthConsumption = Schema::hasTable('leave_dates') ? $consumptionQuery($prevMonth->year, $prevMonth->month) : collect();
-
-            $typeMap = ['VL' => 'Vacation Leave', 'SL' => 'Sick Leave', 'WLNS' => 'Wellness', 'SPL' => 'Solo Parent', 'CTO' => 'CTO', 'SP' => 'Special Privilege'];
-
-            foreach ($types as $type) {
-                $col = $rows->pluck($type)->filter(fn ($v) => $v !== null);
-                $avg = $col->count() > 0 ? round($col->avg(), 1) : 0;
-                $lowCount = $col->filter(fn ($v) => (float) $v < 2)->count();
-                $zeroCount = $col->filter(fn ($v) => (float) $v <= 0)->count();
-
-                $thisMonth = (int) ($thisMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
-                $lastMonth = (int) ($lastMonthConsumption[$typeMap[$type] ?? $type] ?? 0);
-                $trend = $thisMonth > $lastMonth ? 'down' : ($thisMonth < $lastMonth ? 'up' : 'stable');
-
-                $balanceSummary[$type] = ['avg' => $avg, 'low_count' => $lowCount, 'zero_count' => $zeroCount, 'trend' => $trend];
-            }
-        }
-
-        $criticalEmployees = $this->leaveRequestService
-            ->criticalBalances($departmentId)
-            ->map(fn ($r) => [
-                'user_id' => $r->user_id,
-                'name' => trim(($r->last_name ?? '').', '.($r->first_name ?? '')),
-                'department' => $r->Dept_name,
-                'vl' => round((float) $r->VL, 1),
-                'sl' => round((float) $r->SL, 1),
-            ])
-            ->all();
-
-        $refDate = ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month)) ? Carbon::parse($month)->endOfMonth() : now();
-        $sixMonthsAgo = $refDate->copy()->subMonths(5)->startOfMonth();
-        $trendLabels = $trendSubmitted = $trendApproved = [];
-
-        $submittedTrend = LeaveRequest::selectRaw('MONTH(created_at) as m, YEAR(created_at) as y, COUNT(*) as cnt')
-            ->when($departmentId !== null, fn ($q) => $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')->where('users.Dept_id', $departmentId))
-            ->where('created_at', '>=', $sixMonthsAgo)
-            ->groupByRaw('YEAR(created_at), MONTH(created_at)')
-            ->get()
-            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
-
-        $approvedTrend = LeaveRequest::selectRaw('MONTH(updated_at) as m, YEAR(updated_at) as y, COUNT(*) as cnt')
-            ->when($departmentId !== null, fn ($q) => $q->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')->where('users.Dept_id', $departmentId))
-            ->where('status', 'approved')
-            ->where('updated_at', '>=', $sixMonthsAgo)
-            ->groupByRaw('YEAR(updated_at), MONTH(updated_at)')
-            ->get()
-            ->keyBy(fn ($r) => $r->y.'-'.$r->m);
-
-        for ($i = 5; $i >= 0; $i--) {
-            $dt = $refDate->copy()->subMonths($i);
-            $trendLabels[] = $dt->format('M');
-            $key = $dt->year.'-'.$dt->month;
-            $trendSubmitted[] = (int) ($submittedTrend->get($key)?->cnt ?? 0);
-            $trendApproved[] = (int) ($approvedTrend->get($key)?->cnt ?? 0);
-        }
-
-        $monthWindow = null;
-        if ($month !== '' && preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $monthWindow = [Carbon::parse($month)->startOfMonth()->toDateString(), Carbon::parse($month)->endOfMonth()->toDateString()];
-        }
-
-        $departmentComparison = Department::query()
-            ->orderBy('Dept_name')
-            ->get(['Dept_id', 'Dept_name'])
-            ->map(function ($department) use ($monthWindow) {
-                $employeeCount = User::active()
-                    ->whereIn('employee_type', User::LEAVE_ELIGIBLE_TYPES)
-                    ->where('Dept_id', $department->Dept_id)
-                    ->count();
-
-                $daysUsedQuery = LeaveRequest::query()
-                    ->join('users', 'users.id', '=', 'leave_requests.user_id')
-                    ->where('users.Dept_id', $department->Dept_id)
-                    ->where('leave_requests.status', 'approved');
-
-                if ($monthWindow !== null) {
-                    $daysUsedQuery->where(function ($q) use ($monthWindow): void {
-                        $q->whereBetween('leave_requests.start_date', $monthWindow)
-                            ->orWhereBetween('leave_requests.end_date', $monthWindow);
-                    });
-                }
-
-                $balances = DB::table('leave_balances')
-                    ->join('users', 'users.id', '=', 'leave_balances.user_id')
-                    ->where('users.Dept_id', $department->Dept_id)
-                    ->select('leave_balances.VL', 'leave_balances.SL')
-                    ->get();
-
-                return [
-                    'department' => $department->Dept_name,
-                    'employee_count' => $employeeCount,
-                    'days_used' => round((float) $daysUsedQuery->sum('leave_requests.total_days'), 1),
-                    'avg_vl' => $balances->count() > 0 ? round((float) $balances->avg('VL'), 1) : 0,
-                    'avg_sl' => $balances->count() > 0 ? round((float) $balances->avg('SL'), 1) : 0,
-                ];
-            })
-            ->sortByDesc('days_used')
-            ->values()
-            ->all();
-
-        $departmentNames = Department::pluck('Dept_name', 'Dept_id')->toArray();
-        $awolEmployees = User::active()
-            ->whereIn('employee_type', User::LEAVE_ELIGIBLE_TYPES)
-            ->whereHas('leaveBalance')
-            ->when($departmentId !== null, fn ($q) => $q->where('Dept_id', $departmentId))
-            ->get();
-
-        $awolRisk = $awolEmployees
-            ->map(function ($employee) use ($departmentNames) {
-                $streak = $this->lwopAggregationService->computeCurrentAwolStreak($employee);
-
-                if ($streak['streak'] < 5) {
-                    return null;
-                }
-
-                return [
-                    'emp_no' => $employee->EmpNo ?? '-',
-                    'name' => trim(($employee->last_name ?? '').', '.($employee->first_name ?? '')),
-                    'department' => $departmentNames[$employee->Dept_id] ?? '-',
-                    'streak' => $streak['capped'] ? '60+' : (string) $streak['streak'],
-                    'streak_sort' => $streak['streak'],
-                    'episodes_this_semester' => $this->lwopAggregationService->countAwolEpisodesThisSemester($employee),
-                    'status' => $this->lwopAggregationService->awolSeverityLabel($streak['streak']),
-                ];
-            })
-            ->filter()
-            ->sortByDesc('streak_sort')
-            ->values()
-            ->all();
-
-        return [
-            'balance_summary' => $balanceSummary,
-            'critical_employees' => $criticalEmployees,
-            'trend' => ['labels' => $trendLabels, 'submitted' => $trendSubmitted, 'approved' => $trendApproved],
-            'department_comparison' => $departmentComparison,
-            'awol_risk' => $awolRisk,
-        ];
     }
 
     // ── Workforce planning ─────────────────────────────────────────────────

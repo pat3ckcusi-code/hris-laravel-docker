@@ -188,11 +188,17 @@
             ['section' => 'Dashboard'],
             ['label' => 'Charts &amp; Analytics', 'icon' => 'analytics', 'route' => 'hr-manager.dashboard', 'active' => ['hr-manager.dashboard']],
 
-            ['section' => 'Operations'],
+            ['section' => 'Self-Service'],
+            ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',    'active' => ['dashboard.employee.pds']],
+            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management', 'active' => ['employee.leave.management']],
+
+            ['section' => 'Department Management'],
             ['label' => 'Records Management', 'icon' => 'records',      'route' => 'hr-manager.records',              'active' => ['hr-manager.records']],
-            ['label' => 'Leave Management',   'icon' => 'leave',        'route' => 'hr-manager.leave',                'active' => ['hr-manager.leave']],
             ['label' => 'Document Signing',   'icon' => 'frontdesk',    'route' => 'hr-manager.frontdesk',            'active' => ['hr-manager.frontdesk'], 'badge' => 'pending_document_signatures'],
             ['label' => 'Payroll Overview',   'icon' => 'payroll_runs', 'route' => 'hr-manager.payroll.overview',     'active' => ['hr-manager.payroll.overview*']],
+            ['label' => 'System Settings',    'icon' => 'settings',  'route' => 'hr-manager.settings',  'active' => ['hr-manager.settings']],
+            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
+            ['label' => 'Leave Credit Certification', 'icon' => 'esignature', 'route' => 'leave-certification.index', 'active' => ['leave-certification.index'], 'permission' => 'canAccessLeaveCertification', 'badge' => 'pending_leave_certification'],
 
             ['section' => 'Attendance'],
             ['label' => 'DTR Records',        'icon' => 'attendance',        'route' => 'attendance.dtr',                 'active' => ['attendance.dtr', 'attendance.dtr.download']],
@@ -206,15 +212,6 @@
             ['section' => 'Reports'],
             ['label' => 'Service Milestones', 'icon' => 'milestones','route' => 'hr-manager.service-milestones', 'active' => ['hr-manager.service-milestones']],
             ['label' => 'Audit Logs',         'icon' => 'audit',     'route' => 'hr-manager.audit',       'active' => ['hr-manager.audit']],
-
-            ['section' => 'Administration'],
-            ['label' => 'System Settings',    'icon' => 'settings',  'route' => 'hr-manager.settings',  'active' => ['hr-manager.settings']],
-            ['label' => 'E-Signature Config', 'icon' => 'esignature', 'route' => 'esignature-config.index', 'active' => ['esignature-config.index']],
-            ['label' => 'Leave Credit Certification', 'icon' => 'esignature', 'route' => 'leave-certification.index', 'active' => ['leave-certification.index'], 'permission' => 'canAccessLeaveCertification', 'badge' => 'pending_leave_certification'],
-
-            ['section' => 'Self-Service'],
-            ['label' => 'PDS',               'icon' => 'pds',       'route' => 'dashboard.employee.pds',    'active' => ['dashboard.employee.pds']],
-            ['label' => 'Leave Requests',    'icon' => 'leave',     'route' => 'employee.leave.management', 'active' => ['employee.leave.management']],
         ],
 
         // ─── Leave Manager ─────────────────────────────────

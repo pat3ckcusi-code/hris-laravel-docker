@@ -6,20 +6,14 @@ use App\Models\Department;
 use App\Models\DocumentRequest;
 use App\Models\EsignatureSigning;
 use App\Models\HRAuditTrail;
-use App\Models\LeaveBalance;
-use App\Models\LeaveRequest;
 use App\Models\PayrollException;
 use App\Models\Setting;
 use App\Models\User;
-use App\Notifications\HrisTransactionNotification;
-use App\Services\DepartmentService;
 use App\Services\DocumentRequestEsignatureService;
 use App\Services\EmployeeAssignmentService;
 use App\Services\ESignatureCredentialStore;
 use App\Services\HRDashboardService;
 use App\Services\LeaveCardExportService;
-use App\Services\LeaveDateAggregateService;
-use App\Services\LeaveRequestService;
 use App\Support\HrisConstants;
 use App\Support\RoleNormalizer;
 use Carbon\Carbon;
@@ -31,7 +25,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -335,105 +328,6 @@ class HRManagerController extends Controller
         ]);
     }
 
-    public function leave(Request $request): View
-    {
-        $this->ensureHrManager($request);
-
-        $month = trim((string) $request->query('month', now()->format('Y-m')));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = now()->format('Y-m');
-        }
-
-        $leavePage = $this->leaveRows($request, $month);
-
-        return view('hr-manager.leave', [
-            'departments' => $this->departmentOptions(),
-            'requests' => $leavePage->items(),
-            'leavePagination' => $this->paginationPayload($leavePage),
-            'leaveDataUrl' => route('hr-manager.leave.data'),
-            'leaveActionBaseUrl' => route('hr-manager.leave.action', ['leaveRequest' => '__ID__']),
-            'leaveAnalyticsUrl' => route('hr-manager.leave.analytics'),
-            'leaveNotifyManagerUrl' => route('hr-manager.leave.notify-manager'),
-            'leaveFilters' => [
-                'department' => trim((string) $request->query('department', '')),
-                'status' => trim((string) $request->query('status', 'pending')),
-                'month' => $month,
-            ],
-            'leaveChart' => $this->leaveUsageChart((int) $request->query('department', 0), $month),
-            'holidayAlerts' => $this->dashboardService->buildHolidayLeaveAlerts(),
-            'selectedMonth' => $month,
-            'criticalBalances' => app(LeaveRequestService::class)->criticalBalances(),
-        ]);
-    }
-
-    public function leaveData(Request $request): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $month = trim((string) $request->query('month', now()->format('Y-m')));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = now()->format('Y-m');
-        }
-
-        $leavePage = $this->leaveRows($request, $month);
-
-        return response()->json([
-            'rows' => $leavePage->items(),
-            'pagination' => $this->paginationPayload($leavePage),
-            'chart' => $this->leaveUsageChart((int) $request->query('department', 0), $month),
-        ]);
-    }
-
-    public function leaveAction(Request $request, LeaveRequest $leaveRequest): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $payload = $request->validate([
-            'action' => ['required', 'in:approve,reject'],
-            'remarks' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        if ($payload['action'] === 'approve') {
-            $leaveRequest->status = 'approved';
-            if (Schema::hasColumn('leave_requests', 'detailed_status')) {
-                $leaveRequest->detailed_status = 'Approved';
-            }
-        } else {
-            $leaveRequest->status = 'declined';
-            if (Schema::hasColumn('leave_requests', 'detailed_status')) {
-                $leaveRequest->detailed_status = 'Disapproved';
-            }
-            if (Schema::hasColumn('leave_requests', 'rejection_notes')) {
-                $leaveRequest->rejection_notes = (string) ($payload['remarks'] ?? 'Rejected by HR Manager');
-            }
-        }
-
-        $leaveRequest->save();
-
-        if ($payload['action'] === 'reject' && ! empty($leaveRequest->rescheduled_from_id)) {
-            app(LeaveDateAggregateService::class)
-                ->unfreezeOriginalReschedule($leaveRequest->id, $leaveRequest->rescheduled_from_id);
-        }
-
-        $this->storeAuditTrail(
-            $request,
-            'leave',
-            $payload['action'],
-            LeaveRequest::class,
-            (int) $leaveRequest->id,
-            [
-                'leave_type' => $leaveRequest->leave_type,
-                'status' => $leaveRequest->status,
-                'remarks' => $payload['remarks'] ?? null,
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Leave request updated successfully.',
-        ]);
-    }
-
     public function frontdesk(Request $request, DocumentRequestEsignatureService $esignatureService): View
     {
         $this->ensureHrManager($request);
@@ -563,77 +457,6 @@ class HRManagerController extends Controller
         $data = Cache::remember('hr_alerts', now()->addMinutes(5), fn () => $this->dashboardService->buildAlerts());
 
         return response()->json($data);
-    }
-
-    // ── Enhancement 3: Leave Analytics ────────────────────────────────────
-
-    public function getLeaveAnalytics(Request $request): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $departmentId = $request->integer('department');
-        $deptKey = $departmentId > 0 ? $departmentId : 'all';
-
-        $month = trim((string) $request->query('month', now()->format('Y-m')));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $month = now()->format('Y-m');
-        }
-
-        $data = Cache::remember("hr_leave_analytics_{$deptKey}_{$month}", now()->addMinutes(5),
-            fn () => $this->dashboardService->buildLeaveAnalytics($departmentId > 0 ? $departmentId : null, $month)
-        );
-
-        return response()->json($data);
-    }
-
-    public function notifyDeptManager(Request $request): JsonResponse
-    {
-        $this->ensureHrManager($request);
-
-        $payload = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
-        ]);
-
-        $employee = User::findOrFail($payload['user_id']);
-        $deptService = app(DepartmentService::class);
-        $dept = $deptService->resolveDepartmentForUser($employee);
-
-        // Find department head
-        $deptHead = $dept ? $deptService->getDepartmentHeadUser($dept) : null;
-
-        if (! $deptHead || ! $deptHead->email) {
-            return response()->json(['success' => false, 'message' => 'No department head email found.'], 422);
-        }
-
-        $balance = LeaveBalance::query()->where('user_id', $employee->id)->first();
-        $vl = $balance ? round((float) $balance->VL, 1) : 0;
-        $sl = $balance ? round((float) $balance->SL, 1) : 0;
-
-        try {
-            $deptHead->notify(new HrisTransactionNotification(
-                'Leave Balance Alert',
-                'Low Balance',
-                [
-                    'Employee' => $employee->name,
-                    'Vacation Leave (VL)' => $vl.' days',
-                    'Sick Leave (SL)' => $sl.' days',
-                    'Department' => $dept?->Dept_name ?? 'N/A',
-                ],
-                $request->user()->name,
-                'This employee may be at risk of filing Leave Without Pay (LWOP) if leave balances are not replenished soon.'
-            ));
-        } catch (\Throwable) {
-            return response()->json(['success' => false, 'message' => 'Notification could not be sent.'], 500);
-        }
-
-        $this->storeAuditTrail($request, 'leave', 'notify_dept_manager', User::class, (int) $employee->id, [
-            'employee' => $employee->name,
-            'dept_head' => $deptHead->name,
-            'vl' => $vl,
-            'sl' => $sl,
-        ]);
-
-        return response()->json(['success' => true, 'message' => 'Department head notified successfully.']);
     }
 
     // ── Enhancement 5: Workforce Planning ─────────────────────────────────
@@ -1063,100 +886,6 @@ class HRManagerController extends Controller
                     'history' => $this->formatDateTime($row->updated_at),
                 ];
             });
-    }
-
-    /**
-     * @return LengthAwarePaginator<int, array<string, mixed>>
-     */
-    private function leaveRows(Request $request, ?string $month = null): LengthAwarePaginator
-    {
-        $department = trim((string) $request->query('department', ''));
-        $status = strtolower(trim((string) $request->query('status', 'pending')));
-
-        $query = LeaveRequest::query()
-            ->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
-            ->leftJoin('departments', 'departments.Dept_id', '=', 'users.Dept_id')
-            ->select(
-                'leave_requests.id',
-                'leave_requests.leave_type',
-                'leave_requests.start_date',
-                'leave_requests.end_date',
-                'leave_requests.total_days',
-                'leave_requests.status',
-                'users.name as employee_name',
-                'departments.Dept_name'
-            );
-
-        if ($department !== '') {
-            $query->where('users.Dept_id', (int) $department);
-        }
-
-        if ($status !== '' && $status !== 'all') {
-            $query->whereRaw('LOWER(leave_requests.status) = ?', [$status]);
-        }
-
-        if ($month !== null) {
-            try {
-                $start = Carbon::parse($month)->startOfMonth()->toDateString();
-                $end = Carbon::parse($month)->endOfMonth()->toDateString();
-                $query->where(function ($q) use ($start, $end): void {
-                    $q->whereBetween('leave_requests.start_date', [$start, $end])
-                        ->orWhereBetween('leave_requests.end_date', [$start, $end]);
-                });
-            } catch (\Throwable) {
-            }
-        }
-
-        return $query
-            ->orderByDesc('leave_requests.id')
-            ->paginate(10)
-            ->withQueryString()
-            ->through(function ($row): array {
-                return [
-                    'id' => $row->id,
-                    'employee_name' => $row->employee_name,
-                    'department' => $row->Dept_name,
-                    'leave_type' => $row->leave_type,
-                    'period' => $row->start_date.' to '.$row->end_date,
-                    'days' => $row->total_days,
-                    'status' => strtolower((string) $row->status),
-                ];
-            });
-    }
-
-    /**
-     * @return array{labels: array<int, string>, values: array<int, int>}
-     */
-    private function leaveUsageChart(int $departmentId = 0, ?string $month = null): array
-    {
-        $query = LeaveRequest::query()
-            ->leftJoin('users', 'users.id', '=', 'leave_requests.user_id')
-            ->select('leave_requests.leave_type', DB::raw('COUNT(*) as total'))
-            ->groupBy('leave_requests.leave_type')
-            ->orderBy('leave_requests.leave_type');
-
-        if ($departmentId > 0) {
-            $query->where('users.Dept_id', $departmentId);
-        }
-
-        if ($month !== null) {
-            try {
-                $start = Carbon::parse($month)->startOfMonth()->toDateString();
-                $end = Carbon::parse($month)->endOfMonth()->toDateString();
-                $query->where(function ($q) use ($start, $end): void {
-                    $q->whereBetween('leave_requests.start_date', [$start, $end])
-                        ->orWhereBetween('leave_requests.end_date', [$start, $end]);
-                });
-            } catch (\Throwable) {
-            }
-        }
-
-        $rows = $query->get();
-
-        return [
-            'labels' => $rows->pluck('leave_type')->map(fn ($type) => (string) $type)->all(),
-            'values' => $rows->pluck('total')->map(fn ($value) => (int) $value)->all(),
-        ];
     }
 
     /**
