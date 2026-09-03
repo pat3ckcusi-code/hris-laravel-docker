@@ -112,7 +112,8 @@ class DtrController extends Controller
     {
         $role = strtolower(trim((string) ($user->access_level ?? '')));
         $isAdmin = in_array($role, self::ADMIN_ROLES, true);
-        $isOfficer = in_array($role, ['administrative officer', 'department head'], true);
+        $officerRole = $isAdmin ? null : $this->departmentService->resolveEffectiveOfficerRole($user);
+        $isOfficer = $officerRole !== null;
 
         if (! $isAdmin && ! $isOfficer && ! in_array($role, ['employee', 'leave manager'], true)) {
             abort(403);
@@ -120,8 +121,7 @@ class DtrController extends Controller
 
         $deptIds = [];
         if ($isOfficer) {
-            $roleNormalized = strtolower(str_replace(['-', '_'], ' ', trim((string) ($user->access_level ?? ''))));
-            $deptCollection = ($roleNormalized === 'administrative officer')
+            $deptCollection = ($officerRole === 'administrative officer')
                 ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
                 : $this->departmentService->resolveAllDepartmentsForUser($user);
             $deptIds = $deptCollection->pluck('Dept_id')

@@ -25,8 +25,6 @@ class DtrExcuseController extends Controller
 {
     private const ADMIN_ROLES = ['hr manager', 'time keeper'];
 
-    private const OFFICER_ROLES = ['administrative officer', 'department head'];
-
     public function __construct(
         private DepartmentService $departmentService,
         private PersonnelLogImportService $importService,
@@ -54,14 +52,12 @@ class DtrExcuseController extends Controller
             return null;
         }
 
-        $role = strtolower(trim((string) ($user->access_level ?? '')));
-
-        if (! in_array($role, self::OFFICER_ROLES, true)) {
+        $officerRole = $this->departmentService->resolveEffectiveOfficerRole($user);
+        if ($officerRole === null) {
             abort(403);
         }
 
-        $roleNormalized = strtolower(str_replace(['-', '_'], ' ', $role));
-        $depts = ($roleNormalized === 'administrative officer')
+        $depts = ($officerRole === 'administrative officer')
             ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
             : $this->departmentService->resolveAllDepartmentsForUser($user);
 
@@ -83,10 +79,12 @@ class DtrExcuseController extends Controller
             return Department::orderBy('Dept_name')->get();
         }
 
-        $role = strtolower(trim((string) ($user->access_level ?? '')));
-        $roleNormalized = strtolower(str_replace(['-', '_'], ' ', $role));
+        $officerRole = $this->departmentService->resolveEffectiveOfficerRole($user);
+        if ($officerRole === null) {
+            abort(403);
+        }
 
-        return $roleNormalized === 'administrative officer'
+        return $officerRole === 'administrative officer'
             ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
             : $this->departmentService->resolveAllDepartmentsForUser($user);
     }

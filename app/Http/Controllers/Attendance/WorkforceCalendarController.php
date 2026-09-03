@@ -15,8 +15,9 @@ use Illuminate\Support\Carbon;
  * "Who's away" planning calendar: per-date counts of employees on Leave, ETA,
  * Locator, Travel Order, or Office Order for one department/one month at a
  * time. Time Keeper/HR Manager can browse any department; Department Head/
- * Administrative Officer are auto-scoped to their own (including any active
- * OIC coverage) - same shape as AdministrativeOfficerController::monitoringMatrix().
+ * Administrative Officer (real or covering via an active OicAssignment, per
+ * DepartmentService::resolveEffectiveOfficerRole()) are auto-scoped to their
+ * own - same shape as AdministrativeOfficerController::monitoringMatrix().
  */
 class WorkforceCalendarController extends Controller
 {
@@ -32,12 +33,15 @@ class WorkforceCalendarController extends Controller
 
         if (in_array($role, ['time keeper', 'hr manager'], true)) {
             $departments = Department::orderBy('Dept_name')->get();
-        } elseif ($role === 'department head') {
-            $departments = $this->departmentService->resolveAllDepartmentsForUser($user);
-        } elseif ($role === 'administrative officer') {
-            $departments = $this->departmentService->resolveAllDepartmentsForAdminOfficer($user);
         } else {
-            abort(403);
+            $officerRole = $this->departmentService->resolveEffectiveOfficerRole($user);
+            if ($officerRole === null) {
+                abort(403);
+            }
+
+            $departments = $officerRole === 'administrative officer'
+                ? $this->departmentService->resolveAllDepartmentsForAdminOfficer($user)
+                : $this->departmentService->resolveAllDepartmentsForUser($user);
         }
 
         $requestedId = $request->integer('department_id') ?: ($departments->first()->Dept_id ?? null);

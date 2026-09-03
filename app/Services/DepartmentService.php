@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 
 class DepartmentService
 {
+    private const OFFICER_ROLES = ['department head', 'administrative officer'];
+
     /**
      * Return the department's current department head, but only if that user
      * still holds the department head role. Prevents a stale FK (left behind by
@@ -155,6 +157,27 @@ class DepartmentService
     public function getActiveOicAssignments(User $user): Collection
     {
         return OicAssignment::where('user_id', $user->id)->active()->get();
+    }
+
+    /**
+     * Resolve the effective officer role for gating purposes: the user's own
+     * access_level if it's already an officer role, otherwise the role of an
+     * active OicAssignment covering them for one, else null. Centralizes the
+     * "may this user act as DH/AO right now" check so controllers don't each
+     * need their own ad hoc OicAssignment query alongside their access_level
+     * check.
+     */
+    public function resolveEffectiveOfficerRole(User $user): ?string
+    {
+        $roleNormalized = $this->normalizeRole($user->access_level);
+
+        if (in_array($roleNormalized, self::OFFICER_ROLES, true)) {
+            return $roleNormalized;
+        }
+
+        return $this->getActiveOicAssignments($user)
+            ->whereIn('role', self::OFFICER_ROLES)
+            ->first()?->role;
     }
 
     /**

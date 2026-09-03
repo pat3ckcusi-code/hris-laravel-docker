@@ -579,7 +579,22 @@
             if ($_inDeptMgmt) { $deptMgmtItems[] = $_item; }
         }
 
-        $items = array_merge($oicDashboard, $employeeBody, $deptMgmtItems);
+        // "DTR Excuses" and "Workforce Calendar" are genuinely new for a
+        // covering employee - no self-service equivalent exists to collide
+        // with (unlike "DTR Records", already reachable via the employee's
+        // own "My DTR" link once DtrController::resolveContext() recognizes
+        // the OIC coverage). Matched by route name rather than re-scanning
+        // by section, so this can't accidentally pull in the grant-gated
+        // Shift Templates/Assignment/Schedule screens.
+        $oicAttendanceExtras = collect($oicRoleMenu)
+            ->filter(fn ($item) => isset($item['route']) && in_array($item['route'], [
+                'attendance.dtr-excuse.index',
+                'attendance.workforce-calendar.index',
+            ], true))
+            ->values()
+            ->all();
+
+        $items = array_merge($oicDashboard, $employeeBody, $deptMgmtItems, $oicAttendanceExtras);
     } else {
         $items = $menus[$activeRole] ?? [];
     }

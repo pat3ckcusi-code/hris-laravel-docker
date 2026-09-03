@@ -7,6 +7,7 @@ use App\Models\Eta;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
+use App\Models\OicAssignment;
 use App\Models\TravelOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -175,6 +176,37 @@ class WorkforceCalendarTest extends TestCase
             ->assertSee('Travel Order No. TO-2026-001')
             ->assertSee('OnOfficeOrder')
             ->assertSee('Office Order No. OO-2026-001');
+    }
+
+    public function test_oic_covering_employee_can_view_workforce_calendar_for_covered_department_only(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+
+        $coveringEmployee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+        $inDeptA = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $inDeptB = $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+
+        $this->fileApprovedLeave($inDeptA->id, '2026-06-10', 'Vacation Leave');
+        $this->fileApprovedLeave($inDeptB->id, '2026-06-10', 'Vacation Leave');
+
+        OicAssignment::create([
+            'user_id' => $coveringEmployee->id,
+            'dept_id' => $deptA->Dept_id,
+            'role' => 'department head',
+            'appointed_by' => $this->createHRManager()->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+        ]);
+
+        $response = $this->actingAs($coveringEmployee)
+            ->get(route('attendance.workforce-calendar.index', ['department_id' => $deptA->Dept_id, 'month' => 6, 'year' => 2026]));
+
+        $response->assertStatus(200)
+            ->assertSee('Dept A')
+            ->assertDontSee('Dept B')
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
     }
 
     private function fileApprovedLeave(int $userId, string $date, string $leaveType): LeaveRequest

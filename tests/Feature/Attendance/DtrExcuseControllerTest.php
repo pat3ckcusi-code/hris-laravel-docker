@@ -4,6 +4,7 @@ namespace Tests\Feature\Attendance;
 
 use App\Models\Department;
 use App\Models\DtrExcuse;
+use App\Models\OicAssignment;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -283,5 +284,61 @@ class DtrExcuseControllerTest extends TestCase
         $this->assertStringContainsString('Power Interruption', $section);
         $this->assertStringContainsString('AM In', $section);
         $this->assertStringNotContainsString('SHOULD NOT APPEAR', $section);
+    }
+
+    public function test_plain_employee_without_oic_cannot_access_dtr_excuses(): void
+    {
+        $this->actingAs($this->createEmployee())
+            ->get(route('attendance.dtr-excuse.index'))
+            ->assertStatus(403);
+    }
+
+    public function test_oic_covering_employee_can_manage_excuses_for_covered_department_only(): void
+    {
+        $deptA = $this->makeDepartment('Dept A');
+        $deptB = $this->makeDepartment('Dept B');
+
+        $coveringEmployee = $this->createEmployee(['Dept_id' => $deptA->Dept_id]);
+        $inDeptA = $this->createEmployee(['Dept_id' => $deptA->Dept_id, 'last_name' => 'InDeptA']);
+        $inDeptB = $this->createEmployee(['Dept_id' => $deptB->Dept_id, 'last_name' => 'InDeptB']);
+
+        OicAssignment::create([
+            'user_id' => $coveringEmployee->id,
+            'dept_id' => $deptA->Dept_id,
+            'role' => 'department head',
+            'appointed_by' => $this->createHRManager()->id,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+        ]);
+
+        $this->actingAs($coveringEmployee)
+            ->get(route('attendance.dtr-excuse.index'))
+            ->assertStatus(200)
+            ->assertSee('InDeptA')
+            ->assertDontSee('InDeptB');
+
+        $this->actingAs($coveringEmployee)
+            ->post(route('attendance.dtr-excuse.store'), [
+                'user_ids' => [$inDeptA->id],
+                'date' => '2026-06-10',
+                'excuse_type' => 'other',
+                'is_full_day' => true,
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('dtr_excuses', [
+            'user_id' => $inDeptA->id,
+            'date' => '2026-06-10',
+        ]);
+
+        $this->actingAs($coveringEmployee)
+            ->post(route('attendance.dtr-excuse.store'), [
+                'user_ids' => [$inDeptB->id],
+                'date' => '2026-06-10',
+                'excuse_type' => 'other',
+                'is_full_day' => true,
+            ])
+            ->assertStatus(403);
     }
 }
