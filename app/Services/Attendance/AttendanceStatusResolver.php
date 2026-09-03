@@ -24,6 +24,19 @@ class AttendanceStatusResolver
         $pmIn = $result->has('pm_in');
         $pmOut = $result->has('pm_out');
 
+        if ($punchRequirement === 'am_in_only_graded') {
+            // Single Punch Shift: any punch that day (AM Out/PM In/PM Out
+            // counts too) is proof of presence - LateCalculator already
+            // substituted the earliest one for a missing AM In, so
+            // $lateMinutes/$undertimeMinutes already reflect that. A day with
+            // genuinely zero punches never reaches this resolver at all (no
+            // dtrs row is created for it), so Incomplete here only covers the
+            // rare case where every punch that day fell outside every slot's
+            // eligibility window (nothing matched) - downstream absence
+            // detection treats that the same as a blank day.
+            return ($amIn || $amOut || $pmIn || $pmOut) ? $this->scored($lateMinutes, $undertimeMinutes) : AttendanceStatus::Incomplete;
+        }
+
         if ($punchRequirement === 'in_only') {
             return $amIn ? $this->scored($lateMinutes, $undertimeMinutes) : AttendanceStatus::Incomplete;
         }

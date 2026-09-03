@@ -15,11 +15,19 @@ use App\Support\WorkSchedule;
  * (morningEnd earlier than lunchReturn): on a degenerate template whose break
  * references collapse onto workEnd there is no "left early for lunch" to
  * charge. No-break shifts score the departure against workEnd only.
+ *
+ * A Single Punch Shift (punchRequirement 'am_in_only_graded') never charges
+ * undertime at all - only AM In is graded, so an early/missing AM Out or PM
+ * Out is never penalized regardless of what was or wasn't punched.
  */
 class UndertimeCalculator
 {
     public function minutes(MatchResult $result, string $shiftDate, WorkSchedule $schedule): int
     {
+        if ($schedule->punchRequirement === 'am_in_only_graded') {
+            return 0;
+        }
+
         $undertime = 0;
         $endRef = $schedule->referenceDateTime($shiftDate, $schedule->workEnd);
 

@@ -8,6 +8,7 @@ use App\Models\AttendanceLog;
 use App\Models\Department;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\DtrExemptionPeriod;
 use App\Models\EmployeeShiftSchedule;
 use App\Models\Eta;
 use App\Models\Holiday;
@@ -23,6 +24,7 @@ use App\Models\User;
 use App\Models\WorkSuspension;
 use App\Services\AttendanceMonitoringExportService;
 use App\Services\DtrPunchResolver;
+use App\Services\LwopAggregationService;
 use App\Services\PersonnelLogImportService;
 use App\Services\ShiftAssignmentService;
 use App\Services\ShiftPunchGrouper;
@@ -863,6 +865,47 @@ class ShiftScheduleTest extends TestCase
         $this->assertDatabaseMissing('shifts', ['name' => 'Missing Breaks']);
     }
 
+    /**
+     * A Single Punch Shift keeps the full 4-field daily schedule (unlike
+     * Field Work Shift's weekly span) - only its punch_requirement handling
+     * downstream differs, so validation here stays identical to an ordinary
+     * template submission plus the is_single_punch flag.
+     */
+    public function test_single_punch_shift_creation_requires_full_schedule_fields(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'Single Punch',
+                'time_in' => '08:00',
+                'break_out' => '12:00',
+                'break_in' => '13:00',
+                'time_out' => '17:00',
+                'is_single_punch' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $shift = Shift::where('name', 'Single Punch')->firstOrFail();
+        $this->assertTrue($shift->is_single_punch);
+        $this->assertFalse($shift->is_field_work_pair);
+        $this->assertSame('12:00:00', $shift->break_out);
+        $this->assertSame('13:00:00', $shift->break_in);
+    }
+
+    public function test_single_punch_shift_creation_still_requires_break_times(): void
+    {
+        $this->actingAs($this->createTimeKeeper())
+            ->post(route('attendance.shifts.store'), [
+                'name' => 'Single Punch Missing Breaks',
+                'time_in' => '08:00',
+                'time_out' => '17:00',
+                'is_single_punch' => '1',
+            ])
+            ->assertSessionHasErrors(['break_out', 'break_in']);
+
+        $this->assertDatabaseMissing('shifts', ['name' => 'Single Punch Missing Breaks']);
+    }
+
     public function test_time_keeper_can_assign_shift_to_employee(): void
     {
         $shift = $this->nightShiftModel();
@@ -1141,7 +1184,7 @@ class ShiftScheduleTest extends TestCase
         $this->assertDatabaseHas('attendance_logs', ['user_id' => $employee->id, 'logdate' => '2026-08-05']);
 
         $this->assertTrue(
-            \App\Models\DtrExemptionPeriod::where('user_id', $employee->id)
+            DtrExemptionPeriod::where('user_id', $employee->id)
                 ->where('effective_date', '2026-08-01')
                 ->where('until_date', '2026-08-31')
                 ->exists()
@@ -1167,7 +1210,7 @@ class ShiftScheduleTest extends TestCase
 
         $this->assertFalse($employee->refresh()->dtr_exempt);
 
-        $classified = app(\App\Services\LwopAggregationService::class)->classifyWorkdays(
+        $classified = app(LwopAggregationService::class)->classifyWorkdays(
             $employee, Carbon::parse('2026-08-03'), Carbon::parse('2026-08-20')
         );
 

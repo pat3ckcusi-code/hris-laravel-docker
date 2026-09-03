@@ -423,6 +423,16 @@ class EmployeeScheduleController extends Controller
             $punchRequirementByDay = [1 => 'in_only', 5 => 'out_only'];
         }
 
+        // A Single Punch Shift is likewise self-configuring, but daily rather
+        // than weekly - it needs no days_of_week/work_days override (whatever
+        // was submitted, or the usual Mon-Fri default, applies as normal), and
+        // applies on BOTH add and edit since there's no Monday/Friday
+        // sibling-row hazard to guard against the way Field Work Shift has.
+        if ($assignedShift?->is_single_punch) {
+            $punchRequirement = 'am_in_only_graded';
+            $punchRequirementByDay = [];
+        }
+
         // An "edit"/"remove" submission never carries punch_requirement_by_day
         // (only the "+ Add Shift" form's optional grid does), so this always
         // collapses to a single assign() call using the original
@@ -528,6 +538,14 @@ class EmployeeScheduleController extends Controller
             $workDays = [1, 5];
             $punchRequirement = 'both';
             $punchRequirementByDay = [1 => 'in_only', 5 => 'out_only'];
+        }
+
+        // Same self-configuring override as update()'s "add" path above - see
+        // that comment for why this one applies unconditionally (no form_type
+        // gate) and leaves days_of_week/work_days untouched.
+        if ($assignShiftId !== null && (Shift::find($assignShiftId)?->is_single_punch)) {
+            $punchRequirement = 'am_in_only_graded';
+            $punchRequirementByDay = [];
         }
 
         $employees = User::whereIn('id', $userIds)->get(['id', 'Dept_id', 'dtr_exempt']);

@@ -793,7 +793,11 @@ class DtrController extends Controller
                 // treatment as no_break's am_out/pm_in.
                 $hasBreakSlots = ! $rowSchedule->noBreak && $rowSchedule->punchRequirement === 'both';
                 $amInEligible = $rowSchedule->punchRequirement !== 'out_only';
-                $pmOutEligible = $rowSchedule->punchRequirement !== 'in_only';
+                // A Single Punch Shift's PM Out is never required (only AM In
+                // is graded), same treatment as a Field Work in_only day's PM
+                // Out - a real PM Out punch still displays normally when
+                // present, this only controls the empty-cell fallback.
+                $pmOutEligible = ! in_array($rowSchedule->punchRequirement, ['in_only', 'am_in_only_graded'], true);
 
                 $tAmIn = $missing($dtr->time_in_am, $amInEligible);
                 $tAmOut = $missing($dtr->time_out_am, $hasBreakSlots);
@@ -1376,7 +1380,7 @@ class DtrController extends Controller
             // am_out/pm_in already do.
             $placeholderHasBreakSlots = ! $dateSchedule->noBreak && $dateSchedule->punchRequirement === 'both';
             $placeholderAmInMissing = $dateSchedule->punchRequirement !== 'out_only' ? 'Missing' : '-';
-            $placeholderPmOutMissing = $dateSchedule->punchRequirement !== 'in_only' ? 'Missing' : '-';
+            $placeholderPmOutMissing = in_array($dateSchedule->punchRequirement, ['in_only', 'am_in_only_graded'], true) ? '-' : 'Missing';
 
             $data->push([
                 'date' => $cursor->format('M d, Y (D)'),

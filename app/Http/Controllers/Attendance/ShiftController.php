@@ -141,7 +141,7 @@ class ShiftController extends Controller
      * (pre-fills the per-employee checkbox when this template is picked) -
      * it never controls whether break_out/break_in are required or used.
      *
-     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool, no_break: bool, punch_requirement: string, is_field_work_pair: bool}
+     * @return array{name: string, time_in: string, break_out: string|null, break_in: string|null, time_out: string, crosses_midnight: bool, is_active: bool, is_global: bool, no_break: bool, punch_requirement: string, is_field_work_pair: bool, is_single_punch: bool}
      */
     private function validateShift(Request $request): array
     {
@@ -157,6 +157,7 @@ class ShiftController extends Controller
             'no_break' => ['nullable', 'boolean'],
             'punch_requirement' => ['nullable', 'string', 'in:both,in_only,out_only'],
             'is_field_work_pair' => ['nullable', 'boolean'],
+            'is_single_punch' => ['nullable', 'boolean'],
             'department_ids' => ['nullable', 'array'],
             'department_ids.*' => ['integer', 'exists:departments,Dept_id'],
         ]);
@@ -199,6 +200,7 @@ class ShiftController extends Controller
             'no_break' => $request->boolean('no_break'),
             'punch_requirement' => $v['punch_requirement'] ?? 'both',
             'is_field_work_pair' => $isFieldWorkPair,
+            'is_single_punch' => $request->boolean('is_single_punch'),
         ];
     }
 

@@ -22,6 +22,7 @@
 .shift-dept-checklist label { display:flex; align-items:center; gap:.4rem; font-size:.78rem; color:#374151; padding:.15rem 0; cursor:pointer; }
 .shift-dept-checklist input { width:auto; }
 .shift-badge-fieldwork { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#dcfce7; color:#166534; }
+.shift-badge-singlepunch { display:inline-block; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; background:#fef3c7; color:#92400e; }
 .shift-cell-na { color:#94a3b8; font-size:.78rem; }
 .fw-pattern-card { border-color:#bbf7d0; background:#f0fdf4; }
 .fw-pattern-rule { margin-top:1rem; padding-top:.85rem; border-top:1px dashed #bbf7d0; }
@@ -30,6 +31,11 @@
 .fw-pattern-table th, .fw-pattern-table td { padding:.35rem .5rem; border:1px solid #bbf7d0; text-align:left; }
 .fw-pattern-table th { background:#dcfce7; color:#166534; font-weight:600; }
 .fw-pattern-table td { color:#374151; background:#fff; }
+.sp-pattern-card { border-color:#fde68a; background:#fffbeb; }
+.sp-pattern-rule { margin-top:1rem; padding-top:.85rem; border-top:1px dashed #fde68a; }
+.sp-pattern-rule h4 { margin:0 0 .5rem; font-size:.82rem; font-weight:600; color:#92400e; }
+.sp-pattern-rule ul { margin:0; padding-left:1.1rem; font-size:.78rem; color:#374151; }
+.sp-pattern-rule li { margin-bottom:.3rem; }
 </style>
 @endsection
 
@@ -142,6 +148,64 @@
         </table>
     </div>
 </div>
+
+{{-- Single Punch Shift: a normal, full 4-slot daily schedule, but only AM In
+     is ever graded. Keeps the same fields as the generic form above (unlike
+     Field Work Shift's minimal form) since Break Out/In/Time Out are still
+     real, useful reference times even though they're never penalized. --}}
+<div class="shift-form-card sp-pattern-card">
+    <h3 style="margin:0 0 .5rem;font-size:.9rem;font-weight:600;color:#0f172a;">New Single Punch Shift</h3>
+    <p style="margin:0 0 .75rem;font-size:.78rem;color:#64748b;">
+        For employees realistically expected to punch only AM In. AM Out/PM In/PM Out are still accepted and
+        recorded if punched, but only AM In is graded for lateness against Time In below - see the rule below.
+    </p>
+    <form method="POST" action="{{ route('attendance.shifts.store') }}" id="create-single-punch-form">
+        @csrf
+        <input type="hidden" name="is_single_punch" value="1">
+        <div class="shift-form-grid">
+            <div class="shift-field"><label>Name</label><input type="text" name="name" placeholder="e.g. Single Punch" required></div>
+            <div class="shift-field"><label>Time In</label><input type="time" name="time_in" value="08:00" required></div>
+            <div class="shift-field"><label>Break Out</label><input type="time" name="break_out" value="12:00" required></div>
+            <div class="shift-field"><label>Break In</label><input type="time" name="break_in" value="13:00" required></div>
+            <div class="shift-field"><label>Time Out</label><input type="time" name="time_out" value="17:00" required></div>
+            <div class="shift-field" style="align-self:center;">
+                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" name="no_break" value="1" id="create-sp-no-break" style="width:auto;">
+                    <span>No Break (2-punch) default</span>
+                </label>
+            </div>
+            <div class="shift-field" style="align-self:center;">
+                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+                    <input type="checkbox" name="is_global" value="1" id="create-sp-is-global" style="width:auto;" checked onchange="toggleCreateSpDeptPicker(this)">
+                    <span>Shared / All Departments</span>
+                </label>
+            </div>
+            <div class="shift-field" id="create-sp-dept-field" style="display:none;">
+                <label>Departments</label>
+                <div class="shift-dept-checklist">
+                    @foreach ($departments as $d)
+                        <label>
+                            <input type="checkbox" name="department_ids[]" value="{{ $d->Dept_id }}">
+                            <span>{{ $d->Dept_name }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+            <div class="shift-field"><button type="submit" class="hris-btn hris-btn-primary">Add Shift</button></div>
+        </div>
+    </form>
+    <div class="sp-pattern-rule">
+        <h4>Single Punch Shift: Only AM In Is Graded</h4>
+        <ul>
+            <li>Late is checked only on AM In, against Time In above - a late lunch return (PM In) is never counted.</li>
+            <li>Undertime is never charged, regardless of which slots are punched or missing.</li>
+            <li>A day with <b>no punches at all</b> is Absent, same as any other shift type.</li>
+            <li>A day where AM In specifically is missing but <b>another slot was punched</b> is treated as Late,
+                using that punch's own time instead of AM In - not Absent, since it's still proof the employee
+                was present.</li>
+        </ul>
+    </div>
+</div>
 @else
 <div class="shift-form-card">
     <span style="color:#64748b;font-size:.82rem;">View only - your Time Keeper manages shift templates.</span>
@@ -191,6 +255,8 @@
                         <td>
                             @if ($shift->is_field_work_pair)
                                 <span class="shift-badge-fieldwork">Field Work</span>
+                            @elseif ($shift->is_single_punch)
+                                <span class="shift-badge-singlepunch">Single Punch</span>
                             @elseif ($shift->crosses_midnight)
                                 <span class="shift-badge-night">Night</span>
                             @else
@@ -236,6 +302,7 @@
                                     @csrf
                                     @method('PUT')
                                     <input type="hidden" name="is_field_work_pair" value="{{ $shift->is_field_work_pair ? 1 : 0 }}">
+                                    <input type="hidden" name="is_single_punch" value="{{ $shift->is_single_punch ? 1 : 0 }}">
                                     <button type="submit" class="hris-btn hris-btn-primary">Save</button>
                                 </form>
                                 <form class="shift-inline-form" method="POST" action="{{ route('attendance.shifts.destroy', $shift) }}"
@@ -266,6 +333,10 @@ function toggleCreateDeptPicker(cb) {
 
 function toggleCreateFwDeptPicker(cb) {
     document.getElementById('create-fw-dept-field').style.display = cb.checked ? 'none' : 'block';
+}
+
+function toggleCreateSpDeptPicker(cb) {
+    document.getElementById('create-sp-dept-field').style.display = cb.checked ? 'none' : 'block';
 }
 
 function toggleRowDeptPicker(cb, shiftId) {

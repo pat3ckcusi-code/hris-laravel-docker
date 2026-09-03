@@ -40,6 +40,22 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * and crosses_midnight is always false for a template flagged this way,
  * since neither concept applies across a weekly (not daily) span.
  *
+ * is_single_punch is likewise authoritative, not a pre-fill - a template
+ * flagged this way represents a Single Punch Shift, where employees are
+ * realistically expected to punch only AM In each workday (though AM Out/PM
+ * In/PM Out are still accepted and recorded if punched). EmployeeScheduleController
+ * forces punch_requirement to 'am_in_only_graded' on assignment regardless of
+ * what the form submits, on both add and edit (no Monday/Friday sibling-row
+ * hazard to guard against, unlike is_field_work_pair) - but unlike
+ * is_field_work_pair, it does NOT touch days_of_week/work_days, since this is
+ * a daily (every scheduled workday independently graded), not weekly,
+ * requirement, and it keeps the full 4-field schedule (break_out/break_in/
+ * time_out are not nulled). Only AM In is graded for lateness
+ * (LateCalculator), against this template's own time_in; undertime is never
+ * charged (UndertimeCalculator). See LateCalculator's docblock for how a
+ * missing AM In with another slot punched is handled (stood in for AM In
+ * rather than treated as absent).
+ *
  * @property int $id
  * @property string $name
  * @property string $time_in
@@ -52,6 +68,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property bool $no_break
  * @property string $punch_requirement
  * @property bool $is_field_work_pair
+ * @property bool $is_single_punch
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -71,6 +88,7 @@ class Shift extends Model
         'no_break',
         'punch_requirement',
         'is_field_work_pair',
+        'is_single_punch',
     ];
 
     protected function casts(): array
@@ -81,6 +99,7 @@ class Shift extends Model
             'is_global' => 'boolean',
             'no_break' => 'boolean',
             'is_field_work_pair' => 'boolean',
+            'is_single_punch' => 'boolean',
         ];
     }
 
