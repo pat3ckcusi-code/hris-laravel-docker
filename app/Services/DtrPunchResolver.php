@@ -6,6 +6,7 @@ use App\Services\Attendance\AttendanceMatcher;
 use App\Services\Attendance\AttendanceStatusResolver;
 use App\Services\Attendance\HoursWorkedCalculator;
 use App\Services\Attendance\LateCalculator;
+use App\Services\Attendance\MatchResult;
 use App\Services\Attendance\OvertimeCalculator;
 use App\Services\Attendance\UndertimeCalculator;
 use App\Support\WorkSchedule;
@@ -308,6 +309,153 @@ class DtrPunchResolver
         }
 
         return $minutes;
+    }
+
+    /**
+     * Resolves REAL (already-punched, non-imputed) late/undertime minutes for
+     * a day that's only PARTIALLY covered, gated per-slot by $coveredSlots -
+     * the counterpart to imputedLateMinutes()/imputedUndertimeMinutes() above
+     * for punches that DID happen rather than ones that are missing.
+     *
+     * $storedLateMinutes/$storedUndertimeMinutes are the day's already-stored
+     * dtrs.late_minutes/undertime_minutes - each itself a sum of two
+     * independent components (LateCalculator: am_in + pm_in; UndertimeCalculator:
+     * am_out + pm_out - see those classes' own docblocks). A caller that
+     * decides "explained or not" for the WHOLE stored value from a single
+     * slot's coverage (e.g. "pm_in is suspension-covered, so zero
+     * late_minutes") wrongly discards a genuine, unrelated component from the
+     * OTHER slot whenever only part of a day is covered - the same bug class
+     * already fixed on the imputed side above and in DtrController's Locator
+     * branch (Form48ExportService::computeSlotPenalties()).
+     *
+     * This method resolves each metric (late/undertime) independently by how
+     * many of its OWN two relevant slots $coveredSlots names:
+     *   - Neither covered: the stored value is trusted as-is. This is
+     *     deliberate, not a shortcut - a stored dtrs.late_minutes/
+     *     undertime_minutes is already correctly component-scoped for
+     *     whichever punches actually happened (Locator/DtrExcuse/
+     *     WorkSuspension exclusions are baked in at import time via
+     *     PersonnelLogImportService's excludedSlots param), so there is
+     *     nothing to recompute when nothing about this metric is covered.
+     *   - Both covered: 0, unconditionally - a whole-day source (ETA/Office
+     *     Order/Travel Order/full-day Leave/full-day WorkSuspension) covers
+     *     every slot regardless of punch data, and the day is fully
+     *     authorized either way.
+     *   - Exactly one covered: this is the only case genuinely needing
+     *     recomputation, since the stored aggregate can't be split without
+     *     looking at which slot actually produced which part of it. Rebuilds
+     *     a MatchResult from the raw punch times (nulling the covered slot)
+     *     and reruns it through the real LateCalculator/UndertimeCalculator,
+     *     so the uncovered slot's own genuine contribution survives exactly
+     *     as it would in a fully-uncovered day.
+     *
+     * No punchRequirement guard, unlike the imputed methods above: neither
+     * calculator special-cases in_only/out_only, and a real punch's lateness
+     * (e.g. a late Field Work Monday check-in) should still score normally -
+     * unlike imputation, this isn't inferring a missing punch's existence.
+     *
+     * Each punch's Carbon is anchored to whichever of {the day before, the
+     * same day as, the day after} its slot's own reference time
+     * (WorkSchedule::referenceDateTime(), e.g. workEnd for pm_out) lands
+     * CLOSEST to that reference - not simply WorkSchedule::slotDate()'s own
+     * calendar day for the slot, and not referenceDateTime()+isShiftStart run
+     * directly against the punch. Neither of those alone is safe here:
+     * referenceDateTime()'s day-rollover rule only holds for the schedule's
+     * own fixed threshold values, which have a known, always-forward
+     * relationship to workStart - an arbitrary real punch (late or early by
+     * definition) does not, so running it against the punch directly can
+     * roll a merely-late-but-same-day punch into the wrong day entirely.
+     * slotDate() alone is closer (it only ever asks "which day does the
+     * THRESHOLD fall on"), but a schedule's own crossesMidnight flag only
+     * describes whether the schedule is DESIGNED to cross midnight - it says
+     * nothing about whether a given PUNCH happens to spill past midnight
+     * anyway. A real, recurring shape in this data: an evening shift ending
+     * at e.g. 23:00 (crossesMidnight=false, since workStart < workEnd) whose
+     * pm_out is punched a little after 00:00 because the employee stayed
+     * unusually late - AttendanceMatcher's own late_out_hours tolerance
+     * matches that punch as pm_out at import time, using the punch's own
+     * genuine attendance_logs datetime, so there's no ambiguity there; but a
+     * bare dtrs.time_out_pm column only keeps the clock value, and pairing
+     * it with slotDate()'s answer (unchanged, since crossesMidnight is
+     * false) reconstructs it same-day - ~23 hours before the real 23:00
+     * reference instead of ~1 hour after it, producing a wildly wrong
+     * multi-hour "undertime" instead of the correct 0. Picking whichever of
+     * the three adjacent-day candidates is nearest in absolute time to the
+     * slot's own reference self-corrects this the same way a human reading
+     * "00:04" right after a 23:00 shift end would, while leaving an
+     * ordinary, genuinely-close-to-its-reference punch (the overwhelming
+     * majority of rows) exactly where slotDate() would already put it.
+     *
+     * @param  array<int, string>  $coveredSlots  slot keys ('am_in'|'am_out'|'pm_in'|'pm_out')
+     *                                             already explained by something else - see
+     *                                             imputedLateMinutes()'s docblock for why each
+     *                                             component must be gated independently.
+     * @return array{late_minutes: int, undertime_minutes: int}
+     */
+    public function realPenalties(?string $timeInAm, ?string $timeOutAm, ?string $timeInPm, ?string $timeOutPm, string $shiftDate, WorkSchedule $schedule, int $storedLateMinutes, int $storedUndertimeMinutes, array $coveredSlots = []): array
+    {
+        $lateCoveredCount = count(array_intersect(['am_in', 'pm_in'], $coveredSlots));
+        $undertimeCoveredCount = count(array_intersect(['am_out', 'pm_out'], $coveredSlots));
+
+        $recomputed = null;
+        if ($lateCoveredCount === 1 || $undertimeCoveredCount === 1) {
+            $referenceTime = fn (string $slot): string => match ($slot) {
+                'am_in' => $schedule->workStart,
+                'am_out' => $schedule->morningEnd,
+                'pm_in' => $schedule->lunchReturn,
+                'pm_out' => $schedule->workEnd,
+            };
+
+            $carbon = function (?string $time, string $slot) use ($shiftDate, $schedule, $coveredSlots, $referenceTime): ?Carbon {
+                if (! $time || in_array($slot, $coveredSlots, true)) {
+                    return null;
+                }
+
+                $reference = $schedule->referenceDateTime($shiftDate, $referenceTime($slot), isShiftStart: $slot === 'am_in');
+                $hhmm = substr($time, 0, 5);
+                $sameDay = Carbon::parse($schedule->slotDate($shiftDate, $slot).' '.$hhmm.':00');
+
+                $best = $sameDay;
+                $bestDiff = abs($sameDay->diffInMinutes($reference, false));
+                foreach ([-1, 1] as $dayOffset) {
+                    $candidate = $sameDay->copy()->addDays($dayOffset);
+                    $diff = abs($candidate->diffInMinutes($reference, false));
+                    if ($diff < $bestDiff) {
+                        $best = $candidate;
+                        $bestDiff = $diff;
+                    }
+                }
+
+                return $best;
+            };
+
+            $result = new MatchResult([
+                'am_in' => $carbon($timeInAm, 'am_in'),
+                'am_out' => $carbon($timeOutAm, 'am_out'),
+                'pm_in' => $carbon($timeInPm, 'pm_in'),
+                'pm_out' => $carbon($timeOutPm, 'pm_out'),
+                'ot_in' => null,
+                'ot_out' => null,
+            ], []);
+
+            $recomputed = [
+                'late_minutes' => $this->lateCalculator->minutes($result, $shiftDate, $schedule),
+                'undertime_minutes' => $this->undertimeCalculator->minutes($result, $shiftDate, $schedule),
+            ];
+        }
+
+        return [
+            'late_minutes' => match ($lateCoveredCount) {
+                0 => $storedLateMinutes,
+                2 => 0,
+                default => $recomputed['late_minutes'],
+            },
+            'undertime_minutes' => match ($undertimeCoveredCount) {
+                0 => $storedUndertimeMinutes,
+                2 => 0,
+                default => $recomputed['undertime_minutes'],
+            },
+        ];
     }
 
     private function fmt(?Carbon $time): ?string

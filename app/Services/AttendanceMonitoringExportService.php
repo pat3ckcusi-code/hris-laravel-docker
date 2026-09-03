@@ -438,26 +438,6 @@ class AttendanceMonitoringExportService
                 return $slotDate === $periodEndNextDay && $fullDayLeaveNextDayByUser->has($emp->id);
             };
 
-            // Late/undertime-specific views of $isSlotCovered, checking the same slots
-            // the pre-existing DtrExcuse-only logic used to check directly (tardiness ->
-            // am_in/pm_in, undertime -> pm_out). Since $isSlotCovered already folds
-            // DtrExcuse::excludedSlotKeys() into its per-slot check, this reproduces the
-            // old excuse-only behavior unchanged while additionally suppressing
-            // tardiness/undertime on any Office-Order/Travel-Order/ETA/approved-Leave/
-            // Locator/Suspension/WFH/Field-Work-covered day - closing the gap where
-            // those whole-day sources explained an absence but not a same-day
-            // late/undertime charge.
-            $isLateCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'am_in') || $isSlotCovered($dateStr, 'pm_in');
-            $isUndertimeCovered = fn (string $dateStr): bool => $isSlotCovered($dateStr, 'pm_out');
-
-            $undertimeCount = $workDtrs->filter(
-                fn ($d) => $d->undertime_minutes > 0 && ! $isUndertimeCovered(Carbon::parse($d->date)->toDateString())
-            )->count();
-
-            $tardinessCount = $workDtrs->filter(
-                fn ($d) => $d->late_minutes > 0 && ! $isLateCovered(Carbon::parse($d->date)->toDateString())
-            )->count();
-
             // Flagged when a scheduled, already-ended workday has no punched logs at all
             // and nothing (Leave/Locator/ETA/Office Order/Travel Order/DtrExcuse) explains
             // the absence. DTR-exempt employees are never expected to punch, so they're
@@ -612,16 +592,6 @@ class AttendanceMonitoringExportService
             // Leave" total as any manually-flagged (is_absent) Dtr rows above.
             $unfiledCount += count($unfiledLeaveDays);
 
-            $tardinessMinutes = $workDtrs->sum(
-                fn ($d) => $isLateCovered(Carbon::parse($d->date)->toDateString()) ? 0 : (int) $d->late_minutes
-            );
-
-            $undertimeMinutes = $workDtrs->sum(
-                fn ($d) => $isUndertimeCovered(Carbon::parse($d->date)->toDateString()) ? 0 : (int) $d->undertime_minutes
-            );
-
-            $totalMinutes = $tardinessMinutes + $undertimeMinutes;
-
             // A day whose PM Out is missing (but PM In exists) means the employee never
             // logged their departure - since there's no punch proving they stayed later,
             // charge the shift's afternoon block (break-in -> shift end) as undertime,
@@ -636,12 +606,35 @@ class AttendanceMonitoringExportService
             $punchResolver = new DtrPunchResolver;
             $phantomUndertimeByDate = [];
             $phantomLateByDate = [];
+            $realUndertimeByDate = [];
+            $realLateByDate = [];
             foreach ($workDtrs as $d) {
                 $dateStr = Carbon::parse($d->date)->toDateString();
 
                 $schedule = WorkSchedule::forUserOnDate($emp, Carbon::parse($d->date), $empAssignments);
                 if (($suspension = $suspensionsByDate->get($dateStr)) !== null && ! $empIsFrontlineExempt) {
                     [$schedule] = $schedule->applySuspension($suspension->suspension_time);
+                }
+
+                // REAL (already-punched) late/undertime, decomposed per component the
+                // same way the phantom pass below is - dtrs.late_minutes/undertime_minutes
+                // is itself a sum of two independent slots each, so an all-or-nothing
+                // "is ANY relevant slot covered" check would wrongly zero a genuine,
+                // unrelated component whenever only part of a day is covered (e.g. an
+                // afternoon-only WorkSuspension must not suppress a real, unrelated
+                // morning tardiness). See DtrPunchResolver::realPenalties()'s own
+                // docblock.
+                $realCoveredSlots = array_values(array_filter(
+                    ['am_in', 'am_out', 'pm_in', 'pm_out'],
+                    fn (string $slot): bool => $isSlotCovered($dateStr, $slot)
+                ));
+                $real = $punchResolver->realPenalties($d->time_in_am, $d->time_out_am, $d->time_in_pm, $d->time_out_pm, $dateStr, $schedule, (int) $d->late_minutes, (int) $d->undertime_minutes, $realCoveredSlots);
+
+                if ($real['late_minutes'] > 0) {
+                    $realLateByDate[$dateStr] = $real['late_minutes'];
+                }
+                if ($real['undertime_minutes'] > 0) {
+                    $realUndertimeByDate[$dateStr] = $real['undertime_minutes'];
                 }
 
                 // imputedUndertimeMinutes()/imputedLateMinutes() each sum two
@@ -678,13 +671,11 @@ class AttendanceMonitoringExportService
                 }
             }
 
-            $undertimeCount += count($phantomUndertimeByDate);
-            $undertimeMinutes += array_sum($phantomUndertimeByDate);
-            $totalMinutes += array_sum($phantomUndertimeByDate);
-
-            $tardinessCount += count($phantomLateByDate);
-            $tardinessMinutes += array_sum($phantomLateByDate);
-            $totalMinutes += array_sum($phantomLateByDate);
+            $tardinessCount = count($realLateByDate) + count($phantomLateByDate);
+            $tardinessMinutes = array_sum($realLateByDate) + array_sum($phantomLateByDate);
+            $undertimeCount = count($realUndertimeByDate) + count($phantomUndertimeByDate);
+            $undertimeMinutes = array_sum($realUndertimeByDate) + array_sum($phantomUndertimeByDate);
+            $totalMinutes = $tardinessMinutes + $undertimeMinutes;
 
             $personalLocatorMinutes = $personalLocators->sum(function ($l) {
                 if (! $l->intended_departure_time || ! $l->intended_arrival_time) {
@@ -706,11 +697,12 @@ class AttendanceMonitoringExportService
             // Each entry: ['day' => int, 'label' => string]
             $remarkEntries = collect();
 
-            // DTR: tardiness days (skip any day already explained by Office Order/Travel
-            // Order/ETA/approved Leave/Locator/DtrExcuse - see $isLateCovered above).
-            foreach ($workDtrs->filter(fn ($d) => $d->late_minutes > 0 && ! $isLateCovered(Carbon::parse($d->date)->toDateString())) as $d) {
-                $day = Carbon::parse($d->date)->day;
-                $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$d->late_minutes.' mins)']);
+            // DTR: tardiness days, per-component-decomposed (see $realLateByDate above -
+            // an afternoon-only WorkSuspension/Locator/DtrExcuse must not suppress a
+            // genuine, unrelated morning lateness, or vice versa).
+            foreach ($realLateByDate as $dateStr => $mins) {
+                $day = Carbon::parse($dateStr)->day;
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Tardy ('.$mins.' mins)']);
             }
             foreach ($phantomLateByDate as $dateStr => $mins) {
                 $day = Carbon::parse($dateStr)->day;
@@ -718,10 +710,10 @@ class AttendanceMonitoringExportService
             }
 
             // DTR: undertime days (including missing-PM-Out days charged as phantom
-            // undertime), skipping any day already explained per $isUndertimeCovered above.
-            foreach ($workDtrs->filter(fn ($d) => $d->undertime_minutes > 0 && ! $isUndertimeCovered(Carbon::parse($d->date)->toDateString())) as $d) {
-                $day = Carbon::parse($d->date)->day;
-                $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$d->undertime_minutes.' mins)']);
+            // undertime), same per-component decomposition as tardiness above.
+            foreach ($realUndertimeByDate as $dateStr => $mins) {
+                $day = Carbon::parse($dateStr)->day;
+                $remarkEntries->push(['day' => $day, 'label' => $day.'-Undertime ('.$mins.' mins)']);
             }
             foreach ($phantomUndertimeByDate as $dateStr => $mins) {
                 $day = Carbon::parse($dateStr)->day;
