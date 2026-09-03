@@ -8,6 +8,7 @@ use App\Models\HRAuditTrail;
 use App\Models\LeaveBalance;
 use App\Models\LeaveLedger;
 use App\Models\User;
+use App\Services\AttendanceAdjustmentSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -137,6 +138,77 @@ class AttendanceAdjustmentReviewTest extends TestCase
             ->postJson(route('api.leave-manager.attendance-deductions.deduct', $item));
 
         $second->assertStatus(422)->assertJsonFragment(['error' => 'This item has already been processed.']);
+    }
+
+    /**
+     * The outer `processed_status !== 'pending'` guard in
+     * AttendanceAdjustmentSummaryService::deductForItem() runs BEFORE the
+     * DB transaction/lock even starts, so it can't by itself close the
+     * window where two concurrent calls (a UI double-click, or a
+     * single-item deduct racing bulkDeduct() over the same item) each read
+     * the item while it's still 'pending' and both pass that check. Simulate
+     * that race directly: two independently-loaded Eloquent instances of the
+     * SAME row, both still holding processed_status = 'pending' in memory -
+     * exactly what two concurrent requests would each see before either one
+     * writes back. Only a lock-and-recheck against a FRESH read inside the
+     * transaction (what the fix adds) can catch the second one.
+     */
+    public function test_deduct_rejects_a_concurrent_double_deduct_even_with_a_stale_pending_item_instance(): void
+    {
+        $employee = $this->createEmployee();
+        $this->createLeaveBalance($employee, ['VL' => 15]);
+        $item = $this->makeItem($employee, ['unfiled_count' => 1]);
+
+        $staleInstanceA = AttendanceAdjustmentSubmissionItem::find($item->id);
+        $staleInstanceB = AttendanceAdjustmentSubmissionItem::find($item->id);
+        $this->assertSame('pending', $staleInstanceA->processed_status);
+        $this->assertSame('pending', $staleInstanceB->processed_status);
+
+        $leaveManager = $this->createLeaveManager();
+        $service = app(AttendanceAdjustmentSummaryService::class);
+
+        $service->deductForItem($staleInstanceA, $leaveManager);
+
+        $threw = false;
+        try {
+            $service->deductForItem($staleInstanceB, $leaveManager);
+        } catch (\RuntimeException $e) {
+            $threw = true;
+            $this->assertSame('This item has already been processed.', $e->getMessage());
+        }
+
+        $this->assertTrue($threw, 'The second, concurrently-loaded call must be rejected instead of double-deducting.');
+        $this->assertEquals(14.0, LeaveBalance::where('user_id', $employee->id)->first()->VL, 'VL must be deducted exactly once, not twice.');
+        $this->assertSame(
+            1,
+            LeaveLedger::where('user_id', $employee->id)->where('transaction_type', 'ATTENDANCE_DEDUCTION')->count(),
+            'Only one ledger entry must be written despite two concurrent attempts.'
+        );
+    }
+
+    /** Same TOCTOU window as the deduct race above, applied to dismissItem() for consistency. */
+    public function test_dismiss_rejects_a_concurrent_double_dismiss_even_with_a_stale_pending_item_instance(): void
+    {
+        $employee = $this->createEmployee();
+        $item = $this->makeItem($employee, ['unfiled_count' => 1]);
+
+        $staleInstanceA = AttendanceAdjustmentSubmissionItem::find($item->id);
+        $staleInstanceB = AttendanceAdjustmentSubmissionItem::find($item->id);
+
+        $leaveManager = $this->createLeaveManager();
+        $service = app(AttendanceAdjustmentSummaryService::class);
+
+        $service->dismissItem($staleInstanceA, 'First dismiss.', $leaveManager);
+
+        $threw = false;
+        try {
+            $service->dismissItem($staleInstanceB, 'Second, concurrent dismiss.', $leaveManager);
+        } catch (\RuntimeException $e) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'The second, concurrently-loaded dismiss must be rejected.');
+        $this->assertSame('First dismiss.', $item->fresh()->action_remarks);
     }
 
     public function test_dismiss_requires_remarks(): void

@@ -51,6 +51,18 @@ class AttendanceMonitoringExportService
 
         $employeeIds = $employees->pluck('id')->toArray();
 
+        $periodStart = Carbon::createFromDate($year, $month, 1)->toDateString();
+        $periodEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+        // A crossing shift's checkout can land one calendar day past $periodEnd
+        // (e.g. a shift starting on the last day of the month) - widen the upper
+        // bound of the leave/ETA/Office Order/Travel Order/suspension lookups
+        // below by a day so $isSlotCovered's crossing-shift next-day fallback
+        // further down can still find them, mirroring the exact $toNextDay
+        // padding convention DtrController::data() already uses for the same
+        // problem.
+        $periodEndNextDay = Carbon::parse($periodEnd)->addDay()->toDateString();
+
         // Bulk-load - no N+1
         $dtrs = Dtr::whereIn('employee_id', $employeeIds)
             ->whereYear('date', $year)
@@ -58,6 +70,13 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('employee_id');
 
+        // Strictly month-scoped (NOT padded to $periodEndNextDay) - $empLeaveDates
+        // below feeds $officialLeaveCount and the per-day remarks loop
+        // unbounded/unclamped by month, so a leave date landing on the 1st of
+        // next month would otherwise double up with this month's own day 1.
+        // The crossing-shift next-day fallback's need to see a leave on
+        // $periodEndNextDay is served separately by $fullDayLeaveNextDayByUser
+        // below instead.
         $approvedLeaveDatesByUser = LeaveDate::where('is_cancelled', false)
             ->whereHas('leaveRequest', function ($q) use ($employeeIds) {
                 $q->whereIn('user_id', $employeeIds)->where('status', 'approved');
@@ -68,6 +87,21 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy(fn ($ld) => $ld->leaveRequest->user_id ?? 0);
 
+        // Narrow, dedicated lookup for the crossing-shift next-day fallback only:
+        // which employees have a full-day (days >= 1) approved leave on the exact
+        // date right after the period ends. Kept separate from
+        // $approvedLeaveDatesByUser above so it can never leak into the
+        // month-bounded stats/remarks that source feeds.
+        $fullDayLeaveNextDayByUser = LeaveDate::query()
+            ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
+            ->where('leave_dates.is_cancelled', false)
+            ->where('leave_dates.days', '>=', 1)
+            ->where('leave_dates.leave_date', $periodEndNextDay)
+            ->where('leave_requests.status', 'approved')
+            ->whereIn('leave_requests.user_id', $employeeIds)
+            ->pluck('leave_requests.user_id')
+            ->flip();
+
         $locators = Locator::whereIn('user_id', $employeeIds)
             ->where('status', 'approved')
             ->whereYear('travel_date', $year)
@@ -75,15 +109,15 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id');
 
-        // ETAs that overlap with the month (departure or arrival within the month)
+        // ETAs that overlap with the month (departure or arrival within the
+        // month), padded through $periodEndNextDay so a single-day ETA filed for
+        // the day right after the month is still visible to the crossing-shift
+        // next-day fallback below.
         $etas = Eta::whereIn('user_id', $employeeIds)
             ->where('status', 'approved')
-            ->where(function ($q) use ($month, $year) {
-                $q->where(function ($q2) use ($month, $year) {
-                    $q2->whereYear('departure_date', $year)->whereMonth('departure_date', $month);
-                })->orWhere(function ($q2) use ($month, $year) {
-                    $q2->whereYear('arrival_date', $year)->whereMonth('arrival_date', $month);
-                });
+            ->where(function ($q) use ($periodStart, $periodEndNextDay) {
+                $q->whereBetween('departure_date', [$periodStart, $periodEndNextDay])
+                    ->orWhereBetween('arrival_date', [$periodStart, $periodEndNextDay]);
             })
             ->get()
             ->groupBy('user_id');
@@ -109,9 +143,6 @@ class AttendanceMonitoringExportService
             ->get()
             ->groupBy('user_id');
 
-        $periodStart = Carbon::createFromDate($year, $month, 1)->toDateString();
-        $periodEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
-
         $allAssignments = EmployeeShiftSchedule::whereIn('user_id', $employeeIds)
             ->whereBetween('date', [$periodStart, $periodEnd])
             ->get()
@@ -127,7 +158,7 @@ class AttendanceMonitoringExportService
             ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
             ->whereIn('office_order_employees.emp_no', $empNos)
             ->where('office_orders.status', '!=', 'Cancelled')
-            ->where('office_orders.issued_date', '<=', $periodEnd)
+            ->where('office_orders.issued_date', '<=', $periodEndNextDay)
             ->where(function ($q) use ($periodStart): void {
                 $q->where('office_orders.effective_date', '>=', $periodStart)
                     ->orWhere(function ($q2) use ($periodStart): void {
@@ -143,7 +174,7 @@ class AttendanceMonitoringExportService
             ->join('travel_order_employees', 'travel_orders.id', '=', 'travel_order_employees.travel_order_id')
             ->whereIn('travel_order_employees.emp_no', $empNos)
             ->where('travel_orders.status', 'Approved')
-            ->where('travel_orders.start_date', '<=', $periodEnd)
+            ->where('travel_orders.start_date', '<=', $periodEndNextDay)
             ->where('travel_orders.end_date', '>=', $periodStart)
             ->select('travel_order_employees.emp_no', 'travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
             ->get()
@@ -160,13 +191,13 @@ class AttendanceMonitoringExportService
         // counted as an absence day, same as a holiday; a partial-day suspension
         // instead excludes just the slots it covers (per employee schedule, resolved
         // below) via WorkSchedule::applySuspension().
-        $suspensions = WorkSuspension::whereBetween('suspension_date', [$periodStart, $periodEnd])->get();
+        $suspensions = WorkSuspension::whereBetween('suspension_date', [$periodStart, $periodEndNextDay])->get();
         $fullDaySuspensionDates = $suspensions->filter(fn (WorkSuspension $s) => $s->suspension_time === null)
             ->pluck('suspension_date')
             ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->flip();
 
-        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $exemptionsByUser, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $suspensions, $fullDaySuspensionDates, $periodStart, $periodEnd) {
+        return $employees->map(function (User $emp) use ($dtrs, $approvedLeaveDatesByUser, $fullDayLeaveNextDayByUser, $locators, $etas, $uniformViolations, $dtrExcuses, $exemptionsByUser, $month, $year, $allAssignments, $officeOrdersByEmpNo, $travelOrdersByEmpNo, $holidays, $suspensions, $fullDaySuspensionDates, $periodStart, $periodEnd, $periodEndNextDay) {
             $empDtrs = $dtrs->get($emp->id, collect());
             $empLeaveDates = $approvedLeaveDatesByUser->get($emp->id, collect());
             $empLocators = $locators->get($emp->id, collect());
@@ -207,11 +238,14 @@ class AttendanceMonitoringExportService
             $approvedLeaveDateStrings = $empLeaveDates
                 ->mapWithKeys(fn ($ld) => [Carbon::parse($ld->leave_date)->toDateString() => (float) $ld->days]);
 
-            $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings, $empExcusesByDate) {
+            $unfiledCount = $workDtrs->filter(function ($d) use ($approvedLeaveDateStrings, $empExcusesByDate, $empIsExemptOnDate) {
                 if (! $d->is_absent) {
                     return false;
                 }
                 $dateStr = Carbon::parse($d->date)->toDateString();
+                if ($empIsExemptOnDate($dateStr)) {
+                    return false;
+                }
                 if ($approvedLeaveDateStrings->has($dateStr)) {
                     return false;
                 }
@@ -248,7 +282,10 @@ class AttendanceMonitoringExportService
             }
 
             // Office Order covers every day from issued_date through effective_date
-            // (or just issued_date if effective_date isn't set), clamped to the period.
+            // (or just issued_date if effective_date isn't set), clamped to the
+            // period plus one extra day ($periodEndNextDay) so the crossing-shift
+            // next-day fallback below can still see an order that starts the day
+            // right after the month ends.
             $officeOrderCoveredDates = [];
             foreach ($officeOrdersByEmpNo->get($emp->EmpNo, collect()) as $oo) {
                 if (! $oo->issued_date) {
@@ -257,13 +294,15 @@ class AttendanceMonitoringExportService
                 $start = Carbon::parse($oo->issued_date)->startOfDay();
                 $end = Carbon::parse($oo->effective_date ?? $oo->issued_date)->startOfDay();
                 $start = $start->lt(Carbon::parse($periodStart)) ? Carbon::parse($periodStart) : $start;
-                $end = $end->gt(Carbon::parse($periodEnd)) ? Carbon::parse($periodEnd) : $end;
+                $end = $end->gt(Carbon::parse($periodEndNextDay)) ? Carbon::parse($periodEndNextDay) : $end;
                 for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
                     $officeOrderCoveredDates[$d->toDateString()] = true;
                 }
             }
 
-            // Approved Travel Order covers every day of its (month-clamped) date range.
+            // Approved Travel Order covers every day of its date range, clamped to
+            // the period plus one extra day ($periodEndNextDay) for the same
+            // crossing-shift next-day fallback reason as Office Order above.
             $travelOrderCoveredDates = [];
             foreach ($travelOrdersByEmpNo->get($emp->EmpNo, collect()) as $to) {
                 if (! $to->start_date || ! $to->end_date) {
@@ -272,7 +311,7 @@ class AttendanceMonitoringExportService
                 $start = Carbon::parse($to->start_date)->startOfDay();
                 $end = Carbon::parse($to->end_date)->startOfDay();
                 $start = $start->lt(Carbon::parse($periodStart)) ? Carbon::parse($periodStart) : $start;
-                $end = $end->gt(Carbon::parse($periodEnd)) ? Carbon::parse($periodEnd) : $end;
+                $end = $end->gt(Carbon::parse($periodEndNextDay)) ? Carbon::parse($periodEndNextDay) : $end;
                 for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
                     $travelOrderCoveredDates[$d->toDateString()] = true;
                 }
@@ -307,7 +346,7 @@ class AttendanceMonitoringExportService
             // stored anywhere, so it's inferred from the punch data itself, same
             // convention as DtrController/Form48ExportService use for the same
             // half-day-leave case.
-            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $emp, $empAssignments, $empIsExemptOnDate): bool {
+            $isSlotCovered = function (string $dateStr, string $slot) use ($locatorSlotMap, $etaCoveredDates, $officeOrderCoveredDates, $travelOrderCoveredDates, $approvedLeaveDateStrings, $empExcusesByDate, $empSuspensionSlotMap, $empDtrsByDate, $fullDaySuspensionDates, $fullDayLeaveNextDayByUser, $periodEndNextDay, $emp, $empAssignments, $empIsExemptOnDate): bool {
                 // Highest priority of all: an exempt date was never meant to be
                 // tracked, so nothing else here should even be evaluated for it.
                 if ($empIsExemptOnDate($dateStr)) {
@@ -387,7 +426,16 @@ class AttendanceMonitoringExportService
                     return true;
                 }
 
-                return $approvedLeaveDateStrings->has($slotDate) && $approvedLeaveDateStrings->get($slotDate) >= 1.0;
+                if ($approvedLeaveDateStrings->has($slotDate) && $approvedLeaveDateStrings->get($slotDate) >= 1.0) {
+                    return true;
+                }
+
+                // $approvedLeaveDateStrings is strictly month-scoped (it also feeds
+                // $officialLeaveCount/remarks, which must never see a next-month
+                // date - see $fullDayLeaveNextDayByUser's own definition comment),
+                // so it can never itself contain $periodEndNextDay. This dedicated,
+                // narrowly-scoped lookup covers exactly that one extra date instead.
+                return $slotDate === $periodEndNextDay && $fullDayLeaveNextDayByUser->has($emp->id);
             };
 
             // Late/undertime-specific views of $isSlotCovered, checking the same slots

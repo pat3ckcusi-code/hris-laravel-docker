@@ -244,16 +244,27 @@ class DtrController extends Controller
         // ShiftAssignment per date.
         WorkSchedule::preloadShiftAssignments([$employee->id]);
 
+        // A crossing shift's checkout can land one calendar day past $to (e.g. a
+        // shift starting on the last day of the requested period) - widen the
+        // upper bound of the leave/ETA/Office Order/Travel Order/suspension
+        // lookups below by a day so the next-day coverage fallback further down
+        // can still find them, mirroring the exact crossesMidnight ? 1 : 0
+        // padding convention Form48ExportService::buildRecords() already uses
+        // for the same problem.
+        $toNextDay = Carbon::parse($to)->addDay()->format('Y-m-d');
+
         // Build leave map: date string → ['code' => leave code, 'days' => decimal]
         // (approved, non-cancelled). 'days' < 1 means a half-day leave, which must
         // not hide real punches for the half of the day actually worked - see the
-        // per-slot fallback below.
+        // per-slot fallback below. Upper-bounded by $toNextDay (not $to) so the
+        // pmOutCoveredNextDay fallback can see a full-day leave filed for the day
+        // right after the requested period.
         $leaveMap = LeaveDate::query()
             ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
             ->where('leave_requests.user_id', $employee->id)
             ->where('leave_requests.status', 'approved')
             ->where('leave_dates.is_cancelled', false)
-            ->whereBetween('leave_dates.leave_date', [$from, $to])
+            ->whereBetween('leave_dates.leave_date', [$from, $toNextDay])
             ->select('leave_dates.leave_date', 'leave_dates.is_lwop', 'leave_dates.days', 'leave_requests.leave_type', 'leave_requests.details_others_type')
             ->get()
             ->keyBy(fn ($r) => Carbon::parse($r->leave_date)->format('Y-m-d'))
@@ -261,14 +272,6 @@ class DtrController extends Controller
                 'code' => $r->is_lwop ? 'LWOP' : Form48ExportService::toLeaveCode($r->leave_type, $r->details_others_type),
                 'days' => (float) $r->days,
             ]);
-
-        // A crossing shift's checkout can land one calendar day past $to (e.g. a
-        // shift starting on the last day of the requested period) - widen just
-        // the upper bound of the ETA/Office Order/Travel Order lookups below by a
-        // day so the next-day coverage fallback further down can still find them,
-        // mirroring the exact crossesMidnight ? 1 : 0 padding convention
-        // Form48ExportService::buildRecords() already uses for the same problem.
-        $toNextDay = Carbon::parse($to)->addDay()->format('Y-m-d');
 
         // Build ETA date set: date string → true for all days covered by approved ETA.
         $etaDateSet = [];
@@ -321,8 +324,11 @@ class DtrController extends Controller
             ->keyBy(fn ($e) => Carbon::parse($e->date)->format('Y-m-d'));
 
         // Build work-suspension map: 'Y-m-d' → WorkSuspension for the period,
-        // same shape as excuseMap - see WorkSchedule::applySuspension().
-        $suspensionMap = WorkSuspension::whereBetween('suspension_date', [$from, $to])
+        // same shape as excuseMap - see WorkSchedule::applySuspension(). Upper-
+        // bounded by $toNextDay (not $to), same reasoning as $leaveMap above -
+        // the pmOutCoveredNextDay fallback needs to see a full-day suspension
+        // declared for the day right after the requested period.
+        $suspensionMap = WorkSuspension::whereBetween('suspension_date', [$from, $toNextDay])
             ->get()
             ->keyBy(fn ($s) => Carbon::parse($s->suspension_date)->format('Y-m-d'));
 
@@ -347,7 +353,7 @@ class DtrController extends Controller
                 }
             }
         }
-        $recoveredMap = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate, $dtrRows);
+        $recoveredMap = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate, $dtrRows, $shiftAssignments);
 
         // Build office-order date map: 'Y-m-d' → office_order_num, expanding each
         // order to every day from issued_date through effective_date (or just

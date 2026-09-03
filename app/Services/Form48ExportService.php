@@ -149,8 +149,22 @@ class Form48ExportService
             // deliberately-deleted dtrs row everywhere else in the app shows
             // this date as Absent. out_only (Friday) is never voided, so this
             // only ever needs to gate the in_only case.
+            //
+            // A real Monday resolves punchRequirement === 'in_only' via its own
+            // ShiftAssignment row, but a mid-week (Tue/Wed/Thu) voided check-in
+            // day never does: WeeklyPunchPairReconciliationService writes that
+            // override as shift_id=null/type='field_work_unconfirmed' with no
+            // punch_requirement column set, which WorkSchedule::forUserOnDate()
+            // can't match to the day-of-week-scoped Monday/Friday ShiftAssignment
+            // rows, so it falls through to the global schedule (punchRequirement
+            // === 'both') instead - silently skipping this guard and resurrecting
+            // the stale punch. WorkSchedule::isFieldWorkPairVoidedAbsence() checks
+            // the override's own type column directly, independent of what
+            // punchRequirement it resolves to, so OR it in here to catch both.
             $dateSchedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date));
-            if ($dateSchedule->punchRequirement === 'in_only'
+            $isVoidableFieldWorkDate = $dateSchedule->punchRequirement === 'in_only'
+                || WorkSchedule::isFieldWorkPairVoidedAbsence($user, Carbon::parse($date));
+            if ($isVoidableFieldWorkDate
                 && $this->punchPairReconciliation->dateWasVoided($user, Carbon::parse($date))) {
                 continue;
             }
@@ -722,8 +736,19 @@ class Form48ExportService
             $recoveredMap[Carbon::parse($dateStr)->day] = $slots;
         }
 
+        $daysInMonth = (int) $periodStart->daysInMonth;
+
+        // Only relevant for a crossing shift, and only for the last day of the
+        // month specifically (every earlier day's next-day coverage is already
+        // answerable from $etaMap/$officeOrderMap/$leaveMap's own "day + 1" key -
+        // see resolvePmOutNextDayCoverage()) - gated here to skip 3 extra queries
+        // on the common non-crossing-shift case.
+        $lastDayNextDayLabel = $schedule->crossesMidnight
+            ? $this->resolveNextMonthCoverageLabel($employee->id, $to)
+            : null;
+
         $this->fillHeader($sheet, $name, $designation, $monthYear);
-        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap, $travelOrderMap, $suspensionSlotsMap, $recoveredMap);
+        $this->fillDailyRows($sheet, $records, $from, $leaveMap, $etaMap, $locatorMap, $schedule, $restDayMap, $fieldWorkMap, $excuseMap, $officeOrderMap, $wfhMap, $travelOrderMap, $suspensionSlotsMap, $recoveredMap, $lastDayNextDayLabel);
 
         // Exclude rest days, leave days, and field work/WFH/ETA/OO/TO days with fewer
         // than 4 punches from the total (mirrors fillDailyRows()'s punch-count gating
@@ -815,6 +840,16 @@ class Form48ExportService
 
                 continue;
             }
+            // Mirrors fillDailyRows()'s own pmOutCoveredNextDay zeroing (applied to
+            // exactly these same two branches there - excuse/suspension already
+            // `continue`d above before reaching this point, same as in
+            // fillDailyRows()) so the sheet's printed grand total can never
+            // disagree with what an individual row visibly shows for a crossing
+            // shift whose checkout is covered by next-day ETA/Office Order/
+            // full-day Leave.
+            $nextDayCoverage = $this->resolvePmOutNextDayCoverage(
+                $day, $daysInMonth, $schedule, $etaMap, $officeOrderMap, $leaveMap, $lastDayNextDayLabel
+            );
             if (isset($locatorMap[$day])) {
                 [$lAmIn, , $lPmIn, $lPmOut] = self::resolveLocatorSlots(
                     $r['am_in'] ?? null, $r['am_out'] ?? null,
@@ -824,9 +859,12 @@ class Form48ExportService
                 [$tardiness, $undertime] = self::computeSlotPenalties(
                     $r['date'], $lAmIn ?? '', $lPmIn ?? '', $lPmOut ?? '', $schedule
                 );
+                if ($nextDayCoverage['covered']) {
+                    $undertime = 0;
+                }
             } else {
                 $tardiness = $r['tardiness'] ?? 0;
-                $undertime = $r['undertime'] ?? 0;
+                $undertime = $nextDayCoverage['covered'] ? 0 : ($r['undertime'] ?? 0);
             }
             $totalMins += $tardiness + $undertime;
         }
@@ -974,6 +1012,116 @@ class Form48ExportService
         }
     }
 
+    /**
+     * Real-calendar-date (not day-of-month-indexed) check for whether the day
+     * right after $to - the checkout date for a crossing shift that starts on
+     * the LAST day of the month - is covered by a whole-day ETA/Office Order/
+     * full-day Leave. None of buildEtaMap()/buildOfficeOrderMap()/buildLeaveMap()
+     * can answer this on their own: their maps are keyed by day-of-month
+     * (1..daysInMonth), so a hypothetical "day daysInMonth+1" can never exist
+     * as a key, and re-querying them for just the single next date would
+     * collide with THIS month's real day 1. Mirrors the exact ETA/Office
+     * Order/full-day-Leave sources (and priority order) resolvePmOutNextDayCoverage()
+     * below already checks for every other day via the day-of-month maps.
+     */
+    private function resolveNextMonthCoverageLabel(int $userId, string $to): ?string
+    {
+        $nextDate = Carbon::parse($to)->addDay()->toDateString();
+
+        $hasEta = Eta::where('user_id', $userId)
+            ->where('status', 'approved')
+            ->where('departure_date', '<=', $nextDate)
+            ->where(function ($q) use ($nextDate): void {
+                $q->whereNull('arrival_date')->orWhere('arrival_date', '>=', $nextDate);
+            })
+            ->exists();
+        if ($hasEta) {
+            return 'ETA';
+        }
+
+        $user = User::find($userId);
+        if ($user && $user->EmpNo) {
+            $hasOfficeOrder = DB::table('office_orders')
+                ->join('office_order_employees', 'office_orders.id', '=', 'office_order_employees.office_order_id')
+                ->where('office_order_employees.emp_no', $user->EmpNo)
+                ->where('office_orders.status', '!=', 'Cancelled')
+                ->where('office_orders.issued_date', '<=', $nextDate)
+                ->where(function ($q) use ($nextDate): void {
+                    $q->where('office_orders.effective_date', '>=', $nextDate)
+                        ->orWhere(function ($q2) use ($nextDate): void {
+                            $q2->whereNull('office_orders.effective_date')
+                                ->where('office_orders.issued_date', '>=', $nextDate);
+                        });
+                })
+                ->exists();
+            if ($hasOfficeOrder) {
+                return 'Office Order';
+            }
+        }
+
+        $leaveRow = LeaveDate::query()
+            ->join('leave_requests', 'leave_dates.leave_request_id', '=', 'leave_requests.id')
+            ->where('leave_requests.user_id', $userId)
+            ->where('leave_requests.status', 'approved')
+            ->where('leave_dates.is_cancelled', false)
+            ->where('leave_dates.leave_date', $nextDate)
+            ->where('leave_dates.days', '>=', 1)
+            ->select('leave_dates.is_lwop', 'leave_requests.leave_type', 'leave_requests.details_others_type')
+            ->first();
+
+        return $leaveRow !== null
+            ? ($leaveRow->is_lwop ? 'LWOP' : self::toLeaveCode($leaveRow->leave_type, $leaveRow->details_others_type))
+            : null;
+    }
+
+    /**
+     * Whether $day's checkout (which, for a crossesMidnight schedule,
+     * physically lands on the calendar day after $day) is covered by a
+     * whole-day ETA/Office Order/full-day Leave. Shared by fillDailyRows()
+     * (for the row's own display) and fill()'s totals loop (for the sheet's
+     * printed grand total) so the two can never disagree about which days'
+     * undertime is actually zeroed - previously only the row display consulted
+     * this, so a row could correctly show zero undertime while the grand total
+     * at the bottom of the same sheet still silently included those minutes.
+     * For $day === $daysInMonth, $day + 1 doesn't exist as a key in any of
+     * these day-of-month-indexed maps, so $lastDayNextDayLabel (computed once,
+     * via the real-calendar-date check above) is used instead.
+     *
+     * @return array{covered: bool, label: ?string}
+     */
+    private function resolvePmOutNextDayCoverage(
+        int $day,
+        int $daysInMonth,
+        WorkSchedule $schedule,
+        array $etaMap,
+        array $officeOrderMap,
+        array $leaveMap,
+        ?string $lastDayNextDayLabel
+    ): array {
+        if (! $schedule->crossesMidnight) {
+            return ['covered' => false, 'label' => null];
+        }
+
+        if ($day < $daysInMonth) {
+            $nextDay = $day + 1;
+            if (isset($etaMap[$nextDay])) {
+                return ['covered' => true, 'label' => 'ETA'];
+            }
+            if (isset($officeOrderMap[$nextDay])) {
+                return ['covered' => true, 'label' => 'Office Order'];
+            }
+            if (($leaveMap[$nextDay]['days'] ?? 0) >= 1.0) {
+                return ['covered' => true, 'label' => $leaveMap[$nextDay]['code']];
+            }
+
+            return ['covered' => false, 'label' => null];
+        }
+
+        return $lastDayNextDayLabel !== null
+            ? ['covered' => true, 'label' => $lastDayNextDayLabel]
+            : ['covered' => false, 'label' => null];
+    }
+
     private function fillDailyRows(
         Worksheet $sheet,
         array $records,
@@ -989,7 +1137,8 @@ class Form48ExportService
         array $wfhMap = [],
         array $travelOrderMap = [],
         array $suspensionSlotsMap = [],
-        array $recoveredMap = []
+        array $recoveredMap = [],
+        ?string $lastDayNextDayLabel = null
     ): void {
         $date = Carbon::parse($from);
         $year = (int) $date->year;
@@ -1022,21 +1171,14 @@ class Form48ExportService
             // crossesMidnight always means workEnd's clock value is <= workStart's
             // (that's the definition of a crossing shift), the checkout always
             // resolves to exactly $day + 1 - no per-slot date math needed here.
-            $pmOutCoveredNextDay = false;
-            $pmOutFallbackLabel = null;
-            if ($schedule->crossesMidnight && $day < $daysInMonth) {
-                $nextDay = $day + 1;
-                if (isset($etaMap[$nextDay])) {
-                    $pmOutCoveredNextDay = true;
-                    $pmOutFallbackLabel = 'ETA';
-                } elseif (isset($officeOrderMap[$nextDay])) {
-                    $pmOutCoveredNextDay = true;
-                    $pmOutFallbackLabel = 'Office Order';
-                } elseif (($leaveMap[$nextDay]['days'] ?? 0) >= 1.0) {
-                    $pmOutCoveredNextDay = true;
-                    $pmOutFallbackLabel = $leaveMap[$nextDay]['code'];
-                }
-            }
+            // For $day === $daysInMonth (day + 1 doesn't exist in any of these
+            // day-of-month-keyed maps), resolvePmOutNextDayCoverage() falls back
+            // to $lastDayNextDayLabel instead - see its own docblock.
+            $nextDayCoverage = $this->resolvePmOutNextDayCoverage(
+                $day, $daysInMonth, $schedule, $etaMap, $officeOrderMap, $leaveMap, $lastDayNextDayLabel
+            );
+            $pmOutCoveredNextDay = $nextDayCoverage['covered'];
+            $pmOutFallbackLabel = $nextDayCoverage['label'];
 
             // Per-date shift rest day: always shows "Rest Day", even if a stale DTR record exists.
             if (isset($restDayMap[$day])) {

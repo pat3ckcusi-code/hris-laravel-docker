@@ -366,6 +366,36 @@ class PunchPairReconciliationTest extends TestCase
         $this->assertArrayNotHasKey(3, $records, 'A voided Monday (day 3) must not resurrect from attendance_logs.');
     }
 
+    /**
+     * The Monday-only regression test above (test_form48_export_never_resurrects_a_voided_monday_punch)
+     * doesn't actually exercise the mid-week override path: a real Monday
+     * resolves punchRequirement === 'in_only' via its own ShiftAssignment
+     * row, but a mid-week (non-Monday) voided check-in day is written as a
+     * shift_id=null/type='field_work_unconfirmed' override with no
+     * punch_requirement column set - WorkSchedule::forUserOnDate() can't
+     * match that to either the Monday/Friday day-of-week-scoped rows, so it
+     * falls through to the global schedule (punchRequirement === 'both')
+     * instead. Form48ExportService's dateWasVoided() guard originally only
+     * checked punchRequirement === 'in_only', so it silently skipped this
+     * exact case and resurrected the stale Wednesday punch from
+     * attendance_logs even though the DTR page correctly shows it absent.
+     */
+    public function test_form48_export_never_resurrects_a_voided_mid_week_punch(): void
+    {
+        $user = $this->setUpFieldWorkEmployee();
+        $this->punchDay($user, self::WEDNESDAY, '09:15:00');
+        // Friday never punched - voids Wednesday's check-in entirely.
+
+        $this->reconcile();
+
+        $this->assertNull($this->dtrFor($user, self::WEDNESDAY));
+        $this->assertDatabaseHas('attendance_logs', ['user_id' => $user->id, 'logdate' => self::WEDNESDAY]);
+
+        $records = app(Form48ExportService::class)->buildRecords($user->id, '2026-08-01', '2026-08-31');
+
+        $this->assertArrayNotHasKey(5, $records, 'A voided mid-week check-in (day 5) must not resurrect from attendance_logs.');
+    }
+
     public function test_form48_export_shows_the_real_check_in_day_and_preserved_friday(): void
     {
         $user = $this->setUpFieldWorkEmployee();

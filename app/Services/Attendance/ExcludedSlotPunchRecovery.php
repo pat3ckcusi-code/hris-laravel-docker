@@ -4,6 +4,7 @@ namespace App\Services\Attendance;
 
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
+use App\Models\EmployeeShiftSchedule;
 use App\Models\User;
 use App\Services\DtrPunchResolver;
 use App\Services\ShiftPunchGrouper;
@@ -60,9 +61,15 @@ class ExcludedSlotPunchRecovery
      *                                                                    and WorkSchedule::applySuspension()'s returned slot array, never from a
      *                                                                    Locator's windowed exclusion.
      * @param  Collection<int, Dtr>|null  $preloadedDtrRows
+     * @param  Collection<string, EmployeeShiftSchedule>|null  $preloadedAssignments  Same per-date override
+     *                                                                                collection the caller already loaded for its own
+     *                                                                                WorkSchedule::forUserOnDate() calls - passed through to
+     *                                                                                ShiftPunchGrouper::group() and forUserOnDate() below so this
+     *                                                                                re-resolution doesn't re-query employee_shift_schedules per
+     *                                                                                punch/date.
      * @return array<string, array<string, string>> date('Y-m-d') => slot => 'H:i:s'
      */
-    public function recover(User $user, string $from, string $to, array $excludedSlotsByDate, ?Collection $preloadedDtrRows = null): array
+    public function recover(User $user, string $from, string $to, array $excludedSlotsByDate, ?Collection $preloadedDtrRows = null, ?Collection $preloadedAssignments = null): array
     {
         $candidateDates = array_keys(array_filter($excludedSlotsByDate, fn (array $slots): bool => $slots !== []));
         if ($candidateDates === []) {
@@ -78,7 +85,7 @@ class ExcludedSlotPunchRecovery
             ->orderBy('logtime')
             ->get();
 
-        $grouped = $this->punchGrouper->group($user, $logs);
+        $grouped = $this->punchGrouper->group($user, $logs, $preloadedAssignments);
 
         $dtrByDate = ($preloadedDtrRows ?? Dtr::where('employee_id', $user->id)
             ->whereBetween('date', [$from, $to])
@@ -107,7 +114,7 @@ class ExcludedSlotPunchRecovery
                 continue;
             }
 
-            $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date));
+            $schedule = WorkSchedule::forUserOnDate($user, Carbon::parse($date), $preloadedAssignments);
             $unconstrained = $this->punchResolver->resolve($punches, $date, $schedule, []);
 
             foreach (array_keys($excludedSlotsByDate[$date]) as $slot) {

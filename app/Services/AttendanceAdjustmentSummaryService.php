@@ -362,7 +362,24 @@ class AttendanceAdjustmentSummaryService
         $days = round($this->computeSuggestedDeduction($item), 3);
 
         return DB::transaction(function () use ($item, $days, $actor) {
-            $balance = LeaveBalance::where('user_id', $item->user_id)->lockForUpdate()->first();
+            // Re-check the item's status against a locked, freshly-read row
+            // rather than trusting the (possibly stale) $item passed in - the
+            // caller's pending-status check above runs before this transaction
+            // even starts, so two concurrent calls for the same item (a
+            // double-click, or a single-item deduct racing bulkDeduct() over the
+            // same item) could otherwise both pass that check and both deduct.
+            // Locking the item row here makes the second call wait for the
+            // first to commit, then see processed_status = 'processed' and
+            // throw instead of deducting a second time.
+            $lockedItem = AttendanceAdjustmentSubmissionItem::where('id', $item->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedItem || $lockedItem->processed_status !== 'pending') {
+                throw new \RuntimeException('This item has already been processed.');
+            }
+
+            $balance = LeaveBalance::where('user_id', $lockedItem->user_id)->lockForUpdate()->first();
 
             if (! $balance) {
                 throw new \RuntimeException('No leave balance record found for this employee.');
@@ -377,21 +394,21 @@ class AttendanceAdjustmentSummaryService
             $balance->VL = round($before - $days, 3);
             $balance->save();
 
-            $item->processed_status = 'processed';
-            $item->processed_by = $actor->id;
-            $item->processed_at = now();
-            $item->deducted_days = $days;
-            $item->save();
+            $lockedItem->processed_status = 'processed';
+            $lockedItem->processed_by = $actor->id;
+            $lockedItem->processed_at = now();
+            $lockedItem->deducted_days = $days;
+            $lockedItem->save();
 
             $this->leaveLedgerService->writeLedgerEntry([
-                'user_id' => $item->user_id,
+                'user_id' => $lockedItem->user_id,
                 'transaction_date' => now()->toDateString(),
                 'transaction_type' => 'ATTENDANCE_DEDUCTION',
                 'leave_type' => 'VL',
                 'debit_vl' => $days,
-                'reference_id' => $item->id,
+                'reference_id' => $lockedItem->id,
                 'reference_type' => 'attendance_adjustment_item',
-                'remarks' => "Attendance deficiency deduction ({$item->month}/{$item->year}): unfiled {$item->unfiled_count}, tardiness {$item->tardiness_minutes}m, undertime {$item->undertime_minutes}m",
+                'remarks' => "Attendance deficiency deduction ({$lockedItem->month}/{$lockedItem->year}): unfiled {$lockedItem->unfiled_count}, tardiness {$lockedItem->tardiness_minutes}m, undertime {$lockedItem->undertime_minutes}m",
                 'created_by' => $actor->id,
             ]);
 
@@ -401,14 +418,14 @@ class AttendanceAdjustmentSummaryService
                     'module' => 'leave',
                     'action' => 'attendance_deficiency_vl_deducted',
                     'target_type' => 'attendance_adjustment_submission_item',
-                    'target_id' => $item->id,
+                    'target_id' => $lockedItem->id,
                     'details' => [
-                        'user_id' => $item->user_id,
-                        'month' => $item->month,
-                        'year' => $item->year,
-                        'unfiled_count' => $item->unfiled_count,
-                        'tardiness_minutes' => $item->tardiness_minutes,
-                        'undertime_minutes' => $item->undertime_minutes,
+                        'user_id' => $lockedItem->user_id,
+                        'month' => $lockedItem->month,
+                        'year' => $lockedItem->year,
+                        'unfiled_count' => $lockedItem->unfiled_count,
+                        'tardiness_minutes' => $lockedItem->tardiness_minutes,
+                        'undertime_minutes' => $lockedItem->undertime_minutes,
                         'deducted_days' => $days,
                         'vl_balance_before' => $before,
                         'vl_balance_after' => $balance->VL,
@@ -417,6 +434,13 @@ class AttendanceAdjustmentSummaryService
             } catch (\Exception) {
                 // audit failure must not block the deduction
             }
+
+            // Keep the caller's original $item instance in sync, in case it's
+            // read again after this call returns.
+            $item->processed_status = $lockedItem->processed_status;
+            $item->processed_by = $lockedItem->processed_by;
+            $item->processed_at = $lockedItem->processed_at;
+            $item->deducted_days = $lockedItem->deducted_days;
 
             return [
                 'deducted_days' => $days,
@@ -437,29 +461,49 @@ class AttendanceAdjustmentSummaryService
             throw new \RuntimeException('This item has already been processed.');
         }
 
-        $item->processed_status = 'dismissed';
-        $item->processed_by = $actor->id;
-        $item->processed_at = now();
-        $item->action_remarks = $remarks;
-        $item->save();
+        DB::transaction(function () use ($item, $remarks, $actor): void {
+            // Same lock-and-recheck pattern as deductForItem() above, for
+            // consistency - this mutates the same processed_status field via the
+            // same single-action/bulkDismiss() call pattern, so it's exposed to
+            // the identical double-click/bulk-race window even though a
+            // duplicate dismiss carries no balance-mutation risk on its own.
+            $lockedItem = AttendanceAdjustmentSubmissionItem::where('id', $item->id)
+                ->lockForUpdate()
+                ->first();
 
-        try {
-            HRAuditTrail::create([
-                'actor_user_id' => $actor->id,
-                'module' => 'leave',
-                'action' => 'attendance_deficiency_dismissed',
-                'target_type' => 'attendance_adjustment_submission_item',
-                'target_id' => $item->id,
-                'details' => [
-                    'user_id' => $item->user_id,
-                    'month' => $item->month,
-                    'year' => $item->year,
-                    'remarks' => $remarks,
-                ],
-            ]);
-        } catch (\Exception) {
-            // audit failure must not block the dismissal
-        }
+            if (! $lockedItem || $lockedItem->processed_status !== 'pending') {
+                throw new \RuntimeException('This item has already been processed.');
+            }
+
+            $lockedItem->processed_status = 'dismissed';
+            $lockedItem->processed_by = $actor->id;
+            $lockedItem->processed_at = now();
+            $lockedItem->action_remarks = $remarks;
+            $lockedItem->save();
+
+            try {
+                HRAuditTrail::create([
+                    'actor_user_id' => $actor->id,
+                    'module' => 'leave',
+                    'action' => 'attendance_deficiency_dismissed',
+                    'target_type' => 'attendance_adjustment_submission_item',
+                    'target_id' => $lockedItem->id,
+                    'details' => [
+                        'user_id' => $lockedItem->user_id,
+                        'month' => $lockedItem->month,
+                        'year' => $lockedItem->year,
+                        'remarks' => $remarks,
+                    ],
+                ]);
+            } catch (\Exception) {
+                // audit failure must not block the dismissal
+            }
+
+            $item->processed_status = $lockedItem->processed_status;
+            $item->processed_by = $lockedItem->processed_by;
+            $item->processed_at = $lockedItem->processed_at;
+            $item->action_remarks = $lockedItem->action_remarks;
+        });
     }
 
     /**
