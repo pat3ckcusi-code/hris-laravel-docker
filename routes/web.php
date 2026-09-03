@@ -392,14 +392,20 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
     Route::get('/api/department-employees', [TravelOrderController::class, 'getDepartmentEmployees'])->name('api.department-employees');
     Route::post('/api/travel-orders', [TravelOrderController::class, 'store'])->name('api.travel-orders');
     Route::get('/api/department/travel-orders', [TravelOrderController::class, 'index'])->name('api.department.travel-orders');
-    Route::get('/api/travel-orders/{id}', [TravelOrderController::class, 'show'])->name('api.travel-orders.show');
     Route::get('/api/travel-orders/{id}/print', [TravelOrderController::class, 'printExcel'])->name('api.travel-orders.print');
     Route::put('/api/travel-orders/{id}', [TravelOrderController::class, 'update'])->name('api.travel-orders.update');
     Route::post('/api/office-orders', [OfficeOrderController::class, 'store'])->name('api.office-orders');
     Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
-    Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
     Route::put('/api/office-orders/{id}', [OfficeOrderController::class, 'update'])->name('api.office-orders.update');
     Route::post('/api/office-orders/{id}/cancel', [OfficeOrderController::class, 'cancel'])->name('api.office-orders.cancel');
+});
+
+// Travel/Office Order read-only detail endpoints — also usable by Time Keeper/HR Manager
+// (unlike the write endpoints above), since the Workforce Calendar surfaces these two order
+// types' entries to those two unrestricted, company-wide roles as well as DH/AO.
+Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-officer,time-keeper,hr-manager'])->group(function () {
+    Route::get('/api/travel-orders/{id}', [TravelOrderController::class, 'show'])->name('api.travel-orders.show');
+    Route::get('/api/office-orders/{id}', [OfficeOrderController::class, 'show'])->name('api.office-orders.show');
 });
 
 // Department Head and Administrative Officer shared actions

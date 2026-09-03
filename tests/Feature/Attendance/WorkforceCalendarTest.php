@@ -173,9 +173,82 @@ class WorkforceCalendarTest extends TestCase
             ->assertSee('OnLocator')
             ->assertSee('Field Verification')
             ->assertSee('OnTravel')
-            ->assertSee('Travel Order No. TO-2026-001')
+            ->assertSee('TO-2026-001')
             ->assertSee('OnOfficeOrder')
-            ->assertSee('Office Order No. OO-2026-001');
+            ->assertSee('OO-2026-001');
+    }
+
+    public function test_travel_order_and_office_order_entries_carry_order_id_for_click_through(): void
+    {
+        // Guards WorkforceCalendarService::addEntry()'s $extra payload: the
+        // day-detail modal's Office/Travel Order rows are only clickable
+        // because each entry carries the real order id (see
+        // wfcOpenTravelOrder()/wfcOpenOfficeOrder() in the Blade view) - a
+        // future refactor of addTravelOrders()/addOfficeOrders() that drops
+        // 'order_id' from the entry would silently make those rows
+        // non-clickable again with no other test catching it.
+        $dept = $this->makeDepartment('Dept A');
+
+        $travelEmployee = $this->createEmployee(['Dept_id' => $dept->Dept_id, 'last_name' => 'OnTravel']);
+        $travelOrder = TravelOrder::create([
+            'travel_order_num' => 'TO-2026-002',
+            'purpose' => 'Conference',
+            'destination' => 'Cebu',
+            'start_date' => '2026-06-17',
+            'end_date' => '2026-06-18',
+            'recommender' => $travelEmployee->id,
+            'created_by' => $travelEmployee->id,
+            'status' => 'Approved',
+        ]);
+        DB::table('travel_order_employees')->insert([
+            'travel_order_id' => $travelOrder->id,
+            'emp_no' => $travelEmployee->EmpNo,
+        ]);
+
+        $officeEmployee = $this->createEmployee(['Dept_id' => $dept->Dept_id, 'last_name' => 'OnOfficeOrder']);
+        $officeOrderId = DB::table('office_orders')->insertGetId([
+            'office_order_num' => 'OO-2026-002',
+            'subject' => 'Test Memo',
+            'issued_date' => '2026-06-01',
+            'effective_date' => '2026-06-20',
+            'status' => 'Pending Recommendation',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('office_order_employees')->insert([
+            'office_order_id' => $officeOrderId,
+            'emp_no' => $officeEmployee->EmpNo,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->createTimeKeeper())
+            ->get(route('attendance.workforce-calendar.index', ['department_id' => $dept->Dept_id, 'month' => 6, 'year' => 2026]));
+
+        $response->assertStatus(200);
+
+        preg_match_all("/data-employees='([^']*)'/", $response->getContent(), $matches);
+        $this->assertNotEmpty($matches[1], 'Expected at least one day cell with a data-employees attribute');
+
+        $foundTravelOrderId = false;
+        $foundOfficeOrderId = false;
+        foreach ($matches[1] as $raw) {
+            $entries = json_decode(html_entity_decode($raw), true);
+            if (! is_array($entries)) {
+                continue;
+            }
+            foreach ($entries as $entry) {
+                if (($entry['type'] ?? null) === 'travel_order' && ($entry['order_id'] ?? null) === $travelOrder->id) {
+                    $foundTravelOrderId = true;
+                }
+                if (($entry['type'] ?? null) === 'office_order' && ($entry['order_id'] ?? null) === $officeOrderId) {
+                    $foundOfficeOrderId = true;
+                }
+            }
+        }
+
+        $this->assertTrue($foundTravelOrderId, 'Travel Order entry is missing its order_id');
+        $this->assertTrue($foundOfficeOrderId, 'Office Order entry is missing its order_id');
     }
 
     public function test_oic_covering_employee_can_view_workforce_calendar_for_covered_department_only(): void

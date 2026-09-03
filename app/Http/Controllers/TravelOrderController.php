@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\TravelOrderExportService;
+use App\Support\RoleNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -116,7 +117,15 @@ class TravelOrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        if (! $this->orderIsAccessible((int) $id, $this->resolveAccessibleEmpNos($user))) {
+        // Time Keeper/HR Manager use the Workforce Calendar unrestricted, company-wide -
+        // DepartmentService has no dept-resolution case for either role, so they're exempted
+        // from the Department Head/Administrative Officer dept-scoping check entirely here,
+        // mirroring the same role-based unrestricted-access rule WorkforceCalendarController
+        // already applies for those two roles.
+        $role = RoleNormalizer::normalize((string) ($user->access_level ?? ''));
+        $isUnrestricted = in_array($role, ['time keeper', 'hr manager'], true);
+
+        if (! $isUnrestricted && ! $this->orderIsAccessible((int) $id, $this->resolveAccessibleEmpNos($user))) {
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
 

@@ -147,6 +147,22 @@
     padding: .2rem .6rem; border-radius: .4rem;
 }
 .wfc-emp-name { font-weight: 600; color: #0f172a; }
+
+.wfc-order-link {
+    background: none; border: none; padding: 0; margin: 0;
+    font: inherit; color: #2563eb; cursor: pointer; text-decoration: underline;
+    text-align: left;
+}
+.wfc-order-link:hover { color: #1d4ed8; }
+
+.wfc-order-body { font-size: .85rem; color: #1f2937; }
+.wfc-order-row { display: flex; gap: .75rem; margin-bottom: .6rem; }
+.wfc-order-row-label { width: 8.5rem; flex: 0 0 auto; font-weight: 700; color: #475569; }
+.wfc-order-row-value { flex: 1; white-space: pre-line; }
+.wfc-order-section-title { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #64748b; margin: 1rem 0 .5rem; }
+.wfc-order-emp-list { list-style: none; margin: 0; padding: 0; }
+.wfc-order-emp-list li { padding: .25rem 0; border-bottom: 1px solid #f1f5f9; }
+.wfc-order-emp-list li:last-child { border-bottom: none; }
 </style>
 @endsection
 
@@ -285,6 +301,24 @@
     </div>
 </div>
 
+{{-- Office Order detail modal --}}
+<div class="modal-overlay" id="wfc-office-order-modal">
+    <div class="modal-box">
+        <button type="button" class="modal-close" onclick="closeWfcOfficeOrderModal()">&times;</button>
+        <h3>Office Order Details</h3>
+        <div class="wfc-order-body" id="wfc-office-order-body"></div>
+    </div>
+</div>
+
+{{-- Travel Order detail modal --}}
+<div class="modal-overlay" id="wfc-travel-order-modal">
+    <div class="modal-box">
+        <button type="button" class="modal-close" onclick="closeWfcTravelOrderModal()">&times;</button>
+        <h3>Travel Order Details</h3>
+        <div class="wfc-order-body" id="wfc-travel-order-body"></div>
+    </div>
+</div>
+
 @endsection
 
 @section('page_scripts')
@@ -312,7 +346,12 @@ document.querySelectorAll('.wfc-day.has-data').forEach(function (cell) {
             html += '<div class="wfc-emp-group">';
             html += '<div class="wfc-emp-group-title wfc-cat-' + type + '">' + wfcCategoryLabels[type] + ' (' + grouped[type].length + ')</div>';
             grouped[type].forEach(function (e) {
-                html += '<div class="detail-row"><span class="wfc-emp-name">' + e.name + '</span><span>' + e.label + '</span></div>';
+                var valueHtml = e.label;
+                if ((e.type === 'travel_order' || e.type === 'office_order') && e.order_id) {
+                    var opener = e.type === 'travel_order' ? 'wfcOpenTravelOrder' : 'wfcOpenOfficeOrder';
+                    valueHtml = '<button type="button" class="wfc-order-link" onclick="' + opener + '(' + e.order_id + ')">' + e.label + '</button>';
+                }
+                html += '<div class="detail-row"><span class="wfc-emp-name">' + e.name + '</span><span>' + valueHtml + '</span></div>';
             });
             html += '</div>';
         });
@@ -329,6 +368,114 @@ function closeWfcDayModal() {
 document.getElementById('wfc-day-modal').addEventListener('click', function (e) {
     if (e.target === this) {
         closeWfcDayModal();
+    }
+});
+
+function wfcEscapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+}
+
+function wfcFormatDate(s) {
+    if (!s) { return '-'; }
+    var d = new Date(String(s).slice(0, 10) + 'T00:00:00');
+    if (isNaN(d)) { return wfcEscapeHtml(s); }
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function wfcOrderRow(label, value) {
+    return '<div class="wfc-order-row"><div class="wfc-order-row-label">' + wfcEscapeHtml(label) + '</div><div class="wfc-order-row-value">' + (value || '-') + '</div></div>';
+}
+
+async function wfcOpenOfficeOrder(id) {
+    var overlay = document.getElementById('wfc-office-order-modal');
+    var body = document.getElementById('wfc-office-order-body');
+    overlay.classList.add('active');
+    body.innerHTML = '<p style="color:#94a3b8;">Loading...</p>';
+    try {
+        var resp = await fetch('/api/office-orders/' + id);
+        var j = await resp.json();
+        if (!j.success) { body.innerHTML = '<p style="color:#dc2626;">Failed to load details.</p>'; return; }
+        var d = j.data;
+        var employees = (d.employees || []);
+        var empList = employees.length
+            ? '<ul class="wfc-order-emp-list">' + employees.map(function (e) {
+                return '<li><strong>' + wfcEscapeHtml(e.name) + '</strong>' + (e.designation ? ' — ' + wfcEscapeHtml(e.designation) : '') + '</li>';
+            }).join('') + '</ul>'
+            : '<p style="color:#94a3b8;">No employees listed.</p>';
+
+        body.innerHTML =
+            wfcOrderRow('Order No.', wfcEscapeHtml(d.office_order_num)) +
+            wfcOrderRow('Subject', wfcEscapeHtml(d.subject)) +
+            wfcOrderRow('Issued Date', wfcFormatDate(d.issued_date)) +
+            wfcOrderRow('Effective Date', wfcFormatDate(d.effective_date)) +
+            wfcOrderRow('Status', wfcEscapeHtml(d.status)) +
+            (d.status === 'Cancelled' ? wfcOrderRow('Cancellation Reason', wfcEscapeHtml(d.cancellation_reason)) : '') +
+            wfcOrderRow('Issued By', d.issued_by ? wfcEscapeHtml(d.issued_by.name) + (d.issued_by.designation ? ' — ' + wfcEscapeHtml(d.issued_by.designation) : '') : '-') +
+            '<div class="wfc-order-section-title">Details</div>' +
+            '<div class="wfc-order-row-value">' + wfcEscapeHtml(d.details) + '</div>' +
+            '<div class="wfc-order-section-title">Employees (' + employees.length + ')</div>' +
+            empList;
+    } catch (err) {
+        body.innerHTML = '<p style="color:#dc2626;">Failed to load details.</p>';
+    }
+}
+
+function closeWfcOfficeOrderModal() {
+    document.getElementById('wfc-office-order-modal').classList.remove('active');
+}
+
+document.getElementById('wfc-office-order-modal').addEventListener('click', function (e) {
+    if (e.target === this) {
+        closeWfcOfficeOrderModal();
+    }
+});
+
+async function wfcOpenTravelOrder(id) {
+    var overlay = document.getElementById('wfc-travel-order-modal');
+    var body = document.getElementById('wfc-travel-order-body');
+    overlay.classList.add('active');
+    body.innerHTML = '<p style="color:#94a3b8;">Loading...</p>';
+    try {
+        var resp = await fetch('/api/travel-orders/' + id);
+        var j = await resp.json();
+        if (!j.success) { body.innerHTML = '<p style="color:#dc2626;">Failed to load details.</p>'; return; }
+        var d = j.data;
+        var employees = (d.employees || []);
+        var empList = employees.length
+            ? '<ul class="wfc-order-emp-list">' + employees.map(function (e) {
+                return '<li><strong>' + wfcEscapeHtml(e.name) + '</strong>' + (e.designation ? ' — ' + wfcEscapeHtml(e.designation) : '') + '</li>';
+            }).join('') + '</ul>'
+            : '<p style="color:#94a3b8;">No employees listed.</p>';
+
+        body.innerHTML =
+            wfcOrderRow('Order No.', wfcEscapeHtml(d.travel_order_num)) +
+            wfcOrderRow('Destination', wfcEscapeHtml(d.destination)) +
+            wfcOrderRow('Departure', wfcFormatDate(d.departure)) +
+            wfcOrderRow('Return', wfcFormatDate(d.return)) +
+            wfcOrderRow('Purpose', wfcEscapeHtml(d.purpose)) +
+            wfcOrderRow('Report To', wfcEscapeHtml(d.report_to)) +
+            wfcOrderRow('Per Diem / Expenses', wfcEscapeHtml(d.per_diem)) +
+            wfcOrderRow('Appropriation', wfcEscapeHtml(d.appropriation)) +
+            wfcOrderRow('Remarks', wfcEscapeHtml(d.remarks)) +
+            wfcOrderRow('Status', wfcEscapeHtml(d.status)) +
+            wfcOrderRow('Created By', wfcEscapeHtml(d.created_by)) +
+            wfcOrderRow('Recommender', wfcEscapeHtml(d.recommender)) +
+            '<div class="wfc-order-section-title">Employees (' + employees.length + ')</div>' +
+            empList;
+    } catch (err) {
+        body.innerHTML = '<p style="color:#dc2626;">Failed to load details.</p>';
+    }
+}
+
+function closeWfcTravelOrderModal() {
+    document.getElementById('wfc-travel-order-modal').classList.remove('active');
+}
+
+document.getElementById('wfc-travel-order-modal').addEventListener('click', function (e) {
+    if (e.target === this) {
+        closeWfcTravelOrderModal();
     }
 });
 </script>

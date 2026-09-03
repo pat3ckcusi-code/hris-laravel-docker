@@ -34,7 +34,7 @@ class WorkforceCalendarService
 
     /**
      * @param  array<int, int>  $employeeIds
-     * @return array<string, array{counts: array<string, int>, employees: array<int, array{user_id: int, name: string, type: string, label: string}>}>
+     * @return array<string, array{counts: array<string, int>, employees: array<int, array{user_id: int, name: string, type: string, label: string, order_id?: int}>}>
      */
     public function buildMonthSummary(array $employeeIds, Carbon $monthStart, Carbon $monthEnd): array
     {
@@ -136,7 +136,7 @@ class WorkforceCalendarService
             ->where('travel_orders.status', 'Approved')
             ->where('travel_orders.start_date', '<=', $monthEnd->toDateString())
             ->where('travel_orders.end_date', '>=', $monthStart->toDateString())
-            ->select('travel_order_employees.emp_no', 'travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
+            ->select('travel_order_employees.emp_no', 'travel_orders.id as order_id', 'travel_orders.travel_order_num', 'travel_orders.start_date', 'travel_orders.end_date')
             ->get();
 
         foreach ($rows as $row) {
@@ -148,10 +148,10 @@ class WorkforceCalendarService
             $until = Carbon::parse($row->end_date)->startOfDay();
             $cursor = $cursor->lt($monthStart) ? $monthStart->copy() : $cursor;
             $until = $until->gt($monthEnd) ? $monthEnd->copy() : $until;
-            $label = 'Travel Order No. '.$row->travel_order_num;
+            $label = $row->travel_order_num;
 
             for (; $cursor->lte($until); $cursor->addDay()) {
-                $this->addEntry($calendar, $cursor->toDateString(), 'travel_order', $userId, $namesById[$userId] ?? '', $label);
+                $this->addEntry($calendar, $cursor->toDateString(), 'travel_order', $userId, $namesById[$userId] ?? '', $label, ['order_id' => $row->order_id]);
             }
         }
     }
@@ -174,7 +174,7 @@ class WorkforceCalendarService
                             ->where('office_orders.issued_date', '>=', $start);
                     });
             })
-            ->select('office_order_employees.emp_no', 'office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
+            ->select('office_order_employees.emp_no', 'office_orders.id as order_id', 'office_orders.office_order_num', 'office_orders.effective_date', 'office_orders.issued_date')
             ->get();
 
         $rangeStart = Carbon::parse($start);
@@ -189,26 +189,26 @@ class WorkforceCalendarService
             $until = Carbon::parse($row->effective_date ?? $row->issued_date)->startOfDay();
             $cursor = $cursor->lt($rangeStart) ? $rangeStart->copy() : $cursor;
             $until = $until->gt($rangeEnd) ? $rangeEnd->copy() : $until;
-            $label = 'Office Order No. '.$row->office_order_num;
+            $label = $row->office_order_num;
 
             for (; $cursor->lte($until); $cursor->addDay()) {
-                $this->addEntry($calendar, $cursor->toDateString(), 'office_order', $userId, $namesById[$userId] ?? '', $label);
+                $this->addEntry($calendar, $cursor->toDateString(), 'office_order', $userId, $namesById[$userId] ?? '', $label, ['order_id' => $row->order_id]);
             }
         }
     }
 
-    private function addEntry(array &$calendar, string $dateStr, string $type, int $userId, string $name, string $label): void
+    private function addEntry(array &$calendar, string $dateStr, string $type, int $userId, string $name, string $label, array $extra = []): void
     {
         if (! isset($calendar[$dateStr])) {
             return;
         }
         $calendar[$dateStr]['counts'][$type]++;
-        $calendar[$dateStr]['employees'][] = [
+        $calendar[$dateStr]['employees'][] = array_merge([
             'user_id' => $userId,
             'name' => $name,
             'type' => $type,
             'label' => $label,
-        ];
+        ], $extra);
     }
 
     private function displayName(User $user): string
