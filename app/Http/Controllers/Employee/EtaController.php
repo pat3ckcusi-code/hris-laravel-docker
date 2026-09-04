@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\ApprovalNotificationService;
 use App\Services\DepartmentService;
+use App\Services\EtaLocatorConflictService;
 use App\Support\RoleNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,6 +26,7 @@ class EtaController extends Controller
 {
     public function __construct(
         private readonly ApprovalNotificationService $approvalNotificationService,
+        private readonly EtaLocatorConflictService $conflictService,
     ) {}
 
     public function index(Request $request)
@@ -88,7 +90,22 @@ class EtaController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'departure_date' => 'required|date|after_or_equal:today',
+            'departure_date' => [
+                'bail',
+                'required',
+                'date',
+                'after_or_equal:today',
+                function ($attribute, $value, $fail) use ($request) {
+                    $message = $this->conflictService->checkConflict(
+                        $request->user(),
+                        EtaLocatorConflictService::TYPE_ETA,
+                        $value
+                    );
+                    if ($message !== null) {
+                        $fail($message);
+                    }
+                },
+            ],
             'arrival_date' => [
                 'nullable',
                 'date',

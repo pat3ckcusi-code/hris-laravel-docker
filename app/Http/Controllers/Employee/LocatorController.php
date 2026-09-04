@@ -10,6 +10,7 @@ use App\Models\OicAssignment;
 use App\Models\User;
 use App\Notifications\HrisTransactionNotification;
 use App\Services\DepartmentService;
+use App\Services\EtaLocatorConflictService;
 use App\Services\LocatorExportService;
 use App\Support\RoleNormalizer;
 use Illuminate\Http\Request;
@@ -20,6 +21,10 @@ use Illuminate\Support\Facades\Validator;
 
 class LocatorController extends Controller
 {
+    public function __construct(
+        private readonly EtaLocatorConflictService $conflictService,
+    ) {}
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -117,6 +122,22 @@ class LocatorController extends Controller
                     $hours = $allowed / 60;
                     $v->errors()->add('intended_arrival_time', "For {$appType} application, travel duration cannot exceed {$hours} hour(s).");
                 }
+            }
+        });
+
+        $validator->after(function ($v) use ($request) {
+            if ($v->errors()->has('travel_date')) {
+                return; // travel_date itself already failed required/date/after_or_equal
+            }
+
+            $message = $this->conflictService->checkConflict(
+                $request->user(),
+                EtaLocatorConflictService::TYPE_LOCATOR,
+                $request->input('travel_date')
+            );
+
+            if ($message !== null) {
+                $v->errors()->add('travel_date', $message);
             }
         });
 
@@ -318,6 +339,23 @@ class LocatorController extends Controller
                     $hours = $allowed / 60;
                     $v->errors()->add('intended_arrival_time', "For {$appType} application, travel duration cannot exceed {$hours} hour(s).");
                 }
+            }
+        });
+
+        $validator->after(function ($v) use ($request, $locator) {
+            if ($v->errors()->has('travel_date')) {
+                return; // travel_date itself already failed required/date/after_or_equal
+            }
+
+            $message = $this->conflictService->checkConflict(
+                $request->user(),
+                EtaLocatorConflictService::TYPE_LOCATOR,
+                $request->input('travel_date'),
+                $locator->id
+            );
+
+            if ($message !== null) {
+                $v->errors()->add('travel_date', $message);
             }
         });
 

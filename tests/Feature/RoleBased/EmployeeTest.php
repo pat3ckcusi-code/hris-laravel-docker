@@ -4,10 +4,14 @@ namespace Tests\Feature\RoleBased;
 
 use App\Models\Dtr;
 use App\Models\Eta;
+use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
 use App\Models\Pds;
+use App\Models\TravelOrder;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
@@ -612,6 +616,413 @@ class EmployeeTest extends TestCase
         $locator->refresh();
         $this->assertEquals('Pending Cancellation', $locator->cancellation_status);
         $this->assertEquals('Trying again', $locator->cancellation_reason);
+    }
+
+    // ──────────────────────────────────────────────
+    // 4b. ETA/Locator Filing-Conflict Validation
+    // ──────────────────────────────────────────────
+
+    private function createOfficeOrderCoveringDate(User $employee, string $date, string $status = 'Pending Recommendation'): int
+    {
+        $officeOrderId = DB::table('office_orders')->insertGetId([
+            'office_order_num' => 'OO-TEST-'.$employee->id.'-'.uniqid(),
+            'subject' => 'Test Memo',
+            'issued_date' => $date,
+            'effective_date' => $date,
+            'status' => $status,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('office_order_employees')->insert([
+            'office_order_id' => $officeOrderId,
+            'emp_no' => $employee->EmpNo,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $officeOrderId;
+    }
+
+    private function createTravelOrderCoveringDate(User $employee, string $date, string $status = 'Approved'): TravelOrder
+    {
+        $travelOrder = TravelOrder::create([
+            'travel_order_num' => 'TO-TEST-'.$employee->id.'-'.uniqid(),
+            'purpose' => 'Conference',
+            'destination' => 'Cebu',
+            'start_date' => $date,
+            'end_date' => $date,
+            'recommender' => $employee->id,
+            'created_by' => $employee->id,
+            'status' => $status,
+        ]);
+
+        DB::table('travel_order_employees')->insert([
+            'travel_order_id' => $travelOrder->id,
+            'emp_no' => $employee->EmpNo,
+        ]);
+
+        return $travelOrder;
+    }
+
+    private function createLeaveDateForEmployee(User $employee, string $date, string $status = 'pending', bool $isCancelled = false): LeaveRequest
+    {
+        $leave = LeaveRequest::create([
+            'user_id' => $employee->id,
+            'leave_type' => 'Vacation Leave',
+            'start_date' => $date,
+            'end_date' => $date,
+            'reason' => 'Test',
+            'status' => $status,
+        ]);
+
+        LeaveDate::create([
+            'leave_request_id' => $leave->id,
+            'leave_date' => $date,
+            'leave_type' => 'Vacation Leave',
+            'days' => 1.0,
+            'is_cancelled' => $isCancelled,
+            'is_lwop' => false,
+        ]);
+
+        return $leave;
+    }
+
+    public function test_eta_submission_blocked_by_duplicate_eta_same_departure_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'Another Place',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('departure_date');
+        $this->assertEquals(1, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_locator_submission_blocked_by_duplicate_locator_same_travel_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall Annex',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('travel_date');
+        $this->assertEquals(1, Locator::where('user_id', $user->id)->count());
+    }
+
+    public function test_eta_blocks_same_day_locator_filing(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        Eta::create([
+            'user_id' => $user->id,
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall Annex',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('travel_date');
+        $this->assertStringContainsString('ETA', session('errors')->first('travel_date'));
+        $this->assertEquals(0, Locator::where('user_id', $user->id)->count());
+    }
+
+    public function test_locator_does_not_block_same_day_eta_filing(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.eta'));
+        $this->assertEquals(1, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_leave_blocks_eta_filing_on_covered_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createLeaveDateForEmployee($user, $date, 'pending');
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('departure_date');
+        $this->assertEquals(0, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_leave_blocks_locator_filing_on_covered_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createLeaveDateForEmployee($user, $date, 'approved');
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('travel_date');
+        $this->assertEquals(0, Locator::where('user_id', $user->id)->count());
+    }
+
+    public function test_cancelled_leave_date_does_not_block_eta_filing(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createLeaveDateForEmployee($user, $date, 'approved', true);
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.eta'));
+        $this->assertEquals(1, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_office_order_blocks_eta_filing_on_covered_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createOfficeOrderCoveringDate($user, $date);
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('departure_date');
+        $this->assertEquals(0, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_travel_order_blocks_locator_filing_on_covered_date(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createTravelOrderCoveringDate($user, $date, 'Approved');
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('travel_date');
+        $this->assertEquals(0, Locator::where('user_id', $user->id)->count());
+    }
+
+    public function test_cancelled_office_order_does_not_block_eta_filing(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createOfficeOrderCoveringDate($user, $date, 'Cancelled');
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.eta'));
+        $this->assertEquals(1, Eta::where('user_id', $user->id)->count());
+    }
+
+    public function test_pending_travel_order_does_not_block_locator_filing(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $this->createTravelOrderCoveringDate($user, $date, 'Pending');
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.locator'));
+        $this->assertEquals(1, Locator::where('user_id', $user->id)->count());
+    }
+
+    public function test_eta_filing_succeeds_with_no_conflicts(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $response = $this->actingAs($user)->post(route('employee.eta.store'), [
+            'departure_date' => $date,
+            'destination' => 'City Hall',
+            'purpose' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.eta'));
+        $this->assertTrue(Eta::where('user_id', $user->id)->exists());
+    }
+
+    public function test_locator_filing_succeeds_with_no_conflicts(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $response = $this->actingAs($user)->post(route('employee.locator.store'), [
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.locator'));
+        $this->assertTrue(Locator::where('user_id', $user->id)->exists());
+    }
+
+    public function test_locator_update_blocked_by_conflict_on_new_travel_date(): void
+    {
+        $user = $this->createEmployee();
+        $originalDate = now()->addDay()->toDateString();
+        $conflictDate = now()->addDays(2)->toDateString();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $originalDate,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        // A different pending locator already occupies the date we're about to move into.
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $conflictDate,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Other meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->put(route('employee.locator.update', $locator), [
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $conflictDate,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+        ]);
+
+        $response->assertSessionHasErrors('travel_date');
+        $this->assertEquals($originalDate, $locator->fresh()->travel_date->toDateString());
+    }
+
+    public function test_locator_update_succeeds_when_travel_date_unchanged(): void
+    {
+        $user = $this->createEmployee();
+        $date = now()->addDay()->toDateString();
+
+        $locator = Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Official',
+            'location' => 'City Hall',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Meeting',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->put(route('employee.locator.update', $locator), [
+            'application_type' => 'Official',
+            'location' => 'City Hall Annex',
+            'travel_date' => $date,
+            'intended_departure_time' => '09:00',
+            'intended_arrival_time' => '10:00',
+            'detail' => 'Updated meeting',
+        ]);
+
+        $response->assertRedirect(route('dashboard.employee.locator'));
+        $this->assertEquals('City Hall Annex', $locator->fresh()->location);
     }
 
     // ──────────────────────────────────────────────
