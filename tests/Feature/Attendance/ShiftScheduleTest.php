@@ -88,6 +88,20 @@ class ShiftScheduleTest extends TestCase
         ]);
     }
 
+    /** A plain evening shift NOT flagged crosses_midnight, even though its late-side grace window can spill past midnight. */
+    private function eveningShiftModel(): Shift
+    {
+        return Shift::create([
+            'name' => 'CCTV Mid Shift',
+            'time_in' => '15:00',
+            'time_out' => '23:00',
+            'break_out' => null,
+            'break_in' => null,
+            'crosses_midnight' => false,
+            'is_active' => true,
+        ]);
+    }
+
     // ── Resolver ──────────────────────────────────────────────────────────────
 
     public function test_day_shift_scores_late_and_undertime(): void
@@ -444,6 +458,37 @@ class ShiftScheduleTest extends TestCase
         $this->assertArrayHasKey('2026-06-10', $groups);
         $this->assertArrayNotHasKey('2026-06-11', $groups);
         $this->assertCount(2, $groups['2026-06-10']);
+    }
+
+    /**
+     * Real reproduced case: a plain evening shift (crosses_midnight=false)
+     * whose closing punch spills a little past midnight, landing on a
+     * calendar day configured as an explicit Rest Day override. Before the
+     * fix, only crosses_midnight=true schedules opened this class's
+     * open/close tracking, so the closing punch was re-resolved against the
+     * next day's own (rest-day) schedule instead of folding back onto the
+     * shift it actually belongs to.
+     */
+    public function test_evening_shift_closing_punch_folds_back_even_when_next_day_is_a_rest_day(): void
+    {
+        $shift = $this->eveningShiftModel();
+        $user = $this->createEmployee(['shift_id' => $shift->id]);
+
+        $this->markRestDay($user, '2026-09-01');
+
+        foreach (['2026-08-31 14:58:00', '2026-09-01 00:43:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo,
+                'logdate' => $d, 'logtime' => $t, 'in_out' => 'IN',
+            ]);
+        }
+
+        $groups = (new ShiftPunchGrouper)->group($user, AttendanceLog::where('user_id', $user->id)->get());
+
+        $this->assertArrayHasKey('2026-08-31', $groups);
+        $this->assertArrayNotHasKey('2026-09-01', $groups);
+        $this->assertCount(2, $groups['2026-08-31']);
     }
 
     public function test_day_shift_punches_group_by_logdate(): void

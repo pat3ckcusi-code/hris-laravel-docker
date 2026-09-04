@@ -264,6 +264,13 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="import-alert import-alert-error" role="alert">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span>{{ session('error') }}</span>
+        </div>
+    @endif
+
     <div class="import-layout">
 
         {{-- ── FORM ── --}}
@@ -505,6 +512,99 @@
 
         <div id="check-employee-result" style="margin-top:1rem;font-size:0.85rem;"></div>
     </div>
+
+    {{-- ── UNRESOLVED / UNMATCHED PUNCHES ── --}}
+    <div class="import-form-card" style="margin-top:1.5rem;">
+        <h3><i class="fa-solid fa-triangle-exclamation"></i> Unresolved / Unmatched Punches</h3>
+        <p class="import-subtitle">
+            DTR rows carrying a raw punch that was never placed into any time slot - the
+            fingerprint of a grouping bug, not an ordinary forgotten punch-out (those aren't
+            shown here). Recompute rebuilds the row from already-imported punches only; it
+            calls no external API and is safe to re-run.
+        </p>
+
+        <form method="GET" action="{{ route('hr-manager.attendance.import') }}"
+              style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1.25rem;">
+            <div class="form-group">
+                <label class="import-label" for="unmatched_from">From</label>
+                <input type="date" id="unmatched_from" name="unmatched_from" value="{{ $unmatchedFrom }}">
+            </div>
+            <div class="form-group">
+                <label class="import-label" for="unmatched_to">To</label>
+                <input type="date" id="unmatched_to" name="unmatched_to" value="{{ $unmatchedTo }}">
+            </div>
+            <div class="form-group">
+                <label class="import-label" for="unmatched_dept_id">Department</label>
+                <select id="unmatched_dept_id" name="unmatched_dept_id">
+                    <option value="">All Departments</option>
+                    @foreach($departments as $dept)
+                        <option value="{{ $dept->Dept_id }}" {{ (string) $unmatchedDeptId === (string) $dept->Dept_id ? 'selected' : '' }}>
+                            {{ $dept->Dept_name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <button type="submit" class="hrm-btn">
+                <i class="fa-solid fa-filter" style="margin-right:0.35rem;"></i> Filter
+            </button>
+        </form>
+
+        @if($unmatchedDtrs->isEmpty())
+            <p style="font-size:0.85rem;color:#6c757d;">
+                <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:0.3rem;"></i>
+                No unresolved punches found in this range.
+            </p>
+        @else
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead>
+                    <tr style="text-align:left;border-bottom:2px solid #e2ecf5;">
+                        <th style="padding:0.5rem;">Employee</th>
+                        <th style="padding:0.5rem;">Department</th>
+                        <th style="padding:0.5rem;">Date</th>
+                        <th style="padding:0.5rem;">Status</th>
+                        <th style="padding:0.5rem;">Unmatched Punch(es)</th>
+                        <th style="padding:0.5rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($unmatchedDtrs as $row)
+                        @php
+                            $emp = $row->employee;
+                            $empName = $emp ? trim("{$emp->last_name}, {$emp->first_name}") : "Employee #{$row->employee_id}";
+                        @endphp
+                        <tr style="border-bottom:1px solid #eef2f7;">
+                            <td style="padding:0.5rem;">{{ $empName }} <span style="color:#94a3b8;">({{ $emp->EmpNo ?? '—' }})</span></td>
+                            <td style="padding:0.5rem;">{{ $emp?->department?->Dept_name ?? '—' }}</td>
+                            <td style="padding:0.5rem;">{{ $row->date->format('M j, Y') }}</td>
+                            <td style="padding:0.5rem;">{{ ucwords(str_replace('_', ' ', $row->status ?? 'present')) }}</td>
+                            <td style="padding:0.5rem;">
+                                @foreach($row->unmatched_logs as $t)
+                                    <span style="display:inline-block;background:#fef9c3;color:#854d0e;border-radius:4px;padding:0.1rem 0.4rem;font-size:0.78rem;margin:0 0.2rem 0.2rem 0;">{{ substr($t, 0, 5) }}</span>
+                                @endforeach
+                            </td>
+                            <td style="padding:0.5rem;">
+                                <form method="POST" action="{{ route('hr-manager.attendance.import.recompute-unmatched') }}"
+                                      class="import-recompute-form"
+                                      data-employee="{{ $empName }}" data-date="{{ $row->date->format('M j, Y') }}">
+                                    @csrf
+                                    <input type="hidden" name="employee_id" value="{{ $row->employee_id }}">
+                                    <input type="hidden" name="date" value="{{ $row->date->toDateString() }}">
+                                    <button type="submit" class="hrm-btn" style="padding:0.3rem 0.65rem;font-size:0.78rem;">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Recompute
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            </div>
+            @if($unmatchedDtrs->count() >= 300)
+                <p style="font-size:0.78rem;color:#94a3b8;margin-top:0.5rem;">Showing the first 300 matching rows - narrow the date range to see more.</p>
+            @endif
+        @endif
+    </div>
 @endsection
 
 @section('page_scripts')
@@ -693,6 +793,30 @@
                         resultBox.innerHTML = `<div class="check-result-box check-result-error"><i class="fa-solid fa-circle-exclamation"></i> ${escHtml(err.message)}</div>`;
                     })
                     .finally(() => { checkBtn.disabled = false; });
+            });
+        })();
+
+        (function () {
+            document.querySelectorAll('.import-recompute-form').forEach(function (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    const name = form.dataset.employee;
+                    const date = form.dataset.date;
+
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Recompute this DTR?',
+                        html: 'Rebuilds <b>' + name + '</b>&rsquo;s DTR from already-imported punches around ' + date + ' using the current computation logic. Does not call the external biometric API - safe to re-run.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, recompute',
+                        confirmButtonColor: '#17a2b8',
+                        cancelButtonColor: '#6b7280',
+                    }).then(function (res) {
+                        if (res.isConfirmed) {
+                            form.submit();
+                        }
+                    });
+                });
             });
         })();
     </script>

@@ -560,6 +560,49 @@ class AttendanceComputationTest extends TestCase
     }
 
     /**
+     * End-to-end regression for the real reported case (CCTV Mid Shift): a
+     * plain evening shift (crosses_midnight=false, time_in=15:00,
+     * time_out=23:00) whose closing punch spills a little past midnight,
+     * landing on a day configured as a Rest Day. Before this fix,
+     * 2026-08-31 resolved missing_out (no time_out_pm) and 2026-09-01
+     * resolved incomplete with the 00:43 punch stranded in unmatched_logs,
+     * even though the employee's attendance was actually complete.
+     */
+    public function test_import_folds_an_evening_shifts_late_checkout_back_onto_its_own_start_date_when_the_next_day_is_a_rest_day(): void
+    {
+        $shift = Shift::create([
+            'name' => 'CCTV Mid Shift', 'time_in' => '15:00', 'time_out' => '23:00',
+            'break_out' => null, 'break_in' => null, 'crosses_midnight' => false, 'is_active' => true,
+        ]);
+        $user = $this->createEmployee();
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse('2026-08-30'), null, null, null, [0, 1, 2, 3, 4, 5, 6], true
+        );
+        EmployeeShiftSchedule::create([
+            'user_id' => $user->id, 'date' => '2026-09-01', 'shift_id' => null, 'type' => 'rest', 'created_by' => $user->id,
+        ]);
+
+        foreach (['2026-08-31 14:58:00', '2026-09-01 00:43:00'] as $dt) {
+            [$d, $t] = explode(' ', $dt);
+            AttendanceLog::create([
+                'user_id' => $user->id, 'emp_no' => $user->EmpNo, 'logdate' => $d, 'logtime' => $t,
+            ]);
+        }
+
+        app(PersonnelLogImportService::class)->recomputeDtr($user, '2026-08-31', '2026-09-01');
+
+        $dtr = Dtr::where('employee_id', $user->id)->whereDate('date', '2026-08-31')->firstOrFail();
+
+        $this->assertSame('14:58:00', $dtr->time_in_am);
+        $this->assertSame('00:43:00', $dtr->time_out_pm);
+        $this->assertSame('present', $dtr->status);
+        $this->assertSame(0, $dtr->late_minutes);
+        $this->assertSame(0, $dtr->undertime_minutes);
+        $this->assertNull($dtr->unmatched_logs);
+        $this->assertDatabaseMissing('dtrs', ['employee_id' => $user->id, 'date' => '2026-09-01']);
+    }
+
+    /**
      * End-to-end regression for a real reported bug: a 1-on/2-off rotation
      * where ShiftPunchGrouper's eligibility window used to reach EXACTLY to
      * the next on-day's own scheduled start, so its on-time arrival was

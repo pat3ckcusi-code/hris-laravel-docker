@@ -38,24 +38,34 @@ use Illuminate\Support\Collection;
  * exact 24h mark, or the start of the next actually-scheduled workday -
  * whichever is later - has passed.
  *
- * An ordinary (non-24h) crossing shift needs the same open/close tracking for
- * a narrower reason: shiftDateFor() resolves which schedule to evaluate a
- * punch against using *that punch's own logdate* - correct for the shift's
- * first (pre-midnight) punch, but wrong for its closing (post-midnight) punch
- * whenever the following calendar day happens to carry a *different*
- * schedule (a rest day, WFH, or a wholly different shift - all ordinary,
- * expected day-to-day variation in this app). Without tracking, that closing
- * punch gets evaluated against tomorrow's schedule instead of the shift it
- * actually belongs to, and silently lands on the wrong shift-date - or its
- * own, permanently incomplete one - instead of closing out last night's
- * shift. So once a crossing shift opens, it stays eligible for a *tight*
- * grace window past its own workEnd (the same "still the same event"
- * tolerance used elsewhere, not the 24h case's rest-day-walking widening -
- * an ordinary night shift's close is expected within hours, not days, and
- * widening further risks swallowing a genuinely new day's own early arrival
- * into the previous night's shift instead). Only a plain, non-crossing
- * schedule (day shifts with a genuine off-period) is untouched and keeps
- * using shiftDateFor() directly, exactly as before.
+ * Every non-full-day-crossing shift needs the same open/close tracking for
+ * the identical reason, whether or not it's actually flagged crossesMidnight:
+ * shiftDateFor() resolves which schedule to evaluate a punch against using
+ * *that punch's own logdate* - correct for a shift's first punch, but wrong
+ * for its closing punch whenever that punch happens to land on a calendar
+ * day carrying a *different* schedule (a rest day, WFH, or a wholly
+ * different shift - all ordinary, expected day-to-day variation in this
+ * app). This isn't unique to shifts *designed* to cross midnight: an
+ * ordinary evening shift (e.g. 15:00-23:00, crossesMidnight=false) whose
+ * employee simply stays a little late produces the exact same hazard for its
+ * closing punch, which now has its own logdate on the *following* calendar
+ * day (see DtrPunchResolver::realPenalties()'s docblock for this same shift
+ * shape's already-fixed sibling bug at the display-reconstruction layer -
+ * this class is the corresponding fix at the grouping layer). Without
+ * tracking, that closing punch gets evaluated against the wrong day's
+ * schedule instead of the shift it actually belongs to, and silently lands
+ * on the wrong shift-date - or its own, permanently incomplete one - instead
+ * of closing out the real shift. So once any non-full-day-crossing shift
+ * opens, it stays eligible for a *tight* grace window past its own workEnd
+ * (the same "still the same event" tolerance used elsewhere, not the 24h
+ * case's rest-day-walking widening - a shift's close is expected within
+ * hours, not days, and widening further risks swallowing a genuinely new
+ * day's own early arrival into the previous shift instead) - see
+ * closeEligibleUntil(). This is inert for an ordinary day shift (any shift
+ * whose workEnd + late_out_hours doesn't itself reach past midnight resolves
+ * to the same shift-date whether or not tracking is open); it only changes
+ * anything for a late-ending shift whose closing punch spills past midnight,
+ * flagged crossesMidnight or not.
  */
 class ShiftPunchGrouper
 {
@@ -67,7 +77,7 @@ class ShiftPunchGrouper
     public function group(User $user, Collection $logs, ?Collection $assignments = null): array
     {
         $groups = [];
-        $openShift = null; // ['date' => string, 'eligibleUntil' => Carbon] | null - set for any crossing shift, not just a true 24h one
+        $openShift = null; // ['date' => string, 'eligibleUntil' => Carbon] | null - set once any shift's first punch resolves, except that a full 24h shift uses its own wider eligibleUntil()
 
         foreach ($this->sortedPunches($logs) as $log) {
             $logdate = $log->logdate instanceof Carbon
@@ -99,22 +109,21 @@ class ShiftPunchGrouper
                     : $schedule->shiftDateFor($logdate, $logtime);
 
                 // See class docblock: a full 24h shift keeps its wide,
-                // rest-day-walking eligibility window; an ordinary crossing
-                // shift gets a tight grace-only window off its own workEnd so
-                // its closing punch can't be mis-evaluated against tomorrow's
-                // (possibly unrelated) schedule; a non-crossing schedule needs
-                // no tracking at all.
+                // rest-day-walking eligibility window; every other shape
+                // (crossesMidnight or not) gets the same tight grace-only
+                // window off its own workEnd via closeEligibleUntil(), so its
+                // closing punch can't be mis-evaluated against a different
+                // day's schedule regardless of whether the shift is
+                // *designed* to cross midnight or just happened to this time.
                 $openShift = match (true) {
                     $this->isFullDayCrossing($schedule) => [
                         'date' => $shiftDate,
                         'eligibleUntil' => $this->eligibleUntil($user, $shiftDate, $schedule, $assignments),
                     ],
-                    $schedule->crossesMidnight => [
+                    default => [
                         'date' => $shiftDate,
-                        'eligibleUntil' => $schedule->referenceDateTime($shiftDate, $schedule->workEnd)
-                            ->copy()->addHours($this->closeGraceHours()),
+                        'eligibleUntil' => $this->closeEligibleUntil($shiftDate, $schedule),
                     ],
-                    default => null,
                 };
             }
 
@@ -200,12 +209,51 @@ class ShiftPunchGrouper
     // event window is bounded by this exact same value off this exact same
     // anchor (workEnd), so a punch this accepts as "the close" is guaranteed
     // to still be eligible for the matcher to actually match it, not reject
-    // it into unmatched. Shared by both the full-24h case (as the "grace"
-    // half of eligibleUntil()'s wider window) and the ordinary-crossing case
-    // (as the whole window).
+    // it into unmatched. Shared by the full-24h case (as the "grace" half of
+    // eligibleUntil()'s wider window), the ordinary-crossing case, and the
+    // plain non-crossing case (both via closeEligibleUntil()'s single
+    // formula).
     private function closeGraceHours(): float
     {
         return (float) config('attendance.matching.late_out_hours', 4.0);
+    }
+
+    /**
+     * The tight grace-only eligibility window shared by every non-full-day-
+     * crossing schedule alike - an ordinary crossing shift and a plain
+     * non-crossing one both get the identical formula, since
+     * WorkSchedule::referenceDateTime() already resolves each shape's TRUE
+     * workEnd instant correctly on its own (rolling to shiftDate+1 only when
+     * the schedule is genuinely designed to cross midnight; staying same-day
+     * otherwise) - no separate branch needed here.
+     *
+     * Capped at the end of workEnd's own calendar day specifically for a
+     * Standard Day schedule (WorkSchedule::global(), always crossesMidnight
+     * =false), so this can never open wider than AttendanceMatcher's own
+     * Standard Day pm_out window (endOfDay(), not the late_out_hours cap
+     * every other schedule keeps - see buildExpectedEvents()). Without this
+     * cap, a hypothetically very-late-configured global Standard Day
+     * (Settings.work_end at/after roughly 20:00, given the 4h default grace)
+     * could have this accept a past-midnight punch onto the previous day
+     * that the matcher then rejects as outside its own same-day-only window,
+     * stranding it in unmatched_logs instead of closing the shift - the
+     * exact failure mode this class exists to eliminate, just for a schedule
+     * flavor that never reached this branch before this fix (Standard Day
+     * always has crossesMidnight=false, so it always fell into the old,
+     * untracked default case).
+     */
+    private function closeEligibleUntil(string $shiftDate, WorkSchedule $schedule): Carbon
+    {
+        $graceClose = $schedule->referenceDateTime($shiftDate, $schedule->workEnd)
+            ->copy()->addHours($this->closeGraceHours());
+
+        if (! $schedule->isStandardDay) {
+            return $graceClose;
+        }
+
+        $dayEnd = $schedule->referenceDateTime($shiftDate, $schedule->workEnd)->copy()->endOfDay();
+
+        return $graceClose->lt($dayEnd) ? $graceClose : $dayEnd;
     }
 
     // Reuses the existing "how early is still plausibly a fresh arrival"
