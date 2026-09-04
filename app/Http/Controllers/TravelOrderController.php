@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\HRAuditTrail;
 use App\Models\User;
 use App\Services\DepartmentService;
 use App\Services\TravelOrderExportService;
@@ -135,12 +136,14 @@ class TravelOrderController extends Controller
         }
         $order = $loaded['order'];
 
-        // Resolve creator and recommender names
+        // Resolve creator, recommender, and canceller names
         $creator = $order->created_by ? User::find($order->created_by) : null;
         $recommender = $order->recommender ? User::find($order->recommender) : null;
+        $canceller = ! empty($order->cancelled_by) ? User::find($order->cancelled_by) : null;
 
         $creatorName = $creator ? trim(($creator->last_name ?? '').', '.($creator->first_name ?? '')) : 'N/A';
         $recommenderName = $recommender ? trim(($recommender->last_name ?? '').', '.($recommender->first_name ?? '')) : 'N/A';
+        $cancellerName = $canceller ? trim(($canceller->last_name ?? '').', '.($canceller->first_name ?? '')) : 'N/A';
 
         return response()->json(['success' => true, 'data' => [
             'id' => $order->id,
@@ -160,6 +163,9 @@ class TravelOrderController extends Controller
             'created_at' => $order->created_at,
             'dept_office' => $loaded['deptOffice'],
             'employees' => $loaded['employees'],
+            'cancellation_reason' => $order->cancellation_reason ?? null,
+            'cancelled_at' => $order->cancelled_at ?? null,
+            'cancelled_by_name' => $order->cancelled_by ? $cancellerName : null,
         ]]);
     }
 
@@ -266,6 +272,57 @@ class TravelOrderController extends Controller
             'success' => true,
             'message' => 'Travel order updated successfully.',
             'redirect' => route('department-head.filed-travel-orders'),
+        ]);
+    }
+
+    // Cancel a filed travel order (Pending or Approved only), recording the reason and who/when.
+    public function cancel(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        $user = Auth::user();
+        if (! $user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        if (! $this->orderIsAccessible((int) $id, $this->resolveAccessibleEmpNos($user))) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
+
+        $order = DB::table('travel_orders')->where('id', $id)->first();
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
+        }
+
+        if (! in_array($order->status, ['Pending', 'Approved'], true)) {
+            return response()->json(['success' => false, 'message' => 'Only travel orders with "Pending" or "Approved" status can be cancelled.'], 422);
+        }
+
+        DB::table('travel_orders')->where('id', $id)->update([
+            'status' => 'Cancelled',
+            'cancellation_reason' => $validated['reason'],
+            'cancelled_by' => $user->id,
+            'cancelled_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        HRAuditTrail::create([
+            'actor_user_id' => $user->id,
+            'module' => 'travel_order',
+            'action' => 'travel_order_cancelled',
+            'target_type' => 'travel_order',
+            'target_id' => $order->id,
+            'details' => [
+                'travel_order_num' => $order->travel_order_num,
+                'reason' => $validated['reason'],
+            ],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Travel order cancelled successfully.',
         ]);
     }
 

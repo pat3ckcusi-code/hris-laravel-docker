@@ -394,6 +394,7 @@ Route::middleware(['auth', 'throttle:api', 'role:department-head,administrative-
     Route::get('/api/department/travel-orders', [TravelOrderController::class, 'index'])->name('api.department.travel-orders');
     Route::get('/api/travel-orders/{id}/print', [TravelOrderController::class, 'printExcel'])->name('api.travel-orders.print');
     Route::put('/api/travel-orders/{id}', [TravelOrderController::class, 'update'])->name('api.travel-orders.update');
+    Route::post('/api/travel-orders/{id}/cancel', [TravelOrderController::class, 'cancel'])->name('api.travel-orders.cancel');
     Route::post('/api/office-orders', [OfficeOrderController::class, 'store'])->name('api.office-orders');
     Route::get('/api/department/office-orders', [OfficeOrderController::class, 'index'])->name('api.department.office-orders');
     Route::put('/api/office-orders/{id}', [OfficeOrderController::class, 'update'])->name('api.office-orders.update');

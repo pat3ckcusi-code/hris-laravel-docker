@@ -27,6 +27,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $approved_at
  * @property int|null $rejected_by
  * @property Carbon|null $rejected_at
+ * @property string|null $cancellation_reason
+ * @property Carbon|null $cancelled_at
+ * @property int|null $cancelled_by
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  *
@@ -55,6 +58,9 @@ class TravelOrder extends Model
         'approved_at',
         'rejected_by',
         'rejected_at',
+        'cancellation_reason',
+        'cancelled_at',
+        'cancelled_by',
     ];
 
     protected $casts = [
@@ -63,5 +69,6 @@ class TravelOrder extends Model
         'date_of_last_travel' => 'date',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 }

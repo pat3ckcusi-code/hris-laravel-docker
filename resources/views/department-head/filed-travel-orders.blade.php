@@ -90,6 +90,15 @@
     .td-departs-neutral { color: #6b7280; font-weight: 500; }
     .td-departs-muted   { color: #94a3b8; font-style: italic; font-weight: 500; }
     .td-departs-none    { color: #cbd5e1; }
+
+    /* Cancelled travel order rows */
+    .to-cancelled-text { text-decoration: line-through; color: #94a3b8; }
+    .to-cancellation-block {
+        margin-top: 24px; padding: 12px 14px; border: 1px solid #fecaca; background: #fef2f2;
+        border-radius: 8px; font-family: -apple-system, Segoe UI, Roboto, sans-serif; font-size: 0.85rem; color: #991b1b;
+    }
+    .to-cancellation-block strong { color: #7f1d1d; }
+    .tod-banner-cancelled { background: #f3f4f6; color: #4b5563; }
 </style>
 @endsection
 
@@ -99,6 +108,7 @@
             ['key' => 'Pending', 'label' => 'Pending', 'icon' => 'fa-hourglass-half', 'accent' => 'accent-leave'],
             ['key' => 'Approved', 'label' => 'Approved', 'icon' => 'fa-circle-check', 'accent' => 'accent-overtime'],
             ['key' => 'Rejected', 'label' => 'Rejected', 'icon' => 'fa-circle-xmark', 'accent' => 'accent-eta'],
+            ['key' => 'Cancelled', 'label' => 'Cancelled', 'icon' => 'fa-ban', 'accent' => 'accent-cancelled'],
             ['key' => 'All', 'label' => 'All Orders', 'icon' => 'fa-layer-group', 'accent' => 'accent-workforce'],
         ];
     @endphp
@@ -168,6 +178,7 @@
         <div class="modal-actions" style="display:flex; gap:0.5rem; justify-content:flex-end; padding:0 1.5rem 1.25rem;">
             <button class="hris-btn hris-btn-sm" style="background:#16a34a;color:#fff" onclick="printTravelOrderFromModal()"><i class="fas fa-print"></i> Print</button>
             <button class="hris-btn hris-btn-warning hris-btn-sm" id="travelOrderModalEditBtn" style="display:none" onclick="editTravelOrderFromModal()"><i class="fas fa-edit"></i> Edit</button>
+            <button class="hris-btn hris-btn-sm" id="travelOrderModalCancelBtn" style="display:none;background:#dc2626;color:#fff" onclick="cancelTravelOrderFromModal()"><i class="fas fa-ban"></i> Cancel</button>
             <button class="hris-btn hris-btn-secondary hris-btn-sm" onclick="closeTravelOrderModal()">Close</button>
         </div>
     </div>
@@ -259,7 +270,7 @@ function escapeHtml(str) {
 
 function badgeFor(status) {
     const s = (status || '').toLowerCase();
-    const cls = { pending: 'badge-pending', approved: 'badge-approved', rejected: 'badge-rejected' }[s] || 'badge-default';
+    const cls = { pending: 'badge-pending', approved: 'badge-approved', rejected: 'badge-rejected', cancelled: 'badge-cancelled' }[s] || 'badge-default';
     const label = status ? (status.charAt(0).toUpperCase() + status.slice(1)) : 'Unknown';
     return `<span class="hris-badge ${cls}">${label}</span>`;
 }
@@ -372,8 +383,8 @@ function updateTravelOrderTableHeader() {
 }
 
 function updateTravelOrderTileCounts() {
-    const counts = { Pending: 0, Approved: 0, Rejected: 0, All: 0 };
-    const statusKeys = ['Pending', 'Approved', 'Rejected'];
+    const counts = { Pending: 0, Approved: 0, Rejected: 0, Cancelled: 0, All: 0 };
+    const statusKeys = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
     _toAllRows.forEach(row => {
         if (!matchesTravelOrderMonth(row)) return;
         counts.All++;
@@ -383,6 +394,7 @@ function updateTravelOrderTileCounts() {
     document.getElementById('toTileCountPending').textContent = counts.Pending;
     document.getElementById('toTileCountApproved').textContent = counts.Approved;
     document.getElementById('toTileCountRejected').textContent = counts.Rejected;
+    document.getElementById('toTileCountCancelled').textContent = counts.Cancelled;
     document.getElementById('toTileCountAll').textContent = counts.All;
 }
 
@@ -428,17 +440,24 @@ function renderTravelOrdersTable() {
         const dateRange = formatDateRange(row.departure, row.return);
         const departsIn = departsInInfo(row);
         const filedInfo = formatRelativeFiled(row.created_at);
-        const isPending = (row.status || '').toLowerCase() === 'pending';
+        const status = (row.status || '').toLowerCase();
+        const isPending = status === 'pending';
+        const isCancelled = status === 'cancelled';
+        const canCancel = status === 'pending' || status === 'approved';
+        const textCls = isCancelled ? ' to-cancelled-text' : '';
         const editBtn = isPending
             ? `<button class="hris-btn hris-btn-warning hris-btn-sm" type="button" onclick="window.location='/travel-orders/' + ${row.id} + '/edit'"><i class="fas fa-edit"></i> Edit</button>`
+            : '';
+        const cancelBtn = canCancel
+            ? `<button class="hris-btn hris-btn-sm" type="button" style="background:#dc2626;color:#fff" onclick="promptCancelTravelOrder(${row.id})"><i class="fas fa-ban"></i> Cancel</button>`
             : '';
         return `
             <tr>
                 <td>${idx + 1}</td>
-                <td class="td-ellipsis">${row.travel_order_num}</td>
-                <td class="td-ellipsis">${row.department || '-'}</td>
-                <td class="td-ellipsis">${row.destination}</td>
-                <td>
+                <td class="td-ellipsis${textCls}">${row.travel_order_num}</td>
+                <td class="td-ellipsis${textCls}">${row.department || '-'}</td>
+                <td class="td-ellipsis${textCls}">${row.destination}</td>
+                <td class="${textCls}">
                     <div class="td-daterange-main">${dateRange.rangeLabel}</div>
                     ${dateRange.durationLabel ? `<div class="td-daterange-sub">${dateRange.durationLabel}</div>` : ''}
                 </td>
@@ -451,6 +470,7 @@ function renderTravelOrdersTable() {
                         <button class="hris-btn hris-btn-secondary hris-btn-sm" type="button" onclick="openTravelOrderModal(${row.id})"><i class="fa fa-eye"></i> View</button>
                         <button class="hris-btn hris-btn-sm" type="button" style="background:#16a34a;color:#fff" onclick="printTravelOrder(${row.id})"><i class="fas fa-print"></i> Print</button>
                         ${editBtn}
+                        ${cancelBtn}
                     </div>
                 </td>
             </tr>`;
@@ -486,6 +506,7 @@ async function openTravelOrderModal(id) {
             pending: { icon: 'fa-hourglass-half', label: 'Pending Approval', cls: 'tod-banner-pending' },
             approved: { icon: 'fa-circle-check', label: 'Approved', cls: 'tod-banner-approved' },
             rejected: { icon: 'fa-circle-xmark', label: 'Rejected', cls: 'tod-banner-rejected' },
+            cancelled: { icon: 'fa-ban', label: 'Cancelled', cls: 'tod-banner-cancelled' },
         };
         const meta = statusMeta[(d.status || '').toLowerCase()] || { icon: 'fa-circle-info', label: (d.status || 'Unknown'), cls: 'tod-banner-default' };
 
@@ -533,11 +554,15 @@ async function openTravelOrderModal(id) {
             <div class="tod-section">
                 <div class="tod-section-title">Employees (${emps.length})</div>
                 ${empList}
-            </div>`;
+            </div>
+            ${d.status === 'Cancelled' ? `<div class="to-cancellation-block"><strong>Cancelled${d.cancelled_by_name ? ' by ' + escapeHtml(d.cancelled_by_name) : ''}${d.cancelled_at ? ' on ' + formatDate(d.cancelled_at) : ''}</strong><br>Reason: ${escapeHtml(d.cancellation_reason || '-')}</div>` : ''}`;
 
         _currentTravelOrderData = d;
+        const statusLower = (d.status || '').toLowerCase();
         document.getElementById('travelOrderModalEditBtn').style.display =
-            (d.status || '').toLowerCase() === 'pending' ? 'inline-flex' : 'none';
+            statusLower === 'pending' ? 'inline-flex' : 'none';
+        document.getElementById('travelOrderModalCancelBtn').style.display =
+            (statusLower === 'pending' || statusLower === 'approved') ? 'inline-flex' : 'none';
     } catch (err) {
         body.innerHTML = '<div class="text-danger">Failed to load details</div>';
     }
@@ -557,6 +582,74 @@ function printTravelOrderFromModal() {
 
 function editTravelOrderFromModal() {
     if (_currentTravelOrderData) window.location = '/travel-orders/' + _currentTravelOrderData.id + '/edit';
+}
+
+async function ensureSwal() {
+    if (window.Swal && typeof Swal.fire === 'function') return window.Swal;
+    return new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = '/js/app.js';
+        s.onload = () => resolve(window.Swal || null);
+        s.onerror = () => resolve(null);
+        document.head.appendChild(s);
+    });
+}
+
+async function promptCancelTravelOrder(id) {
+    function doCancel(reason) {
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        fetch('/api/travel-orders/' + id + '/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-TOKEN': token,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: new URLSearchParams({ reason: reason })
+        }).then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to cancel travel order.');
+            }
+            const row = _toAllRows.find(r => r.id === id);
+            if (row) row.status = 'Cancelled';
+            updateTravelOrderTileCounts();
+            renderTravelOrdersTable();
+            if (_currentTravelOrderData && _currentTravelOrderData.id === id) {
+                openTravelOrderModal(id);
+            }
+            if (window.Swal) {
+                Swal.fire('Cancelled', data.message || 'Travel order cancelled.', 'success');
+            }
+        }).catch(error => {
+            if (window.Swal) Swal.fire('Error', error.message || 'Failed to cancel travel order.', 'error');
+            else alert(error.message || 'Failed to cancel travel order.');
+        });
+    }
+
+    const SwalLib = await ensureSwal();
+    if (SwalLib) {
+        SwalLib.fire({
+            icon: 'warning',
+            title: 'Cancel Travel Order',
+            input: 'textarea',
+            inputLabel: 'Reason for cancelling this travel order',
+            showCancelButton: true,
+            confirmButtonText: 'Submit',
+            confirmButtonColor: '#dc2626',
+            preConfirm: (v) => { if (!v) SwalLib.showValidationMessage('A reason is required'); return v; }
+        }).then((result) => {
+            if (result.isConfirmed) doCancel(result.value);
+        });
+    } else {
+        const reason = prompt('Reason for cancelling this travel order:');
+        if (reason) doCancel(reason);
+    }
+}
+
+function cancelTravelOrderFromModal() {
+    if (_currentTravelOrderData) promptCancelTravelOrder(_currentTravelOrderData.id);
 }
 </script>
 @endsection

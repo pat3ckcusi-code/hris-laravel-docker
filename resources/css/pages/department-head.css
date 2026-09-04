@@ -51,6 +51,7 @@
 .kpi-card.accent-locator    .kpi-icon { background: linear-gradient(180deg, #06b6d4, #0891b2); }
 .kpi-card.accent-eta        .kpi-icon { background: linear-gradient(180deg, #ef4444, #f43f5e); }
 .kpi-card.accent-overtime   .kpi-icon { background: linear-gradient(180deg, #10b981, #059669); }
+.kpi-card.accent-cancelled  .kpi-icon { background: linear-gradient(180deg, #9ca3af, #6b7280); }
 
 /* KPI modal */
 #kpi-modal-overlay {
