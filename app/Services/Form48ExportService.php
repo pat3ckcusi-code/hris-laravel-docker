@@ -323,14 +323,17 @@ class Form48ExportService
     }
 
     /**
-     * Build a day-of-month → excluded-slot-keys map for company-wide work
-     * suspensions that actually exclude at least one Form 48 slot. Mirrors
-     * DtrController::data()'s per-row applySuspension() resolution and its
-     * `!empty($suspensionSlots)` gate - a cutoff-only suspension (caps workEnd,
-     * excludes nothing) needs no label here, only the schedule adjustment
-     * buildRecords() already applies upstream.
+     * Build a day-of-month → {excluded-slot-keys, suspension type} map for
+     * company-wide work suspensions that actually exclude at least one Form 48
+     * slot. Mirrors DtrController::data()'s per-row applySuspension() resolution
+     * and its `!empty($suspensionSlots)` gate - a cutoff-only suspension (caps
+     * workEnd, excludes nothing) needs no label here, only the schedule
+     * adjustment buildRecords() already applies upstream. The `type` is carried
+     * alongside the slots so fillDailyRows() can render a type-specific label
+     * (via WorkSuspension::typeConfig(), same as DtrController::data()) instead
+     * of a generic one.
      *
-     * @return array<int, array<string, true>>
+     * @return array<int, array{slots: array<string, true>, type: string}>
      */
     private function buildSuspensionSlotsMap(int $userId, string $from, string $to): array
     {
@@ -347,7 +350,7 @@ class Form48ExportService
                 $schedule = WorkSchedule::forUserOnDate($user, $date);
                 [, $suspensionSlots] = $schedule->applySuspension($suspension->suspension_time);
                 if (! empty($suspensionSlots)) {
-                    $map[(int) $date->day] = $suspensionSlots;
+                    $map[(int) $date->day] = ['slots' => $suspensionSlots, 'type' => $suspension->type];
                 }
             });
 
@@ -726,9 +729,9 @@ class Form48ExportService
                 $excludedSlotsByDate[$dayToDate($day)] = array_fill_keys($keys, null);
             }
         }
-        foreach ($suspensionSlotsMap as $day => $slots) {
+        foreach ($suspensionSlotsMap as $day => $entry) {
             $dateStr = $dayToDate($day);
-            $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $slots);
+            $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $entry['slots']);
         }
         $recoveredByDate = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate);
         $recoveredMap = [];
@@ -831,7 +834,7 @@ class Form48ExportService
                 continue;
             }
             if (isset($suspensionSlotsMap[$day])) {
-                $slots = $suspensionSlotsMap[$day];
+                $slots = $suspensionSlotsMap[$day]['slots'];
                 $sAmIn = array_key_exists('am_in', $slots) ? 'EXCUSED' : ($r['am_in'] ?? '');
                 $sPmIn = array_key_exists('pm_in', $slots) ? 'EXCUSED' : ($r['pm_in'] ?? '');
                 $sPmOut = array_key_exists('pm_out', $slots) ? 'EXCUSED' : ($r['pm_out'] ?? '');
@@ -1550,7 +1553,13 @@ class Form48ExportService
             // exclusion needs no label here, only the schedule adjustment already
             // applied upstream in buildRecords().
             if (isset($suspensionSlotsMap[$day])) {
-                $slots = $suspensionSlotsMap[$day];
+                $slots = $suspensionSlotsMap[$day]['slots'];
+                // Type-specific label (e.g. "HOLIDAY", "WEATHER / TYPHOON"),
+                // mirroring DtrController::data()'s use of typeConfig() - this
+                // is display-only; the penalty-sentinel literal below stays
+                // 'SUSPENDED' unconditionally, since computeSlotPenalties() only
+                // checks it as a generic "not a real time" marker.
+                $suspendedLabel = strtoupper(WorkSuspension::typeConfig($suspensionSlotsMap[$day]['type'])['label']);
                 // Same effective-values treatment as the Excuse branch above - see
                 // its comment for why this is required, not just a nicety.
                 $recovered = $recoveredMap[$day] ?? [];
@@ -1570,16 +1579,16 @@ class Form48ExportService
                             $sheet->mergeCells($range);
                         } catch (\Throwable) {
                         }
-                        $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, 'SUSPENDED');
+                        $sheet->setCellValue(self::WKND_FROM_COLS[$i].$row, $suspendedLabel);
                         $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                         $sheet->setCellValue(self::UT_HRS_COLS[$i].$row, '');
                         $sheet->setCellValue(self::UT_MIN_COLS[$i].$row, '');
                     }
                 } else {
-                    $amIn = array_key_exists('am_in', $slots) ? ($fmt($effAmIn) ?: 'SUSPENDED') : $fmt($effAmIn);
-                    $amOut = array_key_exists('am_out', $slots) ? ($fmt($effAmOut) ?: 'SUSPENDED') : $fmt($effAmOut);
-                    $pmIn = array_key_exists('pm_in', $slots) ? ($fmt($effPmIn) ?: 'SUSPENDED') : $fmt($effPmIn);
-                    $pmOut = array_key_exists('pm_out', $slots) ? ($fmt($effPmOut) ?: 'SUSPENDED') : $fmt($effPmOut);
+                    $amIn = array_key_exists('am_in', $slots) ? ($fmt($effAmIn) ?: $suspendedLabel) : $fmt($effAmIn);
+                    $amOut = array_key_exists('am_out', $slots) ? ($fmt($effAmOut) ?: $suspendedLabel) : $fmt($effAmOut);
+                    $pmIn = array_key_exists('pm_in', $slots) ? ($fmt($effPmIn) ?: $suspendedLabel) : $fmt($effPmIn);
+                    $pmOut = array_key_exists('pm_out', $slots) ? ($fmt($effPmOut) ?: $suspendedLabel) : $fmt($effPmOut);
 
                     // Penalty inputs stay blind to any recovered value, same
                     // reasoning as the Excuse branch above.

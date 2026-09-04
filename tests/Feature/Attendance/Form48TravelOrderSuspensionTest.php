@@ -146,7 +146,68 @@ class Form48TravelOrderSuspensionTest extends TestCase
 
         $row = 16;
         $this->assertTrue($sheet->getCell("C{$row}")->isMergeRangeValueCell());
-        $this->assertSame('SUSPENDED', $sheet->getCell("C{$row}")->getValue());
+        $this->assertSame('WEATHER / TYPHOON', $sheet->getCell("C{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
+    }
+
+    public function test_form48_export_shows_holiday_label_for_full_day_holiday_suspension_with_no_punches(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Holidayform48']);
+        $this->assignEightToFiveShift($user);
+
+        WorkSuspension::create([
+            'suspension_date' => self::DATE,
+            'suspension_time' => null,
+            'reason' => 'Test holiday',
+            'type' => 'holiday',
+        ]);
+
+        $sheet = $this->fillSheet(app(Form48ExportService::class), $user);
+
+        $row = 16;
+        $this->assertTrue($sheet->getCell("C{$row}")->isMergeRangeValueCell());
+        $this->assertSame('HOLIDAY', $sheet->getCell("C{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
+        $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
+    }
+
+    public function test_form48_export_shows_real_am_punches_and_holiday_label_for_pm_of_afternoon_holiday_cutoff(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Holidaypartial']);
+        $this->assignEightToFiveShift($user);
+
+        // A 12:00 cutoff (between morningEnd and lunchReturn on the 8-5
+        // schedule) excludes only the PM slots - the AM half was worked
+        // before the holiday suspension took effect. Proves a real punch
+        // still wins over the label even for the new holiday-type path,
+        // not just the pre-existing generic/weather path.
+        WorkSuspension::create([
+            'suspension_date' => self::DATE,
+            'suspension_time' => '12:00',
+            'reason' => 'Afternoon holiday dismissal',
+            'type' => 'holiday',
+        ]);
+
+        Dtr::create([
+            'employee_id' => $user->id,
+            'date' => self::DATE,
+            'time_in_am' => '08:00:00',
+            'time_out_am' => '12:00:00',
+            'time_in_pm' => null,
+            'time_out_pm' => null,
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+            'is_absent' => false,
+        ]);
+
+        $sheet = $this->fillSheet(app(Form48ExportService::class), $user);
+
+        $row = 16;
+        $this->assertSame('08:00', $sheet->getCell("C{$row}")->getValue(), 'Real AM In punch must not be hidden behind the HOLIDAY label.');
+        $this->assertSame('12:00', $sheet->getCell("D{$row}")->getValue(), 'Real AM Out punch must not be hidden behind the HOLIDAY label.');
+        $this->assertSame('HOLIDAY', $sheet->getCell("E{$row}")->getValue());
+        $this->assertSame('HOLIDAY', $sheet->getCell("F{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
     }
@@ -181,10 +242,10 @@ class Form48TravelOrderSuspensionTest extends TestCase
         $sheet = $this->fillSheet(app(Form48ExportService::class), $user);
 
         $row = 16;
-        $this->assertSame('08:00', $sheet->getCell("C{$row}")->getValue(), 'Real AM In punch must not be hidden behind the SUSPENDED label.');
-        $this->assertSame('12:00', $sheet->getCell("D{$row}")->getValue(), 'Real AM Out punch must not be hidden behind the SUSPENDED label.');
-        $this->assertSame('SUSPENDED', $sheet->getCell("E{$row}")->getValue());
-        $this->assertSame('SUSPENDED', $sheet->getCell("F{$row}")->getValue());
+        $this->assertSame('08:00', $sheet->getCell("C{$row}")->getValue(), 'Real AM In punch must not be hidden behind the WEATHER / TYPHOON label.');
+        $this->assertSame('12:00', $sheet->getCell("D{$row}")->getValue(), 'Real AM Out punch must not be hidden behind the WEATHER / TYPHOON label.');
+        $this->assertSame('WEATHER / TYPHOON', $sheet->getCell("E{$row}")->getValue());
+        $this->assertSame('WEATHER / TYPHOON', $sheet->getCell("F{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
     }

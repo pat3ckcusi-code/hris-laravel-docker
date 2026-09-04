@@ -166,7 +166,7 @@ class ExcludedSlotPunchRecoveryTest extends TestCase
 
         $row = 30;
         $this->assertTrue($sheet->getCell("C{$row}")->isMergeRangeValueCell());
-        $this->assertSame('SUSPENDED', $sheet->getCell("C{$row}")->getValue());
+        $this->assertSame('WEATHER / TYPHOON', $sheet->getCell("C{$row}")->getValue());
     }
 
     // ── Half-day (PM-only) Work Suspension ───────────────────────────────────
