@@ -321,6 +321,10 @@ class LeaveRequestController extends Controller
                 'reason' => 'nullable|string|max:2000',
             ]);
 
+            if ($pendingError = $this->checkExistingPendingLeave(Auth::user())) {
+                return redirect()->back()->withErrors(['leave_types' => $pendingError])->withInput();
+            }
+
             $rangeTypes = [
                 'Maternity Leave', 'VAWC Leave', 'Special Leave (Gynecological)',
                 'Rehabilitation Privilege', 'Study / Examination Leave',
@@ -466,6 +470,10 @@ class LeaveRequestController extends Controller
                 'allocation.*.type' => 'nullable|string|max:100',
                 'allocation.*.days' => 'nullable|numeric|min:0|max:1',
             ]);
+
+            if ($pendingError = $this->checkExistingPendingLeave(Auth::user())) {
+                return redirect()->back()->withErrors(['leave_types' => $pendingError])->withInput();
+            }
 
             $exclusiveTypes = [
                 'Maternity Leave', 'Paternity Leave', 'Adoption Leave',
@@ -941,6 +949,10 @@ class LeaveRequestController extends Controller
                 'details_sick_illness' => 'nullable|string|max:255',
                 'details_sick_treatment' => 'nullable|string|max:50',
             ]);
+
+            if ($pendingError = $this->checkExistingPendingLeave(Auth::user())) {
+                return redirect()->back()->withErrors(['leave_type' => $pendingError])->withInput();
+            }
 
             // Determine which leave types require extra details or reason (legacy single-type form)
             $parts = array_map('trim', explode(',', $request->leave_type));
@@ -1728,6 +1740,21 @@ class LeaveRequestController extends Controller
      * Returns an error message if any of the supplied leave types are
      * balance-restricted and the employee's current balance is zero.
      */
+    /**
+     * An employee may only have one pending leave request in flight at a time -
+     * filing another is blocked until the first is decided (approved, declined,
+     * or cancelled). Once approved, filing again is allowed even if other
+     * already-approved leave still exists on the books.
+     */
+    private function checkExistingPendingLeave(User $user): ?string
+    {
+        if (LeaveRequest::where('user_id', $user->id)->where('status', 'pending')->exists()) {
+            return 'You already have a pending leave request. Please wait for it to be approved, or cancel it, before filing another one.';
+        }
+
+        return null;
+    }
+
     /**
      * Solo Parent Leave additionally requires the employee currently be designated a
      * Solo Parent by the Leave Manager (see LeaveManagerController::toggleSoloParent()) -

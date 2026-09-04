@@ -1054,6 +1054,130 @@ class EmployeeTest extends TestCase
         $response->assertRedirect();
     }
 
+    public function test_employee_cannot_file_leave_while_pending_leave_exists(): void
+    {
+        $user = $this->createEmployee();
+        $this->createLeaveBalance($user, ['VL' => 15.000]);
+
+        LeaveRequest::create([
+            'user_id' => $user->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'First leave',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_types' => ['VL'],
+            'leave_dates' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Second leave attempt',
+        ]);
+
+        $response->assertSessionHasErrors('leave_types');
+        $this->assertEquals(1, LeaveRequest::where('user_id', $user->id)->count());
+    }
+
+    public function test_employee_cannot_file_legacy_leave_while_pending_leave_exists(): void
+    {
+        $user = $this->createEmployee();
+        $this->createLeaveBalance($user, ['VL' => 15.000]);
+
+        LeaveRequest::create([
+            'user_id' => $user->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'First leave',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeeks(2)->toDateString(),
+            'end_date' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Second leave attempt',
+            'dates' => [now()->addWeeks(2)->toDateString()],
+        ]);
+
+        $response->assertSessionHasErrors('leave_type');
+        $this->assertEquals(1, LeaveRequest::where('user_id', $user->id)->count());
+    }
+
+    public function test_employee_cannot_file_extended_leave_while_pending_leave_exists(): void
+    {
+        $user = $this->createEmployee();
+        $this->createLeaveBalance($user, ['VL' => 15.000]);
+
+        LeaveRequest::create([
+            'user_id' => $user->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'First leave',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'extended_leave_mode' => '1',
+            'leave_types' => ['Maternity Leave'],
+            'range_start' => now()->addWeeks(3)->toDateString(),
+            'range_end' => now()->addWeeks(3)->addDays(5)->toDateString(),
+            'reason' => 'Second leave attempt',
+        ]);
+
+        $response->assertSessionHasErrors('leave_types');
+        $this->assertEquals(1, LeaveRequest::where('user_id', $user->id)->count());
+    }
+
+    public function test_employee_can_file_leave_when_prior_leave_is_approved(): void
+    {
+        $user = $this->createEmployee();
+        $this->createLeaveBalance($user, ['VL' => 15.000]);
+
+        LeaveRequest::create([
+            'user_id' => $user->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'First leave',
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_types' => ['VL'],
+            'leave_dates' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Second leave attempt',
+        ]);
+
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertEquals(2, LeaveRequest::where('user_id', $user->id)->count());
+    }
+
+    public function test_employee_can_file_leave_when_prior_leave_is_declined(): void
+    {
+        $user = $this->createEmployee();
+        $this->createLeaveBalance($user, ['VL' => 15.000]);
+
+        LeaveRequest::create([
+            'user_id' => $user->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'First leave',
+            'status' => 'declined',
+        ]);
+
+        $response = $this->actingAs($user)->post(route('employee.leave.apply'), [
+            'leave_types' => ['VL'],
+            'leave_dates' => now()->addWeeks(2)->toDateString(),
+            'reason' => 'Second leave attempt',
+        ]);
+
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertEquals(2, LeaveRequest::where('user_id', $user->id)->count());
+    }
+
     public function test_employee_cannot_file_solo_parent_leave_when_not_designated(): void
     {
         $user = $this->createEmployee(['is_solo_parent' => false]);
