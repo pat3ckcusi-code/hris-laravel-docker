@@ -296,7 +296,7 @@ class DtrExcuseController extends Controller
             'excuse_am_out' => ['nullable', 'boolean'],
             'excuse_pm_in' => ['nullable', 'boolean'],
             'excuse_pm_out' => ['nullable', 'boolean'],
-            'reason' => ['nullable', 'string', 'max:1000'],
+            'reason' => ['required', 'string', 'max:1000'],
         ]);
 
         $userIds = array_map('intval', $validated['user_ids']);
@@ -327,7 +327,7 @@ class DtrExcuseController extends Controller
                 $mergedFullDay = $isFullDay || $existing->is_full_day;
                 $existing->update([
                     'excuse_type' => $validated['excuse_type'],
-                    'reason' => $validated['reason'] ?? null,
+                    'reason' => $validated['reason'],
                     'filed_by_user_id' => $user->id,
                     'is_full_day' => $mergedFullDay,
                     'excuse_am_in' => $mergedFullDay || $newAmIn || $existing->excuse_am_in,
@@ -342,7 +342,7 @@ class DtrExcuseController extends Controller
                     'user_id' => $userId,
                     'date' => $validated['date'],
                     'excuse_type' => $validated['excuse_type'],
-                    'reason' => $validated['reason'] ?? null,
+                    'reason' => $validated['reason'],
                     'filed_by_user_id' => $user->id,
                     'is_full_day' => $isFullDay,
                     'excuse_am_in' => $newAmIn,
@@ -368,7 +368,7 @@ class DtrExcuseController extends Controller
                     'excuse_am_out' => $record->excuse_am_out,
                     'excuse_pm_in' => $record->excuse_pm_in,
                     'excuse_pm_out' => $record->excuse_pm_out,
-                    'reason' => $validated['reason'] ?? null,
+                    'reason' => $validated['reason'],
                     'merged' => $wasMerged,
                     'actor_role' => $user->access_level,
                 ]),

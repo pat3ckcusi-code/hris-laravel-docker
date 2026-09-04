@@ -323,6 +323,7 @@ class DtrExcuseControllerTest extends TestCase
                 'date' => '2026-06-10',
                 'excuse_type' => 'other',
                 'is_full_day' => true,
+                'reason' => 'System outage in Dept A office.',
             ])
             ->assertSessionHasNoErrors()
             ->assertRedirect();
@@ -338,6 +339,7 @@ class DtrExcuseControllerTest extends TestCase
                 'date' => '2026-06-10',
                 'excuse_type' => 'other',
                 'is_full_day' => true,
+                'reason' => 'System outage in Dept B office.',
             ])
             ->assertStatus(403);
     }

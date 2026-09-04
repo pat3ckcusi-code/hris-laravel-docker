@@ -187,9 +187,22 @@
                                 <span style="font-size:.75rem;color:#94a3b8;">{{ $excuse->created_at->format('M d, Y') }}</span>
                             </td>
                             <td>
+                                @php
+                                    $removeScope = $excuse->is_full_day
+                                        ? 'Full Day'
+                                        : implode(', ', array_filter([
+                                            $excuse->excuse_am_in ? 'AM In' : null,
+                                            $excuse->excuse_am_out ? 'AM Out' : null,
+                                            $excuse->excuse_pm_in ? 'PM In' : null,
+                                            $excuse->excuse_pm_out ? 'PM Out' : null,
+                                        ]));
+                                @endphp
                                 <form method="POST"
                                       action="{{ route('attendance.dtr-excuse.destroy', $excuse) }}"
-                                      onsubmit="return confirm('Remove this excuse?')">
+                                      class="dex-remove-excuse-form"
+                                      data-name="{{ trim(($excuse->user?->last_name ?? '').', '.($excuse->user?->first_name ?? '')) }}"
+                                      data-date="{{ \Carbon\Carbon::parse($excuse->date)->format('M d, Y') }}"
+                                      data-scope="{{ $removeScope }}">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="hris-btn hris-btn-danger hris-btn-sm"
@@ -533,9 +546,8 @@
                     <div style="margin-bottom:1.25rem;">
                         <label style="display:block;font-weight:600;font-size:.875rem;color:#0f172a;margin-bottom:.35rem;">
                             <i class="fas fa-comment-alt" style="color:#ea580c;margin-right:.3rem;font-size:.8rem;"></i>Reason
-                            <span style="font-weight:400;font-size:.78rem;color:#94a3b8;">(optional)</span>
                         </label>
-                        <textarea name="reason" class="hris-filter-select" rows="3"
+                        <textarea name="reason" class="hris-filter-select" rows="3" required
                                   style="width:100%;resize:vertical;box-sizing:border-box;">{{ old('reason') }}</textarea>
                     </div>
 
@@ -699,6 +711,27 @@
         document.addEventListener('DOMContentLoaded', function() {
             empApplyFilter('');
             empRenderPage();
+        });
+
+        // Confirm before removing a filed excuse - explains who/when/what it
+        // covered so the reviewer isn't confirming blind.
+        document.querySelectorAll('.dex-remove-excuse-form').forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var name  = form.dataset.name || 'this employee';
+                var date  = form.dataset.date || 'this date';
+                var scope = form.dataset.scope || 'Full Day';
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Remove this excuse?',
+                    html: 'Remove the <b>' + scope + '</b> excuse for <b>' + name + '</b> on <b>' + date + '</b>?<br>' +
+                          '<small style="color:#94a3b8;">The excused slot(s) will re-derive from the raw punch data.</small>',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, remove',
+                    confirmButtonColor: '#b91c1c',
+                    cancelButtonColor: '#6b7280',
+                }).then(function (res) { if (res.isConfirmed) form.submit(); });
+            });
         });
 
         // ── DTR Excuse abuse: violation details modal ───────────────────
