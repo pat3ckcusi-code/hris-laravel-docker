@@ -1174,11 +1174,6 @@ class LeaveRequestController extends Controller
         ]);
     }
 
-    public function approve(Request $request, $id)
-    {
-        return $this->leaveRequestService->approveLeave($request, $id);
-    }
-
     public function edit($id)
     {
         $leave = LeaveRequest::findOrFail($id);

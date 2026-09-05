@@ -6,6 +6,7 @@ use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
 use App\Models\User;
+use App\Models\Department;
 use App\Models\LeaveRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -237,6 +238,62 @@ class SecurityTest extends TestCase
         $leave->refresh();
         $this->assertNotEquals('cancelled', $leave->status,
             'IDOR: Employee cancelled another employee\'s leave');
+    }
+
+    public function test_removed_employee_leave_approve_route_no_longer_exists(): void
+    {
+        $emp1 = $this->createEmployee();
+        $emp2 = $this->createEmployee();
+
+        $leave = LeaveRequest::create([
+            'user_id'    => $emp2->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date'   => now()->addWeek()->toDateString(),
+            'reason'     => 'Broken access control regression check',
+            'status'     => 'pending',
+        ]);
+
+        // This endpoint used to forward straight to LeaveRequestService::approveLeave()
+        // with no ownership/role check at all, letting any leave-eligible employee approve
+        // anyone else's leave. It has been removed entirely (superseded by the already
+        // department-scoped department-head/administrative-officer/mayor approve routes).
+        // The app's Route::fallback() is a GET-only wildcard, so Laravel reports 405 (not
+        // 404) for a POST to any URI it no longer recognizes - verified this is the
+        // existing, app-wide behavior for any nonexistent route, not specific to this one.
+        $response = $this->actingAs($emp1)->post('/employee/leave-management/'.$leave->id.'/approve');
+
+        $response->assertStatus(405);
+        $leave->refresh();
+        $this->assertSame('pending', $leave->status,
+            'Broken access control: an unrelated employee approved another employee\'s leave');
+    }
+
+    public function test_department_head_cannot_approve_leave_outside_their_department(): void
+    {
+        $dh = $this->createDepartmentHead();
+
+        $otherDept = Department::forceCreate([
+            'DeptCode' => 'OTHER', 'Dept_name' => 'Other Department', 'EmpNo' => 'OTHER-EMPNO', 'Designation' => 'Test',
+        ]);
+        $employee = $this->createEmployee(['Dept_id' => $otherDept->Dept_id]);
+
+        $leave = LeaveRequest::create([
+            'user_id'    => $employee->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date'   => now()->addWeek()->toDateString(),
+            'reason'     => 'Cross-department approval regression check',
+            'status'     => 'pending',
+            'printing_allowed' => true,
+        ]);
+
+        $response = $this->actingAs($dh)->post(route('department-head.leave.approve', $leave->id));
+
+        $response->assertRedirect();
+        $leave->refresh();
+        $this->assertSame('pending', $leave->status,
+            'IDOR: Department Head approved a leave request outside their own department');
     }
 
     // ──────────────────────────────────────────────

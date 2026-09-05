@@ -91,7 +91,6 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'deny.job.order'])->group(function () {
     Route::get('/employee/leave-management', [LeaveRequestController::class, 'index'])->name('employee.leave.management');
     Route::post('/employee/leave-management/apply', [LeaveRequestController::class, 'store'])->name('employee.leave.apply');
-    Route::post('/employee/leave-management/{id}/approve', [LeaveRequestController::class, 'approve'])->name('employee.leave.approve');
     Route::get('/employee/leave-management/{id}', [LeaveRequestController::class, 'show'])->name('employee.leave.show');
     Route::get('/employee/leave-management/{id}/edit', [LeaveRequestController::class, 'edit'])->name('employee.leave.edit');
     Route::patch('/employee/leave-management/{id}/cancel', [LeaveRequestController::class, 'cancel'])->name('employee.leave.cancel');

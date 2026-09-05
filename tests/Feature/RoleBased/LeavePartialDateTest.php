@@ -231,7 +231,7 @@ class LeavePartialDateTest extends TestCase
     public function test_partial_reschedule_leaves_remaining_original_date_approved(): void
     {
         $emp = $this->createEmployee();
-        $lm = $this->createLeaveManager();
+        $dh = $this->createDepartmentHead();
         $this->createLeaveBalance($emp, ['VL' => 15.000]);
 
         $keepDate = now()->addWeeks(2)->startOfWeek()->toDateString();
@@ -253,8 +253,12 @@ class LeavePartialDateTest extends TestCase
 
         $newLeave = LeaveRequest::where('rescheduled_from_id', $leave->id)->firstOrFail();
 
-        // Leave Manager is not gated by the printing_allowed check that applies to DH/AO.
-        $response = $this->actingAs($lm)->post(route('employee.leave.approve', $newLeave->id));
+        // Department Head approval is gated on printing_allowed; set it directly rather
+        // than going through the Allow Printing flow, since that's not what this test covers.
+        $newLeave->printing_allowed = true;
+        $newLeave->save();
+
+        $response = $this->actingAs($dh)->post(route('department-head.leave.approve', $newLeave->id));
         $response->assertRedirect();
 
         $leave->refresh();
