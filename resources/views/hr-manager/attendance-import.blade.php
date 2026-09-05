@@ -6,11 +6,55 @@
 @section('page_head')
     @vite('resources/css/hr_manager.css')
     <style>
+        /* Tabs */
+        .import-tabs {
+            display: flex;
+            gap: .5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: .5rem;
+        }
+        .import-tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            padding: .5rem 1rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: .875rem;
+            font-weight: 500;
+            color: #6b7280;
+            border-radius: .375rem .375rem 0 0;
+            transition: background .15s, color .15s;
+        }
+        .import-tab-btn:hover { background: #f3f4f6; color: #111827; }
+        .import-tab-btn.active {
+            background: #fff;
+            color: #117a8b;
+            border-bottom: 2px solid #17a2b8;
+            margin-bottom: -2px;
+        }
+        .import-panel { display: none; }
+        .import-panel.active { display: block; }
+        .import-tab-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.3rem;
+            height: 1.3rem;
+            padding: 0 .35rem;
+            border-radius: 999px;
+            background: #f59e0b;
+            color: #fff;
+            font-size: .7rem;
+            font-weight: 700;
+        }
         .import-layout {
             display: grid;
             grid-template-columns: 1fr 360px;
             gap: 1.5rem;
-            margin-top: 1.25rem;
             align-items: start;
         }
         .import-form-card {
@@ -192,6 +236,24 @@
             color: #78350f;
             line-height: 1.5;
         }
+        /* Recent import results */
+        .import-result-entry {
+            font-size: 0.78rem;
+            padding: 0.45rem 0.65rem;
+            border-radius: 6px;
+            border: 1px solid transparent;
+        }
+        .import-result-entry--ok { background: #f0fdf4; border-color: #bbf7d0; }
+        .import-result-entry--neutral { background: #f8fafc; border-color: #e2e8f0; }
+        .import-result-entry--error { background: #fef2f2; border-color: #fca5a5; }
+        .import-result-entry-head { font-weight: 600; }
+        .import-result-entry--ok .import-result-entry-head { color: #15803d; }
+        .import-result-entry--neutral .import-result-entry-head { color: #64748b; }
+        .import-result-entry--error .import-result-entry-head { color: #b91c1c; }
+        .import-result-entry-error { color: #7f1d1d; margin-top: 0.2rem; word-break: break-word; }
+        .import-result-entry-msg { color: #475569; margin-top: 0.15rem; }
+        .import-result-entry-note { color: #94a3b8; margin-top: 0.15rem; font-style: italic; }
+        .import-result-entry-meta { color: #94a3b8; margin-top: 0.2rem; }
         /* Alerts */
         .import-alert {
             display: flex;
@@ -246,6 +308,17 @@
         .check-result-notfound { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
         .check-result-error { background: #fde7e9; border: 1px solid #f5a0a8; color: #7f1d1d; }
         .check-punch-list { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
+        /* Unmatched-punch time chip */
+        .import-punch-chip {
+            display: inline-block;
+            background: #fef9c3;
+            color: #854d0e;
+            border-radius: 4px;
+            padding: 0.1rem 0.4rem;
+            font-size: 0.78rem;
+            margin: 0 0.2rem 0.2rem 0;
+        }
+        .diagnostics-stack > * + * { margin-top: 1.5rem; }
     </style>
 @endsection
 
@@ -271,344 +344,359 @@
         </div>
     @endif
 
-    <div class="import-layout">
+    {{-- ── TAB NAVIGATION ── --}}
+    <div class="import-tabs" id="importTabs">
+        <button type="button" class="import-tab-btn active" data-tab="import">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Pull Punch Logs
+        </button>
+        <button type="button" class="import-tab-btn" data-tab="diagnostics">
+            <i class="fa-solid fa-stethoscope"></i> Diagnostics &amp; Maintenance
+            @if($unmatchedBadgeCount > 0)
+                <span class="import-tab-badge" id="unmatched-badge" title="Approximate - refines once opened">{{ $unmatchedBadgeCount >= 300 ? '300+' : $unmatchedBadgeCount }}</span>
+            @endif
+        </button>
+    </div>
 
-        {{-- ── FORM ── --}}
-        <div class="import-form-card">
-            <h3><i class="fa-solid fa-cloud-arrow-down"></i> Pull Biometric Punch Logs</h3>
-            <p class="import-subtitle">
-                Fetches all punch records within the selected range and queues a background
-                job to process them.
-            </p>
+    {{-- ── TAB: PULL PUNCH LOGS ── --}}
+    <div class="import-panel active" id="tab-import">
+        <div class="import-layout">
 
-            <form method="POST" action="{{ route('hr-manager.attendance.import.store') }}">
-                @csrf
+            {{-- ── FORM ── --}}
+            <div class="import-form-card">
+                <h3><i class="fa-solid fa-cloud-arrow-down"></i> Pull Biometric Punch Logs</h3>
+                <p class="import-subtitle">
+                    Fetches all punch records within the selected range and queues a background
+                    job to process them.
+                </p>
 
-                {{-- Date presets --}}
-                <div style="margin-bottom:1rem;">
-                    <span class="import-label" style="margin-bottom:0.5rem;">Quick Select</span>
-                    <div class="import-presets">
-                        <button type="button" class="import-preset-btn" data-preset="this-week">This Week</button>
-                        <button type="button" class="import-preset-btn" data-preset="this-month">This Month</button>
-                        <button type="button" class="import-preset-btn" data-preset="last-month">Last Month</button>
-                        <button type="button" class="import-preset-btn" data-preset="last-7">Last 7 Days</button>
-                        <button type="button" class="import-preset-btn" data-preset="last-30">Last 30 Days</button>
+                <form method="POST" action="{{ route('hr-manager.attendance.import.store') }}">
+                    @csrf
+
+                    {{-- Date presets --}}
+                    <div style="margin-bottom:1rem;">
+                        <span class="import-label" style="margin-bottom:0.5rem;">Quick Select</span>
+                        <div class="import-presets">
+                            <button type="button" class="import-preset-btn" data-preset="this-week">This Week</button>
+                            <button type="button" class="import-preset-btn" data-preset="this-month">This Month</button>
+                            <button type="button" class="import-preset-btn" data-preset="last-month">Last Month</button>
+                            <button type="button" class="import-preset-btn" data-preset="last-7">Last 7 Days</button>
+                            <button type="button" class="import-preset-btn" data-preset="last-30">Last 30 Days</button>
+                        </div>
                     </div>
-                </div>
 
-                {{-- Date range --}}
-                <div class="import-date-grid">
+                    {{-- Date range --}}
+                    <div class="import-date-grid">
+                        <div class="form-group">
+                            <label class="import-label" for="from_date">From</label>
+                            <input type="date" id="from_date" name="from_date"
+                                   value="{{ old('from_date') }}" required>
+                            @error('from_date')
+                                <span class="import-field-error">{{ $message }}</span>
+                            @enderror
+                        </div>
+                        <div class="form-group">
+                            <label class="import-label" for="to_date">To</label>
+                            <input type="date" id="to_date" name="to_date"
+                                   value="{{ old('to_date') }}" required>
+                            @error('to_date')
+                                <span class="import-field-error">{{ $message }}</span>
+                            @enderror
+                        </div>
+                    </div>
+
+                    {{-- Department --}}
                     <div class="form-group">
-                        <label class="import-label" for="from_date">From</label>
-                        <input type="date" id="from_date" name="from_date"
-                               value="{{ old('from_date') }}" required>
-                        @error('from_date')
-                            <span class="import-field-error">{{ $message }}</span>
-                        @enderror
+                        <label class="import-label" for="dept_id">
+                            Department
+                            <span class="import-label-hint"> optional, blank = all</span>
+                        </label>
+                        <select id="dept_id" name="dept_id">
+                            <option value="">All Departments</option>
+                            @foreach($departments as $dept)
+                                <option value="{{ $dept->Dept_id }}"
+                                    {{ old('dept_id') == $dept->Dept_id ? 'selected' : '' }}>
+                                    {{ $dept->Dept_name }}
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
-                    <div class="form-group">
-                        <label class="import-label" for="to_date">To</label>
-                        <input type="date" id="to_date" name="to_date"
-                               value="{{ old('to_date') }}" required>
-                        @error('to_date')
-                            <span class="import-field-error">{{ $message }}</span>
-                        @enderror
-                    </div>
-                </div>
 
-                {{-- Department --}}
-                <div class="form-group">
-                    <label class="import-label" for="dept_id">
-                        Department
-                        <span class="import-label-hint"> optional, blank = all</span>
-                    </label>
-                    <select id="dept_id" name="dept_id">
-                        <option value="">All Departments</option>
-                        @foreach($departments as $dept)
-                            <option value="{{ $dept->Dept_id }}"
-                                {{ old('dept_id') == $dept->Dept_id ? 'selected' : '' }}>
-                                {{ $dept->Dept_name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
+                    <hr class="import-divider">
 
-                <hr class="import-divider">
-
-                <div class="import-submit-row">
-                    <button type="submit" class="hrm-btn">
-                        <i class="fa-solid fa-upload" style="margin-right:0.35rem;"></i>
-                        Queue Import
-                    </button>
-                    <span class="import-submit-note">
-                        <i class="fa-solid fa-circle-info"></i>
-                        Runs in the background - page won't wait.
-                    </span>
-                </div>
-            </form>
-        </div>
-
-        {{-- ── INFO PANEL ── --}}
-        <aside class="import-info-panel">
-
-            {{-- Auto-import status chip - HR Manager only --}}
-            @if(\App\Support\RoleNormalizer::normalize((string) auth()->user()->access_level) === 'hr manager')
-                @if($setting?->auto_import_enabled)
-                    @php
-                        $autoInterval = $setting->auto_import_interval_minutes ?? 30;
-                        $autoDeptLabel = $setting->auto_import_dept_id
-                            ? ($departments->firstWhere('Dept_id', $setting->auto_import_dept_id)?->Dept_name ?? 'Dept #'.$setting->auto_import_dept_id)
-                            : 'All Depts';
-                    @endphp
-                    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#e0f5f8;border:1px solid #9dd5e0;border-left:4px solid #17a2b8;border-radius:8px;font-size:0.82rem;color:#0f5f6d;">
-                        <i class="fa-solid fa-circle-play" style="color:#17a2b8;flex-shrink:0;"></i>
-                        <span>
-                            <strong>Auto-import ON</strong>
-                            every {{ $autoInterval }} min &middot; {{ $autoDeptLabel }}
+                    <div class="import-submit-row">
+                        <button type="submit" class="hrm-btn">
+                            <i class="fa-solid fa-upload" style="margin-right:0.35rem;"></i>
+                            Queue Import
+                        </button>
+                        <span class="import-submit-note">
+                            <i class="fa-solid fa-circle-info"></i>
+                            Runs in the background - page won't wait.
                         </span>
+                    </div>
+                </form>
+            </div>
+
+            {{-- ── INFO PANEL ── --}}
+            <aside class="import-info-panel">
+
+                {{-- Auto-import status chip - HR Manager only --}}
+                @if(\App\Support\RoleNormalizer::normalize((string) auth()->user()->access_level) === 'hr manager')
+                    @if($setting?->auto_import_enabled)
+                        @php
+                            $autoInterval = $setting->auto_import_interval_minutes ?? 30;
+                            $autoDeptLabel = $setting->auto_import_dept_id
+                                ? ($departments->firstWhere('Dept_id', $setting->auto_import_dept_id)?->Dept_name ?? 'Dept #'.$setting->auto_import_dept_id)
+                                : 'All Depts';
+                        @endphp
+                        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#e0f5f8;border:1px solid #9dd5e0;border-left:4px solid #17a2b8;border-radius:8px;font-size:0.82rem;color:#0f5f6d;">
+                            <i class="fa-solid fa-circle-play" style="color:#17a2b8;flex-shrink:0;"></i>
+                            <span>
+                                <strong>Auto-import ON</strong>
+                                every {{ $autoInterval }} min &middot; {{ $autoDeptLabel }}
+                            </span>
+                        </div>
+                    @else
+                        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#f1f5f9;border:1px solid #cbd5e1;border-left:4px solid #94a3b8;border-radius:8px;font-size:0.82rem;color:#475569;">
+                            <i class="fa-solid fa-circle-pause" style="color:#94a3b8;flex-shrink:0;"></i>
+                            <span>
+                                <strong>Auto-import OFF</strong>
+                                <a href="{{ route('hr-manager.settings') }}#tab-attendance" style="color:#17a2b8;font-weight:600;">configure in Settings</a>
+                            </span>
+                        </div>
+                    @endif
+                @endif
+
+                {{-- EmpNo pre-flight check --}}
+                @if($empNoCount === 0)
+                    <div class="import-warning-card" style="border-left-color:#b91c1c;background:#fef2f2;border-color:#fca5a5;">
+                        <i class="fa-solid fa-triangle-exclamation" style="color:#b91c1c;"></i>
+                        <p><strong>No employees have an EmpNo set.</strong> Every biometric punch will be skipped. Go to Employees and enter each person's Employee Number before importing.</p>
                     </div>
                 @else
-                    <div style="display:flex;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:#f1f5f9;border:1px solid #cbd5e1;border-left:4px solid #94a3b8;border-radius:8px;font-size:0.82rem;color:#475569;">
-                        <i class="fa-solid fa-circle-pause" style="color:#94a3b8;flex-shrink:0;"></i>
-                        <span>
-                            <strong>Auto-import OFF</strong>
-                            <a href="{{ route('hr-manager.settings') }}#tab-attendance" style="color:#17a2b8;font-weight:600;">configure in Settings</a>
-                        </span>
+                    <div style="font-size:0.78rem;color:#166534;padding:0.4rem 0.65rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">
+                        <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:0.3rem;"></i>
+                        {{ $empNoCount }} employee(s) configured with EmpNo.
                     </div>
                 @endif
-            @endif
 
-            {{-- EmpNo pre-flight check --}}
-            @if($empNoCount === 0)
-                <div class="import-warning-card" style="border-left-color:#b91c1c;background:#fef2f2;border-color:#fca5a5;">
-                    <i class="fa-solid fa-triangle-exclamation" style="color:#b91c1c;"></i>
-                    <p><strong>No employees have an EmpNo set.</strong> Every biometric punch will be skipped. Go to Employees and enter each person's Employee Number before importing.</p>
-                </div>
-            @else
-                <div style="font-size:0.78rem;color:#166534;padding:0.4rem 0.65rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">
-                    <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:0.3rem;"></i>
-                    {{ $empNoCount }} employee(s) configured with EmpNo.
-                </div>
-            @endif
-
-            {{-- Recent import results --}}
-            @if($recentImports->isNotEmpty())
-            <div class="import-info-card">
-                <h4><i class="fa-solid fa-clock-rotate-left"></i> Recent Import Results</h4>
-                <div style="display:flex;flex-direction:column;gap:0.5rem;">
-                    @foreach($recentImports as $entry)
-                        @php
-                            $d        = $entry->details ?? [];
-                            $ok       = ($d['status'] ?? '') === 'success';
-                            $imported = $d['imported'] ?? 0;
-                            $skipped  = $d['skipped'] ?? 0;
-                            $err      = $d['error'] ?? null;
-                            $msgs     = array_slice($d['messages'] ?? [], 0, 3);
-                            $hasUnmatched = collect($d['messages'] ?? [])->contains(fn ($m) => str_contains($m, 'no matching HRIS EmpNo'));
-                        @endphp
-                        <div style="font-size:0.78rem;padding:0.45rem 0.65rem;border-radius:6px;
-                            background:{{ ($ok && $imported > 0) ? '#f0fdf4' : ($ok ? '#f8fafc' : '#fef2f2') }};
-                            border:1px solid {{ ($ok && $imported > 0) ? '#bbf7d0' : ($ok ? '#e2e8f0' : '#fca5a5') }};">
-                            <div style="font-weight:600;color:{{ ($ok && $imported > 0) ? '#15803d' : ($ok ? '#64748b' : '#b91c1c') }};">
-                                {{ $ok ? ($imported > 0 ? '✓' : '○') : '✗' }}
-                                {{ $d['from'] ?? '?' }}–{{ $d['to'] ?? '?' }}
-                                &nbsp;{{ $imported }} in / {{ $skipped }} skipped
-                            </div>
-                            @if($err)
-                                <div style="color:#7f1d1d;margin-top:0.2rem;word-break:break-word;">{{ $err }}</div>
-                            @endif
-                            @foreach($msgs as $msg)
-                                <div style="color:#475569;margin-top:0.15rem;">{{ $msg }}</div>
-                            @endforeach
-                            @if($hasUnmatched)
-                                <div style="color:#94a3b8;margin-top:0.15rem;font-style:italic;">
-                                    Unmatched EmpNo checks run company-wide and are not limited to the scope below.
+                {{-- Recent import results --}}
+                @if($recentImports->isNotEmpty())
+                <div class="import-info-card">
+                    <h4><i class="fa-solid fa-clock-rotate-left"></i> Recent Import Results</h4>
+                    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                        @foreach($recentImports as $entry)
+                            @php
+                                $d        = $entry->details ?? [];
+                                $ok       = ($d['status'] ?? '') === 'success';
+                                $imported = $d['imported'] ?? 0;
+                                $skipped  = $d['skipped'] ?? 0;
+                                $err      = $d['error'] ?? null;
+                                $msgs     = array_slice($d['messages'] ?? [], 0, 3);
+                                $hasUnmatched = collect($d['messages'] ?? [])->contains(fn ($m) => str_contains($m, 'no matching HRIS EmpNo'));
+                                $entryState = ($ok && $imported > 0) ? 'ok' : ($ok ? 'neutral' : 'error');
+                            @endphp
+                            <div class="import-result-entry import-result-entry--{{ $entryState }}">
+                                <div class="import-result-entry-head">
+                                    {{ $ok ? ($imported > 0 ? '✓' : '○') : '✗' }}
+                                    {{ $d['from'] ?? '?' }}–{{ $d['to'] ?? '?' }}
+                                    &nbsp;{{ $imported }} in / {{ $skipped }} skipped
                                 </div>
-                            @endif
-                            <div style="color:#94a3b8;margin-top:0.2rem;">
-                                {{ $entry->created_at->diffForHumans() }}
-                                &middot; Scope: {{ $d['dept_name'] ?? 'ALL' }}
+                                @if($err)
+                                    <div class="import-result-entry-error">{{ $err }}</div>
+                                @endif
+                                @foreach($msgs as $msg)
+                                    <div class="import-result-entry-msg">{{ $msg }}</div>
+                                @endforeach
+                                @if($hasUnmatched)
+                                    <div class="import-result-entry-note">
+                                        Unmatched EmpNo checks run company-wide and are not limited to the scope below.
+                                    </div>
+                                @endif
+                                <div class="import-result-entry-meta">
+                                    {{ $entry->created_at->diffForHumans() }}
+                                    &middot; Scope: {{ $d['dept_name'] ?? 'ALL' }}
+                                </div>
                             </div>
-                        </div>
-                    @endforeach
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
+                <div class="import-info-card">
+                    <h4><i class="fa-solid fa-list-check"></i> How It Works</h4>
+                    <ol class="import-info-steps">
+                        <li>
+                            <span class="import-step-num">1</span>
+                            <span>HRIS authenticates with the biometric integration API.</span>
+                        </li>
+                        <li>
+                            <span class="import-step-num">2</span>
+                            <span>Punch logs are fetched in pages of 1,000 records.</span>
+                        </li>
+                        <li>
+                            <span class="import-step-num">3</span>
+                            <span>New records are written to <code>attendance_logs</code>; duplicates are skipped.</span>
+                        </li>
+                        <li>
+                            <span class="import-step-num">4</span>
+                            <span>DTR rows are recomputed for every affected employee.</span>
+                        </li>
+                        <li>
+                            <span class="import-step-num">5</span>
+                            <span>A summary entry is written to the audit log on completion.</span>
+                        </li>
+                    </ol>
+                </div>
+
+                @if(\App\Support\RoleNormalizer::normalize((string) auth()->user()->access_level) === 'hr manager')
+                <div class="import-info-card" style="background:#eef9fb;border-color:#b2dfe9;">
+                    <h4><i class="fa-solid fa-clipboard-list"></i> Check Results</h4>
+                    <p style="font-size:0.82rem;color:#4d5f73;margin:0 0 0.65rem;line-height:1.5;">
+                        Row counts and any errors are recorded in the audit log after the
+                        background job completes.
+                    </p>
+                    <a href="{{ route('hr-manager.audit') }}" class="import-audit-link">
+                        <i class="fa-solid fa-arrow-right-long"></i> View Audit Log
+                    </a>
+                </div>
+                @endif
+
+                <div class="import-warning-card">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <p>Re-importing an already-imported range is safe duplicates are detected by employee, date, and time and skipped automatically.</p>
+                </div>
+
+            </aside>
+        </div>
+    </div>
+
+    {{-- ── TAB: DIAGNOSTICS & MAINTENANCE ── --}}
+    <div class="import-panel" id="tab-diagnostics">
+        <div class="diagnostics-stack">
+
+        {{-- ── DIAGNOSTIC: check raw biometric feed for one employee/date ── --}}
+        <div class="import-form-card" style="max-width:640px;position:relative;">
+            <h3><i class="fa-solid fa-magnifying-glass"></i> Check Raw Biometric Feed</h3>
+            <p class="import-subtitle">
+                For one employee on one date: check the biometric API directly (skipping our own
+                import) to tell "our app missed this" apart from "the biometric system genuinely
+                has nothing for this person that day."
+            </p>
+
+            <div class="form-group" style="position:relative;">
+                <label class="import-label" for="check-emp-search">Employee</label>
+                <input type="text" id="check-emp-search" autocomplete="off" placeholder="Search by name or EmpNo…">
+                <input type="hidden" id="check-emp-id">
+                <div id="check-emp-suggestions" style="display:none;position:absolute;z-index:20;width:100%;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #cdd9e5;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 14px rgba(31,45,61,0.08);"></div>
+            </div>
+
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label class="import-label" for="check-date">Date</label>
+                <input type="date" id="check-date">
+            </div>
+
+            <div style="margin-top:1rem;">
+                <button type="button" id="check-employee-btn" class="hrm-btn" disabled>
+                    <i class="fa-solid fa-satellite-dish" style="margin-right:0.35rem;"></i>
+                    Check Biometric Feed
+                </button>
+            </div>
+
+            <div id="check-employee-result" style="margin-top:1rem;font-size:0.85rem;"></div>
+        </div>
+
+        {{-- ── UNRESOLVED / UNMATCHED PUNCHES ── --}}
+        <div class="hris-table-card">
+            <div class="hris-table-header">
+                <div class="hris-table-header-title">
+                    <h3 class="hris-table-title">
+                        <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;font-size:1.1rem;"></i>
+                        Unresolved / Unmatched Punches
+                    </h3>
+                    <p class="hris-table-subtitle">
+                        DTR rows carrying a raw punch that was never placed into any time slot — the
+                        fingerprint of a grouping bug, not an ordinary forgotten punch-out (those aren't
+                        shown here). Recompute rebuilds the row from already-imported punches only; it
+                        calls no external API and is safe to re-run. A punch already explained by an
+                        approved Locator, Work Suspension, or DTR Excuse conflict — visible on the DTR
+                        page itself — won't appear here either, since Recompute can never resolve those.
+                    </p>
                 </div>
             </div>
-            @endif
 
-            <div class="import-info-card">
-                <h4><i class="fa-solid fa-list-check"></i> How It Works</h4>
-                <ol class="import-info-steps">
-                    <li>
-                        <span class="import-step-num">1</span>
-                        <span>HRIS authenticates with the biometric integration API.</span>
-                    </li>
-                    <li>
-                        <span class="import-step-num">2</span>
-                        <span>Punch logs are fetched in pages of 1,000 records.</span>
-                    </li>
-                    <li>
-                        <span class="import-step-num">3</span>
-                        <span>New records are written to <code>attendance_logs</code>; duplicates are skipped.</span>
-                    </li>
-                    <li>
-                        <span class="import-step-num">4</span>
-                        <span>DTR rows are recomputed for every affected employee.</span>
-                    </li>
-                    <li>
-                        <span class="import-step-num">5</span>
-                        <span>A summary entry is written to the audit log on completion.</span>
-                    </li>
-                </ol>
+            <div class="hris-table-filters">
+                <form method="GET" action="{{ route('hr-manager.attendance.import') }}"
+                      id="unmatched-filter-form" class="hris-filter-left" style="align-items:flex-end;">
+                    <div class="hris-filter-group">
+                        <label class="hris-filter-label" for="unmatched_from">From</label>
+                        <input type="date" id="unmatched_from" name="unmatched_from" value="{{ $unmatchedFrom }}" class="hris-filter-select">
+                    </div>
+                    <div class="hris-filter-group">
+                        <label class="hris-filter-label" for="unmatched_to">To</label>
+                        <input type="date" id="unmatched_to" name="unmatched_to" value="{{ $unmatchedTo }}" class="hris-filter-select">
+                    </div>
+                    <div class="hris-filter-group">
+                        <label class="hris-filter-label" for="unmatched_dept_id">Department</label>
+                        <select id="unmatched_dept_id" name="unmatched_dept_id" class="hris-filter-select">
+                            <option value="">All Departments</option>
+                            @foreach($departments as $dept)
+                                <option value="{{ $dept->Dept_id }}" {{ (string) $unmatchedDeptId === (string) $dept->Dept_id ? 'selected' : '' }}>
+                                    {{ $dept->Dept_name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="hris-filter-group">
+                        <label class="hris-filter-label" for="unmatched_search">Search</label>
+                        <input type="text" id="unmatched_search" name="unmatched_search" value="{{ $unmatchedSearch }}"
+                               placeholder="Search by name or EmpNo…" class="hris-filter-select">
+                    </div>
+                    <button type="submit" class="hris-btn-secondary" style="align-self:flex-end;">
+                        <i class="fa-solid fa-filter"></i> Filter
+                    </button>
+                </form>
             </div>
 
-            @if(\App\Support\RoleNormalizer::normalize((string) auth()->user()->access_level) === 'hr manager')
-            <div class="import-info-card" style="background:#eef9fb;border-color:#b2dfe9;">
-                <h4><i class="fa-solid fa-clipboard-list"></i> Check Results</h4>
-                <p style="font-size:0.82rem;color:#4d5f73;margin:0 0 0.65rem;line-height:1.5;">
-                    Row counts and any errors are recorded in the audit log after the
-                    background job completes.
-                </p>
-                <a href="{{ route('hr-manager.audit') }}" class="import-audit-link">
-                    <i class="fa-solid fa-arrow-right-long"></i> View Audit Log
-                </a>
+            <div id="unmatched-results">
+                <div class="hris-empty-state">
+                    <div class="hris-empty-state-icon"><i class="fa-solid fa-spinner fa-spin" style="color:#17a2b8;"></i></div>
+                    <div class="hris-empty-state-title">Loading…</div>
+                    <div class="hris-empty-state-text">Checking for unresolved punches — this cross-checks Locator/Excuse/Suspension records and can take a few seconds.</div>
+                </div>
             </div>
-            @endif
-
-            <div class="import-warning-card">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <p>Re-importing an already-imported range is safe duplicates are detected by employee, date, and time and skipped automatically.</p>
-            </div>
-
-        </aside>
-    </div>
-
-    {{-- ── DIAGNOSTIC: check raw biometric feed for one employee/date ── --}}
-    <div class="import-form-card" style="margin-top:1.5rem;max-width:640px;position:relative;">
-        <h3><i class="fa-solid fa-magnifying-glass"></i> Check Raw Biometric Feed</h3>
-        <p class="import-subtitle">
-            For one employee on one date: check the biometric API directly (skipping our own
-            import) to tell "our app missed this" apart from "the biometric system genuinely
-            has nothing for this person that day."
-        </p>
-
-        <div class="form-group" style="position:relative;">
-            <label class="import-label" for="check-emp-search">Employee</label>
-            <input type="text" id="check-emp-search" autocomplete="off" placeholder="Search by name or EmpNo…">
-            <input type="hidden" id="check-emp-id">
-            <div id="check-emp-suggestions" style="display:none;position:absolute;z-index:20;width:100%;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #cdd9e5;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 6px 14px rgba(31,45,61,0.08);"></div>
         </div>
 
-        <div class="form-group" style="margin-top:0.75rem;">
-            <label class="import-label" for="check-date">Date</label>
-            <input type="date" id="check-date">
         </div>
-
-        <div style="margin-top:1rem;">
-            <button type="button" id="check-employee-btn" class="hrm-btn" disabled>
-                <i class="fa-solid fa-satellite-dish" style="margin-right:0.35rem;"></i>
-                Check Biometric Feed
-            </button>
-        </div>
-
-        <div id="check-employee-result" style="margin-top:1rem;font-size:0.85rem;"></div>
-    </div>
-
-    {{-- ── UNRESOLVED / UNMATCHED PUNCHES ── --}}
-    <div class="import-form-card" style="margin-top:1.5rem;">
-        <h3><i class="fa-solid fa-triangle-exclamation"></i> Unresolved / Unmatched Punches</h3>
-        <p class="import-subtitle">
-            DTR rows carrying a raw punch that was never placed into any time slot - the
-            fingerprint of a grouping bug, not an ordinary forgotten punch-out (those aren't
-            shown here). Recompute rebuilds the row from already-imported punches only; it
-            calls no external API and is safe to re-run.
-        </p>
-
-        <form method="GET" action="{{ route('hr-manager.attendance.import') }}"
-              style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1.25rem;">
-            <div class="form-group">
-                <label class="import-label" for="unmatched_from">From</label>
-                <input type="date" id="unmatched_from" name="unmatched_from" value="{{ $unmatchedFrom }}">
-            </div>
-            <div class="form-group">
-                <label class="import-label" for="unmatched_to">To</label>
-                <input type="date" id="unmatched_to" name="unmatched_to" value="{{ $unmatchedTo }}">
-            </div>
-            <div class="form-group">
-                <label class="import-label" for="unmatched_dept_id">Department</label>
-                <select id="unmatched_dept_id" name="unmatched_dept_id">
-                    <option value="">All Departments</option>
-                    @foreach($departments as $dept)
-                        <option value="{{ $dept->Dept_id }}" {{ (string) $unmatchedDeptId === (string) $dept->Dept_id ? 'selected' : '' }}>
-                            {{ $dept->Dept_name }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <button type="submit" class="hrm-btn">
-                <i class="fa-solid fa-filter" style="margin-right:0.35rem;"></i> Filter
-            </button>
-        </form>
-
-        @if($unmatchedDtrs->isEmpty())
-            <p style="font-size:0.85rem;color:#6c757d;">
-                <i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:0.3rem;"></i>
-                No unresolved punches found in this range.
-            </p>
-        @else
-            <div style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-                <thead>
-                    <tr style="text-align:left;border-bottom:2px solid #e2ecf5;">
-                        <th style="padding:0.5rem;">Employee</th>
-                        <th style="padding:0.5rem;">Department</th>
-                        <th style="padding:0.5rem;">Date</th>
-                        <th style="padding:0.5rem;">Status</th>
-                        <th style="padding:0.5rem;">Unmatched Punch(es)</th>
-                        <th style="padding:0.5rem;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($unmatchedDtrs as $row)
-                        @php
-                            $emp = $row->employee;
-                            $empName = $emp ? trim("{$emp->last_name}, {$emp->first_name}") : "Employee #{$row->employee_id}";
-                        @endphp
-                        <tr style="border-bottom:1px solid #eef2f7;">
-                            <td style="padding:0.5rem;">{{ $empName }} <span style="color:#94a3b8;">({{ $emp->EmpNo ?? '—' }})</span></td>
-                            <td style="padding:0.5rem;">{{ $emp?->department?->Dept_name ?? '—' }}</td>
-                            <td style="padding:0.5rem;">{{ $row->date->format('M j, Y') }}</td>
-                            <td style="padding:0.5rem;">{{ ucwords(str_replace('_', ' ', $row->status ?? 'present')) }}</td>
-                            <td style="padding:0.5rem;">
-                                @foreach($row->unmatched_logs as $t)
-                                    <span style="display:inline-block;background:#fef9c3;color:#854d0e;border-radius:4px;padding:0.1rem 0.4rem;font-size:0.78rem;margin:0 0.2rem 0.2rem 0;">{{ substr($t, 0, 5) }}</span>
-                                @endforeach
-                            </td>
-                            <td style="padding:0.5rem;">
-                                <form method="POST" action="{{ route('hr-manager.attendance.import.recompute-unmatched') }}"
-                                      class="import-recompute-form"
-                                      data-employee="{{ $empName }}" data-date="{{ $row->date->format('M j, Y') }}">
-                                    @csrf
-                                    <input type="hidden" name="employee_id" value="{{ $row->employee_id }}">
-                                    <input type="hidden" name="date" value="{{ $row->date->toDateString() }}">
-                                    <button type="submit" class="hrm-btn" style="padding:0.3rem 0.65rem;font-size:0.78rem;">
-                                        <i class="fa-solid fa-arrows-rotate"></i> Recompute
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-            </div>
-            @if($unmatchedDtrs->count() >= 300)
-                <p style="font-size:0.78rem;color:#94a3b8;margin-top:0.5rem;">Showing the first 300 matching rows - narrow the date range to see more.</p>
-            @endif
-        @endif
     </div>
 @endsection
 
 @section('page_scripts')
     <script>
+        (function () {
+            const tabs = document.querySelectorAll('.import-tab-btn');
+            const panels = document.querySelectorAll('.import-panel');
+
+            function activate(id) {
+                tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+                panels.forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
+                try { sessionStorage.setItem('hris_import_tab', id); } catch (_) {}
+            }
+
+            tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
+
+            const hash = window.location.hash.replace('#tab-', '');
+            const saved = sessionStorage.getItem('hris_import_tab');
+            const hasUnmatchedParams = /[?&](unmatched_from|unmatched_to|unmatched_dept_id|unmatched_search)=/.test(window.location.search);
+
+            if (hash && document.getElementById('tab-' + hash)) {
+                activate(hash);
+            } else if (hasUnmatchedParams) {
+                activate('diagnostics');
+            } else if (saved && document.getElementById('tab-' + saved)) {
+                activate(saved);
+            }
+        })();
+
         (function () {
             const fromEl = document.getElementById('from_date');
             const toEl   = document.getElementById('to_date');
@@ -797,27 +885,172 @@
         })();
 
         (function () {
-            document.querySelectorAll('.import-recompute-form').forEach(function (form) {
-                form.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    const name = form.dataset.employee;
-                    const date = form.dataset.date;
+            // Recompute forms are re-rendered on every AJAX refresh of
+            // #unmatched-results (see the lazy-load IIFE below) - a plain
+            // per-node querySelectorAll binding at page-load time would miss
+            // every one of them. Event delegation on the stable parent
+            // container keeps this working with zero re-binding needed.
+            const container = document.getElementById('unmatched-results');
+            if (!container) return;
 
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Recompute this DTR?',
-                        html: 'Rebuilds <b>' + name + '</b>&rsquo;s DTR from already-imported punches around ' + date + ' using the current computation logic. Does not call the external biometric API - safe to re-run.',
-                        showCancelButton: true,
-                        confirmButtonText: 'Yes, recompute',
-                        confirmButtonColor: '#17a2b8',
-                        cancelButtonColor: '#6b7280',
-                    }).then(function (res) {
-                        if (res.isConfirmed) {
-                            form.submit();
-                        }
-                    });
+            container.addEventListener('submit', function (e) {
+                const form = e.target.closest('.import-recompute-form');
+                if (!form) return;
+
+                e.preventDefault();
+                const name = form.dataset.employee;
+                const date = form.dataset.date;
+
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Recompute this DTR?',
+                    html: 'Rebuilds <b>' + name + '</b>&rsquo;s DTR from already-imported punches around ' + date + ' using the current computation logic. Does not call the external biometric API - safe to re-run.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, recompute',
+                    confirmButtonColor: '#17a2b8',
+                    cancelButtonColor: '#6b7280',
+                }).then(function (res) {
+                    if (res.isConfirmed) {
+                        form.submit();
+                    }
                 });
             });
+        })();
+
+        (function () {
+            // Lazy-loads the "Unresolved / Unmatched Punches" list - see
+            // AttendanceImportController::unmatchedPunchesData()'s docblock
+            // for why this moved off the default page-load path (~3.5s
+            // pipeline vs. ~0.01s for everything else this page needs). Fires
+            // once the first time the Diagnostics tab is actually opened,
+            // or immediately on page load when a deep link already carries
+            // unmatched_from/to/dept_id (preserving the existing auto-switch
+            // behavior below).
+            const resultsEl = document.getElementById('unmatched-results');
+            const badgeEl = document.getElementById('unmatched-badge');
+            const diagnosticsTabBtn = document.querySelector('.import-tab-btn[data-tab="diagnostics"]');
+            const filterForm = document.getElementById('unmatched-filter-form');
+            if (!resultsEl || !filterForm) return;
+
+            let loaded = false;
+            const FILTER_FIELD_NAMES = ['unmatched_from', 'unmatched_to', 'unmatched_dept_id', 'unmatched_search'];
+
+            let currentPage = parseInt(new URLSearchParams(window.location.search).get('page'), 10) || 1;
+
+            function currentParams() {
+                const params = new URLSearchParams();
+                FILTER_FIELD_NAMES.forEach(function (name) {
+                    const el = document.getElementById(name);
+                    if (el && el.value) params.set(name, el.value);
+                });
+                if (currentPage > 1) params.set('page', currentPage);
+
+                return params;
+            }
+
+            function loadUnmatchedPunches() {
+                const params = currentParams();
+                resultsEl.innerHTML = '<div class="hris-empty-state">'
+                    + '<div class="hris-empty-state-icon"><i class="fa-solid fa-spinner fa-spin" style="color:#17a2b8;"></i></div>'
+                    + '<div class="hris-empty-state-title">Loading…</div>'
+                    + '<div class="hris-empty-state-text">Checking for unresolved punches — this cross-checks Locator/Excuse/Suspension records and can take a few seconds.</div>'
+                    + '</div>';
+
+                fetch('{{ route("hr-manager.attendance.import.unmatched-data") }}?' + params.toString())
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        resultsEl.innerHTML = data.html;
+
+                        if (badgeEl) {
+                            if (data.badge_count > 0) {
+                                badgeEl.style.display = '';
+                                badgeEl.textContent = data.badge_capped ? (data.badge_count + '+') : data.badge_count;
+                                badgeEl.title = 'Exact count';
+                            } else {
+                                badgeEl.style.display = 'none';
+                            }
+                        }
+                    })
+                    .catch(function () {
+                        resultsEl.innerHTML = '<div class="hris-empty-state">'
+                            + '<div class="hris-empty-state-icon"><i class="fa-solid fa-circle-exclamation" style="color:#b91c1c;"></i></div>'
+                            + '<div class="hris-empty-state-title">Couldn\'t load this list</div>'
+                            + '<div class="hris-empty-state-text">Try again, or reload the page.</div>'
+                            + '</div>';
+                    });
+            }
+
+            // The shared pagination component (see the results partial)
+            // renders real anchor links (so they degrade gracefully if this
+            // listener somehow doesn't attach), but clicking one should
+            // update this same panel via AJAX rather than a full page reload
+            // - intercept it, pull the target page out of the link's own
+            // querystring, and re-fetch.
+            resultsEl.addEventListener('click', function (e) {
+                const link = e.target.closest('.hris-pagination-link[href]');
+                if (!link) return;
+
+                e.preventDefault();
+                const targetPage = parseInt(new URL(link.href, window.location.href).searchParams.get('page'), 10) || 1;
+                currentPage = targetPage;
+                loaded = true;
+                loadUnmatchedPunches();
+            });
+
+            function loadOnce() {
+                if (loaded) return;
+                loaded = true;
+                loadUnmatchedPunches();
+            }
+
+            if (diagnosticsTabBtn) {
+                diagnosticsTabBtn.addEventListener('click', loadOnce);
+            }
+
+            const hasUnmatchedParams = /[?&](unmatched_from|unmatched_to|unmatched_dept_id|unmatched_search|page)=/.test(window.location.search);
+            const hash = window.location.hash.replace('#tab-', '');
+            let savedTab = null;
+            try { savedTab = sessionStorage.getItem('hris_import_tab'); } catch (_) {}
+
+            if (hasUnmatchedParams || hash === 'diagnostics' || savedTab === 'diagnostics') {
+                loadOnce();
+            }
+
+            filterForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                currentPage = 1; // a filter/search change always starts over from page 1
+                const params = currentParams();
+
+                try {
+                    const url = new URL(window.location.href);
+                    FILTER_FIELD_NAMES.concat('page').forEach(function (name) {
+                        url.searchParams.delete(name);
+                    });
+                    params.forEach(function (value, name) { url.searchParams.set(name, value); });
+                    url.hash = 'tab-diagnostics';
+                    window.history.pushState({}, '', url);
+                } catch (_) {}
+
+                loaded = true;
+                loadUnmatchedPunches();
+            });
+
+            // Live search - debounced, matching the 250ms pattern the "Check
+            // Raw Biometric Feed" search on this same page already uses.
+            // Filter still works too (same currentParams()), for From/To/
+            // Department without needing to type into this field at all.
+            const searchInput = document.getElementById('unmatched_search');
+            if (searchInput) {
+                let searchDebounce = null;
+                searchInput.addEventListener('input', function () {
+                    clearTimeout(searchDebounce);
+                    searchDebounce = setTimeout(function () {
+                        currentPage = 1; // a new search always starts over from page 1
+                        loaded = true;
+                        loadUnmatchedPunches();
+                    }, 300);
+                });
+            }
         })();
     </script>
 @endsection

@@ -44,9 +44,16 @@ use Illuminate\Support\Collection;
  * in the pool.
  *
  * Locator's exclusion is windowed (only excludes a punch actually falling
- * inside the locator's own travel window), not unconditional, and already
- * has its own correct recovery via Form48ExportService::resolveLocatorSlots()
- * - callers must never feed locator-derived slots into $excludedSlotsByDate.
+ * inside the locator's own travel window) rather than unconditional, but that
+ * distinction doesn't matter here: this class only ever reads the excluded
+ * slot KEYS and cross-checks against the persisted leftover pool, so a
+ * windowed exclusion is just as safe an input as an unconditional one - a
+ * Locator-covered date belongs in $excludedSlotsByDate exactly like a
+ * DtrExcuse/Suspension one. (Form48ExportService::resolveLocatorSlots() is
+ * NOT an alternative to this - it only ever reads the already-persisted
+ * dtrs columns and falls back to the literal text 'LOCATOR' when they're
+ * null; it never consults unmatched_logs, so on its own it can't actually
+ * recover anything this class doesn't already handle.)
  */
 class ExcludedSlotPunchRecovery
 {
@@ -57,9 +64,10 @@ class ExcludedSlotPunchRecovery
 
     /**
      * @param  array<string, array<string, mixed>>  $excludedSlotsByDate  date('Y-m-d') => slot('am_in'|'am_out'|'pm_in'|'pm_out') => anything.
-     *                                                                    Only the slot KEYS are read - build this from DtrExcuse::excludedSlotKeys()
-     *                                                                    and WorkSchedule::applySuspension()'s returned slot array, never from a
-     *                                                                    Locator's windowed exclusion.
+     *                                                                    Only the slot KEYS are read - build this from DtrExcuse::excludedSlotKeys(),
+     *                                                                    WorkSchedule::applySuspension()'s returned slot array, and/or
+     *                                                                    Locator::coveredSlotKeys() (see this class's own docblock for why a
+     *                                                                    windowed Locator exclusion is just as safe an input as the other two).
      * @param  Collection<int, Dtr>|null  $preloadedDtrRows
      * @param  Collection<string, EmployeeShiftSchedule>|null  $preloadedAssignments  Same per-date override
      *                                                                                collection the caller already loaded for its own

@@ -733,6 +733,22 @@ class Form48ExportService
             $dateStr = $dayToDate($day);
             $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $entry['slots']);
         }
+        // A Locator's exclusion is windowed rather than unconditional, but
+        // ExcludedSlotPunchRecovery only reads slot keys - see its own
+        // docblock for why that makes it just as safe an input here as the
+        // excuse/suspension slots above.
+        foreach ($locatorMap as $day => $loc) {
+            $dateStr = $dayToDate($day);
+            $locSlotKeys = array_keys(array_filter([
+                'am_in' => $loc['covers_am_in'],
+                'am_out' => $loc['covers_am_out'],
+                'pm_in' => $loc['covers_pm_in'],
+                'pm_out' => $loc['covers_pm_out'],
+            ]));
+            if ($locSlotKeys !== []) {
+                $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], array_fill_keys($locSlotKeys, null));
+            }
+        }
         $recoveredByDate = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate);
         $recoveredMap = [];
         foreach ($recoveredByDate as $dateStr => $slots) {
@@ -1669,12 +1685,30 @@ class Form48ExportService
             // Redistribute punches around the locator window so that a punch
             // occurring after official-travel arrival is not mis-assigned to a
             // covered slot by the sequential DtrPunchResolver logic.
+            $recoveredAmIn = $recoveredAmOut = $recoveredPmIn = $recoveredPmOut = false;
             if ($locator !== null) {
+                $recovered = $recoveredMap[$day] ?? [];
+                $recAmIn = $recovered['am_in'] ?? null;
+                $recAmOut = $recovered['am_out'] ?? null;
+                $recPmIn = $recovered['pm_in'] ?? null;
+                $recPmOut = $recovered['pm_out'] ?? null;
+
                 [$amIn, $amOut, $pmIn, $pmOut] = self::resolveLocatorSlots(
-                    $rec['am_in'] ?? null, $rec['am_out'] ?? null,
-                    $rec['pm_in'] ?? null, $rec['pm_out'] ?? null,
+                    ($rec['am_in'] ?? null) ?: $recAmIn, ($rec['am_out'] ?? null) ?: $recAmOut,
+                    ($rec['pm_in'] ?? null) ?: $recPmIn, ($rec['pm_out'] ?? null) ?: $recPmOut,
                     $locator
                 );
+                // A recovered value only ever fills a slot the persisted dtrs
+                // row left null - a real punch that fell inside the locator's
+                // travel window (see ExcludedSlotPunchRecovery). Track which
+                // slot(s) that happened for, so the cell can get a distinct
+                // marker color below - unlike DtrController::data(), a plain
+                // Excel cell can't carry an HTML tooltip for the same case.
+                $recoveredAmIn = empty($rec['am_in']) && $recAmIn;
+                $recoveredAmOut = empty($rec['am_out']) && $recAmOut;
+                $recoveredPmIn = empty($rec['pm_in']) && $recPmIn;
+                $recoveredPmOut = empty($rec['pm_out']) && $recPmOut;
+
                 $amIn = $amIn ?? '';
                 $amOut = $amOut ?? '';
                 $pmIn = $pmIn ?? '';
@@ -1706,7 +1740,13 @@ class Form48ExportService
 
             // Per-cell red font: only the slot that caused the penalty turns red,
             // matching the DataTable behaviour (avoids coloring an early AM In red
-            // just because PM In return was late).
+            // just because PM In return was late). A recovered-from-Locator-conflict
+            // slot (see $recoveredAmIn et al. above) gets a distinct amber font color
+            // instead, unless it's also genuinely late/undertime (red wins) - the
+            // cell value itself stays a plain time so the official form's fixed
+            // layout is undisturbed; DtrController::data() shows the equivalent
+            // conflict with an inline tooltip instead, which a plain Excel cell
+            // can't carry.
             $cellHm = fn (string $v): ?string => $v !== '' && $v !== 'LOCATOR' && $v !== 'EXCUSED' && strlen($v) >= 5
                 ? substr($v, 0, 5)
                 : null;
@@ -1736,12 +1776,21 @@ class Form48ExportService
 
                 if ($redAmIn) {
                     $sheet->getStyle(self::AM_IN_COLS[$i].$row)->getFont()->getColor()->setARGB('FFDC2626');
+                } elseif ($recoveredAmIn) {
+                    $sheet->getStyle(self::AM_IN_COLS[$i].$row)->getFont()->getColor()->setARGB('FFB45309');
+                }
+                if ($recoveredAmOut) {
+                    $sheet->getStyle(self::AM_OUT_COLS[$i].$row)->getFont()->getColor()->setARGB('FFB45309');
                 }
                 if ($redPmIn) {
                     $sheet->getStyle(self::PM_IN_COLS[$i].$row)->getFont()->getColor()->setARGB('FFDC2626');
+                } elseif ($recoveredPmIn) {
+                    $sheet->getStyle(self::PM_IN_COLS[$i].$row)->getFont()->getColor()->setARGB('FFB45309');
                 }
                 if ($redPmOut) {
                     $sheet->getStyle(self::PM_OUT_COLS[$i].$row)->getFont()->getColor()->setARGB('FFDC2626');
+                } elseif ($recoveredPmOut) {
+                    $sheet->getStyle(self::PM_OUT_COLS[$i].$row)->getFont()->getColor()->setARGB('FFB45309');
                 }
                 if ($mins > 0) {
                     $sheet->getStyle(self::UT_HRS_COLS[$i].$row)->getFont()->getColor()->setARGB('FFDC2626');

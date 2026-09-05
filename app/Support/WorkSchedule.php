@@ -198,11 +198,30 @@ class WorkSchedule
      */
     public static function preloadShiftAssignments(iterable $userIds): void
     {
-        self::$shiftAssignments = ShiftAssignment::whereIn('user_id', collect($userIds)->all())
+        $ids = collect($userIds)->all();
+
+        $grouped = ShiftAssignment::whereIn('user_id', $ids)
             ->with('shift')
             ->orderBy('effective_from')
             ->get()
             ->groupBy('user_id');
+
+        // groupBy() only creates a key for an id that actually has at least
+        // one row - an id with zero ShiftAssignment rows (a real, common case:
+        // an employee managed entirely via day-to-date EmployeeShiftSchedule
+        // overrides, with no open-ended assignment) would otherwise have no
+        // key here, and assignmentRowsFor()'s has() check would then treat it
+        // as "never warmed up" and fall back to a live per-user query - once
+        // per forUserOnDate() call, not just once per employee, since the
+        // fallback result itself is never cached. Explicitly filling in an
+        // empty collection for every requested id closes that gap.
+        foreach ($ids as $id) {
+            if (! $grouped->has($id)) {
+                $grouped->put($id, collect());
+            }
+        }
+
+        self::$shiftAssignments = $grouped;
     }
 
     /** Clear the per-request shift-assignment memo (used in tests after seeding new rows). */

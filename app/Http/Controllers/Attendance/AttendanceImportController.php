@@ -7,17 +7,24 @@ use App\Jobs\ImportAttendanceLogsJob;
 use App\Models\AttendanceLog;
 use App\Models\Department;
 use App\Models\Dtr;
+use App\Models\DtrExcuse;
 use App\Models\HRAuditTrail;
+use App\Models\Locator;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WorkSuspension;
+use App\Services\Attendance\ExcludedSlotPunchRecovery;
 use App\Services\IntegrationApiService;
 use App\Services\PersonnelLogImportService;
+use App\Support\WorkSchedule;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class AttendanceImportController extends Controller
 {
@@ -37,6 +44,43 @@ class AttendanceImportController extends Controller
 
         [$unmatchedFrom, $unmatchedTo] = $this->resolveUnmatchedDateRange($request);
         $unmatchedDeptId = $request->integer('unmatched_dept_id') ?: null;
+        // Only used to pre-fill the input on a deep-linked page load - the
+        // badge count query below stays a pure date/dept-scoped approximation
+        // regardless, same as before this field existed.
+        $unmatchedSearch = trim((string) $request->query('unmatched_search', ''));
+
+        // The Diagnostics tab's real results (candidate fetch + per-employee
+        // Locator/Excuse/Suspension explanation check) are loaded lazily via
+        // AJAX (see unmatchedPunchesData()) rather than here - that pipeline
+        // costs ~3.5s against real dev data, while everything else index()
+        // needs costs ~0.01s, and the tabs are just client-side show/hide, so
+        // every page visit (including one that only wants to Pull Logs) used
+        // to pay the full cost unconditionally. This is a cheap, raw,
+        // unfiltered upper-bound count (no dept scope, no explanation
+        // filtering) purely to seed the tab badge before that data loads.
+        $unmatchedBadgeCount = Dtr::query()
+            ->whereJsonLength('unmatched_logs', '>', 0)
+            ->whereBetween('date', [$unmatchedFrom, $unmatchedTo])
+            ->count();
+
+        return view('hr-manager.attendance-import', compact(
+            'departments', 'setting', 'empNoCount', 'recentImports',
+            'unmatchedFrom', 'unmatchedTo', 'unmatchedDeptId', 'unmatchedBadgeCount', 'unmatchedSearch'
+        ));
+    }
+
+    /**
+     * Lazily-loaded Diagnostics tab data - see index()'s docblock comment for
+     * why this was split out. Runs the exact same candidate-fetch +
+     * explanation-filtering pipeline that used to live in index(), unchanged,
+     * just relocated behind a dedicated AJAX endpoint fired only when the
+     * Diagnostics tab is actually opened.
+     */
+    public function unmatchedPunchesData(Request $request): JsonResponse
+    {
+        [$unmatchedFrom, $unmatchedTo] = $this->resolveUnmatchedDateRange($request);
+        $unmatchedDeptId = $request->integer('unmatched_dept_id') ?: null;
+        $unmatchedSearch = trim((string) $request->query('unmatched_search', ''));
 
         // unmatched_logs non-empty is the precise fingerprint of a punch that
         // was never placed into any DTR slot - see ShiftPunchGrouper's class
@@ -47,24 +91,292 @@ class AttendanceImportController extends Controller
         // (only a unique employee_id+date composite), so this stays bounded
         // by the date range rather than scanning the whole (large, growing)
         // table.
-        $unmatchedDtrs = Dtr::query()
+        $baseQuery = Dtr::query()
             ->whereJsonLength('unmatched_logs', '>', 0)
             ->whereBetween('date', [$unmatchedFrom, $unmatchedTo])
             ->when($unmatchedDeptId, fn ($q) => $q->whereHas(
                 'employee', fn ($u) => $u->where('Dept_id', $unmatchedDeptId)
             ))
+            // Matches the "Check Raw Biometric Feed" search already on this
+            // same page (name-or-EmpNo) rather than DtrExcuseController's
+            // name-only convention - EmpNo is a visible column in this table.
+            ->when($unmatchedSearch !== '', fn ($q) => $q->whereHas(
+                'employee', fn ($u) => $u->where('last_name', 'like', "%{$unmatchedSearch}%")
+                    ->orWhere('first_name', 'like', "%{$unmatchedSearch}%")
+                    ->orWhere('EmpNo', 'like', "%{$unmatchedSearch}%")
+            ));
+
+        // The true total matching this filter, BEFORE the fetch cap below -
+        // real dev data has shown this can run into the thousands (2,196 in a
+        // single 30-day window at time of writing) while the fetch cap only
+        // pulls the most recent slice. Without this, the "showing the first N"
+        // messaging can silently under-report how much was actually cut off.
+        $totalMatchingCount = (clone $baseQuery)->count();
+
+        // Fetches more than the 300 actually displayed - see the filter step
+        // below for why. Raised from 600 to 2000 now that this no longer runs
+        // on the default page-load path (see index()) - the 200-call
+        // recover() budget below still bounds the expensive part
+        // independent of how many rows are fetched here.
+        $unmatchedCandidates = (clone $baseQuery)
             ->with([
                 'employee:id,first_name,last_name,EmpNo,Dept_id',
                 'employee.department:Dept_id,Dept_name',
             ])
             ->orderByDesc('date')
-            ->limit(300)
+            ->limit(2000)
             ->get();
 
-        return view('hr-manager.attendance-import', compact(
-            'departments', 'setting', 'empNoCount', 'recentImports',
-            'unmatchedDtrs', 'unmatchedFrom', 'unmatchedTo', 'unmatchedDeptId'
-        ));
+        // A punch already explained by a Locator/Suspension/Excuse conflict
+        // displays correctly on the DTR page and Form 48 via
+        // ExcludedSlotPunchRecovery, but its raw unmatched_logs entry never
+        // gets cleared - it isn't the "stranded on the wrong calendar day"
+        // grouping bug this tool exists to catch, and no amount of Recompute
+        // can ever resolve it. Filter those out so the list stays focused on
+        // genuinely unexplained stray punches; a row where only SOME of
+        // several unmatched punches are explained still surfaces, since the
+        // unexplained one remains a real anomaly.
+        $recoveredByEmployeeDate = $this->explainedRecoveredValuesByEmployeeAndDate(
+            $unmatchedCandidates, $unmatchedFrom, $unmatchedTo
+        );
+        $unmatchedDtrsAll = $unmatchedCandidates
+            ->reject(fn (Dtr $row) => $this->isFullyExplained($row, $recoveredByEmployeeDate))
+            ->values();
+
+        // Pages through the already-fetched, already-filtered in-memory set
+        // rather than a SQL LIMIT/OFFSET - which slot in the pipeline a row
+        // ends up in is only known AFTER the explanation check above runs, so
+        // paginating any earlier (at the query level) would produce gaps
+        // whenever an explained row sits ahead of a genuinely unresolved one.
+        $perPage = 25;
+        $totalFiltered = $unmatchedDtrsAll->count();
+        $lastPage = max(1, (int) ceil($totalFiltered / $perPage));
+        $page = min(max(1, $request->integer('page', 1)), $lastPage);
+        $unmatchedDtrs = $unmatchedDtrsAll->forPage($page, $perPage)->values();
+
+        // Reuses the app's existing <x-hris.table-pagination> component
+        // (already used by Payroll's Plantilla Reports/Run Show pages) for a
+        // consistent look, rather than hand-rolled controls - built manually
+        // since the data being paged is an in-memory, already-filtered
+        // Collection, not a query Eloquent can paginate() directly (see the
+        // comment above on why pagination has to happen after filtering).
+        // Its links still carry a real, working href back to this same
+        // endpoint with the current filters preserved; the click is
+        // intercepted client-side to avoid a full page reload (see the JS in
+        // attendance-import.blade.php), but the link degrades gracefully to
+        // a real navigation if JS ever fails to attach.
+        $paginator = new LengthAwarePaginator(
+            $unmatchedDtrs, $totalFiltered, $perPage, $page,
+            [
+                'path' => route('hr-manager.attendance.import.unmatched-data'),
+                'query' => [
+                    'unmatched_from' => $unmatchedFrom,
+                    'unmatched_to' => $unmatchedTo,
+                    'unmatched_dept_id' => $unmatchedDeptId,
+                    'unmatched_search' => $unmatchedSearch,
+                ],
+            ]
+        );
+
+        $html = view('hr-manager.partials.unmatched-punches-results', [
+            'unmatchedDtrs' => $unmatchedDtrs,
+            'totalMatchingCount' => $totalMatchingCount,
+            'candidatesFetchedCount' => $unmatchedCandidates->count(),
+            'paginator' => $paginator,
+        ])->render();
+
+        return response()->json([
+            'html' => $html,
+            // The total genuinely-unresolved count across ALL pages, not just
+            // this one - a per-page count on the tab badge would be
+            // misleading (e.g. always "25" once paginated).
+            'badge_count' => $totalFiltered,
+            // True only when the raw 2000-row fetch cap itself cut off real
+            // matching rows before filtering even ran - decoupled from
+            // ordinary pagination/explanation-filtering, neither of which is
+            // a "cap" in this sense.
+            'badge_capped' => $totalMatchingCount > $unmatchedCandidates->count(),
+        ]);
+    }
+
+    /**
+     * For each distinct employee among $candidates, resolves what
+     * ExcludedSlotPunchRecovery would recover for their flagged dates - the
+     * same check DtrController::data()/Form48ExportService already rely on
+     * to display a real punch instead of "EXCUSED"/"SUSPENDED"/"LOCATOR".
+     * Built fresh here (one recover() call per employee, not per row) rather
+     * than reusing DtrController's/Form48ExportService's own inline map
+     * construction - those already build the equivalent map from locally-
+     * scoped data needed for other purposes in much larger, already-tested
+     * methods, so re-deriving it standalone here avoids touching either.
+     *
+     * Every query below is batched across all candidate employees up front
+     * (whereIn / a single company-wide fetch), not issued per employee inside
+     * the loop - confirmed via a real dev-data measurement that the naive
+     * per-employee version (WorkSuspension re-queried identically per
+     * employee, DtrExcuse/Locator queried one-by-one, WorkSchedule::
+     * forUserOnDate() never memoized) took ~27s and 36,000+ queries against
+     * 421 distinct employees in the default 30-day window - unusable on a
+     * real dataset. WorkSchedule::preloadShiftAssignments() is what makes
+     * every forUserOnDate() call below O(1) instead of its own round trip.
+     *
+     * @param  Collection<int, Dtr>  $candidates
+     * @return array<int, array<string, array<string, string>>> employeeId => date('Y-m-d') => slot => 'H:i:s'
+     */
+    private function explainedRecoveredValuesByEmployeeAndDate(Collection $candidates, string $from, string $to): array
+    {
+        $employeesById = $candidates->pluck('employee', 'employee_id')->filter();
+        if ($employeesById->isEmpty()) {
+            return [];
+        }
+        $employeeIds = $employeesById->keys()->all();
+
+        WorkSchedule::preloadShiftAssignments($employeeIds);
+
+        // Company-wide, not employee-scoped - fetch once instead of an
+        // identical re-query per employee.
+        $suspensions = WorkSuspension::whereBetween('suspension_date', [$from, $to])->get();
+
+        // Employee-scoped, but a single whereIn() + in-memory grouping beats
+        // one query per employee.
+        $excusesByEmployee = DtrExcuse::whereIn('user_id', $employeeIds)
+            ->whereBetween('date', [$from, $to])
+            ->get()
+            ->groupBy('user_id');
+        $locatorsByEmployee = Locator::whereIn('user_id', $employeeIds)
+            ->where('status', 'approved')
+            ->whereBetween('travel_date', [$from, $to])
+            ->get(['user_id', 'travel_date', 'intended_departure_time', 'intended_arrival_time'])
+            ->groupBy('user_id');
+
+        $recoveryService = app(ExcludedSlotPunchRecovery::class);
+        $results = [];
+
+        // recover() itself does real per-employee work (an AttendanceLog
+        // fetch plus a fresh grouping/matching pass) that can't be batched
+        // across employees without changing that shared class - a real
+        // mass event (e.g. a company-wide Work Suspension explaining
+        // hundreds of employees' punches at once, confirmed against real
+        // dev data: 407 of 421 candidates) can still add up. Cap how many
+        // calls this request will make so the page always returns in
+        // bounded time regardless of how large a future event is - the
+        // employees beyond the cap simply stay listed as unresolved rather
+        // than being explained, the same safe "don't hide when uncertain"
+        // fallback used throughout ExcludedSlotPunchRecovery itself.
+        $recoverCallBudget = 200;
+
+        foreach ($candidates->groupBy('employee_id') as $employeeId => $rows) {
+            if ($recoverCallBudget <= 0) {
+                break;
+            }
+
+            $employee = $employeesById->get($employeeId);
+            if (! $employee) {
+                // No employee relation to correlate coverage against (a
+                // deleted/orphaned user) - can't determine an explanation,
+                // so leave these rows visible rather than guessing.
+                continue;
+            }
+
+            // Only the specific dates this employee actually has an
+            // unmatched punch on - not the whole requested range - so an
+            // excuse/suspension/locator elsewhere in the window never drags
+            // an otherwise-unrelated employee into a recover() call. This is
+            // what actually keeps this bounded: 421 employees each have a
+            // flagged date, but only a handful of those dates genuinely
+            // coincide with a real exclusion for that same employee.
+            $flaggedDates = $rows->map(fn (Dtr $d) => $d->date->toDateString())->unique()->all();
+
+            $excludedSlotsByDate = [];
+
+            foreach ($excusesByEmployee->get($employeeId, []) as $excuse) {
+                $dateStr = Carbon::parse($excuse->date)->format('Y-m-d');
+                if (! in_array($dateStr, $flaggedDates, true)) {
+                    continue;
+                }
+                if (($keys = $excuse->excludedSlotKeys()) !== []) {
+                    $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], array_fill_keys($keys, null));
+                }
+            }
+
+            if (! $employee->isFrontlineExempt()) {
+                foreach ($suspensions as $suspension) {
+                    $dateStr = Carbon::parse($suspension->suspension_date)->format('Y-m-d');
+                    if (! in_array($dateStr, $flaggedDates, true)) {
+                        continue;
+                    }
+                    $schedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dateStr));
+                    [, $slots] = $schedule->applySuspension($suspension->suspension_time);
+                    if ($slots !== []) {
+                        $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], $slots);
+                    }
+                }
+            }
+
+            foreach ($locatorsByEmployee->get($employeeId, []) as $locator) {
+                $dateStr = Carbon::parse($locator->travel_date)->format('Y-m-d');
+                if (! in_array($dateStr, $flaggedDates, true)) {
+                    continue;
+                }
+                $schedule = WorkSchedule::forUserOnDate($employee, Carbon::parse($dateStr));
+                $keys = Locator::coveredSlotKeys(
+                    (string) $locator->intended_departure_time,
+                    (string) $locator->intended_arrival_time,
+                    $schedule
+                );
+                if ($keys !== []) {
+                    $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], array_fill_keys($keys, null));
+                }
+            }
+
+            if ($excludedSlotsByDate === []) {
+                continue;
+            }
+
+            // Narrow the range recover() re-fetches AttendanceLog/Dtr over to
+            // just around the flagged date(s) instead of the full requested
+            // window - mirrors the 3-day-back/1-day-forward pad
+            // recomputeUnmatched() already uses for the same reason
+            // (ShiftPunchGrouper only ever folds a punch backward).
+            $recoverFrom = Carbon::parse(min($flaggedDates))->subDays(3)->toDateString();
+            $recoverTo = Carbon::parse(max($flaggedDates))->addDay()->toDateString();
+
+            // $rows already IS this employee's own Dtr rows for exactly the
+            // flagged dates recover() will look at - passing it through
+            // skips recover()'s own equivalent internal query.
+            $preloadedDtrRows = $rows->keyBy(fn (Dtr $d) => $d->date->toDateString());
+
+            $results[$employeeId] = $recoveryService->recover(
+                $employee, $recoverFrom, $recoverTo, $excludedSlotsByDate, $preloadedDtrRows
+            );
+            $recoverCallBudget--;
+        }
+
+        return $results;
+    }
+
+    /**
+     * True only when EVERY entry in $row->unmatched_logs is accounted for by
+     * a recovered value on that same date - a partially-explained day still
+     * has a genuine unexplained straggler and must stay visible.
+     *
+     * @param  array<int, array<string, array<string, string>>>  $recoveredByEmployeeDate
+     */
+    private function isFullyExplained(Dtr $row, array $recoveredByEmployeeDate): bool
+    {
+        $recoveredValues = array_values($recoveredByEmployeeDate[$row->employee_id][$row->date->toDateString()] ?? []);
+
+        if ($recoveredValues === [] || empty($row->unmatched_logs)) {
+            return false;
+        }
+
+        foreach ($row->unmatched_logs as $time) {
+            if (! in_array($time, $recoveredValues, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

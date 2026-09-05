@@ -353,6 +353,21 @@ class DtrController extends Controller
                 }
             }
         }
+        // A Locator's exclusion is windowed rather than unconditional, but
+        // ExcludedSlotPunchRecovery only reads slot keys - see its own
+        // docblock for why that makes it just as safe an input here as the
+        // excuse/suspension slots above.
+        foreach ($locatorDateMap as $dateStr => $loc) {
+            $locSlotKeys = array_keys(array_filter([
+                'am_in' => $loc['covers_am_in'],
+                'am_out' => $loc['covers_am_out'],
+                'pm_in' => $loc['covers_pm_in'],
+                'pm_out' => $loc['covers_pm_out'],
+            ]));
+            if ($locSlotKeys !== []) {
+                $excludedSlotsByDate[$dateStr] = array_merge($excludedSlotsByDate[$dateStr] ?? [], array_fill_keys($locSlotKeys, null));
+            }
+        }
         $recoveredMap = $this->excludedSlotPunchRecovery->recover($employee, $from, $to, $excludedSlotsByDate, $dtrRows, $shiftAssignments);
 
         // Build office-order date map: 'Y-m-d' → office_order_num, expanding each
@@ -733,15 +748,28 @@ class DtrController extends Controller
                 $storedUt = $dtr->undertime_minutes ?? 0;
                 $utMin = $storedUt > 0 ? $storedUt : $imputePmOutUndertime($suspensionCoveredSlots);
             } elseif ($loc) {
+                $recAmIn = $recoveredMap[$dateStr]['am_in'] ?? null;
+                $recAmOut = $recoveredMap[$dateStr]['am_out'] ?? null;
+                $recPmIn = $recoveredMap[$dateStr]['pm_in'] ?? null;
+                $recPmOut = $recoveredMap[$dateStr]['pm_out'] ?? null;
+
                 [$rawAmIn, $rawAmOut, $rawPmIn, $rawPmOut] = Form48ExportService::resolveLocatorSlots(
-                    $dtr->time_in_am, $dtr->time_out_am,
-                    $dtr->time_in_pm, $dtr->time_out_pm,
+                    $dtr->time_in_am ?: $recAmIn, $dtr->time_out_am ?: $recAmOut,
+                    $dtr->time_in_pm ?: $recPmIn, $dtr->time_out_pm ?: $recPmOut,
                     $loc
                 );
                 $tAmIn = $rawAmIn ?? '-';
                 $tAmOut = $rawAmOut ?? '-';
                 $tPmIn = $rawPmIn ?? '-';
                 $tPmOut = $rawPmOut ?? ($pmOutCoveredNextDay ? $pmOutFallbackLabel : '-');
+                // Needed by $decorateSlot() below so a recovered (or genuinely
+                // covered) slot gets the same stacked time+badge treatment
+                // Excuse/Suspension already get - not set anywhere else for
+                // this branch, and not reset to a safe default upstream.
+                $coversAmIn = $loc['covers_am_in'] ?? false;
+                $coversAmOut = $loc['covers_am_out'] ?? false;
+                $coversPmIn = $loc['covers_pm_in'] ?? false;
+                $coversPmOut = $loc['covers_pm_out'] ?? false;
                 // Recompute per-slot: the old OR logic zeroed all tardiness whenever
                 // any covered slot was LOCATOR, hiding genuine late AM In punches.
                 [$lateMin, $utMin] = Form48ExportService::computeSlotPenalties(
@@ -840,19 +868,29 @@ class DtrController extends Controller
             $isAmOutUndertime = $amOutImputed || (! $rowSchedule->noBreak && $utMin > 0 && $amOutHm !== null && $amOutHm >= $rowSchedule->workStart && $amOutHm < $rowSchedule->morningEnd);
             $isPmOutUndertime = $pmOutImputed || ($utMin > 0 && $pmOutHm !== null && $pmOutHm >= $pmOutLower && $pmOutHm < $rowSchedule->workEnd);
 
-            // Decorate excused/suspended slots with the reason so the cause is visible
-            // without leaving this page; only applies to slots that are actually covered.
-            $decorateSlot = function (string $raw, bool $covered, bool $isNextDayFallback = false) use ($excuse, $suspension): string {
-                if ((! $excuse && ! $suspension) || ! $covered || $isNextDayFallback) {
+            // Decorate excused/suspended/locator-covered slots with the reason so the
+            // cause is visible without leaving this page; only applies to slots that
+            // are actually covered. A Locator has no "type" of its own the way
+            // Excuse/Suspension do, so it gets a fixed inline config instead of a
+            // typeConfig() lookup - same icon/color already used for this page's
+            // whole-row "Locator" status badge, for visual consistency.
+            $decorateSlot = function (string $raw, bool $covered, bool $isNextDayFallback = false) use ($excuse, $suspension, $loc): string {
+                if ((! $excuse && ! $suspension && ! $loc) || ! $covered || $isNextDayFallback) {
                     return $raw;
                 }
-                $cfg = $excuse
-                    ? DtrExcuse::typeConfig($excuse->excuse_type)
-                    : WorkSuspension::typeConfig($suspension->type);
-                $tooltip = e(($excuse ? $excuse->reason : $suspension->reason) ?: $cfg['label']);
+                if ($excuse) {
+                    $cfg = DtrExcuse::typeConfig($excuse->excuse_type);
+                    $tooltip = e($excuse->reason ?: $cfg['label']);
+                } elseif ($suspension) {
+                    $cfg = WorkSuspension::typeConfig($suspension->type);
+                    $tooltip = e($suspension->reason ?: $cfg['label']);
+                } else {
+                    $cfg = ['icon' => 'fa-route', 'color' => '#065f46', 'bg' => '#d1fae5', 'label' => 'Locator'];
+                    $tooltip = e('Approved Locator travel: '.$loc['departure'].'-'.$loc['arrival']);
+                }
                 $badge = '<span class="hris-badge" style="background:'.$cfg['bg'].';color:'.$cfg['color'].';font-size:.65rem;padding:.15rem .5rem;" title="'.$tooltip.'"><i class="fas '.$cfg['icon'].'" style="font-size:.6rem;"></i> '.$cfg['label'].'</span>';
 
-                if ($raw === 'EXCUSED' || $raw === 'SUSPENDED') {
+                if ($raw === 'EXCUSED' || $raw === 'SUSPENDED' || $raw === 'LOCATOR') {
                     return $badge;
                 }
 

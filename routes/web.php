@@ -646,6 +646,8 @@ Route::middleware(['auth', 'role:hr-manager,time-keeper'])->group(function () {
         ->name('hr-manager.attendance.import.check-employee');
     Route::post('/dashboard/hr-manager/attendance/import/recompute-unmatched', [AttendanceImportController::class, 'recomputeUnmatched'])
         ->name('hr-manager.attendance.import.recompute-unmatched');
+    Route::get('/dashboard/hr-manager/attendance/import/unmatched-data', [AttendanceImportController::class, 'unmatchedPunchesData'])
+        ->name('hr-manager.attendance.import.unmatched-data');
     // Reuses LeaveManagerController::employeeSearch() as-is under a second
     // route name scoped to this role group, rather than widening the
     // original role:leave-manager-only /api/employee-search route - same

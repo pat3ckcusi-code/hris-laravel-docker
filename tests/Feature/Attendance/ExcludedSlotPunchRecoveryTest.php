@@ -5,10 +5,13 @@ namespace Tests\Feature\Attendance;
 use App\Models\AttendanceLog;
 use App\Models\Dtr;
 use App\Models\DtrExcuse;
+use App\Models\Locator;
+use App\Models\Shift;
 use App\Models\User;
 use App\Models\WorkSuspension;
 use App\Services\Form48ExportService;
 use App\Services\PersonnelLogImportService;
+use App\Services\ShiftAssignmentService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -58,6 +61,27 @@ class ExcludedSlotPunchRecoveryTest extends TestCase
         app(PersonnelLogImportService::class)->recomputeDtr($user, $date, $date);
     }
 
+    /**
+     * A plain createEmployee() has no ShiftAssignment, so it falls back to
+     * WorkSchedule::global() - a Standard Day schedule. AttendanceMatcher only
+     * builds ot_in/ot_out candidate events on a Standard Day, both anchored at
+     * the exact same reference time as PM Out; a punch that lands there ties
+     * all three candidates and can resolve to OT Out instead of PM Out - a
+     * real but unrelated ambiguity that has nothing to do with Locator
+     * recovery. Assigning a normal (non-Standard-Day) Shift template sidesteps
+     * it entirely, matching FAMILARA's real-world shift setup.
+     */
+    private function assignOrdinaryShift(User $user, string $date): void
+    {
+        $shift = Shift::create([
+            'name' => 'Locator Recovery Test Shift', 'time_in' => '08:00', 'break_out' => '12:00',
+            'break_in' => '13:00', 'time_out' => '17:00',
+        ]);
+        app(ShiftAssignmentService::class)->assign(
+            $user, $shift->id, Carbon::parse($date)->subDay(), null, null, null, [0, 1, 2, 3, 4, 5, 6], false
+        );
+    }
+
     private function fillForm48(User $user): Worksheet
     {
         $exportService = app(Form48ExportService::class);
@@ -71,6 +95,24 @@ class ExcludedSlotPunchRecoveryTest extends TestCase
         $exportService->fill(
             $sheet, $records, $user, 'August 2026', '2026-08-01',
             excuseMap: $excuseMap,
+        );
+
+        return $sheet;
+    }
+
+    private function fillForm48WithLocator(User $user): Worksheet
+    {
+        $exportService = app(Form48ExportService::class);
+        $records = $exportService->buildRecords($user->id, '2026-08-01', '2026-08-31');
+        $locatorMap = $exportService->buildLocatorMap($user->id, '2026-08-01', '2026-08-31');
+
+        $templatePath = storage_path('app/templates/form48.xls');
+        $spreadsheet = IOFactory::load($templatePath);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $exportService->fill(
+            $sheet, $records, $user, 'August 2026', '2026-08-01',
+            locatorMap: $locatorMap,
         );
 
         return $sheet;
@@ -262,5 +304,122 @@ class ExcludedSlotPunchRecoveryTest extends TestCase
         $this->assertSame('17:00', $sheet->getCell("F{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("G{$row}")->getValue());
         $this->assertSame('', $sheet->getCell("H{$row}")->getValue());
+    }
+
+    // ── Locator (windowed exclusion) ─────────────────────────────────────────
+
+    /**
+     * A Locator's exclusion is windowed, not unconditional - it only rejects a
+     * punch actually falling inside the approved [departure, arrival] travel
+     * window, not the whole slot regardless of time. Recovery reuses the same
+     * $decorateSlot() stacked time+badge convention DtrController::data()
+     * already applies to Excuse/Suspension-covered slots (e.g. a Suspension-
+     * recovered PM In renders as the real time stacked above a "Weather /
+     * Typhoon" badge) - a Locator-covered slot gets an equivalent "Locator"
+     * badge rather than a bespoke marker, for visual consistency across all
+     * three exclusion types.
+     *
+     * Real incident that surfaced this: EmpNo 2501982, 2026-08-06, an approved
+     * Locator (11:00-13:00) covered AM Out/PM In; real punches at 12:03/12:49
+     * were correctly excluded from those slots by AttendanceMatcher and landed
+     * in unmatched_logs, but neither the DTR page nor Form 48 showed any trace
+     * of them - both displayed the bare "LOCATOR" placeholder.
+     */
+    public function test_dtr_page_recovers_real_punch_hidden_by_a_locator_conflict(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Locatorrecovery']);
+        $this->assignOrdinaryShift($user, self::DATE);
+
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Personal',
+            'location' => 'Test location',
+            'travel_date' => self::DATE,
+            'intended_departure_time' => '11:00:00',
+            'intended_arrival_time' => '13:00:00',
+            'detail' => 'Test errand',
+            'status' => 'approved',
+        ]);
+
+        foreach (['07:47:00', '12:03:00', '12:49:00', '17:00:00'] as $time) {
+            $this->punchAt($user, self::DATE, $time);
+        }
+        $this->recompute($user, self::DATE);
+
+        $row = $this->dtrPageRow($user, self::DATE);
+
+        $this->assertNotNull($row);
+        $this->assertSame('07:47', $row['time_in_am'], 'AM In was never covered - resolves as a plain value, no badge.');
+        $this->assertSame('17:00', $row['time_out_pm'], 'PM Out was never covered - resolves as a plain value, no badge.');
+        // Recovered slots get the same stacked time+badge treatment as a
+        // Suspension/Excuse recovery, not a bespoke marker.
+        $this->assertStringContainsString('12:03', $row['time_out_am'], 'The excluded AM Out slot must recover the real punch.');
+        $this->assertStringContainsString('Locator', $row['time_out_am']);
+        $this->assertStringContainsString('12:49', $row['time_in_pm'], 'The excluded PM In slot must recover the real punch.');
+        $this->assertStringContainsString('Locator', $row['time_in_pm']);
+        $this->assertStringNotContainsString('Locator', $row['time_in_am']);
+        $this->assertStringNotContainsString('Locator', $row['time_out_pm']);
+    }
+
+    public function test_form48_export_recovers_real_punch_hidden_by_a_locator_conflict(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Locatorrecoveryform48']);
+        $this->assignOrdinaryShift($user, self::DATE);
+
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Personal',
+            'location' => 'Test location',
+            'travel_date' => self::DATE,
+            'intended_departure_time' => '11:00:00',
+            'intended_arrival_time' => '13:00:00',
+            'detail' => 'Test errand',
+            'status' => 'approved',
+        ]);
+
+        foreach (['07:47:00', '12:03:00', '12:49:00', '17:00:00'] as $time) {
+            $this->punchAt($user, self::DATE, $time);
+        }
+        $this->recompute($user, self::DATE);
+
+        $sheet = $this->fillForm48WithLocator($user);
+
+        $row = 30;
+        $this->assertSame('07:47', $sheet->getCell("C{$row}")->getValue());
+        $this->assertSame('12:03', $sheet->getCell("D{$row}")->getValue());
+        $this->assertSame('12:49', $sheet->getCell("E{$row}")->getValue());
+        $this->assertSame('17:00', $sheet->getCell("F{$row}")->getValue());
+        // Recovered cells get a distinct amber font marker (Excel can't carry
+        // an HTML tooltip); untouched cells keep the default color.
+        $this->assertSame('FFB45309', $sheet->getStyle("D{$row}")->getFont()->getColor()->getARGB());
+        $this->assertSame('FFB45309', $sheet->getStyle("E{$row}")->getFont()->getColor()->getARGB());
+        $this->assertNotSame('FFB45309', $sheet->getStyle("C{$row}")->getFont()->getColor()->getARGB());
+        $this->assertNotSame('FFB45309', $sheet->getStyle("F{$row}")->getFont()->getColor()->getARGB());
+    }
+
+    public function test_form48_export_still_shows_locator_label_when_no_real_punch_exists(): void
+    {
+        $user = $this->createEmployee(['last_name' => 'Locatornopunch']);
+        $this->assignOrdinaryShift($user, self::DATE);
+
+        Locator::create([
+            'user_id' => $user->id,
+            'application_type' => 'Personal',
+            'location' => 'Test location',
+            'travel_date' => self::DATE,
+            'intended_departure_time' => '11:00:00',
+            'intended_arrival_time' => '13:00:00',
+            'detail' => 'Test errand',
+            'status' => 'approved',
+        ]);
+
+        // No attendance_logs at all - nothing to recover.
+        $this->recompute($user, self::DATE);
+
+        $sheet = $this->fillForm48WithLocator($user);
+
+        $row = 30;
+        $this->assertSame('LOCATOR', $sheet->getCell("D{$row}")->getValue());
+        $this->assertSame('LOCATOR', $sheet->getCell("E{$row}")->getValue());
     }
 }
