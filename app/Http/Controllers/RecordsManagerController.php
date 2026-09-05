@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -282,13 +283,83 @@ class RecordsManagerController extends Controller
     {
         $this->ensureRecordsManager($request);
 
-        $user->delete();
+        $blockingCategories = $this->userHistoryCategories($user);
+
+        if (! empty($blockingCategories)) {
+            HRAuditTrail::create([
+                'actor_user_id' => $request->user()->id,
+                'module' => 'records',
+                'action' => 'employee_delete_blocked',
+                'target_type' => 'user',
+                'target_id' => $user->id,
+                'details' => [
+                    'emp_no' => $user->EmpNo,
+                    'name' => $user->name,
+                    'blocking_categories' => $blockingCategories,
+                ],
+            ]);
+
+            $message = 'This employee has recorded '.implode(', ', $blockingCategories)
+                .' history and cannot be permanently deleted. Set their status to Separated instead.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'error', 'message' => $message], 422);
+            }
+
+            return redirect()->back()->with(['status' => 'error', 'message' => $message]);
+        }
+
+        DB::transaction(function () use ($request, $user) {
+            HRAuditTrail::create([
+                'actor_user_id' => $request->user()->id,
+                'module' => 'records',
+                'action' => 'employee_deleted',
+                'target_type' => 'user',
+                'target_id' => $user->id,
+                'details' => [
+                    'emp_no' => $user->EmpNo,
+                    'name' => $user->name,
+                    'access_level' => $user->access_level,
+                ],
+            ]);
+
+            $user->delete();
+        });
 
         if ($request->expectsJson()) {
             return response()->json(['status' => 'success', 'message' => 'Employee record deleted.']);
         }
 
         return redirect()->back()->with(['status' => 'success', 'message' => 'Employee record deleted.']);
+    }
+
+    /**
+     * Which categories of protected history block a permanent delete - payroll,
+     * attendance, and leave records in particular carry COA/legal retention weight
+     * and must never be silently destroyed by a hard delete. Returns the labels of
+     * every category with at least one matching row, empty when the employee is
+     * genuinely history-free and safe to hard-delete.
+     */
+    private function userHistoryCategories(User $user): array
+    {
+        $checks = [
+            'payroll' => DB::table('payroll_details')->where('employee_id', $user->id)->exists()
+                || DB::table('employee_earnings')->where('employee_id', $user->id)->exists()
+                || DB::table('employee_deductions')->where('employee_id', $user->id)->exists()
+                || DB::table('withholding_taxes')->where('employee_id', $user->id)->exists()
+                || DB::table('loans')->where('employee_id', $user->id)->exists(),
+            'plantilla assignment' => DB::table('employee_assignments')->where('employee_id', $user->id)->exists(),
+            'attendance' => DB::table('attendance_logs')->where('user_id', $user->id)->exists()
+                || DB::table('dtrs')->where('employee_id', $user->id)->exists(),
+            'leave' => DB::table('leave_requests')->where('user_id', $user->id)->exists()
+                || DB::table('leave_ledger')->where('user_id', $user->id)->exists()
+                || DB::table('monthly_attendance')->where('user_id', $user->id)->exists(),
+            'job order appointment' => DB::table('job_order_appointments')->where('user_id', $user->id)->exists(),
+            'uniform inspection' => DB::table('uniform_inspection_details')->where('employee_id', $user->id)->exists(),
+            'disciplinary notice' => DB::table('habitual_violation_notices')->where('employee_id', $user->id)->exists(),
+        ];
+
+        return array_keys(array_filter($checks));
     }
 
     public function resetPassword(Request $request, int $id)

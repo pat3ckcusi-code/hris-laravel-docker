@@ -4,10 +4,12 @@ namespace Tests\Feature\RoleBased;
 
 use App\Models\Department;
 use App\Models\EmployeeAssignment;
+use App\Models\LeaveRequest;
 use App\Models\Plantilla;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -105,6 +107,97 @@ class RecordsManagerTest extends TestCase
             $response->isSuccessful() || $response->isRedirection(),
             "Deactivate employee failed: HTTP {$response->getStatusCode()}"
         );
+    }
+
+    public function test_delete_blocked_when_employee_has_payroll_history(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        DB::table('withholding_taxes')->insert([
+            'employee_id' => $emp->id,
+            'year' => now()->year,
+            'month' => now()->month,
+            'amount' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_has_attendance_history(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        DB::table('attendance_logs')->insert([
+            'user_id' => $emp->id,
+            'emp_no' => $emp->EmpNo,
+            'logdate' => now()->toDateString(),
+            'logtime' => '08:00:00',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_has_leave_request(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'pending',
+        ]);
+
+        // Before this fix, an employee with a leave_requests row hit the table's
+        // own unguarded RESTRICT foreign key and produced an uncaught 500 - this
+        // now gets caught explicitly and rejected cleanly instead.
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_succeeds_for_employee_with_no_history(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        $response = $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $response->assertRedirect();
+        $this->assertDatabaseMissing('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_deleted',
+            'target_id' => $emp->id,
+        ]);
     }
 
     public function test_separating_employee_ends_active_assignment_and_logs_audit(): void
