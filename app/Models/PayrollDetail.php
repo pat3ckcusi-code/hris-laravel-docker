@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property float $other_deductions
  * @property array|null $deduction_breakdown
  * @property float $net_pay
+ * @property bool $flagged_for_review
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read PayrollRun|null $payrollRun
@@ -53,6 +54,7 @@ class PayrollDetail extends Model
         'other_deductions',
         'deduction_breakdown',
         'net_pay',
+        'flagged_for_review',
     ];
 
     protected function casts(): array
@@ -72,6 +74,7 @@ class PayrollDetail extends Model
             'other_deductions' => EncryptedDecimal::class,
             'deduction_breakdown' => EncryptedArray::class,
             'net_pay' => EncryptedDecimal::class,
+            'flagged_for_review' => 'boolean',
         ];
     }
 

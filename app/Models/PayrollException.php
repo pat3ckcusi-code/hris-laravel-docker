@@ -35,6 +35,7 @@ class PayrollException extends Model
         'no_assignments',
         'lwop_deduction',
         'missing_withholding_tax',
+        'computation_error',
     ];
 
     protected $table = 'payroll_exceptions';

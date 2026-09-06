@@ -111,7 +111,15 @@
                     <tbody>
                         @foreach($details as $detail)
                             <tr>
-                                <td>{{ $detail->employee->name ?? '-' }}</td>
+                                <td>
+                                    {{ $detail->employee->name ?? '-' }}
+                                    @if($detail->flagged_for_review)
+                                        <span class="hris-badge" style="background:#fee2e2;color:#991b1b;margin-left:6px;"
+                                              title="Automatic computation failed for this employee - a ₱0 detail was created for review. See the Exceptions list for details.">
+                                            ⚠ Review
+                                        </span>
+                                    @endif
+                                </td>
                                 <td>₱{{ number_format($detail->basic_salary, 2) }}</td>
                                 <td>
                                     @forelse($detail->basic_salary_breakdown ?? [] as $segment)

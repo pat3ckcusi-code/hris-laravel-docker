@@ -139,6 +139,82 @@ class ReliabilityTest extends TestCase
 
         $this->assertNotNull($detail);
         $this->assertEquals(0, (float) $detail->basic_salary);
+        $this->assertTrue((bool) $detail->flagged_for_review, 'A missing-salary-matrix detail must be flagged for review');
+    }
+
+    /** @test */
+    public function unexpected_computation_error_for_one_employee_does_not_abort_the_run(): void
+    {
+        $admin = $this->createUser('payroll-manager');
+        $goodEmployee = $this->createUser('employee');
+        $badEmployee = $this->createUser('employee');
+
+        SalaryMatrix::create([
+            'sg' => 6,
+            'step' => 1,
+            'year' => 2026,
+            'amount' => 18620.00,
+        ]);
+
+        foreach ([$goodEmployee, $badEmployee] as $employee) {
+            $plantilla = Plantilla::create([
+                'title' => 'Clerk III',
+                'salary_grade' => 6,
+                'step' => 1,
+                'employment_type' => 'permanent',
+            ]);
+
+            EmployeeAssignment::create([
+                'employee_id' => $employee->id,
+                'plantilla_id' => $plantilla->id,
+                'start_date' => '2026-01-01',
+            ]);
+        }
+
+        $run = PayrollRun::create([
+            'period' => '2026-04 mixed',
+            'period_start' => '2026-04-01',
+            'period_end' => '2026-04-15',
+            'status' => 'draft',
+            'created_by' => $admin->id,
+        ]);
+
+        // A different mid-loop failure than the salary-matrix one above -
+        // proves the catch in compute() is a general backstop, not something
+        // that only happens to work for that one known cause.
+        $service = new ThrowingPayrollComputationServiceForTest;
+        $service->throwForEmployeeIds = [$badEmployee->id];
+        $result = $service->compute($run, $admin);
+
+        // Both employees still get a PayrollDetail - the run isn't aborted,
+        // and the good employee's own row is entirely unaffected.
+        $this->assertEquals(2, $result['employee_count']);
+
+        $goodDetail = PayrollDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $goodEmployee->id)->first();
+        $this->assertNotNull($goodDetail);
+        $this->assertEquals(18620.00, (float) $goodDetail->basic_salary);
+        $this->assertFalse((bool) $goodDetail->flagged_for_review);
+
+        $badDetail = PayrollDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $badEmployee->id)->first();
+        $this->assertNotNull($badDetail);
+        $this->assertEquals(0, (float) $badDetail->basic_salary);
+        $this->assertEquals(0, (float) $badDetail->net_pay);
+        $this->assertTrue((bool) $badDetail->flagged_for_review, 'A caught-exception detail must be flagged for review');
+
+        $exception = PayrollException::where('payroll_run_id', $run->id)
+            ->where('type', 'computation_error')
+            ->first();
+        $this->assertNotNull($exception, 'An unexpected per-employee failure should log a computation_error exception, not crash');
+        $this->assertStringContainsString('Simulated computation failure for test', $exception->description);
+
+        // Tier 0: the failure must also surface in compute()'s own returned
+        // errors array, not just the PayrollException table - otherwise the
+        // post-compute flash message stays silent for this failure mode
+        // while it correctly fires for the missing-salary-matrix one above.
+        $this->assertNotEmpty($result['errors']);
+        $this->assertStringContainsString($badEmployee->name, implode(' ', $result['errors']));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -216,6 +292,12 @@ class ReliabilityTest extends TestCase
         $this->assertNotNull($log, 'Payroll computation must log audit entry');
         $this->assertEquals($admin->id, $log->user_id);
         $this->assertStringContainsString('1 employee', $log->details);
+
+        // A normally-computed detail must default to NOT flagged - only the
+        // two error-recovery paths in compute() should ever set this true.
+        $detail = PayrollDetail::where('payroll_run_id', $run->id)
+            ->where('employee_id', $employee->id)->first();
+        $this->assertFalse((bool) $detail->flagged_for_review);
     }
 
     /** @test */
@@ -274,5 +356,27 @@ class ReliabilityTest extends TestCase
             ->where('employee_id', $employee->id)->first();
 
         $this->assertGreaterThanOrEqual(0, (float) $detail->net_pay, 'Net pay must never be negative');
+    }
+}
+
+/**
+ * Forces a distinct, non-getBasicSalary() failure for a chosen employee, to
+ * prove compute()'s per-employee try/catch is a general backstop rather than
+ * something that only happens to cover the one known missing-salary-matrix
+ * cause. Real subclass override, not a mock - direct instantiation is this
+ * codebase's established pattern for testing pure service classes.
+ */
+class ThrowingPayrollComputationServiceForTest extends PayrollComputationService
+{
+    /** @var int[] */
+    public array $throwForEmployeeIds = [];
+
+    protected function computeAllowances(int $employeeId, float $basicSalary): array
+    {
+        if (in_array($employeeId, $this->throwForEmployeeIds, true)) {
+            throw new \RuntimeException('Simulated computation failure for test.');
+        }
+
+        return parent::computeAllowances($employeeId, $basicSalary);
     }
 }

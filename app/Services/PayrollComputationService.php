@@ -87,101 +87,143 @@ class PayrollComputationService
                 continue;
             }
 
-            // 1. Basic salary from salary matrix. Step is the assignment's own
-            // (personal to this stint), not the plantilla's shared, position-level step.
-            $salaryMatrixId = null;
-            $basicSalaryBreakdown = [];
-            $currentTrancheAmount = null;
-            $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown, $currentTrancheAmount);
+            try {
+                // 1. Basic salary from salary matrix. Step is the assignment's own
+                // (personal to this stint), not the plantilla's shared, position-level step.
+                $salaryMatrixId = null;
+                $basicSalaryBreakdown = [];
+                $currentTrancheAmount = null;
+                $errorCountBefore = count($errors);
+                $basicSalary = $this->getBasicSalary($employee, $plantilla->salary_grade, $assignment->step, $run, $errors, $salaryMatrixId, $basicSalaryBreakdown, $currentTrancheAmount);
+                $flaggedForReview = count($errors) > $errorCountBefore;
 
-            // 2. Allowances (PERA, Hazard Pay, Subsistence, Laundry, Other)
-            $allowances = $this->computeAllowances($employee->id, $basicSalary);
-            $grossPay = $basicSalary + $allowances['total'];
+                // 2. Allowances (PERA, Hazard Pay, Subsistence, Laundry, Other)
+                $allowances = $this->computeAllowances($employee->id, $basicSalary);
+                $grossPay = $basicSalary + $allowances['total'];
 
-            // 3. Mandatory deductions (GSIS, PhilHealth, Pag-IBIG)
-            $mandatory = $this->computeMandatoryDeductions($basicSalary, $currentTrancheAmount, $grossPay, $mandatoryTypes, $employee->employee_type);
+                // 3. Mandatory deductions (GSIS, PhilHealth, Pag-IBIG)
+                $mandatory = $this->computeMandatoryDeductions($basicSalary, $currentTrancheAmount, $grossPay, $mandatoryTypes, $employee->employee_type);
 
-            // 3b. Withholding tax - no longer bracket-computed; Accounting
-            // computes it and it's uploaded monthly, looked up here and split
-            // across however many runs fall in the same calendar month. See
-            // computeWithholdingTax() and "Replace computed BIR withholding
-            // tax with an Accounting-uploaded monthly table".
-            $withholdingTax = $this->computeWithholdingTax($employee->id, $run);
-            $mandatory['bir'] = $withholdingTax['amount'];
-            $mandatory['total'] += $mandatory['bir'];
+                // 3b. Withholding tax - no longer bracket-computed; Accounting
+                // computes it and it's uploaded monthly, looked up here and split
+                // across however many runs fall in the same calendar month. See
+                // computeWithholdingTax() and "Replace computed BIR withholding
+                // tax with an Accounting-uploaded monthly table".
+                $withholdingTax = $this->computeWithholdingTax($employee->id, $run);
+                $mandatory['bir'] = $withholdingTax['amount'];
+                $mandatory['total'] += $mandatory['bir'];
 
-            // 4. Loan deductions (named, per-provider breakdown)
-            $loanResult = $this->computeLoanDeductions($employee->id);
+                // 4. Loan deductions (named, per-provider breakdown)
+                $loanResult = $this->computeLoanDeductions($employee->id);
 
-            // 5. Other recurring deductions (named, flat, non-loan — e.g. insurance, GSIS MP2, cellphone plan)
-            $otherResult = $this->computeOtherDeductions($employee->id, $basicSalary, $autoRateOtherTypes, $employee->employee_type);
+                // 5. Other recurring deductions (named, flat, non-loan — e.g. insurance, GSIS MP2, cellphone plan)
+                $otherResult = $this->computeOtherDeductions($employee->id, $basicSalary, $autoRateOtherTypes, $employee->employee_type);
 
-            // 6. LWOP deduction
-            $lwopDeduction = $this->computeLwopDeduction($employee->id, $run, $basicSalary);
+                // 6. LWOP deduction
+                $lwopDeduction = $this->computeLwopDeduction($employee->id, $run, $basicSalary);
 
-            // 7. Net pay
-            $netPay = max(0, $grossPay - $mandatory['total'] - $loanResult['total'] - $otherResult['total'] - $lwopDeduction);
+                // 7. Net pay
+                $netPay = max(0, $grossPay - $mandatory['total'] - $loanResult['total'] - $otherResult['total'] - $lwopDeduction);
 
-            // 8. Flat, ordered breakdown of every named deduction line for the payslip.
-            // A deactivated mandatory row is omitted entirely rather than shown as ₱0.00.
-            $mandatoryDefaultLabels = [
-                'gsis' => 'Life & Retirement',
-                'philhealth' => 'Medicare',
-                'pagibig' => 'HDMF (Pag-ibig)',
-                'bir' => 'Withholding Tax',
-            ];
-            $mandatoryLines = [];
-            foreach ($mandatoryDefaultLabels as $key => $defaultLabel) {
-                $row = $mandatoryTypes->get($key);
-                // Withholding tax is authoritative as uploaded - never gated
-                // by is_active/eligible_employee_types, unlike the other 3.
-                if ($key !== 'bir' && ! $this->mandatoryAppliesToEmployee($row, $employee->employee_type)) {
-                    continue;
+                // 8. Flat, ordered breakdown of every named deduction line for the payslip.
+                // A deactivated mandatory row is omitted entirely rather than shown as ₱0.00.
+                $mandatoryDefaultLabels = [
+                    'gsis' => 'Life & Retirement',
+                    'philhealth' => 'Medicare',
+                    'pagibig' => 'HDMF (Pag-ibig)',
+                    'bir' => 'Withholding Tax',
+                ];
+                $mandatoryLines = [];
+                foreach ($mandatoryDefaultLabels as $key => $defaultLabel) {
+                    $row = $mandatoryTypes->get($key);
+                    // Withholding tax is authoritative as uploaded - never gated
+                    // by is_active/eligible_employee_types, unlike the other 3.
+                    if ($key !== 'bir' && ! $this->mandatoryAppliesToEmployee($row, $employee->employee_type)) {
+                        continue;
+                    }
+                    $mandatoryLines[] = ['label' => $row?->type ?? $defaultLabel, 'amount' => $mandatory[$key], 'category' => 'mandatory'];
                 }
-                $mandatoryLines[] = ['label' => $row?->type ?? $defaultLabel, 'amount' => $mandatory[$key], 'category' => 'mandatory'];
-            }
 
-            $deductionBreakdown = [
-                ...$mandatoryLines,
-                ...array_map(fn ($item) => [...$item, 'category' => 'loan'], $loanResult['items']),
-                ...array_map(fn ($item) => [...$item, 'category' => 'other'], $otherResult['items']),
-            ];
+                $deductionBreakdown = [
+                    ...$mandatoryLines,
+                    ...array_map(fn ($item) => [...$item, 'category' => 'loan'], $loanResult['items']),
+                    ...array_map(fn ($item) => [...$item, 'category' => 'other'], $otherResult['items']),
+                ];
 
-            if ($lwopDeduction > 0) {
+                if ($lwopDeduction > 0) {
+                    PayrollException::create([
+                        'payroll_run_id' => $run->id,
+                        'type' => 'lwop_deduction',
+                        'description' => "{$employee->name}: ₱".number_format($lwopDeduction, 2).' LWOP deduction applied.',
+                    ]);
+                }
+
+                if (! $withholdingTax['found']) {
+                    PayrollException::create([
+                        'payroll_run_id' => $run->id,
+                        'type' => 'missing_withholding_tax',
+                        'description' => "{$employee->name}: no withholding tax uploaded for {$run->period_start->format('F Y')}.",
+                    ]);
+                }
+
+                PayrollDetail::create([
+                    'payroll_run_id' => $run->id,
+                    'employee_id' => $employee->id,
+                    'basic_salary' => $basicSalary,
+                    'salary_matrix_id' => $salaryMatrixId,
+                    'basic_salary_breakdown' => $basicSalaryBreakdown,
+                    'gross_pay' => $grossPay,
+                    'earnings' => $allowances['total'],
+                    'gsis_deduction' => $mandatory['gsis'],
+                    'philhealth_deduction' => $mandatory['philhealth'],
+                    'pagibig_deduction' => $mandatory['pagibig'],
+                    'bir_deduction' => $mandatory['bir'],
+                    'deductions' => $mandatory['total'],
+                    'loan_deduction' => $loanResult['total'],
+                    'other_deductions' => $otherResult['total'],
+                    'deduction_breakdown' => $deductionBreakdown,
+                    'lwop_deduction' => $lwopDeduction,
+                    'net_pay' => $netPay,
+                    'flagged_for_review' => $flaggedForReview,
+                ]);
+            } catch (\Throwable $e) {
+                // Defense-in-depth: one employee's data quirk must never abort
+                // the whole run. getBasicSalary() (see above) already fixes the
+                // one known cause of this; this catch is the backstop for any
+                // other not-yet-found cause. A skipped-outright row would leave
+                // a real employee with no payslip at all and no visible sign
+                // anything went wrong - a ₱0, clearly-flagged detail is safer.
+                \Log::error("Payroll computation failed for employee {$employee->id} ({$employee->name}) in run {$run->id}: {$e->getMessage()}", ['exception' => $e]);
+
+                $errors[] = "{$employee->name}: payroll computation failed - see Exceptions.";
+
                 PayrollException::create([
                     'payroll_run_id' => $run->id,
-                    'type' => 'lwop_deduction',
-                    'description' => "{$employee->name}: ₱".number_format($lwopDeduction, 2).' LWOP deduction applied.',
+                    'type' => 'computation_error',
+                    'description' => "{$employee->name}: payroll computation failed ({$e->getMessage()}) - flagged with a ₱0 detail for review.",
                 ]);
-            }
 
-            if (! $withholdingTax['found']) {
-                PayrollException::create([
+                PayrollDetail::create([
                     'payroll_run_id' => $run->id,
-                    'type' => 'missing_withholding_tax',
-                    'description' => "{$employee->name}: no withholding tax uploaded for {$run->period_start->format('F Y')}.",
+                    'employee_id' => $employee->id,
+                    'basic_salary' => 0,
+                    'salary_matrix_id' => null,
+                    'basic_salary_breakdown' => [],
+                    'gross_pay' => 0,
+                    'earnings' => 0,
+                    'gsis_deduction' => 0,
+                    'philhealth_deduction' => 0,
+                    'pagibig_deduction' => 0,
+                    'bir_deduction' => 0,
+                    'deductions' => 0,
+                    'loan_deduction' => 0,
+                    'other_deductions' => 0,
+                    'deduction_breakdown' => [],
+                    'lwop_deduction' => 0,
+                    'net_pay' => 0,
+                    'flagged_for_review' => true,
                 ]);
             }
-
-            PayrollDetail::create([
-                'payroll_run_id' => $run->id,
-                'employee_id' => $employee->id,
-                'basic_salary' => $basicSalary,
-                'salary_matrix_id' => $salaryMatrixId,
-                'basic_salary_breakdown' => $basicSalaryBreakdown,
-                'gross_pay' => $grossPay,
-                'earnings' => $allowances['total'],
-                'gsis_deduction' => $mandatory['gsis'],
-                'philhealth_deduction' => $mandatory['philhealth'],
-                'pagibig_deduction' => $mandatory['pagibig'],
-                'bir_deduction' => $mandatory['bir'],
-                'deductions' => $mandatory['total'],
-                'loan_deduction' => $loanResult['total'],
-                'other_deductions' => $otherResult['total'],
-                'deduction_breakdown' => $deductionBreakdown,
-                'lwop_deduction' => $lwopDeduction,
-                'net_pay' => $netPay,
-            ]);
 
             $processed++;
         }
@@ -345,6 +387,7 @@ class PayrollComputationService
                 $errors[] = "No salary matrix entry for SG-{$sg} Step {$step}.";
                 $salaryMatrixId = null;
                 $breakdown = [];
+                $currentTrancheAmount = 0.0;
 
                 return 0;
             }
