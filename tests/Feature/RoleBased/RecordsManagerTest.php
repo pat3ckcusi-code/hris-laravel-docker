@@ -184,6 +184,77 @@ class RecordsManagerTest extends TestCase
         ]);
     }
 
+    public function test_delete_blocked_when_employee_has_uniform_inspection_violation(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        $inspectionId = DB::table('uniform_inspections')->insertGetId([
+            'inspection_date' => now()->toDateString(),
+            'inspection_time' => '09:00:00',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('uniform_inspection_details')->insert([
+            'uniform_inspection_id' => $inspectionId,
+            'employee_id' => $emp->id,
+            'violation_type' => 'Improper Uniform',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('uniform_inspection_details', ['employee_id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_was_attendance_adjustment_submitter(): void
+    {
+        $rm = $this->createRecordsManager();
+        $submitter = $this->createEmployee();
+        $flaggedEmployee = $this->createEmployee();
+
+        $submissionId = DB::table('attendance_adjustment_submissions')->insertGetId([
+            'submitted_by' => $submitter->id,
+            'month' => now()->month,
+            'year' => now()->year,
+            'department_ids' => json_encode([]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('attendance_adjustment_submission_items')->insert([
+            'submission_id' => $submissionId,
+            'user_id' => $flaggedEmployee->id,
+            'month' => now()->month,
+            'year' => now()->year,
+            'name' => $flaggedEmployee->name,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Deleting the submitter (a Time Keeper/HR Manager, not the flagged
+        // employee) must not cascade away the whole submission and, with it,
+        // another employee's flagged attendance-deficiency item.
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $submitter->id));
+
+        $this->assertDatabaseHas('users', ['id' => $submitter->id]);
+        $this->assertDatabaseHas('attendance_adjustment_submissions', ['id' => $submissionId]);
+        $this->assertDatabaseHas('attendance_adjustment_submission_items', ['submission_id' => $submissionId]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $submitter->id,
+        ]);
+    }
+
     public function test_delete_succeeds_for_employee_with_no_history(): void
     {
         $rm = $this->createRecordsManager();

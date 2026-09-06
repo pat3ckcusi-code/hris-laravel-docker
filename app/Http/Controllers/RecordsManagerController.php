@@ -347,16 +347,52 @@ class RecordsManagerController extends Controller
                 || DB::table('employee_earnings')->where('employee_id', $user->id)->exists()
                 || DB::table('employee_deductions')->where('employee_id', $user->id)->exists()
                 || DB::table('withholding_taxes')->where('employee_id', $user->id)->exists()
-                || DB::table('loans')->where('employee_id', $user->id)->exists(),
+                || DB::table('loans')->where('employee_id', $user->id)->exists()
+                || DB::table('payslips')->where('employee_id', $user->id)->exists(),
             'plantilla assignment' => DB::table('employee_assignments')->where('employee_id', $user->id)->exists(),
             'attendance' => DB::table('attendance_logs')->where('user_id', $user->id)->exists()
-                || DB::table('dtrs')->where('employee_id', $user->id)->exists(),
+                || DB::table('dtrs')->where('employee_id', $user->id)->exists()
+                || DB::table('dtr_excuses')->where('user_id', $user->id)->exists()
+                || DB::table('dtr_exemption_periods')->where('user_id', $user->id)->exists()
+                || DB::table('locators')->where('user_id', $user->id)->exists()
+                || DB::table('eta')->where('user_id', $user->id)->exists(),
+            // Deleting the submitter of a batch would cascade the whole batch header
+            // away, silently destroying OTHER employees' flagged items along with it -
+            // not just this user's own data.
+            'attendance adjustment' => DB::table('attendance_adjustment_submissions')->where('submitted_by', $user->id)->exists()
+                || DB::table('attendance_adjustment_submission_items')->where('user_id', $user->id)->exists(),
+            // leave_requests.user_id is a bare RESTRICT FK (blocks the delete on its
+            // own, but with an uncaught 500 - checking it here gives a clean message
+            // instead). approved_by is a separate, SET NULL column added later and
+            // needs no check; recommended_by/finalized_by/approver_id from an earlier
+            // schema no longer exist at all (confirmed against the live schema, not
+            // just migration files, since this table has had several since-superseded
+            // approval-column migrations). leave_balances is deliberately NOT checked
+            // here - UserObserver::created() auto-creates one for every user
+            // unconditionally, so its mere existence says nothing about real history.
             'leave' => DB::table('leave_requests')->where('user_id', $user->id)->exists()
                 || DB::table('leave_ledger')->where('user_id', $user->id)->exists()
-                || DB::table('monthly_attendance')->where('user_id', $user->id)->exists(),
+                || DB::table('monthly_attendance')->where('user_id', $user->id)->exists()
+                || DB::table('leave_dates')->where('cancelled_by', $user->id)->exists(),
             'job order appointment' => DB::table('job_order_appointments')->where('user_id', $user->id)->exists(),
-            'uniform inspection' => DB::table('uniform_inspection_details')->where('employee_id', $user->id)->exists(),
+            'uniform inspection' => DB::table('uniform_inspection_details')->where('employee_id', $user->id)->exists()
+                || DB::table('uniform_inspection_deductions')->where('employee_id', $user->id)->exists(),
             'disciplinary notice' => DB::table('habitual_violation_notices')->where('employee_id', $user->id)->exists(),
+            'personal data sheet' => DB::table('user_pds')->where('user_id', $user->id)->exists(),
+            'oic assignment' => DB::table('oic_assignments')
+                ->where('user_id', $user->id)
+                ->orWhere('appointed_by', $user->id)
+                ->exists(),
+            'travel order' => DB::table('travel_orders')
+                    ->where('recommender', $user->id)
+                    ->orWhere('created_by', $user->id)
+                    ->exists()
+                || (! empty($user->EmpNo) && DB::table('travel_order_employees')->where('emp_no', $user->EmpNo)->exists()),
+            'shift management grant' => DB::table('shift_management_grants')
+                ->where('granted_by', $user->id)
+                ->orWhere('revoked_by', $user->id)
+                ->exists(),
+            'e-signature signing' => DB::table('esignature_signings')->where('requested_by', $user->id)->exists(),
         ];
 
         return array_keys(array_filter($checks));
