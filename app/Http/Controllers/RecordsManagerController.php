@@ -396,7 +396,11 @@ class RecordsManagerController extends Controller
             // Found by re-verifying §2.1 directly against live information_schema
             // (not migration files) rather than trusting the prior pass's own
             // "full audit" claim - all three are real CASCADE FKs to users.id.
-            'shift management' => DB::table('shift_assignments')->where('user_id', $user->id)->exists()
+            // Named distinctly from the 'shift management grant' check above -
+            // this is the employee's own shift/attendance-schedule history, an
+            // unrelated concept, and both strings can appear in the same
+            // user-facing blocked-delete message.
+            'shift assignment history' => DB::table('shift_assignments')->where('user_id', $user->id)->exists()
                 || DB::table('employee_shift_schedules')->where('user_id', $user->id)->exists(),
             'e-signature configuration' => DB::table('esignature_settings')->where('user_id', $user->id)->exists(),
             'export jobs' => DB::table('export_jobs')->where('user_id', $user->id)->exists(),
