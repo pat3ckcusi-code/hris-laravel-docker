@@ -18,6 +18,13 @@ Artisan::command('inspire', function () {
 // day's DTR processing sees the correct shift from the start.
 Schedule::command('shift:sync-cache')->dailyAt('00:05');
 
+// Sync users.salary_grade/salary_step to whichever employee_assignments row
+// covers today, mirroring shift:sync-cache's identical users.shift_id sync -
+// closes the gap where a future-dated promote()/store() correctly leaves the
+// cache on the employee's still-current position, but nothing else advances
+// it once that future date actually arrives.
+Schedule::command('plantilla:sync-salary-cache')->dailyAt('00:06');
+
 // Sync users.dtr_exempt* to whichever dtr_exemption_periods row covers today
 // (restoring an employee whose Date Until has passed, and activating one
 // whose Effective Date has just arrived), mirroring shift:sync-cache's own

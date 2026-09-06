@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EmployeeAssignment;
 use App\Models\HRAuditTrail;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class EmployeeAssignmentService
 {
@@ -89,5 +90,28 @@ class EmployeeAssignmentService
             'salary_grade' => $target['salary_grade'],
             'salary_step' => $target['salary_step'],
         ]);
+    }
+
+    /**
+     * Bulk-sync users.salary_grade/salary_step to whichever employee_assignments
+     * row covers today, for every user with assignment history - one SQL
+     * statement instead of a per-user loop. Shared by the daily
+     * plantilla:sync-salary-cache command and CscPlantillaImportService's
+     * post-import sync, so both stay on the same (correct) resolution -
+     * salary_step from the assignment's own step, never the plantilla's
+     * shared, position-level step (see syncUserSalary()'s docblock).
+     */
+    public function syncAllSalaryCaches(): int
+    {
+        return DB::update('
+            UPDATE users u
+            JOIN employee_assignments ea ON ea.employee_id = u.id
+                AND ea.start_date <= CURDATE()
+                AND (ea.end_date IS NULL OR ea.end_date >= CURDATE())
+            JOIN plantillas p ON p.id = ea.plantilla_id
+            SET u.salary_grade = p.salary_grade, u.salary_step = ea.step
+            WHERE u.salary_grade IS NULL OR u.salary_grade != p.salary_grade
+                OR u.salary_step IS NULL OR u.salary_step != ea.step
+        ');
     }
 }

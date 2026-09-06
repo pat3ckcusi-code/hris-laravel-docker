@@ -25,6 +25,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  */
 class CscPlantillaImportService
 {
+    public function __construct(private EmployeeAssignmentService $employeeAssignmentService) {}
+
     /** Rows scanned from the top of each sheet to find headers. */
     private const HEADER_SCAN_ROWS = 40;
 
@@ -515,16 +517,7 @@ class CscPlantillaImportService
 
     private function syncUserSalaryColumns(array &$report): void
     {
-        $report['users_synced'] = DB::update('
-            UPDATE users u
-            JOIN employee_assignments ea ON ea.employee_id = u.id
-                AND ea.start_date <= CURDATE()
-                AND (ea.end_date IS NULL OR ea.end_date >= CURDATE())
-            JOIN plantillas p ON p.id = ea.plantilla_id
-            SET u.salary_grade = p.salary_grade, u.salary_step = p.step
-            WHERE u.salary_grade IS NULL OR u.salary_grade != p.salary_grade
-                OR u.salary_step IS NULL OR u.salary_step != p.step
-        ');
+        $report['users_synced'] = $this->employeeAssignmentService->syncAllSalaryCaches();
     }
 
     private function reportDesignatedUnassigned(array &$report): void

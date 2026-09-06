@@ -365,6 +365,47 @@ class PlantillaUiTest extends TestCase
         ]);
     }
 
+    public function test_promote_with_a_future_effective_date_leaves_the_salary_cache_on_the_old_position(): void
+    {
+        $manager = $this->createPayrollManager();
+        $employee = $this->createEmployee(['designation' => 'Administrative Aide II']);
+        $current = $this->makePlantilla(['salary_grade' => 5]);
+        $higher = $this->makePlantilla([
+            'title' => 'Administrative Assistant I',
+            'item_number' => '912',
+            'salary_grade' => 7,
+            'step' => 4,
+        ]);
+
+        EmployeeAssignment::create([
+            'employee_id' => $employee->id,
+            'plantilla_id' => $current->id,
+            'step' => 3,
+            'start_date' => '2026-01-01',
+        ]);
+
+        $futureDate = now()->addMonths(2)->toDateString();
+
+        $this->actingAs($manager)->post(route('payroll.plantilla.promote'), [
+            'employee_id' => $employee->id,
+            'plantilla_id' => $higher->id,
+            'effective_date' => $futureDate,
+        ])->assertRedirect(route('payroll.plantilla.show', $higher->id));
+
+        $employee->refresh();
+
+        // The promotion hasn't taken effect yet - the cache must still
+        // reflect the employee's actual current (old) position, not jump
+        // ahead to the new one just because it was submitted.
+        $this->assertSame(5, $employee->salary_grade);
+        $this->assertSame(3, $employee->salary_step);
+
+        // designation/date_of_last_promotion are not gated on the effective
+        // date - unchanged, existing behavior.
+        $this->assertSame('Administrative Assistant I', $employee->designation);
+        $this->assertSame($futureDate, $employee->date_of_last_promotion?->toDateString());
+    }
+
     public function test_promote_rejects_an_occupied_target_position(): void
     {
         $manager = $this->createPayrollManager();

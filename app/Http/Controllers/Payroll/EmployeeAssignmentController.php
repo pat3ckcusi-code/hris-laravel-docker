@@ -152,13 +152,16 @@ class EmployeeAssignmentController extends Controller
                 'start_date' => $effective->toDateString(),
             ]);
 
+            // salary_grade/salary_step are resolved via syncUserSalary() rather
+            // than written directly here (mirroring store()'s own call), so a
+            // future-dated promotion correctly leaves the cache on the
+            // employee's still-current (old) position throughout the gap
+            // instead of jumping to the new position before it actually takes
+            // effect - see EmployeeAssignmentController::store().
+            $this->employeeAssignmentService->syncUserSalary($employee->id);
+
             // Query-builder update: designation is intentionally not mass-assignable.
-            // salary_step always resets to 1 on promotion - it's the employee's own
-            // earned step in the new position, not whatever the target item's
-            // fixed step value happens to be.
             User::where('id', $employee->id)->update([
-                'salary_grade' => $target->salary_grade,
-                'salary_step' => 1,
                 'designation' => $target->title,
                 'date_of_last_promotion' => $effective->toDateString(),
             ]);
