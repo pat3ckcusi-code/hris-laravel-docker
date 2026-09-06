@@ -12,7 +12,10 @@ use App\Models\User;
 use App\Models\WorkSuspension;
 use App\Support\WorkSchedule;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class PersonnelLogImportService
@@ -26,7 +29,49 @@ class PersonnelLogImportService
     /**
      * @return array{imported: int, skipped: int, messages: array<int, string>, error: ?string}
      */
+    /**
+     * Acquires one per-date lock (see config('attendance.import_lock')) before
+     * running the real import, so two calls for the same date - a manual pull
+     * racing the scheduler, or two manual pulls - never race the DTR
+     * upsert/orphan-cleanup step inside importForDateRangeInner(). Always
+     * exactly one date in practice (both callers dispatch one job per single
+     * calendar day), but loops over every date in [from, to] to stay correct
+     * if that calling pattern ever changes. Locking happens before the token
+     * fetch so a skipped run costs zero external API calls.
+     */
     public function importForDateRange(string $from, string $to, ?int $deptId = null, ?int $pageSize = null): array
+    {
+        $ttl = (int) config('attendance.import_lock.ttl_seconds', 650);
+        $wait = (int) config('attendance.import_lock.wait_seconds', 10);
+
+        $locks = [];
+        foreach (CarbonPeriod::create($from, $to) as $date) {
+            $locks[] = Cache::lock('attendance-import:'.$date->toDateString(), $ttl);
+        }
+
+        try {
+            foreach ($locks as $lock) {
+                $lock->block($wait);
+            }
+        } catch (LockTimeoutException) {
+            foreach ($locks as $lock) {
+                $lock->release();
+            }
+
+            return ['imported' => 0, 'skipped' => 0, 'messages' => [],
+                'error' => "Another import for {$from}".($to !== $from ? " - {$to}" : '')." is already in progress. Please try again shortly."];
+        }
+
+        try {
+            return $this->importForDateRangeInner($from, $to, $deptId, $pageSize);
+        } finally {
+            foreach ($locks as $lock) {
+                $lock->release();
+            }
+        }
+    }
+
+    private function importForDateRangeInner(string $from, string $to, ?int $deptId = null, ?int $pageSize = null): array
     {
         $imported = 0;
         $skipped = 0;

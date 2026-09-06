@@ -81,4 +81,35 @@ return [
         'lookback_days' => 45,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Attendance import per-date lock
+    |--------------------------------------------------------------------------
+    |
+    | PersonnelLogImportService::importForDateRange() is always called once
+    | per single calendar day, from either the every-minute scheduler
+    | (yesterday, today - as two separate dispatches) or a manual "Pull
+    | Biometric Punch Logs" submission. Two concurrent calls for the SAME
+    | date can otherwise race inside the DTR upsert/orphan-cleanup step: one
+    | call's stale punch snapshot can delete a dtrs row the other call just
+    | legitimately wrote. A Cache::lock() keyed per-date serializes exactly
+    | this case while still letting genuinely different dates run in
+    | parallel (e.g. the scheduler's own yesterday/today dispatches).
+    |
+    */
+
+    'import_lock' => [
+
+        // How long the lock is held before auto-expiring as a safety net if
+        // a job dies without releasing it - kept comfortably above
+        // ImportAttendanceLogsJob's own 600s timeout.
+        'ttl_seconds' => 650,
+
+        // How long a second call for the same date waits for the first to
+        // finish before giving up. Real imports finish in ~1-2s, so this
+        // comfortably covers the normal case while still failing within a
+        // bounded window rather than tying up a queue worker indefinitely.
+        'wait_seconds' => 10,
+    ],
+
 ];
