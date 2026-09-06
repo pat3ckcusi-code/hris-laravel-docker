@@ -681,7 +681,7 @@ class LeaveRequestService
             if ($original && $original->status === 'approved') {
                 try {
                     DB::transaction(function () use ($original, $leave) {
-                        $lb = $original->user->leaveBalance ?? null;
+                        $lb = LeaveBalance::where('user_id', $original->user_id)->lockForUpdate()->first();
                         $aggregateService = app(LeaveDateAggregateService::class);
 
                         $linkedDates = LeaveDate::where('rescheduled_to_leave_request_id', $leave->id)->get();
@@ -877,7 +877,13 @@ class LeaveRequestService
         }
 
         $user = $leave->user;
-        $leaveBalance = $user->leaveBalance;
+        // Deliberately unlocked here - this is only used for the null-check, the two
+        // no-deduction early-return paths below, and an audit-log "original balance"
+        // snapshot. The real, lock-protected fetch happens inside each DB::transaction()
+        // below, immediately before the actual deduction - locking here would acquire
+        // and release the row lock before that transaction even opens, giving no real
+        // protection while looking like it does.
+        $leaveBalance = LeaveBalance::where('user_id', $user->id)->first();
         if (! $leaveBalance) {
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => 'No leave balance record found for this user.'], 422);
@@ -1029,7 +1035,11 @@ class LeaveRequestService
             };
 
             if (! empty($preview)) {
-                DB::transaction(function () use ($leaveBalance, $preview, $leave, &$deductionLog, $resolveField, $column) {
+                DB::transaction(function () use ($preview, $leave, &$deductionLog, $resolveField, $column) {
+                    // Fetch a fresh, locked copy right before the mutation - the plain
+                    // fetch above is too early (outside this transaction) to protect
+                    // against a concurrent approval racing this same balance row.
+                    $leaveBalance = LeaveBalance::where('user_id', $leave->user_id)->lockForUpdate()->first();
                     foreach ($preview as $col => $amt) {
                         if (! is_numeric($amt) || floatval($amt) <= 0) {
                             continue;
@@ -1083,7 +1093,11 @@ class LeaveRequestService
                 });
             } else {
                 // Fallback: previous single-column deduction behavior
-                DB::transaction(function () use ($leaveBalance, $column, $toDeduct, $leave, &$deductionLog, $resolveField) {
+                DB::transaction(function () use ($column, $toDeduct, $leave, &$deductionLog, $resolveField) {
+                    // Fetch a fresh, locked copy right before the mutation - see the
+                    // preview-based branch above for why the plain fetch above is
+                    // too early to protect this deduction.
+                    $leaveBalance = LeaveBalance::where('user_id', $leave->user_id)->lockForUpdate()->first();
                     $colKey = strtoupper((string) $column);
 
                     if ($colKey === 'SL') {

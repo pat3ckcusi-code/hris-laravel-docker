@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\EsignatureSigning;
 use App\Models\Eta;
 use App\Models\HRAuditTrail;
+use App\Models\LeaveBalance;
 use App\Models\LeaveDate;
 use App\Models\LeaveRequest;
 use App\Models\Locator;
@@ -1972,7 +1973,7 @@ class DepartmentHeadController extends Controller
                     if (! $employee) {
                         return;
                     }
-                    $leaveBalance = $employee->leaveBalance;
+                    $leaveBalance = LeaveBalance::where('user_id', $employee->id)->lockForUpdate()->first();
                     if (! $leaveBalance) {
                         return;
                     }

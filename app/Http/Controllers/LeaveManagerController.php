@@ -316,7 +316,7 @@ class LeaveManagerController extends Controller
         DB::beginTransaction();
         try {
             $user = $leave->user;
-            $lb = $user->leaveBalance ?? null;
+            $lb = LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first();
 
             // Prefer returning applied per-type deductions if present (printing_deduction_details contains applied log)
             $applied = [];
@@ -514,7 +514,7 @@ class LeaveManagerController extends Controller
         DB::beginTransaction();
         try {
             $user = $leave->user;
-            $lb = $user?->leaveBalance;
+            $lb = $user ? LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first() : null;
 
             // Un-cancelling previously-cancelled dates restores those leave days,
             // so we deduct credits back (they were refunded when apiCancelDate ran).
@@ -624,7 +624,7 @@ class LeaveManagerController extends Controller
         DB::beginTransaction();
         try {
             $user = $leave->user;
-            $lb = $user->leaveBalance ?? null;
+            $lb = LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first();
             $aggregateService = app(LeaveDateAggregateService::class);
 
             $restored = $aggregateService->refundDates($dates, $lb);
@@ -802,7 +802,7 @@ class LeaveManagerController extends Controller
             DB::beginTransaction();
             try {
                 $user = $leave->user;
-                $lb = $user->leaveBalance ?? null;
+                $lb = LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first();
 
                 $applied = [];
                 if (! empty($leave->printing_deduction_details)) {
@@ -983,7 +983,8 @@ class LeaveManagerController extends Controller
 
             DB::beginTransaction();
             try {
-                $lb = $leave->user?->leaveBalance;
+                $user = $leave->user;
+                $lb = $user ? LeaveBalance::where('user_id', $user->id)->lockForUpdate()->first() : null;
 
                 $cancelledDates = $leave->leaveDates()->where('is_cancelled', true)->get();
                 foreach ($cancelledDates as $ld) {

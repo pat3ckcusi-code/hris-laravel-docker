@@ -10,6 +10,7 @@ use App\Models\LeaveRequest;
 use App\Models\Locator;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
@@ -148,6 +149,35 @@ class DepartmentHeadTest extends TestCase
             $response->isSuccessful() || $response->isRedirection(),
             "Leave approval failed: HTTP {$response->getStatusCode()}"
         );
+    }
+
+    public function test_approve_leave_request_locks_leave_balance_row(): void
+    {
+        $dh = $this->createDepartmentHead();
+        $employee = $this->createEmployee(['Dept_id' => $dh->Dept_id]);
+        $this->createLeaveBalance($employee, ['VL' => 15]);
+
+        $leave = LeaveRequest::create([
+            'user_id' => $employee->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'total_days' => 1,
+            'paid_days' => 1,
+            'reason' => 'Test leave',
+            'status' => 'pending',
+            'printing_allowed' => true,
+        ]);
+
+        DB::enableQueryLog();
+        $this->actingAs($dh)->post(route('department-head.leave.approve', $leave->id));
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $lockedBalanceQuery = collect($log)->first(
+            fn ($q) => str_contains(strtolower($q['query']), 'leave_balances') && str_contains(strtolower($q['query']), 'for update')
+        );
+        $this->assertNotNull($lockedBalanceQuery, 'Expected the leave_balances fetch in approveLeave() to use lockForUpdate()');
     }
 
     public function test_reject_leave_request(): void

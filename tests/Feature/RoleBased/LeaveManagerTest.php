@@ -12,6 +12,7 @@ use App\Models\MonthlyAttendance;
 use App\Services\LeaveLedgerService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\CreatesTestUsers;
 use Tests\Traits\MeasuresPerformance;
@@ -350,6 +351,33 @@ class LeaveManagerTest extends TestCase
 
         $response = $this->actingAs($lm)->postJson(route('api.leave.approve-cancellation', $leave->id));
         $response->assertStatus(422);
+    }
+
+    public function test_approve_cancellation_locks_leave_balance_row(): void
+    {
+        $lm = $this->createLeaveManager();
+        $emp = $this->createEmployee();
+        $this->createLeaveBalance($emp, ['VL' => 10.000]);
+
+        $leave = LeaveRequest::create([
+            'user_id' => $emp->id,
+            'leave_type' => 'VL',
+            'start_date' => now()->addWeek()->toDateString(),
+            'end_date' => now()->addWeek()->toDateString(),
+            'reason' => 'Test',
+            'status' => 'approved',
+            'cancellation_status' => 'AO Endorsed',
+        ]);
+
+        DB::enableQueryLog();
+        $this->actingAs($lm)->postJson(route('api.leave.approve-cancellation', $leave->id));
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $lockedBalanceQuery = collect($log)->first(
+            fn ($q) => str_contains(strtolower($q['query']), 'leave_balances') && str_contains(strtolower($q['query']), 'for update')
+        );
+        $this->assertNotNull($lockedBalanceQuery, 'Expected the leave_balances fetch in apiApproveCancellation to use lockForUpdate()');
     }
 
     public function test_cancel_leave_date_with_refund(): void
