@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -252,6 +253,80 @@ class RecordsManagerTest extends TestCase
             'module' => 'records',
             'action' => 'employee_delete_blocked',
             'target_id' => $submitter->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_has_shift_assignment_history(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        DB::table('shift_assignments')->insert([
+            'user_id' => $emp->id,
+            'effective_from' => now()->toDateString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('shift_assignments', ['user_id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_has_esignature_setting(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        DB::table('esignature_settings')->insert([
+            'user_id' => $emp->id,
+            'signature_path' => 'esignature/test/signature.png',
+            'certificate_path' => 'esignature/test/certificate.p12',
+            'root_ca_path' => 'esignature/test/root.pem',
+            'intermediate_paths' => json_encode([]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('esignature_settings', ['user_id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
+        ]);
+    }
+
+    public function test_delete_blocked_when_employee_has_export_job(): void
+    {
+        $rm = $this->createRecordsManager();
+        $emp = $this->createEmployee();
+
+        DB::table('export_jobs')->insert([
+            'id' => (string) Str::ulid(),
+            'user_id' => $emp->id,
+            'type' => 'pds',
+            'params' => json_encode([]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($rm)->delete(route('dashboard.records-manager.users.destroy', $emp->id));
+
+        $this->assertDatabaseHas('users', ['id' => $emp->id]);
+        $this->assertDatabaseHas('export_jobs', ['user_id' => $emp->id]);
+        $this->assertDatabaseHas('hr_audit_trails', [
+            'module' => 'records',
+            'action' => 'employee_delete_blocked',
+            'target_id' => $emp->id,
         ]);
     }
 
